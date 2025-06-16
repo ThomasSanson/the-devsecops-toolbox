@@ -149,6 +149,15 @@ copier copy -a .config/devsecops/.copier-answers.yml https://gitlab.com/digital-
 Replace `/path/to/your/new/project` with your desired project location.
 Use `.` to create in the current directory
 
+
+4. Commit the plugin
+
+```bash
+task dev:up
+git add .
+git commit -m"feat(devsecops): init"
+```
+
 ## Usage
 
 ### Task Control

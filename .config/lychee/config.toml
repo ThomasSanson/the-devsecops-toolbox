@@ -3,6 +3,7 @@ exclude = [
   'file://*',
   'file://charts/',
   'http://localhost',
+  'http://proxy',
   'https://dl.k8s.io/release/',
   'https://localhost',
   'https://tidelift.com/funding/github/npm/parse-function',

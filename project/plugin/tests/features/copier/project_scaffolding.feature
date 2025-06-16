@@ -12,6 +12,12 @@ Feature: Project Scaffolding
   Scenario: Verify core Copier artifact presence
     Then the ".copier-answers.yml" file should exist in the ".config/devsecops" directory
 
+  Scenario: Verify core VERSION presence
+    Then the "VERSION" file should exist in the "." directory
+
+  Scenario: Verify core LICENSE presence
+    Then the "LICENSE" file should exist in the "." directory
+
   Scenario: Verify excluded files are absent
     Then the following files should NOT exist:
       | File Path  |

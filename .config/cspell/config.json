@@ -7,14 +7,15 @@
       "software-terms"
   ],
   "ignorePaths": [
+      ".config/devsecops/.copier-answers.yml",
       ".vscode",
       "**/.git/**",
       "**/.pnpm-lock.json",
       "**/node_modules/**",
-      "**/venv/**",
-      "**/vscode-extension/**",
       "**/project/**/sealed-secrets.yaml",
       "**/project/**/secrets.yaml",
+      "**/venv/**",
+      "**/vscode-extension/**",
       "megalinter-reports",
       "package-lock.json",
       "tmp/tests/copier/generated-project/.config/devsecops/.copier-answers.yml"
@@ -138,6 +139,7 @@
       "podman",
       "psql",
       "pybabel",
+      "pyrightconfig",
       "pythonpath",
       "redhat",
       "resemblehelper",

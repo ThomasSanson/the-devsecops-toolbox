@@ -26,6 +26,7 @@ REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
 SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
+REPOSITORY_DUSTILOCK_ARGUMENTS: "--path project"
 
 SHOW_ELAPSED_TIME: true
 SARIF_REPORTER: true
@@ -36,6 +37,11 @@ PRE_COMMANDS:
   - command: rm -rf /tmp/lint/venv
   - command: rm -rf /tmp/lint/megalinter-reports
   - command: rm -rf /tmp/lint/tmp
+  - command: rm -rf /tmp/lint/.config/docker-ce
+  - command: rm -rf /tmp/lint/.config/helm
+  - command: rm -rf /tmp/lint/.config/podman
+  - command: rm -rf /tmp/lint/.config/go
+  - command: rm -rf /tmp/lint/.config/nodejs
   - command: find /tmp/lint/.config -type d -name "roles" -exec rm -rf {} +
   - command: find /tmp/lint/.config -type d -name "node_modules" -exec rm -rf {} +
   - command: find /tmp/lint/ -type f \( -name "kubeconfig.yml" -o -name "kubeconfig.yaml" \) -exec rm -f {} \;
@@ -43,7 +49,6 @@ PRE_COMMANDS:
   - command: find /tmp/lint/.config/ -type f -name "package-lock.json" -exec rm -f {} \;
   - command: rm -f /tmp/lint/project/public/helm/index.yaml
   - command: find /tmp/lint/ -type f -name "*.tgz" -exec rm -f {} \;
-  - command: find /tmp/lint/ -name requirements.yml -exec ansible-galaxy install -r {} \;
   - command: |
       npm install -g \
         @cspell/dict-companies \
@@ -54,3 +59,15 @@ PRE_COMMANDS:
 
 POST_COMMANDS:
   - command: chmod -R 777 /tmp/lint/megalinter-reports
+
+# Ignore only import errors E0401
+PYTHON_PYLINT_ARGUMENTS:
+  - --disable=E0401
+# Create a pyrightconfig.json file to ignore import errors
+PYTHON_PYRIGHT_PRE_COMMANDS:
+  - command: |
+      echo '{
+        "reportMissingImports": false,
+        "reportMissingModuleSource": false
+      }' > pyrightconfig.json
+    continue_if_failed: false

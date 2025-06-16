@@ -4,7 +4,7 @@ exports.config = {
   },
   hooks: [],
   gherkin: {
-    features: '../../../features/**/*.feature',
+    features: '../../features/**/*.feature',
     steps: [
       '../../../../../.config/codeceptjs/step_definitions/steps.js',
       './step_definitions/entrypoint.js'

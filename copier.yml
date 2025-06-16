@@ -14,14 +14,12 @@ _exclude:
   - CHANGELOG.md
   - CONTRIBUTING.md
   - copier.yml
-  - LICENSE
   - megalinter-reports
   - node_modules
   - README.md
   - project/plugin
   - tmp
   - venv
-  - VERSION
 
 _message_after_copy: |
   Your DevSecOps project has been created successfully!
