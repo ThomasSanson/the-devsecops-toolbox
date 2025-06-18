@@ -1,26 +1,26 @@
 # kics-scan ignore
 ---
 services:
-  debian:
+  ubuntu:
     build:
       context: ../..
-      dockerfile: .config/devcontainer/debian/Dockerfile
+      dockerfile: .config/devcontainer/ubuntu/Dockerfile
       args:
-        USER: ${USER:-developer}
+        USER: ${USER:-ubuntu}
         http_proxy: ${http_proxy:-}
         HTTP_PROXY: ${HTTP_PROXY:-}
         https_proxy: ${https_proxy:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOME}:/home/${USER:-developer}
+      - ${HOME}:/home/${USER:-ubuntu}
       - /sys/fs/cgroup:/sys/fs/cgroup
     environment:
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - http_proxy=${http_proxy:-}
       - https_proxy=${https_proxy:-}
-    working_dir: ${PWD:-/home/developer/workspace/project}
+    working_dir: ${PWD:-/home/ubuntu/workspace/project}
     init: true
     privileged: true
     network_mode: host

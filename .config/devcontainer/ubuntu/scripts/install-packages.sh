@@ -9,9 +9,6 @@ install_packages() {
   echo "Updating package lists..."
   apt-get update
 
-  # Read Python version from configuration file
-  PYTHON_VERSION=$(cat .config/python/.python-version)
-
   echo "Installing necessary packages..."
   apt-get install -y --no-install-recommends \
     bash-completion \
@@ -21,9 +18,10 @@ install_packages() {
     lsb-release \
     nano \
     openssh-client \
-    "python${PYTHON_VERSION}" \
-    "python${PYTHON_VERSION}-venv" \
-    "python${PYTHON_VERSION}-dev" \
+    python3 \
+    "python3.12" \
+    "python3.12-venv" \
+    "python3.12-dev" \
     sudo \
     unzip \
     wget

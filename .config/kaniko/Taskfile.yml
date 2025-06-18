@@ -18,7 +18,7 @@ vars:
   # Build settings
   TASK_KANIKO_IMAGE_NAME: '{{.TASK_KANIKO_IMAGE_NAME | default "test"}}'
   TASK_KANIKO_IMAGE_TAG: '{{.TASK_KANIKO_IMAGE_TAG | default "latest"}}'
-  TASK_KANIKO_DOCKERFILE: '{{.TASK_KANIKO_DOCKERFILE | default ".config/devcontainer/debian/Dockerfile"}}'
+  TASK_KANIKO_DOCKERFILE: '{{.TASK_KANIKO_DOCKERFILE | default ".config/devcontainer/ubuntu/Dockerfile"}}'
   TASK_KANIKO_CONTEXT: '{{.TASK_KANIKO_CONTEXT | default "."}}'
   TASK_KANIKO_PUSH: '{{.TASK_KANIKO_PUSH | default "false"}}'
 
@@ -45,7 +45,7 @@ tasks:
       Variables:
         TASK_KANIKO_IMAGE_NAME: Name for the built image (default: test)
         TASK_KANIKO_IMAGE_TAG: Tag for the built image (default: latest)
-        TASK_KANIKO_DOCKERFILE: Path to Dockerfile (default: .config/devcontainer/debian/Dockerfile)
+        TASK_KANIKO_DOCKERFILE: Path to Dockerfile (default: .config/devcontainer/ubuntu/Dockerfile)
         TASK_KANIKO_CUSTOM_LABELS: Additional custom labels (format: key=value,key2=value2)
         TASK_KANIKO_PUSH: Push the image to registry (default: false)
         TASK_KANIKO_AUTH_ENABLED: Enable registry authentication (default: false)
@@ -119,6 +119,6 @@ tasks:
           {{.TASK_KANIKO_VOLUME_FLAG}} $(echo "{{.TASK_KANIKO_CACHE_REPO}}" | sed 's/^oci://'):/cache \
           {{.TASK_KANIKO_WARMER}} \
           --cache-repo={{.TASK_KANIKO_CACHE_REPO}} \
-          --image=debian:12
+          --image=ubuntu:24.04
       - cmd: echo "🎉 Kaniko cache warmup completed successfully"
         silent: true

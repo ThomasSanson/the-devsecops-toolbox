@@ -25,6 +25,7 @@ REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
 SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
+SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(package-lock\.json)'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 REPOSITORY_DUSTILOCK_ARGUMENTS: "--path project"
 

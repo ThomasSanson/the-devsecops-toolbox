@@ -1,5 +1,5 @@
 ---
-image: registry.gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin:11.0.0
+image: registry.gitlab.com/digital-commons/devsecops/tools/codeceptjs:1.2.1
 
 variables:
   TERM: xterm
@@ -46,6 +46,7 @@ variables:
   TASK_DEV_INIT_GIT_USER_NAME: $GITLAB_USER_LOGIN
   TASK_DEV_INIT_GIT_USER_EMAIL: $GITLAB_USER_EMAIL
   TASK_CODECEPTJS_CI: "true"
+  TASK_CODECEPTJS_RUNNER: "codeceptjs"
 
 services:
   # kics-scan ignore-line
@@ -87,6 +88,8 @@ code:
   stage: code
   retry: 1
   needs: []  # Allows parallel execution
+  tags:
+    - saas-linux-medium-amd64
   script:
     - task code
 

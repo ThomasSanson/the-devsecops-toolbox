@@ -5,6 +5,7 @@ vars:
   TASK_MEGALINTER_ENABLED: '{{.TASK_MEGALINTER_ENABLED | default "true"}}'
   TASK_MEGALINTER_CONTAINER_NAME: '{{.TASK_MEGALINTER_CONTAINER_NAME | default "megalinter-container"}}'
   TASK_MEGALINTER_CONTAINER_VERSION: '{{.TASK_MEGALINTER_CONTAINER_VERSION | default "v8"}}'
+  TASK_MEGALINTER_IMAGE_PREFIX: '{{.TASK_MEGALINTER_IMAGE_PREFIX | default ""}}'
 
 tasks:
   default:
@@ -20,7 +21,7 @@ tasks:
       - docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - rm -rf ./megalinter-reports
       - defer: (docker cp {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint/megalinter-reports ./megalinter-reports && chown -R $(id -u):$(id -g) megalinter-reports) || true; docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
-      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep oxsecurity/megalinter:{{.TASK_MEGALINTER_CONTAINER_VERSION}} infinity
+      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE_PREFIX}}oxsecurity/megalinter:{{.TASK_MEGALINTER_CONTAINER_VERSION}} infinity
       - docker cp {{.USER_WORKING_DIR}} {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint
       - docker exec {{.TASK_MEGALINTER_CONTAINER_NAME}} /bin/bash /entrypoint.sh
       - cmd: echo "🎉 All files correctly linted with megalinter!"

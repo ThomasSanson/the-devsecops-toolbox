@@ -1,7 +1,7 @@
 {
-  "name": "Debian Dev Container",
+  "name": "Ubuntu Dev Container",
   "dockerComposeFile": ["../../.config/devcontainer/docker-compose.yml"],
-  "service": "debian",
+  "service": "ubuntu",
   "shutdownAction": "none",
   "workspaceFolder": "${localWorkspaceFolder}",
   "updateRemoteUserUID": true,

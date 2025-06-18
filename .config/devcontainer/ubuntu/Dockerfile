@@ -1,17 +1,25 @@
-FROM debian:12
+FROM codeceptjs/codeceptjs:3.7.3
+
+# 1. Copy dependency files and install them
+WORKDIR /app
+COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json* ./
+RUN npm install --production=false
+
+# 2. Indicate to Node.js where to locate the installed modules
+ENV NODE_PATH=/app/node_modules
 
 # Configure variables
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG FTP_PROXY
 ARG NO_PROXY
-ARG USER=developer
+ARG USER=ubuntu
 ARG TEMP_DIR=/tmp/project
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy project files to the workspace directory
-COPY . /tmp/project
+COPY . $TEMP_DIR
 
 # Create env_vars file
 RUN echo "export HTTP_PROXY=\"$HTTP_PROXY\"" > $TEMP_DIR/env_vars && \
@@ -26,7 +34,7 @@ RUN echo "export HTTP_PROXY=\"$HTTP_PROXY\"" > $TEMP_DIR/env_vars && \
 # Change ownership of the project directory
 WORKDIR $TEMP_DIR
 
-RUN ./.config/devcontainer/debian/scripts/init.sh && \
+RUN ./.config/devcontainer/ubuntu/scripts/init.sh && \
   git config --system --add safe.directory $TEMP_DIR && \
   chown -R $USER:$USER $TEMP_DIR
 
@@ -49,13 +57,15 @@ ENV USER=$USER
 # Add local bin to PATH
 ENV PATH="/home/${USER}/.local/bin:${PATH}"
 
+RUN echo "3.12" > $TEMP_DIR/.config/python/.python-version
+
 # Run setup task with login shell to ensure .bashrc is sourced
 RUN --mount=type=secret,id=env_vars \
     bash -l -c 'task dev:setup-environment'
 
 # Run final scripts
-RUN ./.config/devcontainer/debian/scripts/setup-docker.sh "$USER" \
-  && ./.config/devcontainer/debian/scripts/cleanup.sh
+RUN ./.config/devcontainer/ubuntu/scripts/setup-docker.sh "$USER" \
+  && ./.config/devcontainer/ubuntu/scripts/cleanup.sh
 
 # Create the workspace directory
 WORKDIR /home/$USER/workspace/project

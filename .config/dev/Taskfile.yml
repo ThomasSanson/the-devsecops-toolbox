@@ -42,7 +42,6 @@ tasks:
       - task: lefthook
       - task: nodejs
       - task: podman
-      - task: codeceptjs
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true
 
@@ -78,13 +77,6 @@ tasks:
       - test "{{.TASK_BUN_ENABLED}}" = "false"
     cmds:
       - task: :bun:install
-
-  codeceptjs:
-    internal: true
-    status:
-      - test "{{.TASK_CODECEPTJS_ENABLED}}" = "false"
-    cmds:
-      - task: :codeceptjs:install:playwright
 
   docker-ce:
     internal: true

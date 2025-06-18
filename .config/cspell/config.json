@@ -7,7 +7,7 @@
       "software-terms"
   ],
   "ignorePaths": [
-      ".config/devsecops/.copier-answers.yml",
+      "**/.config/devsecops/.copier-answers.yml",
       ".vscode",
       "**/.git/**",
       "**/.pnpm-lock.json",
@@ -102,6 +102,7 @@
       "firstname",
       "fname",
       "geerlingguy",
+      "getent",
       "giga",
       "github",
       "gitlab",

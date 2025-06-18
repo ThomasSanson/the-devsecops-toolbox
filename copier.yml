@@ -11,7 +11,6 @@ _exclude:
   - .config/**/roles
   - .git
   - .vscode
-  - CHANGELOG.md
   - CONTRIBUTING.md
   - copier.yml
   - megalinter-reports
