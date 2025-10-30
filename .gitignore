@@ -3,6 +3,9 @@
 .config/**/roles
 .diagnostics
 .env
+!.env.devsecops
+!.env.dev
+!.env.dist
 .mega-linter.yml
 .task
 .vscode

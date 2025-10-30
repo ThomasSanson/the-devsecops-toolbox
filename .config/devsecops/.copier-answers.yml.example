@@ -1,0 +1,130 @@
+# =============================================================================
+# Copier Answers - Example Configuration
+# =============================================================================
+#
+# This is an example configuration file showing all available options.
+# Copy this file to .copier-answers.yml and customize for your project.
+#
+# To apply changes:
+#   1. Edit .config/devsecops/.copier-answers.yml
+#   2. Run: task devsecops:code:sync-templates
+#   3. Review generated files (.env.devsecops, .gitlab-ci.yml)
+#   4. Commit changes
+#
+# =============================================================================
+
+# Project Information
+_src_path: https://gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin.git
+project_name: my-project
+project_version: "0.1.0"
+project_description: "A DevSecOps-enabled project"
+
+# Stack Selection
+stack_primary: ansible  # ansible | python | nodejs | golang | java | dotnet | rust | container | static-site | other
+stack_additional: []  # Additional stacks as YAML list: ['python', 'nodejs']
+
+# Stack-specific sub-types (conditional)
+ansible_type: collection  # collection | role | playbook (for Ansible stack)
+# python_type: package  # package | application | api | cli (for Python stack)
+# nodejs_type: application  # application | api | library | frontend (for Node.js stack)
+
+# =============================================================================
+# DevSecOps Stages (9 stages)
+# =============================================================================
+stages_plan_enabled: true
+stages_code_enabled: true
+stages_build_enabled: true
+stages_test_enabled: true
+stages_release_enabled: true
+stages_deploy_enabled: true
+stages_operate_enabled: true
+stages_monitor_enabled: true
+stages_feedback_enabled: true
+
+# =============================================================================
+# Code Stage Tools
+# =============================================================================
+code_gitleaks_enabled: true
+code_commitizen_enabled: true
+code_commitizen_bump_dry_run_on_non_default_branch: true
+code_commitlint_enabled: true
+code_megalinter_enabled: true
+code_lizard_enabled: true
+code_renovate_enabled: true
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+build_docker_enabled: true
+build_coverage_check_enabled: true
+
+# =============================================================================
+# Test Stage (Generic)
+# =============================================================================
+test_unit_enabled: true
+test_integration_enabled: true
+test_e2e_enabled: false
+
+# -----------------------------------------------------------------------------
+# Ansible-Specific: Molecule Testing
+# -----------------------------------------------------------------------------
+test_molecule_enabled: true  # Only for Ansible stack
+test_molecule_prefer_virtualenv: true
+
+# UVX Pins (only used if test_molecule_prefer_virtualenv: false)
+test_uvx_pin_molecule: "molecule>=24.2.0"
+test_uvx_pin_molecule_plugins: "molecule-plugins[docker]>=23.5.0"
+test_uvx_pin_ansible_compat: "ansible-compat>=24.2.0"
+test_uvx_pin_ansible_core: "ansible-core>=2.16.0"
+
+# -----------------------------------------------------------------------------
+# Python-Specific: pytest
+# -----------------------------------------------------------------------------
+# test_pytest_enabled: true  # Only for Python stack
+# test_coverage_threshold: "80"
+
+# -----------------------------------------------------------------------------
+# Node.js-Specific: Jest
+# -----------------------------------------------------------------------------
+# test_jest_enabled: true  # Only for Node.js stack
+
+# =============================================================================
+# Release Stage
+# =============================================================================
+release_docker_push_enabled: true
+release_default_branch: main
+
+# =============================================================================
+# Deploy Stage
+# =============================================================================
+# Container/Package Registry (Universal)
+deploy_registry_enabled: true
+deploy_registry_type: gitlab  # gitlab | docker | github | artifactory | harbor | ecr
+deploy_registry_auth: true
+deploy_registry_project_id: ""  # GitLab specific
+
+# -----------------------------------------------------------------------------
+# Ansible-Specific: Galaxy
+# -----------------------------------------------------------------------------
+deploy_galaxy_enabled: true  # Only for Ansible stack
+deploy_galaxy_token_env: ANSIBLE_GALAXY_TOKEN
+
+# -----------------------------------------------------------------------------
+# Python-Specific: PyPI
+# -----------------------------------------------------------------------------
+# deploy_pypi_enabled: false  # Only for Python stack
+# deploy_pypi_repository: pypi  # pypi | testpypi
+
+# -----------------------------------------------------------------------------
+# Node.js-Specific: NPM
+# -----------------------------------------------------------------------------
+# deploy_npm_enabled: false  # Only for Node.js stack
+
+# =============================================================================
+# Runner Configuration
+# =============================================================================
+runner_container_image: registry.gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin:14.1.6
+runner_docker_socket: true
+runner_proxies_from_env: false
+runner_cache_enabled: true
+runner_artifacts_enabled: true

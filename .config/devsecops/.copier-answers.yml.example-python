@@ -1,0 +1,86 @@
+# =============================================================================
+# Copier Answers - Python Package Example
+# =============================================================================
+#
+# Example configuration for a Python package/library project.
+# Copy this file to .copier-answers.yml and customize for your project.
+#
+# =============================================================================
+
+# Project Information
+_src_path: https://gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin.git
+project_name: my-python-package
+project_version: "0.1.0"
+project_description: "A Python package with DevSecOps pipeline"
+
+# Stack Selection
+stack_type: python
+
+# Python-specific sub-type
+python_type: package  # package | application | api | cli
+
+# =============================================================================
+# DevSecOps Stages
+# =============================================================================
+stages_plan_enabled: true
+stages_code_enabled: true
+stages_build_enabled: true
+stages_test_enabled: true
+stages_release_enabled: true
+stages_deploy_enabled: true
+stages_operate_enabled: false
+stages_monitor_enabled: false
+stages_feedback_enabled: false
+
+# =============================================================================
+# Code Stage Tools
+# =============================================================================
+code_gitleaks_enabled: true
+code_commitizen_enabled: true
+code_commitizen_bump_dry_run_on_non_default_branch: true
+code_commitlint_enabled: true
+code_megalinter_enabled: true
+code_lizard_enabled: true
+code_renovate_enabled: true
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+build_docker_enabled: false  # Not needed for Python package
+build_coverage_check_enabled: true
+
+# =============================================================================
+# Test Stage
+# =============================================================================
+test_unit_enabled: true
+test_integration_enabled: true
+test_e2e_enabled: false
+
+# Python-Specific: pytest
+test_pytest_enabled: true
+test_coverage_threshold: "80"
+
+# =============================================================================
+# Release Stage
+# =============================================================================
+release_docker_push_enabled: false
+release_default_branch: main
+
+# =============================================================================
+# Deploy Stage
+# =============================================================================
+# Container/Package Registry (not used for PyPI)
+deploy_registry_enabled: false
+
+# Python PyPI
+deploy_pypi_enabled: true
+deploy_pypi_repository: testpypi  # Use testpypi for testing first
+
+# =============================================================================
+# Runner Configuration
+# =============================================================================
+runner_container_image: registry.gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin:14.1.6
+runner_docker_socket: false  # Not needed for Python
+runner_proxies_from_env: false
+runner_cache_enabled: true
+runner_artifacts_enabled: true

@@ -2,13 +2,7 @@
 
 # Changelog
 
-## 14.1.7 (2025-10-29)
-
-### Fix
-
-- **deps**: update dependency @types/node to v24.9.2
-
-## 14.1.6 (2025-10-29)
+## 14.1.6 (2025-10-28)
 
 ### Fix
 

@@ -1,0 +1,101 @@
+# =============================================================================
+# Copier Answers - Multi-Stack Example (Ansible + Python)
+# =============================================================================
+#
+# Example configuration for a project using multiple technologies.
+# Use case: Ansible Collection with custom Python modules and tests.
+#
+# =============================================================================
+
+# Project Information
+_src_path: https://gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin.git
+project_name: my-ansible-collection-with-python
+project_version: "0.1.0"
+project_description: "Ansible collection with custom Python modules"
+
+# =============================================================================
+# Stack Selection (Multi-Stack)
+# =============================================================================
+stack_primary: ansible
+stack_additional:
+  - python  # Python used for custom modules and testing
+
+# Stack-specific sub-types
+ansible_type: collection
+python_type: package  # Python modules packaged with collection
+
+# =============================================================================
+# DevSecOps Stages
+# =============================================================================
+stages_plan_enabled: true
+stages_code_enabled: true
+stages_build_enabled: true
+stages_test_enabled: true
+stages_release_enabled: true
+stages_deploy_enabled: true
+stages_operate_enabled: false
+stages_monitor_enabled: false
+stages_feedback_enabled: false
+
+# =============================================================================
+# Code Stage Tools
+# =============================================================================
+code_gitleaks_enabled: true
+code_commitizen_enabled: true
+code_commitizen_bump_dry_run_on_non_default_branch: true
+code_commitlint_enabled: true
+code_megalinter_enabled: true  # Will lint both Ansible and Python
+code_lizard_enabled: true
+code_renovate_enabled: true
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+build_docker_enabled: true
+build_coverage_check_enabled: true
+
+# =============================================================================
+# Test Stage (Multi-Stack)
+# =============================================================================
+test_unit_enabled: true
+test_integration_enabled: true
+test_e2e_enabled: false
+
+# Ansible tests (Molecule)
+test_molecule_enabled: true
+test_molecule_prefer_virtualenv: true
+
+# Python tests (pytest) - For custom modules
+test_pytest_enabled: true
+test_coverage_threshold: "80"
+
+# =============================================================================
+# Release Stage
+# =============================================================================
+release_docker_push_enabled: true
+release_default_branch: main
+
+# =============================================================================
+# Deploy Stage (Multi-Stack)
+# =============================================================================
+# Container Registry
+deploy_registry_enabled: true
+deploy_registry_type: gitlab
+deploy_registry_auth: true
+deploy_registry_project_id: ""
+
+# Ansible Galaxy - Primary deployment
+deploy_galaxy_enabled: true
+deploy_galaxy_token_env: ANSIBLE_GALAXY_TOKEN
+
+# PyPI - For Python modules (optional)
+deploy_pypi_enabled: false  # Usually bundled with Ansible collection
+
+# =============================================================================
+# Runner Configuration
+# =============================================================================
+runner_container_image: registry.gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin:14.1.6
+runner_docker_socket: true
+runner_proxies_from_env: false
+runner_cache_enabled: true
+runner_artifacts_enabled: true
