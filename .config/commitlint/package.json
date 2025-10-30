@@ -1,0 +1,10 @@
+{
+  "name": "@devsecops/commitlint-config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DevSecOps commitlint configuration",
+  "dependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0"
+  }
+}

@@ -1,11 +1,38 @@
 ---
-# Template configuration
+# =============================================================================
+# Copier Template Configuration - DevSecOps Plugin
+# =============================================================================
+# Docs: https://copier.readthedocs.io/en/stable/configuring/
+
+# Template metadata
 _answers_file: .config/devsecops/.copier-answers.yml
+_min_copier_version: "9.3.0"
+
+# Jinja configuration
+_envops:
+  # Optimiser le templating
+  block_start_string: "{%"
+  block_end_string: "%}"
+  variable_start_string: "{{"
+  variable_end_string: "}}"
+  comment_start_string: "{#"
+  comment_end_string: "#}"
+  keep_trailing_newline: true
+  autoescape: false
+
+# Extensions Jinja (pour fonctionnalités avancées)
+_jinja_extensions:
+  - jinja2.ext.do
+  - jinja2.ext.loopcontrols
+
+# Skip these files if they already exist
 _skip_if_exists:
   - iac/helm/Chart.yaml
   - VERSION
-_min_copier_version: "9.3.0"
+  - roles/
+  - galaxy.yml
 
+# Exclude from template processing
 _exclude:
   - .cache
   - .config/**/roles
@@ -19,10 +46,418 @@ _exclude:
   - project/plugin
   - tmp
   - venv
+  - "*.pyc"
+  - __pycache__
+
+# =============================================================================
+# Project Configuration
+# =============================================================================
+project_name:
+  type: str
+  default: my-project
+  help: Project name
+
+project_version:
+  type: str
+  default: "0.1.0"
+  help: Initial project version
+
+project_description:
+  type: str
+  default: "A DevSecOps-enabled project"
+  help: Project description
+
+# =============================================================================
+# Stack Selection
+# =============================================================================
+stack_primary:
+  type: str
+  default: ansible
+  help: Primary technology stack for your project
+  choices:
+    - ansible
+    - python
+    - nodejs
+    - golang
+    - java
+    - dotnet
+    - rust
+    - container
+    - static-site
+    - other
+
+# Additional stacks (multi-techno support)
+stack_additional:
+  type: yaml
+  default: []
+  help: |
+    Additional technology stacks used in your project (YAML list).
+    Example: ['python', 'nodejs'] for Ansible project with Python modules and Node.js tests.
+    Leave empty if single stack.
+
+# =============================================================================
+# Stack-Specific Sub-Types
+# =============================================================================
+
+# Ansible-specific sub-type
+ansible_type:
+  type: str
+  default: collection
+  help: Type of Ansible project
+  choices:
+    - collection
+    - role
+    - playbook
+  when: "{{ stack_primary == 'ansible' or 'ansible' in stack_additional }}"
+
+# Python-specific sub-type
+python_type:
+  type: str
+  default: package
+  help: Type of Python project
+  choices:
+    - package
+    - application
+    - api
+    - cli
+  when: "{{ stack_primary == 'python' or 'python' in stack_additional }}"
+
+# Node.js-specific sub-type
+nodejs_type:
+  type: str
+  default: application
+  help: Type of Node.js project
+  choices:
+    - application
+    - api
+    - library
+    - frontend
+  when: "{{ stack_primary == 'nodejs' or 'nodejs' in stack_additional }}"
+
+# =============================================================================
+# DevSecOps Stages Configuration (Universal)
+# =============================================================================
+# First, select which DevSecOps stages you want to enable for your project.
+# Enabling a stage will trigger additional questions specific to that stage.
+# For example, enabling 'Code' stage will ask about Gitleaks, Commitizen, etc.
+# =============================================================================
+
+stages_plan_enabled:
+  type: bool
+  default: true
+  help: Enable Plan stage (planning and design)
+
+stages_code_enabled:
+  type: bool
+  default: true
+  help: Enable Code stage (code quality and security scanning)
+
+stages_build_enabled:
+  type: bool
+  default: true
+  help: Enable Build stage (compilation and packaging)
+
+stages_test_enabled:
+  type: bool
+  default: true
+  help: Enable Test stage (unit, integration, and e2e tests)
+
+stages_release_enabled:
+  type: bool
+  default: true
+  help: Enable Release stage (versioning and changelog)
+
+stages_deploy_enabled:
+  type: bool
+  default: true
+  help: Enable Deploy stage (deployment to registries)
+
+stages_operate_enabled:
+  type: bool
+  default: false
+  help: Enable Operate stage (operational tasks)
+
+stages_monitor_enabled:
+  type: bool
+  default: false
+  help: Enable Monitor stage (monitoring and observability)
+
+stages_feedback_enabled:
+  type: bool
+  default: false
+  help: Enable Feedback stage (metrics and continuous improvement)
+
+# =============================================================================
+# Code Stage Tools Configuration (Universal)
+# =============================================================================
+code_gitleaks_enabled:
+  type: bool
+  default: true
+  help: Enable Gitleaks for secrets detection
+  when: "{{ stages_code_enabled }}"
+
+code_commitizen_enabled:
+  type: bool
+  default: true
+  help: Enable Commitizen for conventional commits
+  when: "{{ stages_code_enabled }}"
+
+code_commitizen_bump_dry_run_on_non_default_branch:
+  type: bool
+  default: true
+  help: Use dry-run mode for Commitizen bump on non-default branches
+  when: "{{ code_commitizen_enabled }}"
+
+code_commitlint_enabled:
+  type: bool
+  default: true
+  help: Enable Commitlint for commit message validation
+  when: "{{ stages_code_enabled }}"
+
+code_megalinter_enabled:
+  type: bool
+  default: true
+  help: Enable MegaLinter for comprehensive code linting
+  when: "{{ stages_code_enabled }}"
+
+code_lizard_enabled:
+  type: bool
+  default: true
+  help: Enable Lizard for code complexity analysis
+  when: "{{ stages_code_enabled }}"
+
+code_renovate_enabled:
+  type: bool
+  default: true
+  help: Enable Renovate configuration validation
+  when: "{{ stages_code_enabled }}"
+
+# =============================================================================
+# Build Stage Configuration (Universal)
+# =============================================================================
+build_docker_enabled:
+  type: bool
+  default: true
+  help: Enable Docker build
+  when: "{{ stages_build_enabled }}"
+
+build_coverage_check_enabled:
+  type: bool
+  default: true
+  help: Enable build coverage check
+  when: "{{ stages_build_enabled }}"
+
+# =============================================================================
+# Test Stage Configuration (Generic)
+# =============================================================================
+test_unit_enabled:
+  type: bool
+  default: true
+  help: Enable unit tests
+  when: "{{ stages_test_enabled }}"
+
+test_integration_enabled:
+  type: bool
+  default: true
+  help: Enable integration tests
+  when: "{{ stages_test_enabled }}"
+
+test_e2e_enabled:
+  type: bool
+  default: false
+  help: Enable end-to-end tests
+  when: "{{ stages_test_enabled }}"
+
+# =============================================================================
+# Ansible-Specific Test Configuration (Molecule)
+# =============================================================================
+test_molecule_enabled:
+  type: bool
+  default: true
+  help: Enable Molecule testing for Ansible
+  when: "{{ stages_test_enabled and (stack_primary == 'ansible' or 'ansible' in stack_additional) }}"
+
+test_molecule_prefer_virtualenv:
+  type: bool
+  default: true
+  help: Prefer virtualenv over uvx for Molecule
+  when: "{{ test_molecule_enabled }}"
+
+# UVX pins for Molecule tools
+test_uvx_pin_molecule:
+  type: str
+  default: "molecule>=24.2.0"
+  help: UVX pin for Molecule package
+  when: "{{ test_molecule_enabled and not test_molecule_prefer_virtualenv }}"
+
+test_uvx_pin_molecule_plugins:
+  type: str
+  default: "molecule-plugins[docker]>=23.5.0"
+  help: UVX pin for Molecule plugins with Docker support
+  when: "{{ test_molecule_enabled and not test_molecule_prefer_virtualenv }}"
+
+test_uvx_pin_ansible_compat:
+  type: str
+  default: "ansible-compat>=24.2.0"
+  help: UVX pin for Ansible compat package
+  when: "{{ test_molecule_enabled and not test_molecule_prefer_virtualenv }}"
+
+test_uvx_pin_ansible_core:
+  type: str
+  default: "ansible-core>=2.16.0"
+  help: UVX pin for Ansible core package
+  when: "{{ test_molecule_enabled and not test_molecule_prefer_virtualenv }}"
+
+# =============================================================================
+# Python-Specific Test Configuration
+# =============================================================================
+test_pytest_enabled:
+  type: bool
+  default: true
+  help: Enable pytest for Python projects
+  when: "{{ stages_test_enabled and (stack_primary == 'python' or 'python' in stack_additional) }}"
+
+test_coverage_threshold:
+  type: str
+  default: "80"
+  help: Minimum code coverage percentage
+  when: "{{ (stack_primary == 'python' or 'python' in stack_additional) and test_pytest_enabled }}"
+
+# =============================================================================
+# Node.js-Specific Test Configuration
+# =============================================================================
+test_jest_enabled:
+  type: bool
+  default: true
+  help: Enable Jest for Node.js projects
+  when: "{{ stages_test_enabled and (stack_primary == 'nodejs' or 'nodejs' in stack_additional) }}"
+
+# =============================================================================
+# Release Stage Configuration (Universal)
+# =============================================================================
+release_docker_push_enabled:
+  type: bool
+  default: true
+  help: Enable Docker image push during release
+  when: "{{ stages_release_enabled and build_docker_enabled }}"
+
+release_default_branch:
+  type: str
+  default: main
+  help: Default branch for releases
+  when: "{{ stages_release_enabled }}"
+
+# =============================================================================
+# Deploy Stage Configuration (Universal)
+# =============================================================================
+
+# Container Registry (Universal)
+deploy_registry_enabled:
+  type: bool
+  default: true
+  help: Enable deployment to container/package registry
+  when: "{{ stages_deploy_enabled }}"
+
+deploy_registry_type:
+  type: str
+  default: gitlab
+  help: Registry type for deployment
+  choices:
+    - gitlab
+    - docker
+    - github
+    - artifactory
+    - harbor
+    - ecr
+  when: "{{ deploy_registry_enabled }}"
+
+deploy_registry_auth:
+  type: bool
+  default: true
+  help: Enable registry authentication
+  when: "{{ deploy_registry_enabled }}"
+
+deploy_registry_project_id:
+  type: str
+  default: ""
+  help: Project ID for registry (GitLab specific)
+  when: "{{ deploy_registry_enabled and deploy_registry_type == 'gitlab' }}"
+
+# Ansible Galaxy (Ansible-specific)
+deploy_galaxy_enabled:
+  type: bool
+  default: true
+  help: Enable deployment to Ansible Galaxy
+  when: "{{ stages_deploy_enabled and (stack_primary == 'ansible' or 'ansible' in stack_additional) }}"
+
+deploy_galaxy_token_env:
+  type: str
+  default: ANSIBLE_GALAXY_TOKEN
+  help: Environment variable name for Galaxy API token
+  when: "{{ deploy_galaxy_enabled }}"
+
+# Python PyPI (Python-specific)
+deploy_pypi_enabled:
+  type: bool
+  default: false
+  help: Enable deployment to PyPI
+  when: "{{ stages_deploy_enabled and (stack_primary == 'python' or 'python' in stack_additional) }}"
+
+deploy_pypi_repository:
+  type: str
+  default: pypi
+  help: PyPI repository (pypi or testpypi)
+  choices:
+    - pypi
+    - testpypi
+  when: "{{ deploy_pypi_enabled }}"
+
+# NPM Registry (Node.js-specific)
+deploy_npm_enabled:
+  type: bool
+  default: false
+  help: Enable deployment to NPM registry
+  when: "{{ stages_deploy_enabled and (stack_primary == 'nodejs' or 'nodejs' in stack_additional) }}"
+
+# =============================================================================
+# Runner Configuration (Universal)
+# =============================================================================
+runner_container_image:
+  type: str
+  default: registry.gitlab.com/digital-commons/devsecops/tools/the-devsecops-plugin:14.1.6
+  help: Container image for CI/CD runner
+
+runner_docker_socket:
+  type: bool
+  default: true
+  help: Mount Docker socket in runner
+
+runner_proxies_from_env:
+  type: bool
+  default: false
+  help: Use proxy settings from environment variables
+
+runner_cache_enabled:
+  type: bool
+  default: true
+  help: Enable CI/CD cache
+
+runner_artifacts_enabled:
+  type: bool
+  default: true
+  help: Enable CI/CD artifacts
 
 _message_after_copy: |
   Your DevSecOps project has been created successfully!
 
+  Primary Stack: {{ stack_primary }}{% if stack_primary == 'ansible' %} ({{ ansible_type }}){% endif %}{% if stack_primary == 'python' %} ({{ python_type }}){% endif %}{% if stack_primary == 'nodejs' %} ({{ nodejs_type }}){% endif %}
+  {% if stack_additional %}Additional Stacks: {{ stack_additional | join(', ') }}{% endif %}
+  
+  ✅ Generated files:
+    - Taskfile.yml (conditional includes based on stack)
+    - .env.devsecops (environment variables)
+    - .gitlab-ci.yml (CI/CD with Molecule matrix)
+  
   Next steps:
   1. Review the generated configuration files
   2. Install the required dependencies:

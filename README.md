@@ -12,28 +12,39 @@
 <details open="open">
 <summary>Table of Contents</summary>
 
-- [About](#about)
-  - [Key Features](#key-features)
-  - [Built With](#built-with)
-  - [Project Structure](#project-structure)
-  - [Pipeline Stages](#pipeline-stages)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Usage](#usage)
-  - [Task Control](#task-control)
-  - [Common Operations](#common-operations)
-  - [Project Customization](#project-customization)
-  - [Available Commands](#available-commands)
-- [Environment Variables](#environment-variables)
-- [Development Setup](#development-setup)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Security](#security)
-  - [Security Best Practices](#security-best-practices)
-- [Contributing](#contributing)
-- [Contributors](#contributors)
-- [License](#license)
+- [∞ The DevSecOps Plugin](#-the-devsecops-plugin)
+  - [About](#about)
+    - [Key Features](#key-features)
+    - [Built With](#built-with)
+    - [Project Structure](#project-structure)
+    - [Pipeline Stages](#pipeline-stages)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+  - [Usage](#usage)
+    - [Task Control](#task-control)
+    - [Common Operations](#common-operations)
+    - [Project Customization](#project-customization)
+    - [Available Commands](#available-commands)
+  - [Copier-First Configuration](#copier-first-configuration)
+    - [Overview](#overview)
+    - [Configuration Flow](#configuration-flow)
+    - [DevSecOps Stages Configuration](#devsecops-stages-configuration)
+    - [Quick Start with Copier-First](#quick-start-with-copier-first)
+    - [Example Configurations](#example-configurations)
+  - [Environment Variables](#environment-variables)
+    - [Task Control Variables](#task-control-variables)
+    - [GitLab CI/CD Variables](#gitlab-cicd-variables)
+  - [Development Setup](#development-setup)
+  - [Architecture](#architecture)
+  - [Features](#features)
+  - [Security](#security)
+    - [Security Best Practices](#security-best-practices)
+  - [Tips \& Troubleshooting](#tips--troubleshooting)
+    - [MegaLinter CSpell Configuration Fix](#megalinter-cspell-configuration-fix)
+  - [Contributing](#contributing)
+  - [Contributors](#contributors)
+  - [License](#license)
 
 </details>
 
@@ -268,6 +279,106 @@ task docker-ce:test     # Docker tests
 task lizard             # Code complexity analysis
 task commitlint         # Commit message validation
 ```
+
+## Copier-First Configuration
+
+### Overview
+
+The DevSecOps Plugin uses a **Copier-first** approach where the `copier.yml` file and its answers serve as the **single source of truth** for all project configuration.
+
+**Key Principles:**
+- ✅ Copier answers drive the 9 DevSecOps stages, tools, and CI/CD
+- ✅ `.env.devsecops` is generated from answers
+- ✅ Taskfiles read `.env.devsecops` (dotenv priority) to enable/disable tasks via `TASK_*_ENABLED`
+- ✅ `.gitlab-ci.yml` is generated with conditional includes and Molecule matrix from answers
+- ✅ No external dependencies (JSON Schema, CLI, etc.)
+
+### Configuration Flow
+
+```
+copier.yml (questions)
+    ↓
+.config/devsecops/.copier-answers.yml (answers)
+    ↓
+    ├→ .env.devsecops.jinja → .env.devsecops
+    │       ↓
+    │   Taskfile.yml (dotenv: [".env.devsecops", ...])
+    │       ↓
+    │   TASK_*_ENABLED variables
+    │
+    └→ .gitlab-ci.yml.jinja → .gitlab-ci.yml
+            ↓
+        Conditional includes + Molecule matrix
+```
+
+### DevSecOps Stages Configuration
+
+Each of the 9 stages can be enabled/disabled individually:
+
+| Stage | Copier Variable | ENV Variable | Description |
+|-------|----------------|--------------|-------------|
+| Plan | `stages_plan_enabled` | `TASK_DEVSECOPS_PLAN_ENABLED` | Planning and design |
+| Code | `stages_code_enabled` | `TASK_DEVSECOPS_CODE_ENABLED` | Code quality and security |
+| Build | `stages_build_enabled` | `TASK_DEVSECOPS_BUILD_ENABLED` | Compilation and packaging |
+| Test | `stages_test_enabled` | `TASK_DEVSECOPS_TEST_ENABLED` | Unit, integration, e2e tests |
+| Release | `stages_release_enabled` | `TASK_DEVSECOPS_RELEASE_ENABLED` | Versioning and changelog |
+| Deploy | `stages_deploy_enabled` | `TASK_DEVSECOPS_DEPLOY_ENABLED` | Deployment to registries |
+| Operate | `stages_operate_enabled` | `TASK_DEVSECOPS_OPERATE_ENABLED` | Operational tasks |
+| Monitor | `stages_monitor_enabled` | `TASK_DEVSECOPS_MONITOR_ENABLED` | Monitoring and observability |
+| Feedback | `stages_feedback_enabled` | `TASK_DEVSECOPS_FEEDBACK_ENABLED` | Metrics and improvement |
+
+### Quick Start with Copier-First
+
+1. **Initialize or update project**:
+   ```bash
+   copier copy . /path/to/new/project
+   # OR
+   copier update
+   ```
+
+2. **Answer interactive questions** about stages, tools, and configuration
+
+3. **Files generated automatically**:
+   - `.env.devsecops` - Environment variables for Task
+   - `.gitlab-ci.yml` - CI/CD with conditional stages
+
+4. **Modify configuration anytime**:
+   ```bash
+   # Edit answers file
+   vim .config/devsecops/.copier-answers.yml
+   
+   # Regenerate templates
+   task devsecops:code:sync-templates
+   ```
+
+### Example Configurations
+
+**Full Ansible Collection:**
+```yaml
+profile: ansible-collection
+stages_code_enabled: true
+stages_build_enabled: true
+stages_test_enabled: true
+stages_deploy_enabled: true
+test_molecule_enabled: true
+test_matrix_java_versions: ["17", "21"]
+test_matrix_scenarios: ["default", "ha"]
+deploy_galaxy_enabled: true
+```
+
+**Minimal CI:**
+```yaml
+profile: ansible-role
+stages_code_enabled: true
+stages_build_enabled: true
+stages_test_enabled: true
+code_gitleaks_enabled: true
+code_megalinter_enabled: false
+test_matrix_java_versions: ["17"]
+test_matrix_scenarios: ["default"]
+```
+
+For detailed documentation, see [docs/guidelines/COPIER-FIRST.md](docs/guidelines/COPIER-FIRST.md)
 
 ## Environment Variables
 
