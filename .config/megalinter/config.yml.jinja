@@ -26,6 +26,8 @@ REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
 REPOSITORY_GITLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
 REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
+REPOSITORY_KINGFISHER_ARGUMENTS:
+  - "--exclude=.cache"
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
 SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
@@ -33,9 +35,11 @@ SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(package-lock\.json)'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 {%- endraw %}
 {%- if project_enabled %}
-REPOSITORY_DUSTILOCK_ARGUMENTS: "--path project"
+REPOSITORY_DUSTILOCK_ARGUMENTS:
+  - "--path project"
 {%- else %}
-REPOSITORY_DUSTILOCK_ARGUMENTS: "--path ."
+REPOSITORY_DUSTILOCK_ARGUMENTS:
+  - "--path ."
 {%- endif %}
 {% raw %}
 
