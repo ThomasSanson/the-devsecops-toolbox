@@ -1,0 +1,126 @@
+---
+# .gitlab-ci.yml
+.code-rules: &code_rules
+  rules:
+    # Block specific tags and branches (highest priority)
+    - if: $CI_COMMIT_TAG =~ /^staging$/
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^production$/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+
+    # Scheduled pipelines without allow_failure
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1")'
+      when: always
+
+    # Fallback: run in all other cases
+    - when: always
+
+# One job per check (all in parallel thanks to same stage + needs: [])
+code:project:
+  stage: code
+  needs: []
+{% if ci_platform == 'gitlab_saas' %}
+  tags: [saas-linux-medium-amd64]
+{% endif %}
+  script:
+    - task project:code
+  <<: *code_rules
+
+code:commitlint:
+  stage: code
+  needs: []
+  script:
+    - task commitlint
+  <<: *code_rules
+
+code:commitizen-check:
+  stage: code
+  needs: []
+  script:
+    - task commitizen:check
+  <<: *code_rules
+
+code:commitizen-bump-dry:
+  stage: code
+  needs: []
+  script:
+    - TASK_COMMITIZEN_BUMP_YES=true TASK_COMMITIZEN_BUMP_DRY_RUN=true task commitizen:bump
+  <<: *code_rules
+
+code:lizard:
+  stage: code
+  needs: []
+  script:
+    - task lizard
+  <<: *code_rules
+
+code:renovate-validate:
+  stage: code
+  needs: []
+  script:
+    - task renovate:validate
+  <<: *code_rules
+
+code:gitleaks:
+  stage: code
+  needs: []
+  script:
+    - task gitleaks:scan-branch
+  <<: *code_rules
+
+code:megalinter:
+  stage: code
+  needs: []
+{% if ci_platform == 'gitlab_saas' %}
+  tags: [saas-linux-medium-amd64]
+{% endif %}
+  script:
+    - task megalinter
+  rules:
+    # Block specific tags and branches (highest priority)
+    - if: $CI_COMMIT_TAG =~ /^staging$/
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^production$/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+
+    # Scheduled pipelines with allow_failure enabled
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1") && $MEGALINTER_ALLOW_FAILURE == "true"'
+      when: always
+      allow_failure: true
+
+    # Scheduled pipelines without allow_failure
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1")'
+      when: always
+
+    # All other contexts with allow_failure enabled via variable
+    - if: '$MEGALINTER_ALLOW_FAILURE == "true"'
+      when: always
+      allow_failure: true
+
+    # Fallback: run in all other cases
+    - when: always
+  artifacts:
+    when: always
+    expire_in: 2 days
+    paths:
+      - megalinter-reports/
+
+# (Optional) Aggregator waiting for all checks
+code:all:
+  stage: code
+  needs:
+    - code:commitizen-bump-dry
+    - code:commitizen-check
+    - code:commitlint
+    - code:gitleaks
+    - code:lizard
+    - code:megalinter
+    - code:project
+    - code:renovate-validate
+  script:
+    - echo "✅ All code checks passed."
+  <<: *code_rules
