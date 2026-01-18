@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.1 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.10.9
+
 ## 16.1.0 (2026-01-18)
 
 ### Feat
