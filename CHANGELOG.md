@@ -2,6 +2,22 @@
 
 # Changelog
 
+## 16.1.0 (2026-01-18)
+
+### Feat
+
+- **tests**: add CI platform specific steps for copier command execution and project updates to enhance testing capabilities
+- **tests**: add GitLab CI specific assertions to validate tags configuration and runner usage
+- **tests**: add GitLab specific step definitions for tags tests and CI platform generation
+- **copier.yml**: add ci_platform question to specify CI/CD platform options
+- **ci**: add conditional tag for GitLab SaaS platform in CI configuration
+- **tests**: add GitLab CI tags feature tests for SaaS and Self-Hosted configurations
+- **ci**: add GitLab CI configuration for code quality checks and rules
+
+### Fix
+
+- **entrypoint.js**: clean scenario names by removing tags from test titles for better readability
+
 ## 16.0.9 (2026-01-18)
 
 ### Fix
