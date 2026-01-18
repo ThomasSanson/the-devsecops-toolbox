@@ -1,6 +1,6 @@
 {
   "private": true,
   "dependencies": {
-    "mega-linter-runner": "9.2.0"
+    "mega-linter-runner": "9.3.0"
   }
 }
