@@ -144,12 +144,12 @@ function register () {
 
   Then('the Taskfile should include the Ansible taskfile reference', function () { // eslint-disable-line no-undef
     const taskfilePath = resolvePath(this, 'Taskfile.yml')
-    assertFileContains(taskfilePath, 'ansible: .config/ansible')
+    assertFileContains(taskfilePath, 'ansible:\n    taskfile: .config/ansible/Taskfile.yml')
   })
 
   Then('the Taskfile should NOT include the Ansible taskfile reference', function () { // eslint-disable-line no-undef
     const taskfilePath = resolvePath(this, 'Taskfile.yml')
-    assertFileNotContains(taskfilePath, 'ansible: .config/ansible')
+    assertFileNotContains(taskfilePath, 'ansible:')
   })
 
   // Project mode specific assertions
@@ -309,6 +309,27 @@ function register () {
   Then('the {string} file should NOT contain proxy variables', function (fileName) { // eslint-disable-line no-undef
     const filePath = resolvePath(this, fileName)
     assertFileNotContains(filePath, 'HTTP_PROXY')
+  })
+
+  // Container runtime specific assertions
+  Then('the root Taskfile should include the docker-ce taskfile reference', function () { // eslint-disable-line no-undef
+    const taskfilePath = resolvePath(this, 'Taskfile.yml')
+    assertFileContains(taskfilePath, 'docker-ce:\n    taskfile: .config/docker-ce/Taskfile.yml')
+  })
+
+  Then('the root Taskfile should NOT include the docker-ce taskfile reference', function () { // eslint-disable-line no-undef
+    const taskfilePath = resolvePath(this, 'Taskfile.yml')
+    assertFileNotContains(taskfilePath, 'docker-ce:')
+  })
+
+  Then('the root Taskfile should include the podman taskfile reference', function () { // eslint-disable-line no-undef
+    const taskfilePath = resolvePath(this, 'Taskfile.yml')
+    assertFileContains(taskfilePath, 'podman:\n    taskfile: .config/podman/Taskfile.yml')
+  })
+
+  Then('the root Taskfile should NOT include the podman taskfile reference', function () { // eslint-disable-line no-undef
+    const taskfilePath = resolvePath(this, 'Taskfile.yml')
+    assertFileNotContains(taskfilePath, 'podman:')
   })
 }
 

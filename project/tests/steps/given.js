@@ -132,6 +132,20 @@ function register () {
     executeCopier(this.projectRoot, { proxy_enabled: true, proxy_urls: proxies })
   })
 
+  // Docker runtime specific
+  Given('a clean temporary directory for docker runtime tests', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'docker', 'runtime')
+  })
+
+  // Podman runtime specific
+  Given('a clean temporary directory for podman runtime tests', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'podman', 'runtime')
+  })
+
+  Given('a project was generated with container runtime {string}', function (runtime) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { container_runtime: runtime })
+  })
+
   // Git initialization with origin/main ref for DevSecOps tools compatibility
   Given('the project is initialized as a git repository', function () { // eslint-disable-line no-undef
     initGitRepo(this.projectRoot, { branch: 'main' })

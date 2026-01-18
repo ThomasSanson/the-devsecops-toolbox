@@ -15,6 +15,10 @@ function register () {
     executeCopier(this.projectRoot)
   })
 
+  When('the copier command is executed with default settings', function () { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot)
+  })
+
   // Ansible specific
   When('the copier command is executed with Ansible enabled', function () { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { ansible_enabled: true })
@@ -85,6 +89,20 @@ function register () {
 
   When('the project is updated with proxy disabled', function () { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { proxy_enabled: false }, { force: true })
+  })
+
+  // Container runtime specific
+  When('the copier command is executed with container runtime {string}', function (runtime) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { container_runtime: runtime })
+  })
+
+  When('the project is updated with container runtime {string}', function (runtime) { // eslint-disable-line no-undef
+    // Remove previous container runtime directories before regeneration (Copier doesn't auto-delete excluded files)
+    const dockerDir = resolveProjectPath(this, '.config/docker-ce')
+    const podmanDir = resolveProjectPath(this, '.config/podman')
+    removeDirRecursive(dockerDir)
+    removeDirRecursive(podmanDir)
+    executeCopier(this.projectRoot, { container_runtime: runtime }, { force: true })
   })
 
   // DevSecOps task execution

@@ -36,6 +36,14 @@ project_enabled:
   help: Would you like to enable the project workspace (backend, frontend, data, auth, analytics, tests) to manage component-specific tasks?
   default: true
 
+container_runtime:
+  type: str
+  help: Which container runtime would you like to use?
+  choices:
+    Docker: docker
+    Podman: podman
+  default: docker
+
 _exclude:
   - .cache
   - .config/**/roles
@@ -50,6 +58,8 @@ _exclude:
   - tmp
   - venv
   - "{% if not project_enabled %}project{% endif %}"
+  - "{% if container_runtime != 'docker' %}.config/docker-ce{% endif %}"
+  - "{% if container_runtime != 'podman' %}.config/podman{% endif %}"
 
 _message_after_copy: |
   Your DevSecOps project has been created successfully!
