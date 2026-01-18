@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.0.9 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency mega-linter-runner to v9.3.0
+
 ## 16.0.8 (2025-12-30)
 
 ### Fix
