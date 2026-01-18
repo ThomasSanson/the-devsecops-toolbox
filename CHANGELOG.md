@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.4 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency copier to v9.11.1
+
 ## 16.1.3 (2026-01-18)
 
 ### Fix
