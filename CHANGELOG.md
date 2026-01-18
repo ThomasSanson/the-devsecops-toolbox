@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.3 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.11.6
+
 ## 16.1.2 (2026-01-18)
 
 ### Fix
