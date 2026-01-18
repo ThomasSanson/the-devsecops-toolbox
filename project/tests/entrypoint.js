@@ -9,7 +9,9 @@ const { setCurrentTest, clearCurrentTest } = require('./steps/support/testContex
 // Register Before hook to capture test metadata
 // The 'test' parameter contains feature/scenario information
 Before((test) => { // eslint-disable-line no-undef
-  const scenario = test.title || 'default'
+  // Clean scenario name: remove tags like "@saas @default @self-hosted" from the title
+  const rawScenario = test.title || 'default'
+  const scenario = rawScenario.replace(/@[\w-]+\s*/g, '').trim()
   const feature = test.parent?.title || 'default'
   setCurrentTest(feature, scenario)
 })
