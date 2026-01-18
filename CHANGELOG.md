@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.5 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.20.0
+
 ## 16.1.4 (2026-01-18)
 
 ### Fix
