@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.6 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency yamllint to v1.38.0
+
 ## 16.1.5 (2026-01-18)
 
 ### Fix
