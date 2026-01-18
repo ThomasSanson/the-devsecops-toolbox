@@ -9,6 +9,14 @@ _skip_if_exists:
 _min_copier_version: "9.3.0"
 
 # Questions
+ci_platform:
+  type: str
+  help: Which CI/CD platform are you using?
+  choices:
+    GitLab SaaS (gitlab.com): gitlab_saas
+    GitLab Self-Hosted: gitlab_self_hosted
+  default: gitlab_saas
+
 project_enabled:
   type: bool
   help: Would you like to enable the project workspace (backend, frontend, data, auth, analytics, tests) to manage component-specific tasks?

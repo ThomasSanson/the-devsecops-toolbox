@@ -110,6 +110,15 @@ function register () {
     executeCopier(this.projectRoot, { project_enabled: false })
   })
 
+  // GitLab specific
+  Given('a clean temporary directory for GitLab tags tests', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'gitlab', 'tags')
+  })
+
+  Given('a project was generated with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { ci_platform: ciPlatform })
+  })
+
   // Git initialization with origin/main ref for DevSecOps tools compatibility
   Given('the project is initialized as a git repository', function () { // eslint-disable-line no-undef
     initGitRepo(this.projectRoot, { branch: 'main' })

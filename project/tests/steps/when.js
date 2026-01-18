@@ -61,6 +61,15 @@ function register () {
     executeCopier(this.projectRoot, { project_enabled: true }, { force: true })
   })
 
+  // CI Platform specific
+  When('the copier command is executed with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { ci_platform: ciPlatform })
+  })
+
+  When('the project is updated with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { ci_platform: ciPlatform }, { force: true })
+  })
+
   // DevSecOps task execution
   When('I execute the DevSecOps task', function () { // eslint-disable-line no-undef
     executeCommand('task devsecops', { cwd: this.projectRoot })
