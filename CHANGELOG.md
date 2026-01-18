@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 16.2.0 (2026-01-18)
+
+### Feat
+
+- **proxy**: add proxy configuration support for GitLab CI/CD with related tests and environment variables
+- **workflow**: add new Copier template feature workflow with TDD guidelines and Gherkin tests
+
 ## 16.1.6 (2026-01-18)
 
 ### Fix
