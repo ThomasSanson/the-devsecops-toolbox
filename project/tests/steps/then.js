@@ -249,6 +249,40 @@ function register () {
       assertFileContains(taskfilePath, taskDefinition)
     })
   })
+
+  // GitLab CI specific assertions
+  Then('the GitLab CI tags configuration should exist', function () { // eslint-disable-line no-undef
+    const tagsPath = resolvePath(this, '.config/gitlab/ci/tags.yml')
+    assertFileExists(tagsPath, `GitLab CI tags configuration not found: ${tagsPath}`)
+  })
+
+  Then('the GitLab CI tags should include {string}', function (expectedTag) { // eslint-disable-line no-undef
+    const tagsPath = resolvePath(this, '.config/gitlab/ci/tags.yml')
+    assertFileContains(tagsPath, expectedTag)
+  })
+
+  Then('the GitLab CI tags should be empty', function () { // eslint-disable-line no-undef
+    const tagsPath = resolvePath(this, '.config/gitlab/ci/tags.yml')
+    assertFileExists(tagsPath)
+
+    const content = fs.readFileSync(tagsPath, 'utf8')
+    // Check that there are no tags defined under the .default-tags section
+    // The file should have an empty tags section or no tag values
+    const hasTagValues = /tags:\s*\n\s+-\s+\S+/.test(content)
+    if (hasTagValues) {
+      throw new Error(`Expected GitLab CI tags to be empty, but found tags defined in ${tagsPath}`)
+    }
+  })
+
+  Then('the GitLab CI code jobs should use SaaS runner tags', function () { // eslint-disable-line no-undef
+    const codeYmlPath = resolvePath(this, '.config/gitlab/ci/devsecops/code.yml')
+    assertFileContains(codeYmlPath, 'saas-linux-medium-amd64')
+  })
+
+  Then('the GitLab CI code jobs should NOT have hardcoded runner tags', function () { // eslint-disable-line no-undef
+    const codeYmlPath = resolvePath(this, '.config/gitlab/ci/devsecops/code.yml')
+    assertFileNotContains(codeYmlPath, 'saas-linux-medium-amd64')
+  })
 }
 
 module.exports = { register }
