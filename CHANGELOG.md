@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.1.2 (2026-01-18)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v3.7.6
+
 ## 16.1.1 (2026-01-18)
 
 ### Fix
