@@ -17,6 +17,20 @@ ci_platform:
     GitLab Self-Hosted: gitlab_self_hosted
   default: gitlab_saas
 
+proxy_enabled:
+  type: bool
+  help: Do you need to configure proxy settings for CI/CD jobs?
+  default: false
+
+proxy_urls:
+  type: str
+  help: |
+    Enter proxy URLs (comma-separated).
+    Format: http://proxy:port,https://proxy:port
+    First URL will be HTTP_PROXY, second will be HTTPS_PROXY (if provided).
+  default: ""
+  when: "{{ proxy_enabled }}"
+
 project_enabled:
   type: bool
   help: Would you like to enable the project workspace (backend, frontend, data, auth, analytics, tests) to manage component-specific tasks?

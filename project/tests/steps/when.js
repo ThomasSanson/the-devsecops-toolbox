@@ -70,6 +70,23 @@ function register () {
     executeCopier(this.projectRoot, { ci_platform: ciPlatform }, { force: true })
   })
 
+  // Proxy specific
+  When('the copier command is executed with proxy enabled {string}', function (enabled) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true' })
+  })
+
+  When('the copier command is executed with proxy enabled {string} and proxies {string}', function (enabled, proxies) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', proxy_urls: proxies })
+  })
+
+  When('the project is updated with proxy enabled {string} and proxies {string}', function (enabled, proxies) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', proxy_urls: proxies }, { force: true })
+  })
+
+  When('the project is updated with proxy disabled', function () { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: false }, { force: true })
+  })
+
   // DevSecOps task execution
   When('I execute the DevSecOps task', function () { // eslint-disable-line no-undef
     executeCommand('task devsecops', { cwd: this.projectRoot })

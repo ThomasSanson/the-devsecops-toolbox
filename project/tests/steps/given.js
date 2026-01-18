@@ -119,6 +119,19 @@ function register () {
     executeCopier(this.projectRoot, { ci_platform: ciPlatform })
   })
 
+  // GitLab Proxy specific
+  Given('a clean temporary directory for GitLab proxy tests', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'gitlab', 'proxy')
+  })
+
+  Given('a project was generated with proxy disabled', function () { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: false })
+  })
+
+  Given('a project was generated with proxy enabled and proxies {string}', function (proxies) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { proxy_enabled: true, proxy_urls: proxies })
+  })
+
   // Git initialization with origin/main ref for DevSecOps tools compatibility
   Given('the project is initialized as a git repository', function () { // eslint-disable-line no-undef
     initGitRepo(this.projectRoot, { branch: 'main' })
