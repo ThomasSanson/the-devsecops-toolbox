@@ -283,6 +283,33 @@ function register () {
     const codeYmlPath = resolvePath(this, '.config/gitlab/ci/devsecops/code.yml')
     assertFileNotContains(codeYmlPath, 'saas-linux-medium-amd64')
   })
+
+  // GitLab Proxy specific assertions
+  Then('the GitLab CI variables should NOT contain proxy configuration', function () { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileNotContains(variablesPath, 'HTTP_PROXY')
+    assertFileNotContains(variablesPath, 'HTTPS_PROXY')
+  })
+
+  Then('the GitLab CI variables should contain HTTP_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileContains(variablesPath, `HTTP_PROXY: "${proxyUrl}"`)
+  })
+
+  Then('the GitLab CI variables should contain HTTPS_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileContains(variablesPath, `HTTPS_PROXY: "${proxyUrl}"`)
+  })
+
+  Then('the {string} file should contain proxy variables', function (fileName) { // eslint-disable-line no-undef
+    const filePath = resolvePath(this, fileName)
+    assertFileContains(filePath, 'HTTP_PROXY')
+  })
+
+  Then('the {string} file should NOT contain proxy variables', function (fileName) { // eslint-disable-line no-undef
+    const filePath = resolvePath(this, fileName)
+    assertFileNotContains(filePath, 'HTTP_PROXY')
+  })
 }
 
 module.exports = { register }
