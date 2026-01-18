@@ -1,4 +1,3 @@
-{% raw -%}
 ---
 # Taskfile.yml: Central hub for development operations.
 version: "3"
@@ -7,9 +6,9 @@ dotenv: [".env", ".env.dev", ".env.dist"]
 
 vars:
   # Environment variables for task control
-  TASK_FLAGS: '{{.TASK_FLAGS | default ""}}'
-  TASK_SEPARATOR: '{{.TASK_SEPARATOR | default (print (repeat 120 "-") "\n" (repeat 120 "-") "\n" (repeat 120 "-"))}}'
-  TASK_DEVSECOPS_ICON: '{{.TASK_DEVSECOPS_ICON | default "♾️"}}'
+  TASK_FLAGS: '{{ "{{" }}.TASK_FLAGS | default ""{{ "}}" }}'
+  TASK_SEPARATOR: '{{ "{{" }}.TASK_SEPARATOR | default (print (repeat 120 "-") "\n" (repeat 120 "-") "\n" (repeat 120 "-")){{ "}}" }}'
+  TASK_DEVSECOPS_ICON: '{{ "{{" }}.TASK_DEVSECOPS_ICON | default "♾️"{{ "}}" }}'
 
 # Includes: Specify necessary and additional components for development.
 # - Essential includes are required for a successful Docker build.
@@ -34,21 +33,18 @@ includes:
     taskfile: .config/devsecops/Taskfile.monitor.yml
   devsecops:feedback:
     taskfile: .config/devsecops/Taskfile.feedback.yml
-{%- endraw %}
-{%- if project_enabled %}
-{% raw %}  project:
+{% if project_enabled %}
+  project:
     taskfile: project/Taskfile.yml
     flatten: true
-{%- endraw %}
-{%- endif %}
-{% raw %}
+{% endif %}
+
   # Optional includes (For dev, testing, linting, etc.)
-{%- endraw %}
-{%- if ansible_enabled %}
-{% raw %}  ansible: .config/ansible
-{%- endraw %}
-{%- endif -%}
-{% raw %}
+{% if ansible_enabled %}
+  ansible:
+    taskfile: .config/ansible/Taskfile.yml
+    optional: true
+{% endif %}
   bun:
     taskfile: .config/bun/Taskfile.yml
     optional: true
@@ -67,9 +63,11 @@ includes:
   dev:
     taskfile: .config/dev/Taskfile.yml
     optional: true
+{% if container_runtime == 'docker' %}
   docker-ce:
     taskfile: .config/docker-ce/Taskfile.yml
     optional: true
+{% endif %}
   git:
     taskfile: .config/git/Taskfile.yml
     optional: true
@@ -109,9 +107,11 @@ includes:
   nodejs:
     taskfile: .config/nodejs/Taskfile.yml
     optional: true
+{% if container_runtime == 'podman' %}
   podman:
     taskfile: .config/podman/Taskfile.yml
     optional: true
+{% endif %}
   renovate:
     taskfile: .config/renovate/Taskfile.yml
     optional: true
@@ -147,81 +147,80 @@ tasks:
 
   plan:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Plan"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Plan"
         silent: true
       - task: devsecops:plan
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   code:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Code"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Code"
         silent: true
       - task: devsecops:code
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   build:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Build"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Build"
         silent: true
       - task: devsecops:build
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   test:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Test"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Test"
         silent: true
       - task: devsecops:test
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   test:tdd:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Test Tdd"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Test Tdd"
         silent: true
       - task: devsecops:test:tdd
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   release:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Release"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Release"
         silent: true
       - task: devsecops:release
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   deploy:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Deploy"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Deploy"
         silent: true
       - task: devsecops:deploy
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   operate:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Operate"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Operate"
         silent: true
       - task: devsecops:operate
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   monitor:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Monitor"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Monitor"
         silent: true
       - task: devsecops:monitor
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
 
   feedback:
     cmds:
-      - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Feedback"
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Feedback"
         silent: true
       - task: devsecops:feedback
-      - cmd: echo "{{.TASK_SEPARATOR}}"
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
         silent: true
-{% endraw %}
