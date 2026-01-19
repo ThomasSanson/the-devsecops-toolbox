@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.3.0 (2026-01-19)
+
+### Feat
+
+- **container-runtime**: add support for Docker and Podman as container runtimes with corresponding tests and configurations
+
 ## 16.2.0 (2026-01-18)
 
 ### Feat
