@@ -17,6 +17,7 @@ Feature: Project Scaffolding
       | copier.yml |
     And the following directories should NOT exist:
       | Directory Path     |
+      | .agent             |
       | .cache             |
       | .config/**/roles   |
       | .vscode            |

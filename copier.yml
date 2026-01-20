@@ -45,6 +45,7 @@ container_runtime:
   default: docker
 
 _exclude:
+  - .agent
   - .cache
   - .config/**/roles
   - .git
