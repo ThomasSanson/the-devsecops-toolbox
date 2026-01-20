@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.3.1 (2026-01-20)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.12.0
+
 ## 16.3.0 (2026-01-19)
 
 ### Feat
