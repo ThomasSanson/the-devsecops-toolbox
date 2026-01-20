@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.4.0 (2026-01-20)
+
+### Feat
+
+- **copier**: exclude .agent from copier configuration and update tests accordingly
+
 ## 16.3.1 (2026-01-20)
 
 ### Fix
