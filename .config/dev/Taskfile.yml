@@ -41,6 +41,7 @@ tasks:
       - .config/node/install.sh
       - .config/pipx/install.sh
       - .config/go/install.sh
+      - task: :glab:update
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true
 

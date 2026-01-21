@@ -1,0 +1,77 @@
+---
+version: "3"
+
+vars:
+  TASK_GLAB_ENABLED: '{{.TASK_GLAB_ENABLED | default "true"}}'
+  TASK_GLAB_CONFIG_DIR: '{{.TASK_GLAB_CONFIG_DIR | default ".config/glab"}}'
+
+tasks:
+  install:
+    desc: Install GitLab CLI (glab)
+    summary: |
+      ℹ️ Description:
+        Installs the GitLab CLI (glab) using the best available method.
+
+      🔧 Methods (in order of priority):
+        1. Go install (if Go is available)
+        2. Homebrew (if available)
+        3. Binary download from GitLab releases
+
+      🔐 Preconditions:
+        - curl must be installed
+
+      🔄 Execution:
+        Runs the install.sh script
+    status:
+      - command -v glab &> /dev/null
+    cmds:
+      - cmd: echo "🔄 Starting glab installation"
+        silent: true
+      - "{{.TASK_GLAB_CONFIG_DIR}}/install.sh"
+      - cmd: echo "🎉 glab installation completed successfully"
+        silent: true
+
+  update:
+    desc: Update GitLab CLI (glab) to the latest version
+    summary: |
+      ℹ️ Description:
+        Updates glab to the latest available version.
+
+      🔧 Methods (in order of priority):
+        1. Go install @latest (if Go is available)
+        2. Homebrew upgrade (if available)
+        3. Binary download from GitLab releases
+
+      🔐 Preconditions:
+        - glab must be installed
+        - curl must be installed
+
+      🔄 Execution:
+        Forces reinstallation with latest version
+    deps:
+      - install
+    status:
+      # Task is up to date if glab check-update does NOT report a new version
+      - "! glab check-update 2>&1 | grep -q 'A new version'"
+    cmds:
+      - cmd: echo "🔄 Starting glab update"
+        silent: true
+      - cmd: echo "📋 Current version:"
+        silent: true
+      - glab --version
+      - GLAB_FORCE_UPDATE=true {{.TASK_GLAB_CONFIG_DIR}}/install.sh
+      - cmd: echo "📋 New version:"
+        silent: true
+      - glab --version
+      - cmd: echo "🎉 glab update completed successfully"
+        silent: true
+
+  check-update:
+    desc: Check if a new version of glab is available
+    summary: |
+      ℹ️ Description:
+        Checks if a newer version of glab is available without installing it.
+    cmds:
+      - cmd: echo "🔍 Checking for glab updates..."
+        silent: true
+      - glab check-update || true
