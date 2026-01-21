@@ -124,3 +124,7 @@ Feature: Project Mode Optional Integration
     And the ".config/devsecops/Taskfile.operate.yml" file should exist
     And the ".config/devsecops/Taskfile.monitor.yml" file should exist
     And the ".config/devsecops/Taskfile.feedback.yml" file should exist
+    And the content of the file ".config/devsecops/Taskfile.code.yml" should contain:
+      """
+        sync-templates:
+      """
