@@ -26,6 +26,8 @@ Feature: Project Scaffolding
       | project/tests      |
       | tmp                |
       | venv               |
+    # Tool configurations
+    And the ".config/glab/install.sh" file should exist
     # Commitizen configuration
     And the commitizen configuration file ".config/commitizen/cz.yaml" should exist
     And the commitizen configuration should have the version "0.1.0"
