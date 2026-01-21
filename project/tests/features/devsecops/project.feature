@@ -128,3 +128,5 @@ Feature: Project Mode Optional Integration
       """
         sync-templates:
       """
+    And the file "Taskfile.yml" should NOT contain double blank lines
+    And the "includes" section of "Taskfile.yml" should NOT contain any blank lines

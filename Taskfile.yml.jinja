@@ -33,18 +33,17 @@ includes:
     taskfile: .config/devsecops/Taskfile.monitor.yml
   devsecops:feedback:
     taskfile: .config/devsecops/Taskfile.feedback.yml
-{% if project_enabled %}
+{%- if project_enabled %}
   project:
     taskfile: project/Taskfile.yml
     flatten: true
-{% endif %}
-
+{%- endif %}
   # Optional includes (For dev, testing, linting, etc.)
-{% if ansible_enabled %}
+{%- if ansible_enabled %}
   ansible:
     taskfile: .config/ansible/Taskfile.yml
     optional: true
-{% endif %}
+{%- endif %}
   bun:
     taskfile: .config/bun/Taskfile.yml
     optional: true
@@ -63,11 +62,11 @@ includes:
   dev:
     taskfile: .config/dev/Taskfile.yml
     optional: true
-{% if container_runtime == 'docker' %}
+{%- if container_runtime == 'docker' %}
   docker-ce:
     taskfile: .config/docker-ce/Taskfile.yml
     optional: true
-{% endif %}
+{%- endif %}
   git:
     taskfile: .config/git/Taskfile.yml
     optional: true
@@ -107,11 +106,11 @@ includes:
   nodejs:
     taskfile: .config/nodejs/Taskfile.yml
     optional: true
-{% if container_runtime == 'podman' %}
+{%- if container_runtime == 'podman' %}
   podman:
     taskfile: .config/podman/Taskfile.yml
     optional: true
-{% endif %}
+{%- endif %}
   renovate:
     taskfile: .config/renovate/Taskfile.yml
     optional: true

@@ -82,6 +82,38 @@ function register () {
     assertFileContains(absPath, contentBlock)
   })
 
+  Then('the file {string} should NOT contain any blank lines', function (filePath) { // eslint-disable-line no-undef
+    const absPath = resolvePath(this, filePath)
+    assertFileExists(absPath)
+    const content = fs.readFileSync(absPath, 'utf8')
+    if (content.includes('\n\n')) {
+      throw new Error(`File ${filePath} contains at least one blank line (double newline)`)
+    }
+  })
+
+  Then('the file {string} should NOT contain double blank lines', function (filePath) { // eslint-disable-line no-undef
+    const absPath = resolvePath(this, filePath)
+    assertFileExists(absPath)
+    const content = fs.readFileSync(absPath, 'utf8')
+    // Triple newline means two blank lines in a row
+    if (content.includes('\n\n\n')) {
+      throw new Error(`File ${filePath} contains at least one double blank line (triple newline)`)
+    }
+  })
+
+  Then('the "includes" section of {string} should NOT contain any blank lines', function (filePath) { // eslint-disable-line no-undef
+    const absPath = resolvePath(this, filePath)
+    assertFileExists(absPath)
+    const content = fs.readFileSync(absPath, 'utf8')
+    const includesMatch = content.match(/includes:[\s\S]*?(?=tasks:|$)/)
+    if (includesMatch) {
+      const includesContent = includesMatch[0].trim()
+      if (includesContent.includes('\n\n')) {
+        throw new Error(`The "includes" section of ${filePath} contains blank lines.`)
+      }
+    }
+  })
+
   // Commitizen assertions
   Then('the commitizen configuration file {string} should exist', function (filePath) { // eslint-disable-line no-undef
     const absPath = resolvePath(this, filePath)
