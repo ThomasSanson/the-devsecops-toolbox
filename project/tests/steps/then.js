@@ -162,18 +162,6 @@ function register () {
   })
 
   // Ansible specific assertions
-  Then('the Ansible project directory should exist', function () { // eslint-disable-line no-undef
-    assertDirExists(this.projectRoot)
-  })
-
-  Then('the Ansible {string} directory should exist', function (dirName) { // eslint-disable-line no-undef
-    assertDirExists(resolvePath(this, dirName))
-  })
-
-  Then('the Ansible {string} directory should NOT exist', function (dirName) { // eslint-disable-line no-undef
-    assertDirNotExists(resolvePath(this, dirName))
-  })
-
   Then('the Taskfile should include the Ansible taskfile reference', function () { // eslint-disable-line no-undef
     const taskfilePath = resolvePath(this, 'Taskfile.yml')
     assertFileContains(taskfilePath, 'ansible:\n    taskfile: .config/ansible/Taskfile.yml')
@@ -185,22 +173,6 @@ function register () {
   })
 
   // Project mode specific assertions
-  Then('the project mode {string} directory should exist', function (dirName) { // eslint-disable-line no-undef
-    assertDirExists(resolvePath(this, dirName))
-  })
-
-  Then('the project mode {string} directory should NOT exist', function (dirName) { // eslint-disable-line no-undef
-    assertDirNotExists(resolvePath(this, dirName))
-  })
-
-  Then('the project mode {string} file should exist', function (fileName) { // eslint-disable-line no-undef
-    assertFileExists(resolvePath(this, fileName))
-  })
-
-  Then('the project mode {string} file should NOT exist', function (fileName) { // eslint-disable-line no-undef
-    assertFileNotExists(resolvePath(this, fileName))
-  })
-
   Then('the root Taskfile should include the project taskfile reference', function () { // eslint-disable-line no-undef
     const taskfilePath = resolvePath(this, 'Taskfile.yml')
     assertFileContains(taskfilePath, 'project:\n    taskfile: project/Taskfile.yml')
