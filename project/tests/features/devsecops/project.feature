@@ -130,3 +130,17 @@ Feature: Project Mode Optional Integration
       """
     And the file "Taskfile.yml" should NOT contain double blank lines
     And the "includes" section of "Taskfile.yml" should NOT contain any blank lines
+    And the content of the file ".config/devsecops/Taskfile.monitor.yml" should contain:
+      """
+      tasks:
+        default:
+          desc: Run all generic monitor tasks
+          status:
+            - test "{{.TASK_DEVSECOPS_MONITOR_ENABLED}}" = "false"
+          cmds:
+            - cmd: echo "🔄 Starting monitor phase"
+              silent: true
+            - task: :project:monitor
+            - cmd: echo "🎉 Monitor phase completed successfully"
+              silent: true
+      """
