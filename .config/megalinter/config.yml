@@ -2,6 +2,8 @@
 APPLY_FIXES:
   - JSON_PRETTIER
   - YAML_PRETTIER
+  - MARKDOWN_MARKDOWNLINT
+  - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
   - JSON_V8R
@@ -23,7 +25,8 @@ COPYPASTE_JSCPD_CONFIG_FILE: .config/jscpd/config.json
 GHERKIN_GHERKIN_LINT_CONFIG_FILE: .config/gherkin-lint/config.json
 REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
 REPOSITORY_DUSTILOCK_ARGUMENTS:
-  - "--path ."
+  - "-p"
+  - "."
 REPOSITORY_GITLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
 REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
