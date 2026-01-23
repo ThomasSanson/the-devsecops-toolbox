@@ -3,6 +3,8 @@
 APPLY_FIXES:
   - JSON_PRETTIER
   - YAML_PRETTIER
+  - MARKDOWN_MARKDOWNLINT
+  - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
   - JSON_V8R
@@ -42,10 +44,12 @@ YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 {%- endraw %}
 {%- if project_enabled %}
 REPOSITORY_DUSTILOCK_ARGUMENTS:
-  - "--path project"
+  - "-p"
+  - "project"
 {%- else %}
 REPOSITORY_DUSTILOCK_ARGUMENTS:
-  - "--path ."
+  - "-p"
+  - "."
 {%- endif %}
 {% raw %}
 
