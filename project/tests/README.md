@@ -39,10 +39,10 @@ project/tests/
 
 ### Step Objects vs Steps
 
-| Folder | Purpose | Example |
-|--------|---------|---------|
-| `step_objects/` | Reusable logic, helpers, assertions | `executeCopier()`, `assertFileContains()` |
-| `steps/` | Gherkin step definitions (Given/When/Then) | `Given('a project was generated with...')` |
+| Folder          | Purpose                                    | Example                                    |
+|-----------------|--------------------------------------------|--------------------------------------------|
+| `step_objects/` | Reusable logic, helpers, assertions        | `executeCopier()`, `assertFileContains()`  |
+| `steps/`        | Gherkin step definitions (Given/When/Then) | `Given('a project was generated with...')` |
 
 ### Generic Steps
 
