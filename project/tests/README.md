@@ -10,8 +10,8 @@ project/tests/
 ├── entrypoint.js         # Test hooks (Before/After)
 ├── features/             # Gherkin feature files
 │   ├── ansible/
-│   ├── copier/
-│   ├── devsecops/
+│   ├── commitizen/       # .config/commitizen tests
+│   ├── devsecops/        # Template scaffolding, project mode, structure
 │   ├── docker/
 │   ├── gitlab/
 │   ├── podman/
@@ -21,14 +21,14 @@ project/tests/
 │   ├── commands.js       # Shell command execution
 │   ├── config.js         # Test configuration
 │   ├── content.js        # Content step definitions
-│   ├── copier.js         # Copier step definitions
+│   ├── copier.js         # Copier execution helpers
 │   ├── filesystem.js     # File system utilities
 │   ├── tables.js         # Gherkin table parsing
 │   └── testContext.js    # Test metadata tracking
 └── steps/                # Domain-specific Gherkin steps
     ├── ansible.js
-    ├── copier.js
-    ├── devsecops.js
+    ├── commitizen.js     # .config/commitizen tests
+    ├── devsecops.js      # Project mode, phases, coverage
     ├── docker.js
     ├── gitlab.js
     ├── podman.js

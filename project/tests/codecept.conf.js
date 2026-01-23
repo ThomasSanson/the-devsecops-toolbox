@@ -20,7 +20,7 @@ exports.config = {
       './step_objects/content.js',
       // Domain steps
       './steps/ansible.js',
-      './steps/copier.js',
+      './steps/commitizen.js',
       './steps/devsecops.js',
       './steps/docker.js',
       './steps/gitlab.js',

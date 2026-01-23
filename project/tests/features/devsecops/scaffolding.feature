@@ -1,4 +1,4 @@
-@copier @scaffolding @default
+@devsecops @scaffolding @default
 Feature: Project Scaffolding
   As a DevSecOps engineer
   I want to generate a project from a Copier template
@@ -26,8 +26,3 @@ Feature: Project Scaffolding
       | project/tests      |
       | tmp                |
       | venv               |
-    # Commitizen configuration
-    And the commitizen configuration file ".config/commitizen/cz.yaml" should exist
-    And the commitizen configuration should have the version "0.1.0"
-    And the commitizen "version_files" configuration should NOT contain ".gitlab-ci.yml"
-

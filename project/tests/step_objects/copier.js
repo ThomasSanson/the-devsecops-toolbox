@@ -36,15 +36,15 @@ function register () {
     executeCopier(this.projectRoot)
   })
 
-  // Default step for copier/scaffolding tests
+  // Default step for devsecops/scaffolding tests
   Given('a generated project from the Copier template', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'copier', 'scaffolding')
+    initTestContext(this, 'devsecops', 'scaffolding')
     executeCopier(this.projectRoot)
   })
 
   // Separate steps for more control
   Given('a clean temporary directory for tests', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'copier', 'scaffolding')
+    initTestContext(this, 'devsecops', 'scaffolding')
   })
 
   Given('the copier command is executed to generate a project from the template', function () { // eslint-disable-line no-undef

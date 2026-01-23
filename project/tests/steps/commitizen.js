@@ -1,7 +1,7 @@
 /**
- * Copier Domain Steps
+ * Commitizen Domain Steps
  *
- * Steps for testing .config/copier template behavior (scaffolding, commitizen).
+ * Steps for testing .config/commitizen configuration.
  */
 
 const fs = require('fs')
