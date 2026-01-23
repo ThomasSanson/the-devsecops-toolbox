@@ -6,7 +6,7 @@ Feature: Ansible Optional Integration
 
   @default
   Scenario: Generate project without Ansible integration (default behaviour)
-    Given a clean temporary directory for Ansible tests
+    Given a clean temporary directory for "ansible/integration" tests
     When the copier command is executed with default settings for Ansible
     Then the generated project directory should exist
     And the ".config/ansible" directory should NOT exist
@@ -14,7 +14,7 @@ Feature: Ansible Optional Integration
     And the Taskfile should NOT include the Ansible taskfile reference
 
   Scenario: Generate project with Ansible integration
-    Given a clean temporary directory for Ansible tests
+    Given a clean temporary directory for "ansible/integration" tests
     When the copier command is executed with Ansible enabled
     Then the generated project directory should exist
     And the ".config/ansible" directory should exist
@@ -22,7 +22,7 @@ Feature: Ansible Optional Integration
     And the Taskfile should include the Ansible taskfile reference
 
   Scenario: Update project from Ansible enabled to disabled
-    Given a clean temporary directory for Ansible tests
+    Given a clean temporary directory for "ansible/integration" tests
     And a project was generated with Ansible enabled
     When the project is updated with Ansible disabled
     Then the generated project directory should exist
@@ -31,7 +31,7 @@ Feature: Ansible Optional Integration
     And the Taskfile should NOT include the Ansible taskfile reference
 
   Scenario: Update project from Ansible disabled to enabled
-    Given a clean temporary directory for Ansible tests
+    Given a clean temporary directory for "ansible/integration" tests
     And a project was generated with Ansible disabled
     When the project is updated with Ansible enabled
     Then the generated project directory should exist

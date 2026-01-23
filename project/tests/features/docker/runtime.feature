@@ -6,7 +6,7 @@ Feature: Docker Container Runtime
 
   @default
   Scenario: Generate project with Docker as default container runtime
-    Given a clean temporary directory for docker runtime tests
+    Given a clean temporary directory for "docker/runtime" tests
     When the copier command is executed with default settings
     Then the ".config/docker-ce" directory should exist
     And the ".config/docker-ce/Taskfile.yml" file should exist
@@ -16,7 +16,7 @@ Feature: Docker Container Runtime
 
   @explicit
   Scenario: Generate project with Docker container runtime explicitly
-    Given a clean temporary directory for docker runtime tests
+    Given a clean temporary directory for "docker/runtime" tests
     When the copier command is executed with container runtime "docker"
     Then the ".config/docker-ce" directory should exist
     And the ".config/docker-ce/Taskfile.yml" file should exist
@@ -26,7 +26,7 @@ Feature: Docker Container Runtime
 
   @update
   Scenario: Update project from Podman to Docker
-    Given a clean temporary directory for docker runtime tests
+    Given a clean temporary directory for "docker/runtime" tests
     And a project was generated with container runtime "podman"
     When the project is updated with container runtime "docker"
     Then the ".config/docker-ce" directory should exist

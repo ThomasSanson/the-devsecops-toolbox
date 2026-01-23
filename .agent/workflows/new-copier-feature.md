@@ -12,11 +12,29 @@ This workflow guides you through implementing a new Copier template feature usin
 - Identify the domain and feature name for DDD organization
 - Have a clear picture of the expected Copier question(s) and template changes
 
+## Test Architecture
+
+```
+project/tests/
+├── features/{domain}/{feature}.feature  # Gherkin scenarios
+├── step_objects/                        # Reusable logic (DO NOT ADD STEPS HERE)
+│   ├── assertions.js                    # assertFileExists, assertFileContains, etc.
+│   ├── commands.js                      # executeCopier, executeCommand, etc.
+│   ├── config.js                        # getProjectRoot, slugify, etc.
+│   ├── content.js                       # resolvePath + content steps
+│   ├── copier.js                        # initTestContext + copier steps
+│   ├── filesystem.js                    # removeDirRecursive, ensureDir, etc.
+│   └── testContext.js                   # getCurrentTest, setCurrentTest
+└── steps/                               # Gherkin step definitions
+    ├── {domain}.js                      # Domain-specific steps
+    └── system.js                        # Generic infrastructure steps
+```
+
 ## Workflow Steps
 
 ### 1. Define the Feature (Gherkin)
 
-Create a new feature file following DDD structure:
+Create a new feature file:
 
 ```bash
 project/tests/features/{domain}/{feature}.feature
@@ -32,19 +50,19 @@ Feature: {Feature Title}
 
   @default
   Scenario: {Default behavior scenario}
-    Given a clean temporary directory for {domain} {feature} tests
+    Given a clean temporary directory for "{domain}/{feature}" tests
     When the copier command is executed with {option} "{default_value}"
     Then {expected outcome}
 
   @variant
   Scenario: {Alternative scenario}
-    Given a clean temporary directory for {domain} {feature} tests
+    Given a clean temporary directory for "{domain}/{feature}" tests
     When the copier command is executed with {option} "{other_value}"
     Then {different expected outcome}
 
   @update
   Scenario: Update project from {A} to {B}
-    Given a clean temporary directory for {domain} {feature} tests
+    Given a clean temporary directory for "{domain}/{feature}" tests
     And a project was generated with {option} "{A}"
     When the project is updated with {option} "{B}"
     Then {expected outcome after update}
@@ -52,42 +70,62 @@ Feature: {Feature Title}
 
 **Rules:**
 - NO Background block (prevents per-scenario folder creation)
-- Each scenario has its own `Given a clean temporary directory` step
+- Use the generic step: `Given a clean temporary directory for "{domain}/{feature}" tests`
 - Use parameterized steps with `{string}` for reusability
 - Tags should be descriptive: `@default`, `@variant`, `@update`
 
 ### 2. Add Step Definitions
 
-#### given.js
-```javascript
-// {Domain} {Feature} specific
-Given('a clean temporary directory for {domain} {feature} tests', function () {
-  initTestContext(this, '{domain}', '{feature}')
-})
+Create or update `project/tests/steps/{domain}.js`:
 
-Given('a project was generated with {option} {string}', function (value) {
-  executeCopier(this.projectRoot, { {option_key}: value })
-})
+```javascript
+/**
+ * {Domain} Domain Steps
+ *
+ * Steps for testing {description}.
+ */
+
+const { resolvePath } = require('../step_objects/content')
+const { executeCopier } = require('../step_objects/commands')
+const { assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
+
+function register () {
+  // Given
+  Given('a project was generated with {option} {string}', function (value) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { {option_key}: value })
+  })
+
+  // When
+  When('the copier command is executed with {option} {string}', function (value) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { {option_key}: value })
+  })
+
+  When('the project is updated with {option} {string}', function (value) { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, { {option_key}: value }, { force: true })
+  })
+
+  // Then
+  Then('{assertion description}', function () { // eslint-disable-line no-undef
+    const filePath = resolvePath(this, '{path/to/file}')
+    assertFileContains(filePath, '{expected_content}')
+  })
+}
+
+// Auto-register when loaded by CodeceptJS
+register()
+
+module.exports = { register }
 ```
 
-#### when.js
-```javascript
-When('the copier command is executed with {option} {string}', function (value) {
-  executeCopier(this.projectRoot, { {option_key}: value })
-})
+**IMPORTANT:** Add the new file to `codecept.conf.js`:
 
-When('the project is updated with {option} {string}', function (value) {
-  executeCopier(this.projectRoot, { {option_key}: value }, { force: true })
-})
-```
-
-#### then.js
 ```javascript
-Then('{assertion description}', function () {
-  const filePath = resolvePath(this, '{path/to/file}')
-  assertFileContains(filePath, '{expected_content}')
-  // or assertFileNotContains, assertFileExists, assertDirExists, etc.
-})
+gherkin: {
+  steps: [
+    // ... existing steps
+    './steps/{domain}.js'  // ADD THIS LINE
+  ]
+}
 ```
 
 ### 3. Run Tests (Should Fail)
@@ -173,11 +211,33 @@ Expected structure:
 tmp/tests/{domain}/{feature}/
 ├── {scenario-1-slug}/
 ├── {scenario-2-slug}/
-├── {scenario-3-slug}/
-└── {scenario-4-slug}/
+└── {scenario-3-slug}/
 ```
 
-Folder names should match slugified scenario names (without tags).
+## Available Step Objects
+
+### Assertions (`step_objects/assertions.js`)
+- `assertFileExists(path, message)`
+- `assertFileNotExists(path, message)`
+- `assertFileContains(path, content)`
+- `assertFileNotContains(path, content)`
+- `assertDirExists(path, message)`
+- `assertDirNotExists(path, message)`
+
+### Commands (`step_objects/commands.js`)
+- `executeCopier(projectRoot, data, options)` - Run copier with data options
+- `executeCommand(cmd, options)` - Run shell command
+
+### Content (`step_objects/content.js`)
+- `resolvePath(context, ...parts)` - Resolve path relative to projectRoot
+
+### Generic Steps (`steps/system.js`)
+- `Given a clean temporary directory for "{domain}/{feature}" tests`
+
+### Copier Steps (`step_objects/copier.js`)
+- `Given a generated project for "{domain}/{feature}" tests`
+- `Given a generated project from the Copier template`
+- `When the copier command is executed with default settings`
 
 ## Constraints Checklist
 
@@ -186,38 +246,51 @@ Folder names should match slugified scenario names (without tags).
 - [ ] KISS: No unnecessary options or complexity
 - [ ] No Background block in feature file
 - [ ] Steps are parameterized and reusable
-- [ ] Scenario names are descriptive and unique
-- [ ] Test folders match scenario slugs
+- [ ] Domain steps file added to `codecept.conf.js`
+- [ ] `register()` called and exported in step file
 - [ ] All existing tests still pass
 
-## Example: GitLab CI Tags Feature
+## Example: Ansible Integration Feature
 
-**Domain:** `gitlab`
-**Feature:** `tags`
+**Domain:** `ansible`
+**Feature:** `integration`
 
-**Question:**
-```yaml
-ci_platform:
-  type: str
-  help: Which GitLab environment are you using?
-  choices:
-    GitLab SaaS (gitlab.com): gitlab_saas
-    GitLab Self-Hosted: gitlab_self_hosted
-  default: gitlab_saas
+**Feature file:** `project/tests/features/ansible/integration.feature`
+```gherkin
+@copier @scaffolding @ansible
+Feature: Ansible Optional Integration
+  As a DevSecOps engineer
+  I want to generate a project without Ansible integration
+  So that I can use the DevSecOps toolbox in projects that don't require Ansible
+
+  @default
+  Scenario: Generate project without Ansible integration (default behaviour)
+    Given a clean temporary directory for "ansible/integration" tests
+    When the copier command is executed with default settings for Ansible
+    Then the ".config/ansible" directory should NOT exist
 ```
 
-**Template condition:**
-```jinja
-{% if ci_platform == 'gitlab_saas' %}
-    - saas-linux-medium-amd64
-{% endif %}
-```
+**Steps file:** `project/tests/steps/ansible.js`
+```javascript
+const { resolvePath } = require('../step_objects/content')
+const { executeCopier } = require('../step_objects/commands')
+const { assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
 
-**Test structure:**
-```bash
-tmp/tests/gitlab/tags/
-├── generate-project-for-gitlab-self-hosted/
-├── generate-project-with-gitlab-saas-tags-default/
-├── update-project-from-gitlab-saas-to-self-hosted/
-└── update-project-from-self-hosted-to-gitlab-saas/
+function register () {
+  Given('a project was generated with Ansible enabled', function () {
+    executeCopier(this.projectRoot, { ansible_enabled: true })
+  })
+
+  When('the copier command is executed with default settings for Ansible', function () {
+    executeCopier(this.projectRoot)
+  })
+
+  Then('the Taskfile should include the Ansible taskfile reference', function () {
+    const taskfilePath = resolvePath(this, 'Taskfile.yml')
+    assertFileContains(taskfilePath, 'ansible:\n    taskfile: .config/ansible/Taskfile.yml')
+  })
+}
+
+register()
+module.exports = { register }
 ```

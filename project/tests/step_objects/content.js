@@ -110,4 +110,7 @@ function register () {
   })
 }
 
+// Auto-register when loaded by CodeceptJS
+register()
+
 module.exports = { register, resolvePath }

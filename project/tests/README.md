@@ -1,82 +1,73 @@
-# 🧪 Tests BDD avec CodeceptJS
+# Tests Documentation
 
-## Vue d'ensemble
-
-Suite de tests BDD organisée par **domaine métier**, avec une architecture modulaire inspirée des PageObjects.
-
-## Structure
-
-```text
-project/tests/
-├── codecept.conf.js              # Configuration CodeceptJS
-├── entrypoint.js                 # Point d'entrée (hooks + chargement steps)
-├── features/                     # Fichiers Gherkin par domaine
-│   ├── ansible/
-│   ├── copier/
-│   ├── devsecops/
-│   ├── gitlab/
-│   └── renovate/
-└── steps/
-    ├── index.js                  # Charge tous les modules de steps
-    ├── domains/                  # Steps spécifiques par domaine
-    │   ├── ansible.js            # Tests .config/ansible
-    │   ├── copier.js             # Tests template Copier
-    │   ├── devsecops.js          # Tests project mode, phases
-    │   ├── docker.js             # Tests container runtime Docker
-    │   ├── gitlab.js             # Tests GitLab CI (tags, proxy)
-    │   ├── podman.js             # Tests container runtime Podman
-    │   └── renovate.js           # Tests config Renovate
-    └── support/                  # Helpers et steps génériques
-        ├── assertions.js         # Fonctions d'assertion
-        ├── commands.js           # Exécution commandes shell
-        ├── config.js             # Configuration centralisée
-        ├── contentSteps.js       # Steps Then (fichiers, contenu)
-        ├── copierSteps.js        # Steps Given/When (copier)
-        ├── filesystem.js         # Opérations fichiers
-        ├── tables.js             # Utilitaires tables Gherkin
-        └── testContext.js        # Contexte de test
-```
+This directory contains end-to-end tests for the DevSecOps Copier template.
 
 ## Architecture
 
-### `steps/domains/`
-Steps Gherkin **spécifiques à un domaine métier**. Chaque fichier contient ses Given, When et Then.
-
-### `steps/support/`
-- **Fonctions utilitaires** : `assertions.js`, `commands.js`, `filesystem.js`, etc.
-- **Steps génériques** : `copierSteps.js` (setup projet), `contentSteps.js` (assertions fichiers)
-
-## Exécution
-
-```bash
-# Tous les tests
-task test
-
-# Par domaine
-task test -- --grep "@ansible"
-task test -- --grep "@copier"
-task test -- --grep "@project"
-task test -- --grep "@gitlab"
-task test -- --grep "@renovate"
-
-# Mode TDD (watch)
-task test:tdd
+```
+project/tests/
+├── codecept.conf.js      # CodeceptJS configuration
+├── entrypoint.js         # Test hooks (Before/After)
+├── features/             # Gherkin feature files
+│   ├── ansible/
+│   ├── copier/
+│   ├── devsecops/
+│   ├── docker/
+│   ├── gitlab/
+│   ├── podman/
+│   └── renovate/
+├── step_objects/         # Reusable logic (helpers, assertions)
+│   ├── assertions.js     # File/directory assertions
+│   ├── commands.js       # Shell command execution
+│   ├── config.js         # Test configuration
+│   ├── content.js        # Content step definitions
+│   ├── copier.js         # Copier step definitions
+│   ├── filesystem.js     # File system utilities
+│   ├── tables.js         # Gherkin table parsing
+│   └── testContext.js    # Test metadata tracking
+└── steps/                # Domain-specific Gherkin steps
+    ├── ansible.js
+    ├── copier.js
+    ├── devsecops.js
+    ├── docker.js
+    ├── gitlab.js
+    ├── podman.js
+    └── system.js         # Generic infrastructure steps
 ```
 
-## Ajouter un domaine
+## Conventions
 
-1. Créer `steps/domains/<domain>.js` avec une fonction `register()`
-2. Ajouter le require dans `steps/index.js`
-3. Créer `features/<domain>/<feature>.feature`
+### Step Objects vs Steps
 
-## Tags
+| Folder | Purpose | Example |
+|--------|---------|---------|
+| `step_objects/` | Reusable logic, helpers, assertions | `executeCopier()`, `assertFileContains()` |
+| `steps/` | Gherkin step definitions (Given/When/Then) | `Given('a project was generated with...')` |
 
-| Tag         | Description           |
-|-------------|-----------------------|
-| `@ansible`  | Tests Ansible         |
-| `@copier`   | Tests template Copier |
-| `@project`  | Tests mode project    |
-| `@gitlab`   | Tests GitLab CI       |
-| `@renovate` | Tests Renovate        |
-| `@docker`   | Tests runtime Docker  |
-| `@podman`   | Tests runtime Podman  |
+### Generic Steps
+
+The `steps/system.js` provides generic infrastructure steps:
+
+```gherkin
+# Format: "domain/feature"
+Given a clean temporary directory for "ansible/integration" tests
+Given a clean temporary directory for "gitlab/proxy" tests
+Given a clean temporary directory for "docker/runtime" tests
+```
+
+### Adding New Tests
+
+1. Create a feature file in `features/<domain>/<feature>.feature`
+2. Add domain-specific steps in `steps/<domain>.js` if needed
+3. Use generic steps from `system.js` for setup
+4. Run tests with `task test`
+
+## Running Tests
+
+```bash
+# Run all tests
+task test
+
+# Run tests with specific tag
+task codeceptjs:run -- --grep @ansible
+```

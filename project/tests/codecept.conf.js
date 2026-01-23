@@ -14,7 +14,18 @@ exports.config = {
     features: './features/**/*.feature',
     steps: [
       '../../.config/codeceptjs/step_definitions/steps.js',
-      './entrypoint.js'
+      './entrypoint.js',
+      // Step objects with Gherkin definitions
+      './step_objects/copier.js',
+      './step_objects/content.js',
+      // Domain steps
+      './steps/ansible.js',
+      './steps/copier.js',
+      './steps/devsecops.js',
+      './steps/docker.js',
+      './steps/gitlab.js',
+      './steps/podman.js',
+      './steps/system.js'
     ]
   },
   name: 'devsecops-toolbox-tests'

@@ -5,8 +5,8 @@
  */
 
 const fs = require('fs')
-const { resolvePath } = require('../support/contentSteps')
-const { assertFileExists } = require('../support/assertions')
+const { resolvePath } = require('../step_objects/content')
+const { assertFileExists } = require('../step_objects/assertions')
 
 function register () {
   // Commitizen assertions
@@ -47,5 +47,8 @@ function register () {
     }
   })
 }
+
+// Auto-register when loaded by CodeceptJS
+register()
 
 module.exports = { register }

@@ -6,7 +6,7 @@ Feature: Podman Container Runtime
 
   @explicit
   Scenario: Generate project with Podman container runtime
-    Given a clean temporary directory for podman runtime tests
+    Given a clean temporary directory for "podman/runtime" tests
     When the copier command is executed with container runtime "podman"
     Then the ".config/podman" directory should exist
     And the ".config/podman/Taskfile.yml" file should exist
@@ -16,7 +16,7 @@ Feature: Podman Container Runtime
 
   @update
   Scenario: Update project from Docker to Podman
-    Given a clean temporary directory for podman runtime tests
+    Given a clean temporary directory for "podman/runtime" tests
     And a project was generated with container runtime "docker"
     When the project is updated with container runtime "podman"
     Then the ".config/podman" directory should exist

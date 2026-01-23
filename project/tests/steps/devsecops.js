@@ -4,20 +4,16 @@
  * Steps for testing project mode, phases, and coverage.
  */
 
-const { initTestContext } = require('../support/copierSteps')
-const { resolvePath } = require('../support/contentSteps')
-const { executeCopier, executeCommand, initGitRepo, createInitialCommit } = require('../support/commands')
-const { deleteFileIfExists } = require('../support/filesystem')
-const { assertFileExists, assertFileContains, assertFileNotContains, assertDirExists } = require('../support/assertions')
-const { getTableCells } = require('../support/tables')
-const { resolveProjectPath } = require('../support/config')
+const { resolvePath } = require('../step_objects/content')
+const { executeCopier, executeCommand, initGitRepo, createInitialCommit } = require('../step_objects/commands')
+const { deleteFileIfExists } = require('../step_objects/filesystem')
+const { assertFileExists, assertFileContains, assertFileNotContains, assertDirExists } = require('../step_objects/assertions')
+const { getTableCells } = require('../step_objects/tables')
+const { resolveProjectPath } = require('../step_objects/config')
+const { initTestContext } = require('../step_objects/copier')
 
 function register () {
   // Given
-  Given('a clean temporary directory for project mode tests', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'devsecops', 'project')
-  })
-
   Given('a project was generated with project mode enabled', function () { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { project_enabled: true })
   })
@@ -166,5 +162,8 @@ function register () {
     })
   })
 }
+
+// Auto-register when loaded by CodeceptJS
+register()
 
 module.exports = { register }

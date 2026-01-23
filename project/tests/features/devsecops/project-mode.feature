@@ -6,7 +6,7 @@ Feature: Project Mode Activation and Deactivation
 
   @default
   Scenario: Generate project with project mode integration (default behaviour)
-    Given a clean temporary directory for project mode tests
+    Given a clean temporary directory for "devsecops/project-mode" tests
     When the copier command is executed with default settings for project mode
     Then the "project" directory should exist
     And the "project/Taskfile.yml" file should exist
@@ -24,7 +24,7 @@ Feature: Project Mode Activation and Deactivation
       | feedback |
 
   Scenario: Generate project without project mode integration
-    Given a clean temporary directory for project mode tests
+    Given a clean temporary directory for "devsecops/project-mode" tests
     When the copier command is executed with project mode disabled
     Then the "project" directory should NOT exist
     And the "project/Taskfile.yml" file should NOT exist
@@ -42,7 +42,7 @@ Feature: Project Mode Activation and Deactivation
       | feedback |
 
   Scenario: Update project from project mode enabled to disabled
-    Given a clean temporary directory for project mode tests
+    Given a clean temporary directory for "devsecops/project-mode" tests
     And a project was generated with project mode enabled
     When the project is updated with project mode disabled
     Then the "project" directory should exist
@@ -61,7 +61,7 @@ Feature: Project Mode Activation and Deactivation
       | feedback |
 
   Scenario: Update project from project mode disabled to enabled
-    Given a clean temporary directory for project mode tests
+    Given a clean temporary directory for "devsecops/project-mode" tests
     And a project was generated with project mode disabled
     When the project is updated with project mode enabled
     Then the "project" directory should exist

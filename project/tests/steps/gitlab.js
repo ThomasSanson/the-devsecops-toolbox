@@ -5,26 +5,17 @@
  */
 
 const fs = require('fs')
-const { initTestContext } = require('../support/copierSteps')
-const { resolvePath } = require('../support/contentSteps')
-const { executeCopier } = require('../support/commands')
-const { assertFileExists, assertFileContains, assertFileNotContains } = require('../support/assertions')
+const { resolvePath } = require('../step_objects/content')
+const { executeCopier } = require('../step_objects/commands')
+const { assertFileExists, assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
 
 function register () {
   // Given - Tags
-  Given('a clean temporary directory for GitLab tags tests', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'gitlab', 'tags')
-  })
-
   Given('a project was generated with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { ci_platform: ciPlatform })
   })
 
   // Given - Proxy
-  Given('a clean temporary directory for GitLab proxy tests', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'gitlab', 'proxy')
-  })
-
   Given('a project was generated with proxy disabled', function () { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { proxy_enabled: false })
   })
@@ -118,5 +109,8 @@ function register () {
     assertFileNotContains(filePath, 'HTTP_PROXY')
   })
 }
+
+// Auto-register when loaded by CodeceptJS
+register()
 
 module.exports = { register }

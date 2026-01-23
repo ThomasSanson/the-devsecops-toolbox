@@ -4,18 +4,13 @@
  * Steps for testing Docker container runtime.
  */
 
-const { initTestContext } = require('../support/copierSteps')
-const { resolvePath } = require('../support/contentSteps')
-const { executeCopier } = require('../support/commands')
-const { removeDirRecursive } = require('../support/filesystem')
-const { assertFileContains, assertFileNotContains } = require('../support/assertions')
+const { resolvePath } = require('../step_objects/content')
+const { executeCopier } = require('../step_objects/commands')
+const { removeDirRecursive } = require('../step_objects/filesystem')
+const { assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
 
 function register () {
   // Given
-  Given('a clean temporary directory for docker runtime tests', function () { // eslint-disable-line no-undef
-    initTestContext(this, 'docker', 'runtime')
-  })
-
   Given('a project was generated with container runtime {string}', function (runtime) { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { container_runtime: runtime })
   })
@@ -44,5 +39,8 @@ function register () {
     assertFileNotContains(taskfilePath, 'docker-ce:')
   })
 }
+
+// Auto-register when loaded by CodeceptJS
+register()
 
 module.exports = { register }
