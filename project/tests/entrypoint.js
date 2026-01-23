@@ -21,11 +21,5 @@ After(() => { // eslint-disable-line no-undef
   clearCurrentTest()
 })
 
-// Load step definitions
-const givenSteps = require('./steps/given')
-const whenSteps = require('./steps/when')
-const thenSteps = require('./steps/then')
-
-givenSteps.register()
-whenSteps.register()
-thenSteps.register()
+// Load all step modules
+require('./steps').registerAll()
