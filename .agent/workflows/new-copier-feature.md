@@ -18,7 +18,7 @@ This workflow guides you through implementing a new Copier template feature usin
 
 Create a new feature file following DDD structure:
 
-```
+```bash
 project/tests/features/{domain}/{feature}.feature
 ```
 
@@ -169,7 +169,7 @@ ls tmp/tests/{domain}/{feature}/
 ```
 
 Expected structure:
-```
+```bash
 tmp/tests/{domain}/{feature}/
 ├── {scenario-1-slug}/
 ├── {scenario-2-slug}/
@@ -214,7 +214,7 @@ ci_platform:
 ```
 
 **Test structure:**
-```
+```bash
 tmp/tests/gitlab/tags/
 ├── generate-project-for-gitlab-self-hosted/
 ├── generate-project-with-gitlab-saas-tags-default/
