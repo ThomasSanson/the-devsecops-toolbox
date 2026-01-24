@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 16.4.4 (2026-01-24)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.58.0
+
 ## 16.4.3 (2026-01-24)
 
 ### Fix
