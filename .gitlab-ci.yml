@@ -10,7 +10,7 @@ spec:
       type: boolean
       description: "Feedback schedule configuration."
 ---
-image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:16.4.4
+image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:16.4.5
 
 variables:
   TASK_DEVSECOPS_RELEASE_ENABLED: $[[ inputs.TASK_DEVSECOPS_RELEASE_ENABLED ]]
