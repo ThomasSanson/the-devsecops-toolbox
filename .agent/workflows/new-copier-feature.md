@@ -214,6 +214,15 @@ tmp/tests/{domain}/{feature}/
 └── {scenario-3-slug}/
 ```
 
+### 9. Run Linters
+
+```bash
+// turbo
+task code
+```
+
+Verify all linters pass. Fix any errors before committing. This command takes approximately 1 minute.
+
 ## Available Step Objects
 
 ### Assertions (`step_objects/assertions.js`)
@@ -249,6 +258,14 @@ tmp/tests/{domain}/{feature}/
 - [ ] Domain steps file added to `codecept.conf.js`
 - [ ] `register()` called and exported in step file
 - [ ] All existing tests still pass
+- [ ] Linters pass (`task code`)
+
+## Reference Files
+
+When creating new template files, use these existing files as reference for conventions:
+
+- **Taskfile convention:** See `.config/megalinter/Taskfile.yml` for the expected format (variables with `TASK_` prefix, `summary` blocks, `status` conditions, etc.)
+- **Install script convention:** See `.config/node/install.sh` for shell script conventions (shfmt/shellcheck compliant)
 
 ## Example: Ansible Integration Feature
 
