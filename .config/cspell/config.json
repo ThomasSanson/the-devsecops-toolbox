@@ -190,6 +190,8 @@
     "ropeproject",
     "sarif",
     "shar",
+    "shellcheck",
+    "shfmt",
     "shunit",
     "slugified",
     "sprintf",

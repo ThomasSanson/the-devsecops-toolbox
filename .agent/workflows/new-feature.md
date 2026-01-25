@@ -1,10 +1,10 @@
 ---
-description: Implement a new Copier template feature using TDD with Gherkin tests
+description: Implement a new template feature using TDD with Gherkin tests
 ---
 
-# New Copier Feature Workflow
+# New Feature Workflow
 
-This workflow guides you through implementing a new Copier template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
+This workflow guides you through implementing a new template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
 
 ## Prerequisites
 
@@ -222,6 +222,12 @@ task code
 ```
 
 Verify all linters pass. Fix any errors before committing. This command takes approximately 1 minute.
+
+**Tip for cspell errors:** If cspell reports unknown words, verify they are legitimate technical terms, then copy the updated config:
+
+```bash
+mv -f megalinter-reports/.config/cspell/config.json .config/cspell/config.json
+```
 
 ## Available Step Objects
 
