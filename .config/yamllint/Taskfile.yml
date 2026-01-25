@@ -32,7 +32,7 @@ vars:
 
 tasks:
   default:
-    desc: Lint YAML files using yamllint.
+    desc: 🧪 Lint YAML files using yamllint
     summary: |
       🏷️ Description:
         Executes yamllint to ensure YAML files adhere to specified syntax standards.
