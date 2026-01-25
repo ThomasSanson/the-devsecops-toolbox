@@ -4,7 +4,7 @@ This directory contains end-to-end tests for the DevSecOps Copier template.
 
 ## Architecture
 
-```
+```text
 project/tests/
 ├── codecept.conf.js      # CodeceptJS configuration
 ├── entrypoint.js         # Test hooks (Before/After)

@@ -73,6 +73,8 @@
     "Traefik",
     "apdisk",
     "appbuilder",
+    "armhf",
+    "armv",
     "azuretools",
     "baselayout",
     "bitnami",
