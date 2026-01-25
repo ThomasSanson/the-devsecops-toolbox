@@ -21,6 +21,24 @@ function register () {
     const [domain, feature] = domainFeature.split('/')
     initTestContext(this, domain, feature || 'default')
   })
+
+  /**
+   * Generic assertion to check file content.
+   * Useful for verifying Taskfile definitions, variable names, etc.
+   */
+  Then('the file {string} should contain {string}', function (relativePath, expectedContent) { // eslint-disable-line no-undef
+    const { resolvePath } = require('../step_objects/content')
+    const { assertFileContains } = require('../step_objects/assertions')
+    const filePath = resolvePath(this, relativePath)
+    assertFileContains(filePath, expectedContent)
+  })
+
+  Then('the file {string} should NOT contain {string}', function (relativePath, unexpectedContent) { // eslint-disable-line no-undef
+    const { resolvePath } = require('../step_objects/content')
+    const { assertFileNotContains } = require('../step_objects/assertions')
+    const filePath = resolvePath(this, relativePath)
+    assertFileNotContains(filePath, unexpectedContent)
+  })
 }
 
 // Auto-register when loaded by CodeceptJS

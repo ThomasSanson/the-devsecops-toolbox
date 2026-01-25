@@ -1,8 +1,7 @@
----
 version: "3"
 
 vars:
-  GIT_CONFIG_DIR: .config/git
+  TASK_GIT_CONFIG_DIR: .config/git
 
 tasks:
   clean-secrets:
@@ -20,9 +19,12 @@ tasks:
           echo "Usage: task git:clean-secrets -- <path/to/file>"
           exit 1
         fi
-        bash {{.GIT_CONFIG_DIR}}/clean-secrets.sh {{.CLI_ARGS}}
+        bash {{.TASK_GIT_CONFIG_DIR}}/clean-secrets.sh {{.CLI_ARGS}}
 
   install:
-    desc: "📦 Install Git hooks"
+    desc: "📦 Install Git"
+    summary: |
+      Installs Git on the system.
+      Useful for devcontainers or CI environments where Git might be missing.
     cmds:
-      - bash {{.GIT_CONFIG_DIR}}/install.sh
+      - bash {{.TASK_GIT_CONFIG_DIR}}/install.sh
