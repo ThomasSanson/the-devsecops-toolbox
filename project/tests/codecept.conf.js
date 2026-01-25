@@ -25,6 +25,7 @@ exports.config = {
       './steps/docker.js',
       './steps/gitlab.js',
       './steps/glab.js',
+      './steps/kubeseal.js',
       './steps/podman.js',
       './steps/system.js'
     ]
