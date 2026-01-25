@@ -14,7 +14,22 @@ vars:
 
 tasks:
   default:
-    desc: Run Renovate with configurable options
+    desc: 🔄 Run Renovate with configurable options
+    summary: |
+      ℹ️ Description:
+        Runs Renovate to analyze and update project dependencies.
+
+      🔧 Variables:
+        - TASK_RENOVATE_CONFIG: Path to Renovate config file
+        - TASK_RENOVATE_PLATFORM: Platform (local, github, gitlab)
+        - TASK_RENOVATE_DRY_RUN: Enable dry-run mode (false, true, full, lookup, extract)
+        - TASK_RENOVATE_TOKEN: Authentication token
+
+      🔐 Preconditions:
+        - Node.js/npm must be installed for npx
+
+      🔄 Execution:
+        Runs Renovate via npx with configured options
     deps: [check]
     status:
       - test "{{.TASK_RENOVATE_ENABLED}}" != "true"
@@ -77,19 +92,41 @@ tasks:
       - cmd: "{{.TASK_RENOVATE_CMD}}"
 
   check:
-    desc: Verify prerequisites for npx usage
+    desc: ✅ Verify prerequisites for npx usage
+    summary: |
+      ℹ️ Description:
+        Verifies that Node.js/npm is installed for npx usage.
+
+      🔐 Preconditions:
+        - npx command must be available in PATH
     preconditions:
       - sh: command -v npx >/dev/null 2>&1
         msg: "❌ Missing prerequisite: please install Node.js/npm to use npx."
 
   validate:
-    desc: Validate the Renovate configuration file
+    desc: 🔍 Validate the Renovate configuration file
+    summary: |
+      ℹ️ Description:
+        Validates the Renovate configuration file using renovate-config-validator.
+
+      🔧 Variables:
+        - TASK_RENOVATE_CONFIG: Path to config file to validate
+        - TASK_RENOVATE_LOG_LEVEL: Logging verbosity
+
+      🔄 Execution:
+        Runs renovate-config-validator via npx
     deps: [check]
     cmds:
       - cmd: 'LOG_LEVEL="{{.TASK_RENOVATE_LOG_LEVEL}}" npx --yes -p renovate renovate-config-validator "{{.TASK_RENOVATE_CONFIG}}"'
 
   dry-run:
-    desc: Local dry-run of Renovate with the provided configuration
+    desc: 🧪 Local dry-run of Renovate with the provided configuration
+    summary: |
+      ℹ️ Description:
+        Runs Renovate in local mode for testing without making changes.
+
+      🔄 Execution:
+        Calls default task with TASK_RENOVATE_PLATFORM=local
     cmds:
       - task: default
         vars:
