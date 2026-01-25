@@ -31,7 +31,8 @@ vars:
 tasks:
   default:
     interactive: true
-    desc: |
+    desc: ⚙️ Run Copier with specified options
+    summary: |
       ℹ️ Description:
         Run Copier with specified options.
 
@@ -53,7 +54,8 @@ tasks:
         silent: true
 
   update:
-    desc: |
+    desc: 🔄 Update project using Copier
+    summary: |
       ℹ️ Description:
         Updates the project using Copier with a specific answers file.
 
