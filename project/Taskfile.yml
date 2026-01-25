@@ -7,7 +7,10 @@ vars:
 
 tasks:
   plan:
-    desc: Run project-specific plan tasks
+    desc: 🚀 Run project-specific plan tasks
+    summary: |
+      Orchestrates the plan phase.
+      This task is intended to run Terraform plan, database migrations check, etc.
     cmds:
       - cmd: echo "🚀 Starting project plan phase"
         silent: true
@@ -15,7 +18,10 @@ tasks:
         silent: true
 
   code:
-    desc: Run project-specific code tasks
+    desc: 🚀 Run project-specific code tasks
+    summary: |
+      Orchestrates the code phase.
+      This task runs linters, formatters, and static analysis tools.
     cmds:
       - cmd: echo "🚀 Starting project code phase"
         silent: true
@@ -23,7 +29,10 @@ tasks:
         silent: true
 
   build:
-    desc: Run project-specific build tasks
+    desc: 🚀 Run project-specific build tasks
+    summary: |
+      Orchestrates the build phase.
+      This task builds Docker images, compiles binaries, or packages artifacts.
     cmds:
       - cmd: echo "🚀 Starting project build phase"
         silent: true
@@ -40,7 +49,10 @@ tasks:
         silent: true
 
   test:
-    desc: Run project-specific test tasks
+    desc: 🚀 Run project-specific test tasks
+    summary: |
+      Orchestrates the test phase.
+      This task runs unit tests, integration tests, and TDD workflows.
     cmds:
       - cmd: echo "🚀 Starting project test phase"
         silent: true
@@ -49,7 +61,10 @@ tasks:
         silent: true
 
   test:tdd:
-    desc: Run project-specific TDD test tasks
+    desc: 🚀 Run project-specific TDD test tasks
+    summary: |
+      Run tests in TDD mode.
+      This task deploys necessary services and runs CodeceptJS tests.
     cmds:
       - cmd: echo "🚀 Starting project TDD test phase"
         silent: true
@@ -62,7 +77,10 @@ tasks:
         silent: true
 
   test:copier:
-    desc: Run project-specific copier test tasks
+    desc: 🚀 Run project-specific copier test tasks
+    summary: |
+      Run Copier template tests.
+      This task validates the project generation logic.
     cmds:
       - cmd: echo "🚀 Starting project copier test phase"
         silent: true
@@ -75,7 +93,10 @@ tasks:
         silent: true
 
   release:
-    desc: Run project-specific release tasks
+    desc: 🚀 Run project-specific release tasks
+    summary: |
+      Orchestrates the release phase.
+      This task tags images, packages releases, and updates versions.
     deps:
       - task: build
         vars:
@@ -106,7 +127,10 @@ tasks:
         silent: true
 
   deploy:
-    desc: Run project-specific deploy tasks
+    desc: 🚀 Run project-specific deploy tasks
+    summary: |
+      Orchestrates the deploy phase.
+      This task deploys the application to the target environment.
     cmds:
       - cmd: echo "🚀 Starting project deploy phase"
         silent: true
@@ -114,7 +138,10 @@ tasks:
         silent: true
 
   operate:
-    desc: Run project-specific operate tasks
+    desc: 🚀 Run project-specific operate tasks
+    summary: |
+      Orchestrates the operate phase.
+      This task manages operational tasks like backups, scaling, etc.
     cmds:
       - cmd: echo "🚀 Starting project operate phase"
         silent: true
@@ -122,7 +149,10 @@ tasks:
         silent: true
 
   monitor:
-    desc: Run project-specific monitor tasks
+    desc: 🚀 Run project-specific monitor tasks
+    summary: |
+      Orchestrates the monitor phase.
+      This task checks system health and metrics.
     cmds:
       - cmd: echo "🚀 Starting project monitor phase"
         silent: true
@@ -130,7 +160,10 @@ tasks:
         silent: true
 
   feedback:
-    desc: Run project-specific feedback tasks
+    desc: 🚀 Run project-specific feedback tasks
+    summary: |
+      Orchestrates the feedback phase.
+      This task gathers feedback metrics and reports.
     cmds:
       - cmd: echo "🚀 Starting project feedback phase"
         silent: true
