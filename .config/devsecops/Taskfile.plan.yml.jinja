@@ -7,7 +7,10 @@ vars:
 
 tasks:
   default:
-    desc: Run all generic plan tasks
+    desc: 📋 Run all generic plan tasks
+    summary: |
+      Orchestrates the planning phase.
+      This task runs all project-specific planning tasks defined in project/Taskfile.yml.
     status:
       - test "{{.TASK_DEVSECOPS_PLAN_ENABLED}}" = "false"
     cmds:
