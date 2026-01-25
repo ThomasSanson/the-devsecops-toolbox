@@ -14,7 +14,18 @@ vars:
 
 tasks:
   setup:
-    desc: Prepare directories for Dependency-Check.
+    desc: 📁 Prepare directories for Dependency-Check
+    summary: |
+      ℹ️ Description:
+        Creates the necessary directories for Dependency-Check data, cache, and reports.
+
+      🔧 Variables:
+        - TASK_DEPENDENCY_CHECK_DATA_DIRECTORY: Directory for vulnerability database
+        - TASK_DEPENDENCY_CHECK_CACHE_DIRECTORY: Directory for cache files
+        - TASK_DEPENDENCY_CHECK_REPORT_DIRECTORY: Directory for generated reports
+
+      🔄 Execution:
+        Creates three directories: data, cache, and reports
     cmds:
       - cmd: echo "🔄 Preparing directories for Dependency-Check"
         silent: true
@@ -25,7 +36,16 @@ tasks:
         silent: true
 
   pull:
-    desc: Download latest Dependency-Check Docker image.
+    desc: 🐳 Download latest Dependency-Check Docker image
+    summary: |
+      ℹ️ Description:
+        Pulls the latest OWASP Dependency-Check Docker image from Docker Hub.
+
+      🔧 Variables:
+        - TASK_DEPENDENCY_CHECK_VERSION: Docker image tag (default: latest)
+
+      🔄 Execution:
+        Runs 'docker pull owasp/dependency-check:<version>'
     cmds:
       - cmd: echo "🔄 Downloading latest Dependency-Check Docker image"
         silent: true
@@ -34,7 +54,22 @@ tasks:
         silent: true
 
   analyze:
-    desc: Run Dependency-Check analysis.
+    desc: 🔍 Run Dependency-Check analysis
+    summary: |
+      ℹ️ Description:
+        Runs OWASP Dependency-Check to scan project dependencies for known vulnerabilities.
+
+      🔧 Variables:
+        - TASK_DEPENDENCY_CHECK_USER: User ID for Docker container
+        - TASK_DEPENDENCY_CHECK_PROJECT: Project name for reports
+        - TASK_DEPENDENCY_CHECK_REPORT_DIRECTORY: Output directory for reports
+
+      🔐 Preconditions:
+        - Docker must be installed and running
+        - setup and pull tasks must complete first
+
+      🔄 Execution:
+        Runs Dependency-Check in Docker container, scanning /project and outputting to /report
     deps: [setup, pull]
     cmds:
       - cmd: echo "🔄 Running Dependency-Check analysis"
@@ -54,7 +89,16 @@ tasks:
         silent: true
 
   clean:
-    desc: Remove Dependency-Check data and reports.
+    desc: 🧹 Remove Dependency-Check data and reports
+    summary: |
+      ℹ️ Description:
+        Removes all Dependency-Check data, cache, and report directories.
+
+      ⚠️ Warning:
+        This will delete the vulnerability database which may take time to rebuild.
+
+      🔄 Execution:
+        Removes TASK_DEPENDENCY_CHECK_DIRECTORY and TASK_DEPENDENCY_CHECK_REPORT_DIRECTORY
     cmds:
       - cmd: echo "🔄 Cleaning up Dependency-Check data and reports"
         silent: true
@@ -63,10 +107,14 @@ tasks:
       - cmd: echo '🎉 Dependency-Check data and reports removed.'
         silent: true
 
-  # Note: There's no direct update command in the Docker example,
-  # but pulling the latest image serves a similar purpose
   update:
-    desc: Update Dependency-Check Docker image.
+    desc: 🔄 Update Dependency-Check Docker image
+    summary: |
+      ℹ️ Description:
+        Updates the Dependency-Check Docker image to the latest version.
+
+      🔄 Execution:
+        Calls the pull task to download the latest image
     cmds:
       - cmd: echo "🔄 Updating Dependency-Check Docker image"
         silent: true
