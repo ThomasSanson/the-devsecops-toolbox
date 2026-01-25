@@ -18,11 +18,26 @@ vars:
 
 tasks:
   default:
+    desc: 🔍 Run MegaLinter (default method)
     cmds:
       - task: npx
 
   docker:
-    desc: Run MegaLinter for comprehensive code analysis.
+    desc: 🐳 Run MegaLinter for comprehensive code analysis
+    summary: |
+      ℹ️ Description:
+        Runs MegaLinter in a Docker container for comprehensive code analysis.
+
+      🔧 Variables:
+        - TASK_MEGALINTER_VERSION: MegaLinter version
+        - TASK_MEGALINTER_CONFIG: Path to config file
+        - TASK_MEGALINTER_CONTAINER_NAME: Docker container name
+
+      🔐 Preconditions:
+        - Docker must be installed and running
+
+      🔄 Execution:
+        Runs MegaLinter in Docker, copies reports back to host
     status:
       - test "{{.TASK_MEGALINTER_ENABLED}}" = "false"
     preconditions:
@@ -41,7 +56,17 @@ tasks:
         silent: true
 
   pnpm:dlx:
-    desc: Run pnpm dlx megalinter
+    desc: 📦 Run MegaLinter via pnpm dlx
+    summary: |
+      ℹ️ Description:
+        Runs MegaLinter using pnpm dlx (alternative to npx).
+
+      🔧 Variables:
+        - TASK_MEGALINTER_VERSION: MegaLinter version
+        - TASK_MEGALINTER_CONFIG: Path to config file
+
+      🔄 Execution:
+        Runs mega-linter-runner via pnpm dlx
     cmds:
       - cmd: echo "🔄 Running pnpm dlx megalinter (v{{.TASK_MEGALINTER_VERSION}})..."
         silent: true
@@ -50,13 +75,21 @@ tasks:
         silent: true
 
   npx:
-    desc: Run MegaLinter locally via npx (no Docker).
+    desc: 🚀 Run MegaLinter locally via npx
     summary: |
-      Run MegaLinter locally via npx without Docker.
+      ℹ️ Description:
+        Runs MegaLinter locally via npx without requiring Docker daemon.
 
-      Variables: TASK_MEGALINTER_CONFIG, TASK_MEGALINTER_FLAVOR
-      Example: task megalinter:npx TASK_MEGALINTER_CONFIG=.config/megalinter/config.yml
-      Example with flavor: task megalinter:npx TASK_MEGALINTER_FLAVOR=javascript
+      🔧 Variables:
+        - TASK_MEGALINTER_CONFIG: Path to config file
+        - TASK_MEGALINTER_FLAVOR: Optional MegaLinter flavor (javascript, python, etc.)
+        - TASK_MEGALINTER_VERSION: MegaLinter version
+
+      🔄 Execution:
+        Runs mega-linter-runner via npx with Docker backend
+
+      📝 Example:
+        task megalinter:npx TASK_MEGALINTER_FLAVOR=javascript
     status:
       - test "{{.TASK_MEGALINTER_ENABLED}}" = "false"
     cmds:
