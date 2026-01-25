@@ -8,7 +8,7 @@ vars:
 
 tasks:
   default:
-    desc: Install glab (GitLab CLI) if not already installed.
+    desc: 🦊 Install glab (GitLab CLI) if not already installed
     deps:
       - install
     summary: |
@@ -27,7 +27,7 @@ tasks:
         This task is part of the CODE phase of DevSecOps.
 
   install:
-    desc: Install glab (GitLab CLI).
+    desc: 📦 Install glab (GitLab CLI)
     summary: |
       ℹ️ Description:
         Installs glab (GitLab CLI) using multiple fallback methods:
@@ -53,7 +53,7 @@ tasks:
         silent: true
 
   update:
-    desc: Update glab to latest version.
+    desc: 🔄 Update glab to latest version
     summary: |
       ℹ️ Description:
         Forces reinstallation of glab to the latest version.
@@ -74,7 +74,7 @@ tasks:
         silent: true
 
   check-update:
-    desc: Check for glab updates.
+    desc: 🔍 Check for glab updates
     summary: |
       ℹ️ Description:
         Compares the currently installed glab version with the latest available version.
@@ -103,7 +103,7 @@ tasks:
         silent: false
 
   auth:
-    desc: Authenticate with GitLab.
+    desc: 🔐 Authenticate with GitLab
     summary: |
       ℹ️ Description:
         Starts the interactive GitLab authentication flow.
@@ -123,7 +123,7 @@ tasks:
         silent: false
 
   auth:status:
-    desc: Check GitLab authentication status.
+    desc: 🔑 Check GitLab authentication status
     summary: |
       ℹ️ Description:
         Displays the current GitLab authentication status.

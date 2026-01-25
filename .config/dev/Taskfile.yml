@@ -13,7 +13,18 @@ vars:
 
 tasks:
   init:
-    desc: "Run all CI/CD initialization steps (git config, permissions, ssh)"
+    desc: 🚀 Run all CI/CD initialization steps
+    summary: |
+      ℹ️ Description:
+        Runs all initialization steps for CI/CD environment setup.
+
+      🔄 Execution:
+        1. setup-environment
+        2. setup-git-security
+        3. setup-permissions
+        4. setup-ssh
+        5. setup-git-config
+        6. fetch-git-data
     cmds:
       - cmd: echo "🔄 Starting development environment initialisation"
         silent: true
@@ -28,7 +39,13 @@ tasks:
 
   setup-environment:
     alias: "default"
-    desc: Configure the development environment.
+    desc: ⚙️ Configure the development environment
+    summary: |
+      ℹ️ Description:
+        Installs all required development tools and dependencies.
+
+      🔄 Execution:
+        Runs install scripts for python3, curl, git, unzip, uv, docker, node, pipx, go
     cmds:
       - cmd: echo "🔄 Starting development environment setup"
         silent: true
@@ -45,6 +62,15 @@ tasks:
         silent: true
 
   up:
+    desc: 🆙 Launch the project (setup + deploy)
+    summary: |
+      ℹ️ Description:
+        Sets up the development environment and deploys the project.
+
+      🔄 Execution:
+        1. setup-environment
+        2. lefthook
+        3. :deploy
     cmds:
       - cmd: echo "🔄 Starting project launch sequence"
         silent: true
@@ -57,6 +83,10 @@ tasks:
         silent: true
 
   reset:
+    desc: 🔄 Reset the development environment
+    summary: |
+      ℹ️ Description:
+        Tears down the test infrastructure and resets the environment.
     cmds:
       - cmd: echo "🔄 Starting development environment reset"
         silent: true
@@ -145,7 +175,7 @@ tasks:
 
   setup-git-security:
     internal: true
-    desc: "Configure git safe directory"
+    desc: 🔒 Configure git safe directory
     cmds:
       - cmd: echo "🔄 Starting git safe directory configuration"
         silent: true
@@ -155,7 +185,7 @@ tasks:
 
   setup-permissions:
     internal: true
-    desc: "Set ownership and permissions for the project directory"
+    desc: 📂 Set ownership and permissions for the project directory
     cmds:
       - cmd: echo "🔄 Starting project directory permissions setup"
         silent: true
@@ -173,7 +203,7 @@ tasks:
 
   setup-ssh:
     internal: true
-    desc: "Configure SSH agent, keys, and known hosts"
+    desc: 🔑 Configure SSH agent, keys, and known hosts
     cmds:
       - cmd: echo "🔄 Starting SSH configuration"
         silent: true
@@ -218,7 +248,7 @@ tasks:
 
   setup-git-config:
     internal: true
-    desc: "Configure local git user name and email"
+    desc: 👤 Configure local git user name and email
     cmds:
       - cmd: echo "🔄 Starting git user configuration"
         silent: true
@@ -233,7 +263,7 @@ tasks:
 
   fetch-git-data:
     internal: true
-    desc: "Fetch all git data including tags"
+    desc: 📥 Fetch all git data including tags
     cmds:
       - cmd: echo "🔄 Starting git data fetch"
         silent: true

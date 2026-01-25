@@ -8,6 +8,20 @@ vars:
 
 tasks:
   lefthook:install:
+    desc: 🪝 Install and configure Lefthook Git hooks
+    summary: |
+      ℹ️ Description:
+        Installs Lefthook and configures Git hooks for the repository.
+
+      🔧 Variables:
+        - TASK_LEFTHOOK_BIN_PATH: Path to the Lefthook binary
+
+      🔐 Preconditions:
+        - Must be in a Git repository
+        - Lefthook must be installed (runs install task first)
+
+      🔄 Execution:
+        Runs 'lefthook install' to set up Git hooks
     deps: ["install"]
     cmds:
       - cmd: echo "🔄 Starting lefthook:install phase"
@@ -24,7 +38,7 @@ tasks:
         silent: true
 
   install:
-    desc: Install Lefthook using Go
+    desc: 📥 Install Lefthook using Go
     summary: |
       ℹ️ Description:
         Installs Lefthook globally using Go.

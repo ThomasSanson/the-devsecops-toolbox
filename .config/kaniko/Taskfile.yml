@@ -36,19 +36,24 @@ vars:
 
 tasks:
   default:
-    desc: |
-      Build a container image with Kaniko using a two-step process:
-      1. Create secret.json if authentication is enabled
-      2. Build local Kaniko image
-      3. Use the local image to build the final container
+    desc: 🐳 Build a container image with Kaniko
+    summary: |
+      ℹ️ Description:
+        Build a container image with Kaniko using a two-step process:
+        1. Create secret.json if authentication is enabled
+        2. Build local Kaniko image
+        3. Use the local image to build the final container
 
-      Variables:
-        TASK_KANIKO_IMAGE_NAME: Name for the built image (default: test)
-        TASK_KANIKO_IMAGE_TAG: Tag for the built image (default: latest)
-        TASK_KANIKO_DOCKERFILE: Path to Dockerfile (default: .config/devcontainer/ubuntu/Dockerfile)
-        TASK_KANIKO_CUSTOM_LABELS: Additional custom labels (format: key=value,key2=value2)
-        TASK_KANIKO_PUSH: Push the image to registry (default: false)
-        TASK_KANIKO_AUTH_ENABLED: Enable registry authentication (default: false)
+      🔧 Variables:
+        - TASK_KANIKO_IMAGE_NAME: Name for the built image (default: test)
+        - TASK_KANIKO_IMAGE_TAG: Tag for the built image (default: latest)
+        - TASK_KANIKO_DOCKERFILE: Path to Dockerfile
+        - TASK_KANIKO_CUSTOM_LABELS: Additional custom labels (format: key=value)
+        - TASK_KANIKO_PUSH: Push the image to registry (default: false)
+        - TASK_KANIKO_AUTH_ENABLED: Enable registry authentication (default: false)
+
+      🔄 Execution:
+        Builds a local Kaniko executor image and uses it to build the target container
     cmds:
       - cmd: echo "🔄 Starting Kaniko image build process"
         silent: true
@@ -101,12 +106,17 @@ tasks:
         silent: true
 
   warmup:
-    desc: |
-      Warm up Kaniko cache with base images
+    desc: 🔥 Warm up Kaniko cache with base images
+    summary: |
+      ℹ️ Description:
+        Pre-populates the Kaniko cache with commonly used base images.
 
-      Variables:
-        TASK_KANIKO_CACHE_REPO: Cache repository path (default: oci:~/tmp/cache)
-        TASK_KANIKO_CACHE_TTL: Cache time-to-live (default: 24h)
+      🔧 Variables:
+        - TASK_KANIKO_CACHE_REPO: Cache repository path (default: oci:~/tmp/cache)
+        - TASK_KANIKO_CACHE_TTL: Cache time-to-live (default: 24h)
+
+      🔄 Execution:
+        Pulls and caches base images using the Kaniko warmer
     cmds:
       - cmd: echo "🔄 Starting Kaniko cache warmup"
         silent: true
