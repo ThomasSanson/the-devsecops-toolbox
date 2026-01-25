@@ -31,7 +31,7 @@ vars:
 
 tasks:
   default:
-    desc: Analyze code complexity with Lizard.
+    desc: 🦎 Analyze code complexity with Lizard
     summary: |
       ℹ️ Description:
         Executes Lizard to analyse code complexity and maintainability.
