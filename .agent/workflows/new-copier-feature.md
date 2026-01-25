@@ -14,7 +14,7 @@ This workflow guides you through implementing a new Copier template feature usin
 
 ## Test Architecture
 
-```
+```text
 project/tests/
 ├── features/{domain}/{feature}.feature  # Gherkin scenarios
 ├── step_objects/                        # Reusable logic (DO NOT ADD STEPS HERE)
