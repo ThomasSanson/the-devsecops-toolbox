@@ -45,7 +45,7 @@ tasks:
         Installs all required development tools and dependencies.
 
       🔄 Execution:
-        Runs install scripts for python3, curl, git, unzip, uv, docker, node, pipx, go
+        Runs install scripts for python3, curl, git, unzip, uv, docker, node, pipx, go, glab
     cmds:
       - cmd: echo "🔄 Starting development environment setup"
         silent: true
@@ -58,6 +58,7 @@ tasks:
       - .config/node/install.sh
       - .config/pipx/install.sh
       - .config/go/install.sh
+      - .config/glab/install.sh
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true
 

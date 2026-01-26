@@ -26,16 +26,16 @@ log "Installing glab v${GLAB_VERSION}..."
 ARCH=$(uname -m)
 case "$ARCH" in
 x86_64)
-  GLAB_ARCH="Linux_x86_64"
+  GLAB_ARCH="linux_amd64"
   ;;
 aarch64 | arm64)
-  GLAB_ARCH="Linux_arm64"
+  GLAB_ARCH="linux_arm64"
   ;;
 armv7l | armhf)
-  GLAB_ARCH="Linux_armv6"
+  GLAB_ARCH="linux_armv6"
   ;;
 i386 | i686)
-  GLAB_ARCH="Linux_i386"
+  GLAB_ARCH="linux_386"
   ;;
 *)
   log "Unsupported architecture: $ARCH"
@@ -90,8 +90,12 @@ install_from_homebrew() {
 install_from_package_manager() {
   if command -v apt-get >/dev/null 2>&1; then
     log "Attempting installation via apt..."
-    # Add GitLab repository
-    curl -fsSL "https://gitlab.com/gitlab-org/cli/-/raw/main/scripts/install.sh" | sh && return 0
+    # Add GitLab repository and install
+    curl -fsSL "https://gitlab.com/gitlab-org/cli/-/raw/main/scripts/install.sh" | sh || true
+    # Verify glab was actually installed
+    if command -v glab >/dev/null 2>&1 || [ -x "${HOME}/.local/bin/glab" ]; then
+      return 0
+    fi
   fi
   return 1
 }
@@ -123,6 +127,7 @@ else
     # shellcheck disable=SC2016
     log '  export PATH="$HOME/.local/bin:$PATH"'
     "${HOME}/.local/bin/glab" --version
+    exit 0
   else
     log "❌ Installation verification failed"
     exit 1
