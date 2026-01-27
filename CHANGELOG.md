@@ -2,6 +2,30 @@
 
 # Changelog
 
+## 16.4.5 (2026-01-24)
+
+### Fix
+
+- **deps**: update mcr.microsoft.com/playwright docker tag to v1.58.0
+
+## 16.4.4 (2026-01-24)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.58.0
+
+## 16.4.3 (2026-01-24)
+
+### Fix
+
+- **deps**: update dependency copier to v9.11.3
+
+## 16.4.2 (2026-01-23)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.12.1
+
 ## 16.4.1 (2026-01-21)
 
 ### Fix
