@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 17.2.0 (2026-02-01)
+
+### Feat
+
+- **scaffolding**: add Docker Compose generation with tests
+
 ## 17.1.0 (2026-02-01)
 
 ### Feat
