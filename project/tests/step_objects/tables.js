@@ -66,10 +66,10 @@ function getKeyValuePairs (table) {
     // Cucumber/CodeceptJS table object
     rawRows = table.parse().raw()
   } else if (table.rows) {
-     // Direct structure access might be needed if parse() isn't available
-     // But usually we interact with table object in steps
-     // Fallback: assume rows have cells
-     rawRows = table.rows.map(r => r.cells.map(c => c.value))
+    // Direct structure access might be needed if parse() isn't available
+    // But usually we interact with table object in steps
+    // Fallback: assume rows have cells
+    rawRows = table.rows.map(r => r.cells.map(c => c.value))
   }
 
   // Check for vertical table (Key | Value)
