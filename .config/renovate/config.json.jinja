@@ -30,7 +30,11 @@
         ],
         "fileFilters": ["**/*"],
         "executionMode": "branch"
-      }
+      }{% if devsecops_automerge %},
+      "automerge": true,
+      "platformAutomerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "fast-forward"{% endif %}
     },
     {
       "description": "Auto-detect dependencies in project/",

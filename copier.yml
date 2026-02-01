@@ -17,6 +17,11 @@ ci_platform:
     GitLab Self-Hosted: gitlab_self_hosted
   default: gitlab_saas
 
+devsecops_automerge:
+  type: bool
+  help: Enable automerge for DevSecOps Toolbox updates?
+  default: true
+
 proxy_enabled:
   type: bool
   help: Do you need to configure proxy settings for CI/CD jobs?
