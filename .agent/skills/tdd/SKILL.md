@@ -80,10 +80,10 @@ task test  # Full suite
 | Phase    | Command                      | Expected    |
 |----------|------------------------------|-------------|
 | DEPLOY   | `task deploy`                | Services up |
-| RED      | `task test -- --grep "@tag"` | ❌ FAIL      |
-| GREEN    | `task test -- --grep "@tag"` | ✅ PASS      |
-| REFACTOR | `task test -- --grep "@tag"` | ✅ PASS      |
-| FINAL    | `task test`                  | ✅ ALL PASS  |
+| RED      | `task test -- --grep "@tag"` | FAIL        |
+| GREEN    | `task test -- --grep "@tag"` | PASS        |
+| REFACTOR | `task test -- --grep "@tag"` | PASS        |
+| FINAL    | `task test`                  | ALL PASS    |
 
 ## Rules
 

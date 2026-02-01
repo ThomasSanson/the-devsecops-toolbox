@@ -21,10 +21,10 @@ Wait for all services to be healthy.
 
 **Choose the correct location:**
 
-| Type                      | Location                                                       |
-|---------------------------|----------------------------------------------------------------|
+| Type                        | Location                                                       |
+|-----------------------------|----------------------------------------------------------------|
 | Frontend/Backend (business) | `project/tests/application/features/{domain}/`                 |
-| Infrastructure tool       | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
+| Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
 
 **Requirements:**
 - Language: **French** (`# language: fr`)

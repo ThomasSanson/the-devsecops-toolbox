@@ -18,10 +18,10 @@ Ensure services are running.
 
 **Choose the correct location:**
 
-| Type                      | Location                                                       |
-|---------------------------|----------------------------------------------------------------|
+| Type                        | Location                                                       |
+|-----------------------------|----------------------------------------------------------------|
 | Frontend/Backend (business) | `project/tests/application/features/{domain}/`                 |
-| Infrastructure tool       | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
+| Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
 
 **Requirements:**
 - **Language:** French (`# language: fr`)
@@ -32,10 +32,10 @@ Ensure services are running.
 
 **Choose the correct location:**
 
-| Type                      | Location                                               |
-|---------------------------|--------------------------------------------------------|
+| Type                        | Location                                               |
+|-----------------------------|--------------------------------------------------------|
 | Frontend/Backend (business) | `project/tests/application/step_definitions/{domain}/` |
-| Infrastructure tool       | `project/tests/{tool}/step_definitions/`               |
+| Infrastructure tool         | `project/tests/{tool}/step_definitions/`               |
 
 - Use Page Object pattern
 - Page Objects in `./pages/` of the same test folder

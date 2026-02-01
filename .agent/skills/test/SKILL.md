@@ -46,10 +46,10 @@ task project:test:{infra-name}
 
 ## Test data management
 
-| Need           | Command                          |
-|----------------|----------------------------------|
-| Reset database | `task project:test:reset-db`     |
-| Reset users    | `task project:test:reset-users`  |
+| Need           | Command                         |
+|----------------|---------------------------------|
+| Reset database | `task project:test:reset-db`    |
+| Reset users    | `task project:test:reset-users` |
 
 ## Visual regression
 
@@ -61,11 +61,11 @@ Study these reference files to understand the correct patterns:
 
 ### Reference Patterns
 
-| Reference             | Location                                        |
-|-----------------------|-------------------------------------------------|
-| Page Objects          | `project/tests/application/pages/{domain}/`     |
-| Step definitions      | `project/tests/application/step_definitions/`   |
-| Config                | `project/tests/application/config/`             |
+| Reference        | Location                                      |
+|------------------|-----------------------------------------------|
+| Page Objects     | `project/tests/application/pages/{domain}/`   |
+| Step definitions | `project/tests/application/step_definitions/` |
+| Config           | `project/tests/application/config/`           |
 
 ### ⛔ FORBIDDEN
 

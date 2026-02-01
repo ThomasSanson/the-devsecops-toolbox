@@ -12,13 +12,13 @@ For ANY feature, bug fix, or modification, execute these steps IN ORDER:
 | Step | Action                             | Command                      | Expected             |
 |------|------------------------------------|------------------------------|----------------------|
 | 1    | Write test (Gherkin, French, @tag) | —                            | Feature file created |
-| 2    | **RED** — Verify test fails        | `task test -- --grep "@tag"` | ❌ FAIL               |
+| 2    | **RED** — Verify test fails        | `task test -- --grep "@tag"` | FAIL                 |
 | 3    | Implement minimal code             | —                            | Code written         |
-| 4    | **GREEN** — Verify test passes     | `task test -- --grep "@tag"` | ✅ PASS               |
+| 4    | **GREEN** — Verify test passes     | `task test -- --grep "@tag"` | PASS                 |
 | 5    | Refactor (DO NOT touch test)       | —                            | Code improved        |
-| 6    | Verify after refactor              | `task test -- --grep "@tag"` | ✅ PASS               |
-| 7    | Quality check                      | `task code`                  | ✅ PASS               |
-| 8    | Full test suite                    | `task test`                  | ✅ ALL PASS           |
+| 6    | Verify after refactor              | `task test -- --grep "@tag"` | PASS                 |
+| 7    | Quality check                      | `task code`                  | PASS                 |
+| 8    | Full test suite                    | `task test`                  | ALL PASS             |
 
 ## Checkpoints
 

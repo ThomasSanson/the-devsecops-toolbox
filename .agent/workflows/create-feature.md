@@ -1,0 +1,93 @@
+---
+description: Implement a new template feature using TDD with Gherkin tests
+---
+
+# Create Feature Workflow
+
+This workflow guides you through implementing a new template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
+
+## Prerequisites
+
+- Understand the feature requirements
+- Identify the domain and feature name for DDD organization
+- Have a clear picture of the expected Copier question(s) and template changes
+
+## Test Architecture
+
+Search for existing tests and steps to understand the project structure:
+- **Feature files:** `project/tests/features/{domain}/{feature}.feature`
+- **Step definitions:** `project/tests/**/steps/{domain}.js`
+- **Step objects:** `project/tests/step_objects/*.js` (Reusable logic pointers)
+
+## Workflow Steps
+
+### 1. Define the Feature (Gherkin)
+
+Create a new feature file in `project/tests/features/{domain}/{feature}.feature`.
+
+**Instruction:**
+Read an existing feature file in `project/tests/features/` to understand the mandatory tags and step patterns.
+
+**Mandatory Rules:**
+- NO Background block.
+- Use: `Given a clean temporary directory for "{domain}/{feature}" tests`.
+- Use descriptive tags: `@copier`, `@scaffolding`, `@{domain}`, `@{feature}`.
+
+### 2. Add Step Definitions
+
+Create or update the domain-specific steps file: `project/tests/**/steps/{domain}.js`.
+
+**Instruction:**
+Analyze existing files in `project/tests/**/steps/*.js` to see how to:
+- Require step objects (assertions, commands, content, etc.).
+- Use `Given()`, `When()`, `Then()` with parameterized strings.
+- Export and call the `register()` function.
+
+**IMPORTANT:** If creating a new file, add it to the `gherkin: { steps: [...] }` section in `project/tests/codecept.conf.js`.
+
+### 3. Run Tests (Should Fail)
+
+```bash
+// turbo
+task test -- --grep "@{feature}"
+```
+
+### 4. Implement Copier Configuration
+
+Edit `copier.yml` to add questions.
+
+**Instruction:**
+See existing definitions in `copier.yml` for patterns (type, help, choices, default).
+
+### 5. Create/Modify Jinja Templates
+
+Update files in `.config/{domain}/`.
+
+**Instruction:**
+Explore `.config/` to see how Jinja conditions (`{% if %}`) and template naming conventions (e.g., `.jinja` suffix) are used.
+
+### 6. Run Tests (Should Pass)
+
+```bash
+// turbo
+task test -- --grep "@{feature}"
+```
+
+### 7. Global Verification
+
+```bash
+// turbo
+task test
+// turbo
+task code
+```
+
+## Constraints Checklist
+
+- [ ] TDD: Tests written before implementation
+- [ ] DDD: Files in correct domain/feature folders
+- [ ] No Background block in feature files
+- [ ] Steps are parameterized and reusable
+- [ ] Domain steps file added to `codecept.conf.js`
+- [ ] `register()` called and exported in step file
+- [ ] All linters pass (`task code`)

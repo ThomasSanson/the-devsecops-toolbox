@@ -31,10 +31,10 @@ Available: Check `project/docker-compose.yml` for the list of services.
 
 ## Database operations
 
-| Need          | Command                                |
-|---------------|----------------------------------------|
-| Backup DB     | `task project:operate:{service}:save`  |
-| Repair DB     | `task project:operate:{service}:repair`|
+| Need      | Command                                 |
+|-----------|-----------------------------------------|
+| Backup DB | `task project:operate:{service}:save`   |
+| Repair DB | `task project:operate:{service}:repair` |
 
 ## Environment
 

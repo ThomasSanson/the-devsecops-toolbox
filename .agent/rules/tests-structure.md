@@ -28,11 +28,11 @@ project/tests/
 
 ## ✅ CORRECT placement
 
-| Test type                                      | Folder               |
-|------------------------------------------------|----------------------|
-| Business feature (login, inventory, etc.)      | `tests/application/` |
-| Infrastructure (Portainer, Mailpit, etc.)      | `tests/{infra-name}/`|
-| Superset (dashboards, embedding)               | `tests/superset/`    |
+| Test type                                 | Folder                |
+|-------------------------------------------|-----------------------|
+| Business feature (login, inventory, etc.) | `tests/application/`  |
+| Infrastructure (Portainer, Mailpit, etc.) | `tests/{infra-name}/` |
+| Superset (dashboards, embedding)          | `tests/superset/`     |
 
 ## ⛔ FORBIDDEN
 
