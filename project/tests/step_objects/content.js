@@ -13,9 +13,10 @@ const {
   assertDirExists,
   assertDirNotExists,
   assertFileContains,
-  compareFileContent
+  compareFileContent,
+  assertDirContainsSubdirs
 } = require('./assertions')
-const { getTableRows } = require('./tables')
+const { getTableRows, getTableCells } = require('./tables')
 
 /**
  * Resolve a path relative to the project root from context
@@ -43,6 +44,11 @@ function register () {
     dirPaths.forEach(relPath => {
       assertDirNotExists(resolvePath(this, relPath))
     })
+  })
+
+  Then('the {string} directory should contain the following subdirectories:', function (dirPath, table) { // eslint-disable-line no-undef
+    const subdirs = getTableCells(table, 0)
+    assertDirContainsSubdirs(resolvePath(this, dirPath), subdirs)
   })
 
   // File assertions

@@ -64,11 +64,21 @@ function deleteFileIfExists (filePath) {
   }
 }
 
+/**
+ * List the contents of a directory (names only)
+ * @param {string} dirPath - Path to the directory
+ * @returns {string[]} List of files and directories names
+ */
+function listDirectoryContents (dirPath) {
+  return fs.readdirSync(dirPath)
+}
+
 module.exports = {
   removeDirRecursive,
   ensureDir,
   readFileNormalized,
   isFile,
   isDirectory,
-  deleteFileIfExists
+  deleteFileIfExists,
+  listDirectoryContents
 }

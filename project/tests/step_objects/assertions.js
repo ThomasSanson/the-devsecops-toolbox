@@ -127,6 +127,24 @@ function compareFileContent (filePath, expected) {
   return true
 }
 
+/**
+ * Assert that a directory contains at least the expected subdirectories
+ * @param {string} dirPath - Path to the directory
+ * @param {string[]} expectedSubdirs - List of expected subdirectory names
+ * @returns {boolean} True if assertion passes
+ */
+function assertDirContainsSubdirs (dirPath, expectedSubdirs) {
+  const { listDirectoryContents, isDirectory } = require('./filesystem')
+  assertDirExists(dirPath)
+  const actualContents = listDirectoryContents(dirPath)
+  const missing = expectedSubdirs.filter(s => !actualContents.includes(s) || !isDirectory(require('path').join(dirPath, s)))
+
+  if (missing.length > 0) {
+    throw new Error(`Directory ${dirPath} is missing expected subdirectories: ${missing.join(', ')}. Actual contents: ${actualContents.join(', ')}`)
+  }
+  return true
+}
+
 module.exports = {
   normalizeContent,
   assertFileExists,
@@ -135,5 +153,6 @@ module.exports = {
   assertDirNotExists,
   assertFileContains,
   assertFileNotContains,
-  compareFileContent
+  compareFileContent,
+  assertDirContainsSubdirs
 }

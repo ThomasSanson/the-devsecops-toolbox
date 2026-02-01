@@ -17,7 +17,6 @@ Feature: Project Scaffolding
       | copier.yml |
     And the following directories should NOT exist:
       | Directory Path     |
-      | .agent             |
       | .cache             |
       | .config/**/roles   |
       | .vscode            |
@@ -26,3 +25,13 @@ Feature: Project Scaffolding
       | project/tests      |
       | tmp                |
       | venv               |
+    And the ".agent" directory should exist
+    And the ".agent/skills" directory should contain the following subdirectories:
+      | Subdirectory Name |
+      | build             |
+      | code              |
+      | deploy            |
+      | monitor           |
+      | operate           |
+      | tdd               |
+      | test              |
