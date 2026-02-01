@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 17.1.0 (2026-02-01)
+
+### Feat
+
+- **renovate**: add configurable automerge and test suite
+
 ## 17.0.1 (2026-02-01)
 
 ### Fix
