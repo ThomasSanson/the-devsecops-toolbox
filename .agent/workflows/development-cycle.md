@@ -55,12 +55,14 @@ task test -- --grep "@your-tag"
 **CHECKPOINT:** ✅ Test MUST still pass.
 
 ### STEP 8: QUALITY CHECK
+// turbo
 ```bash
 task code
 ```
-**CHECKPOINT:** ✅ All linters pass. Fix any errors.
+**CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](file:///home/tsanson/workspace/gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/.agent/skills/code/SKILL.md).
 
 ### STEP 9: FULL TEST SUITE
+// turbo
 ```bash
 task test
 ```

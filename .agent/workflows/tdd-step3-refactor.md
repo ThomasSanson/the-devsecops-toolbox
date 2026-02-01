@@ -46,14 +46,16 @@ task test -- --grep "@your-tag"
 
 ## Step 4: Quality Check
 
+// turbo
 ```bash
 task code
 ```
 
-Fix any linter errors.
+If any linter errors are found, you MUST fix them following the [code skill](file:///home/tsanson/workspace/gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/.agent/skills/code/SKILL.md).
 
 ## Step 5: Full Test Suite
 
+// turbo
 ```bash
 task test
 ```
