@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 17.0.1 (2026-02-01)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.0
+
 ## 17.0.0 (2026-02-01)
 
 ### Feat
