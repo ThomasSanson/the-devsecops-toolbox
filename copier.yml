@@ -45,8 +45,7 @@ container_runtime:
   default: docker
 
 _exclude:
-  - .agent/workflows/new-feature.md
-  - .agent/workflows/add-feature.md
+  - .agent/rules/code-style.md
   - .cache
   - .config/**/roles
   - .git

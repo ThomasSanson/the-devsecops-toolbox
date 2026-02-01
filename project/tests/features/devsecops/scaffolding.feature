@@ -14,7 +14,8 @@ Feature: Project Scaffolding
     # Excluded template artifacts
     And the following files should NOT exist:
       | File Path  |
-      | copier.yml |
+      | .agent/rules/code-style.md |
+      | copier.yml                 |
     And the following directories should NOT exist:
       | Directory Path     |
       | .cache             |
