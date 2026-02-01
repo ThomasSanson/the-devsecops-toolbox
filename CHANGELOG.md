@@ -2,6 +2,31 @@
 
 # Changelog
 
+## 17.0.0 (2026-02-01)
+
+### Feat
+
+- **dev**: add glab installation to development environment setup
+- **taskfiles**: add emojis, summaries and docs; rename server port var
+- **git**: rename var to TASK_GIT_CONFIG_DIR, add summary and tests
+- **sealed-secrets**: add Taskfile and BDD test for sealed-secrets setup
+- **kubeseal**: add Taskfile, tests and cspell entry
+- **glab**: add GitLab CLI integration with taskfiles, scripts, and tests
+- **tests**: rename copier steps to commitizen/devsecops and add tests
+- **tests**: restructure test framework, add step objects and docs
+- **tests**: add generic copier step definitions for project generation
+- **tests**: add content step definitions for file and dir assertions
+- **tests**: add steps index to register all test step modules
+- **devsecops**: add cucumber step definitions for project mode testing
+- **tests**: add Ansible domain step definitions for integration testing
+- **tests**: add BDD feature for Project Taskfile configuration
+- **Taskfile**: add checks to ensure no blank lines in Taskfile.yml and its includes section
+- **devsecops**: add sync-templates task to Taskfile and update tests to verify its presence
+
+### Refactor
+
+- **tests**: consolidate step registration into single module
+
 ## 16.4.8 (2026-02-01)
 
 ### Fix
