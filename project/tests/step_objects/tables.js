@@ -52,7 +52,40 @@ function getTableCells (table, columnIndex = 0) {
   return table.rows.slice(1).map(row => row.cells[columnIndex].value)
 }
 
+/**
+ * Get key-value pairs from a data table (vertical or horizontal)
+ * @param {Object} table - The data table object
+ * @returns {Object} Object with key-value pairs
+ */
+function getKeyValuePairs (table) {
+  const data = {}
+
+  // Try parsing raw table
+  let rawRows = []
+  if (table.parse) {
+    // Cucumber/CodeceptJS table object
+    rawRows = table.parse().raw()
+  } else if (table.rows) {
+     // Direct structure access might be needed if parse() isn't available
+     // But usually we interact with table object in steps
+     // Fallback: assume rows have cells
+     rawRows = table.rows.map(r => r.cells.map(c => c.value))
+  }
+
+  // Check for vertical table (Key | Value)
+  // Logic: Iterate rows, if row has 2 columns, treat as Key=Value
+  rawRows.forEach(row => {
+    if (row.length === 2) {
+      data[row[0]] = row[1]
+    }
+  })
+
+  // TODO: Add horizontal table support if needed (Header row + 1 data row)
+  return data
+}
+
 module.exports = {
   getTableRows,
-  getTableCells
+  getTableCells,
+  getKeyValuePairs
 }

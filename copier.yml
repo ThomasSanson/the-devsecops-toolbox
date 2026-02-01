@@ -49,6 +49,17 @@ container_runtime:
     Podman: podman
   default: docker
 
+use_docker_compose:
+  type: bool
+  help: Should we generate a standard docker-compose.yml file?
+  default: true
+  when: "{{ container_runtime == 'docker' }}"
+
+project_slug:
+  type: str
+  default: "{{ _copier_conf.dst_path | basename | lower | replace(' ', '-') | replace('_', '-') }}"
+  when: false
+
 _exclude:
   - .agent/rules/code-style.md
   - .cache
@@ -66,6 +77,7 @@ _exclude:
   - "{% if not project_enabled %}project{% endif %}"
   - "{% if container_runtime != 'docker' %}.config/docker-ce{% endif %}"
   - "{% if container_runtime != 'podman' %}.config/podman{% endif %}"
+  - "{% if not use_docker_compose or container_runtime != 'docker' %}project/docker-compose.yml{% endif %}"
 
 _message_after_copy: |
   Your DevSecOps project has been created successfully!
