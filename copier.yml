@@ -27,13 +27,22 @@ proxy_enabled:
   help: Do you need to configure proxy settings for CI/CD jobs?
   default: false
 
-proxy_urls:
+http_proxy:
   type: str
-  help: |
-    Enter proxy URLs (comma-separated).
-    Format: http://proxy:port,https://proxy:port
-    First URL will be HTTP_PROXY, second will be HTTPS_PROXY (if provided).
+  help: HTTP Proxy URL (e.g. http://proxy.example.com:8080)
   default: ""
+  when: "{{ proxy_enabled }}"
+
+https_proxy:
+  type: str
+  help: HTTPS Proxy URL (e.g. https://proxy.example.com:8443)
+  default: ""
+  when: "{{ proxy_enabled }}"
+
+no_proxy:
+  type: str
+  help: NO_PROXY list (comma-separated)
+  default: "localhost,127.0.0.1,docker,*.local"
   when: "{{ proxy_enabled }}"
 
 project_enabled:

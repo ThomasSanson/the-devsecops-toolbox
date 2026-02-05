@@ -61,15 +61,15 @@ variables:
   TASK_DEVSECOPS_RELEASE_DEPLOY_KEY: $CZ_DEPLOY_KEY
   TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: $CI_SERVER_SHELL_SSH_HOST
   TASK_DEVSECOPS_RELEASE_PROJECT_PATH: $CI_PROJECT_PATH
-{%- if proxy_enabled and proxy_urls %}
-{%- set proxy_list = proxy_urls.split(',') %}
-
+{%- if proxy_enabled %}
   # Proxy configuration
-  HTTP_PROXY: "{{ proxy_list[0] | trim }}"
-{%- if proxy_list | length > 1 %}
-  HTTPS_PROXY: "{{ proxy_list[1] | trim }}"
-{%- else %}
-  HTTPS_PROXY: "{{ proxy_list[0] | trim }}"
-{%- endif %}
-  NO_PROXY: "localhost,127.0.0.1,docker,*.local"
+  {%- if http_proxy %}
+  HTTP_PROXY: "{{ http_proxy }}"
+  {%- endif %}
+  {%- if https_proxy %}
+  HTTPS_PROXY: "{{ https_proxy }}"
+  {%- endif %}
+  {%- if no_proxy %}
+  NO_PROXY: "{{ no_proxy }}"
+  {%- endif %}
 {%- endif %}

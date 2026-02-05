@@ -8,6 +8,7 @@ const fs = require('fs')
 const { resolvePath } = require('../step_objects/content')
 const { executeCopier } = require('../step_objects/commands')
 const { assertFileExists, assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
+const { getKeyValuePairs } = require('../step_objects/tables')
 
 function register () {
   // Given - Tags
@@ -20,8 +21,9 @@ function register () {
     executeCopier(this.projectRoot, { proxy_enabled: false })
   })
 
-  Given('a project was generated with proxy enabled and proxies {string}', function (proxies) { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: true, proxy_urls: proxies })
+  Given('a project was generated with proxy enabled and proxies configured with:', function (dataTable) { // eslint-disable-line no-undef
+    const proxies = getKeyValuePairs(dataTable)
+    executeCopier(this.projectRoot, { proxy_enabled: true, ...proxies })
   })
 
   // When - CI Platform
@@ -38,12 +40,14 @@ function register () {
     executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true' })
   })
 
-  When('the copier command is executed with proxy enabled {string} and proxies {string}', function (enabled, proxies) { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', proxy_urls: proxies })
+  When('the copier command is executed with proxy enabled {string} and proxies configured with:', function (enabled, dataTable) { // eslint-disable-line no-undef
+    const proxies = getKeyValuePairs(dataTable)
+    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', ...proxies })
   })
 
-  When('the project is updated with proxy enabled {string} and proxies {string}', function (enabled, proxies) { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', proxy_urls: proxies }, { force: true })
+  When('the project is updated with proxy enabled {string} and proxies configured with:', function (enabled, dataTable) { // eslint-disable-line no-undef
+    const proxies = getKeyValuePairs(dataTable)
+    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', ...proxies }, { force: true })
   })
 
   When('the project is updated with proxy disabled', function () { // eslint-disable-line no-undef
@@ -97,6 +101,11 @@ function register () {
   Then('the GitLab CI variables should contain HTTPS_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
     const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
     assertFileContains(variablesPath, `HTTPS_PROXY: "${proxyUrl}"`)
+  })
+
+  Then('the GitLab CI variables should contain NO_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileContains(variablesPath, `NO_PROXY: "${proxyUrl}"`)
   })
 
   Then('the {string} file should contain proxy variables', function (fileName) { // eslint-disable-line no-undef

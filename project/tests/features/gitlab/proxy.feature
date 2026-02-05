@@ -14,28 +14,27 @@ Feature: GitLab CI Proxy Configuration
   @with-proxy
   Scenario: Generate project with proxy configuration
     Given a clean temporary directory for "gitlab/proxy" tests
-    When the copier command is executed with proxy enabled "true" and proxies "http://proxy.example.com:8080,https://proxy.example.com:8443"
+    When the copier command is executed with proxy enabled "true" and proxies configured with:
+      | http_proxy  | http://proxy.example.com:8080  |
+      | https_proxy | https://proxy.example.com:8443 |
+      | no_proxy    | localhost,127.0.0.1            |
     Then the GitLab CI variables should contain HTTP_PROXY "http://proxy.example.com:8080"
     And the GitLab CI variables should contain HTTPS_PROXY "https://proxy.example.com:8443"
-    And the ".env.dist" file should contain proxy variables
-
-  @single-proxy
-  Scenario: Generate project with single proxy
-    Given a clean temporary directory for "gitlab/proxy" tests
-    When the copier command is executed with proxy enabled "true" and proxies "http://proxy.corp.local:3128"
-    Then the GitLab CI variables should contain HTTP_PROXY "http://proxy.corp.local:3128"
+    And the GitLab CI variables should contain NO_PROXY "localhost,127.0.0.1"
     And the ".env.dist" file should contain proxy variables
 
   @update
   Scenario: Update project to add proxy configuration
     Given a clean temporary directory for "gitlab/proxy" tests
     And a project was generated with proxy disabled
-    When the project is updated with proxy enabled "true" and proxies "http://proxy.example.com:8080"
+    When the project is updated with proxy enabled "true" and proxies configured with:
+      | http_proxy  | http://proxy.example.com:8080 |
     Then the GitLab CI variables should contain HTTP_PROXY "http://proxy.example.com:8080"
 
   @update
   Scenario: Update project to remove proxy configuration
     Given a clean temporary directory for "gitlab/proxy" tests
-    And a project was generated with proxy enabled and proxies "http://proxy.example.com:8080"
+    And a project was generated with proxy enabled and proxies configured with:
+      | http_proxy | http://proxy.example.com:8080 |
     When the project is updated with proxy disabled
     Then the GitLab CI variables should NOT contain proxy configuration
