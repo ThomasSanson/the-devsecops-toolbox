@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 17.2.2 (2026-02-05)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.4
+
 ## 17.2.1 (2026-02-05)
 
 ### Fix
