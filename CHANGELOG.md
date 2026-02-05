@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 17.2.3 (2026-02-05)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.21.0
+
 ## 17.2.2 (2026-02-05)
 
 ### Fix
