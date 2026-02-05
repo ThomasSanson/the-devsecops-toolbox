@@ -3,6 +3,6 @@
 # Keep it empty if you want no enforced tags.
 .default-tags:
   tags:
-{% if ci_platform == 'gitlab_saas' %}
+{%- if ci_platform == 'gitlab_saas' %}
     - saas-linux-medium-amd64
-{% endif %}
+{%- endif %}

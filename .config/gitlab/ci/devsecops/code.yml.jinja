@@ -21,9 +21,9 @@
 code:project:
   stage: code
   needs: []
-{% if ci_platform == 'gitlab_saas' %}
+{%- if ci_platform == 'gitlab_saas' %}
   tags: [saas-linux-medium-amd64]
-{% endif %}
+{%- endif %}
   script:
     - task project:code
   <<: *code_rules
@@ -73,9 +73,9 @@ code:gitleaks:
 code:megalinter:
   stage: code
   needs: []
-{% if ci_platform == 'gitlab_saas' %}
+{%- if ci_platform == 'gitlab_saas' %}
   tags: [saas-linux-medium-amd64]
-{% endif %}
+{%- endif %}
   script:
     - task megalinter
   rules:

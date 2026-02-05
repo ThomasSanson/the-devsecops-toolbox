@@ -10,6 +10,15 @@ Feature: GitLab CI Tags Configuration
     When the copier command is executed with CI platform "gitlab_saas"
     Then the GitLab CI tags should include "saas-linux-medium-amd64"
     And the GitLab CI code jobs should use SaaS runner tags
+    And the file ".config/gitlab/ci/tags.yml" should NOT contain any blank lines
+    And the content of the file ".config/gitlab/ci/devsecops/code.yml" should contain:
+      """
+        tags: [saas-linux-medium-amd64]
+      """
+    And the content of the file ".config/gitlab/ci/devsecops/code.yml" should contain:
+      """
+        script:
+      """
 
   @self-hosted
   Scenario: Generate project for GitLab Self-Hosted
