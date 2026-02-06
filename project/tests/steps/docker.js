@@ -4,6 +4,7 @@
  * Steps for testing Docker container runtime.
  */
 
+const path = require('path')
 const { resolvePath } = require('../step_objects/content')
 const { executeCopier } = require('../step_objects/commands')
 const { removeDirRecursive } = require('../step_objects/filesystem')
@@ -37,6 +38,12 @@ function register () {
   Then('the root Taskfile should NOT include the docker-ce taskfile reference', function () { // eslint-disable-line no-undef
     const taskfilePath = resolvePath(this, 'Taskfile.yml')
     assertFileNotContains(taskfilePath, 'docker-ce:')
+  })
+
+  Then('the docker-compose project name should match the directory name', function () { // eslint-disable-line no-undef
+    const composePath = resolvePath(this, 'project/docker-compose.yml')
+    const expectedSlug = path.basename(path.resolve(this.projectRoot))
+    assertFileContains(composePath, `name: ${expectedSlug}`)
   })
 }
 

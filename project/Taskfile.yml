@@ -56,6 +56,7 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project test phase"
         silent: true
+      - rm -rf tmp/tests
       - task: test:tdd
       - cmd: echo "✅ Project Test phase completed successfully"
         silent: true

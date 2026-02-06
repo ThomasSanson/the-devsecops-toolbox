@@ -9,7 +9,7 @@ Feature: Docker Compose Support
     Given a clean temporary directory for "docker/compose" tests
     And a project was generated with container runtime "docker"
     Then the "project/docker-compose.yml" file should exist
-    And the file "project/docker-compose.yml" should contain "name:"
+    And the docker-compose project name should match the directory name
     And the file "project/docker-compose.yml" should contain "networks:"
     And the file "project/docker-compose.yml" should contain "# include:"
     And the file "project/docker-compose.yml" should contain "#   - your_service/docker-compose.yml"
