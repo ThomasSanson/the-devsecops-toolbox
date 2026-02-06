@@ -16,6 +16,28 @@ vars:
   TASK_MEGALINTER_CONTAINER_NAME: '{{.TASK_MEGALINTER_CONTAINER_NAME | default "megalinter-container"}}'
   TASK_MEGALINTER_IMAGE_PREFIX: '{{.TASK_MEGALINTER_IMAGE_PREFIX | default ""}}'
 
+  # Proxy forwarding (transparent: only set if proxy env vars exist)
+  TASK_MEGALINTER_PROXY_DOCKER_ARGS:
+    sh: |
+      args=""
+      [ -n "${HTTP_PROXY:-}" ] && args="$args -e HTTP_PROXY=$HTTP_PROXY"
+      [ -n "${HTTPS_PROXY:-}" ] && args="$args -e HTTPS_PROXY=$HTTPS_PROXY"
+      [ -n "${NO_PROXY:-}" ] && args="$args -e NO_PROXY=$NO_PROXY"
+      [ -n "${http_proxy:-}" ] && args="$args -e http_proxy=$http_proxy"
+      [ -n "${https_proxy:-}" ] && args="$args -e https_proxy=$https_proxy"
+      [ -n "${no_proxy:-}" ] && args="$args -e no_proxy=$no_proxy"
+      echo "$args"
+  TASK_MEGALINTER_PROXY_NPX_ARGS:
+    sh: |
+      args=""
+      [ -n "${HTTP_PROXY:-}" ] && args="$args --env HTTP_PROXY=${HTTP_PROXY}"
+      [ -n "${HTTPS_PROXY:-}" ] && args="$args --env HTTPS_PROXY=${HTTPS_PROXY}"
+      [ -n "${NO_PROXY:-}" ] && args="$args --env NO_PROXY=${NO_PROXY}"
+      [ -n "${http_proxy:-}" ] && args="$args --env http_proxy=${http_proxy}"
+      [ -n "${https_proxy:-}" ] && args="$args --env https_proxy=${https_proxy}"
+      [ -n "${no_proxy:-}" ] && args="$args --env no_proxy=${no_proxy}"
+      echo "$args"
+
 tasks:
   default:
     desc: 🔍 Run MegaLinter (default method)
@@ -49,7 +71,7 @@ tasks:
       - docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - rm -rf ./megalinter-reports
       - defer: (docker cp {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint/megalinter-reports ./megalinter-reports && chown -R $(id -u):$(id -g) megalinter-reports) || true; docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
-      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE_PREFIX}}oxsecurity/megalinter:v{{.TASK_MEGALINTER_VERSION}} infinity
+      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE_PREFIX}}oxsecurity/megalinter:v{{.TASK_MEGALINTER_VERSION}} infinity
       - docker cp {{.USER_WORKING_DIR}} {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint
       - docker exec {{.TASK_MEGALINTER_CONTAINER_NAME}} /bin/bash /entrypoint.sh
       - cmd: echo "🎉 All files correctly linted with megalinter!"
@@ -72,6 +94,21 @@ tasks:
         silent: true
       - MEGALINTER_CONFIG=.config/megalinter/config.yml pnpm dlx --package mega-linter-runner@{{.TASK_MEGALINTER_VERSION}} mega-linter-runner
       - cmd: echo "🎉 All files correctly linted with megalinter!"
+        silent: true
+
+  proxy:debug:
+    desc: 🔍 Display resolved proxy arguments for debugging
+    summary: |
+      ℹ️ Description:
+        Displays the proxy arguments that would be passed to MegaLinter Docker containers.
+        Useful for verifying proxy configuration without running MegaLinter.
+
+      🔄 Execution:
+        Echoes resolved TASK_MEGALINTER_PROXY_DOCKER_ARGS and TASK_MEGALINTER_PROXY_NPX_ARGS
+    cmds:
+      - cmd: echo "DOCKER_PROXY_ARGS={{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}}"
+        silent: true
+      - cmd: echo "NPX_PROXY_ARGS={{.TASK_MEGALINTER_PROXY_NPX_ARGS}}"
         silent: true
 
   npx:
@@ -101,6 +138,7 @@ tasks:
           --release v{{.TASK_MEGALINTER_VERSION}}
           --env 'MEGALINTER_CONFIG={{.TASK_MEGALINTER_CONFIG}}'
           {{if .TASK_MEGALINTER_FLAVOR}}--env 'MEGALINTER_FLAVOR={{.TASK_MEGALINTER_FLAVOR}}'{{end}}
+          {{.TASK_MEGALINTER_PROXY_NPX_ARGS}}
           {{.CLI_ARGS}}
       - cmd: echo '🎉 MegaLinter (npx) analysis completed successfully.'
         silent: true

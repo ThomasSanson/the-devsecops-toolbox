@@ -5,6 +5,8 @@
  */
 
 const { resolvePath } = require('../step_objects/content') // Using content.js for path resolution
+const { getKeyValuePairs } = require('../step_objects/tables')
+const { execSync } = require('child_process')
 const fs = require('fs')
 
 function register () {
@@ -63,6 +65,44 @@ function register () {
 
     if (!found) {
       throw new Error(`Task "${taskName}" in ${relativePath} does not contain command: "${expectedCommand}".`)
+    }
+  })
+
+  /**
+   * Run a task in the generated project directory with specific env vars
+   *
+   * Example:
+   *   When I run task "megalinter:proxy:debug" in the generated project with env vars:
+   *     | HTTP_PROXY | http://proxy.test:8080 |
+   */
+  When('I run task {string} in the generated project with env vars:', function (taskName, dataTable) { // eslint-disable-line no-undef
+    const envVars = getKeyValuePairs(dataTable)
+    const envPrefix = Object.entries(envVars)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ')
+
+    this.taskOutput = execSync(`${envPrefix} task ${taskName}`, {
+      encoding: 'utf8',
+      cwd: this.projectRoot
+    }).trim()
+  })
+
+  When('I run task {string} in the generated project', function (taskName) { // eslint-disable-line no-undef
+    this.taskOutput = execSync(`task ${taskName}`, {
+      encoding: 'utf8',
+      cwd: this.projectRoot
+    }).trim()
+  })
+
+  Then('the task output should contain {string}', function (expected) { // eslint-disable-line no-undef
+    if (!this.taskOutput || !this.taskOutput.includes(expected)) {
+      throw new Error(`Expected task output to contain "${expected}", but got: "${this.taskOutput || ''}"`)
+    }
+  })
+
+  Then('the task output should not contain {string}', function (unexpected) { // eslint-disable-line no-undef
+    if (this.taskOutput && this.taskOutput.includes(unexpected)) {
+      throw new Error(`Expected task output NOT to contain "${unexpected}", but it was found in: "${this.taskOutput}"`)
     }
   })
 }
