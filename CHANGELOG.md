@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 18.0.0 (2026-02-06)
+
+### Feat
+
+- **gitlab-ci**: add conditional Docker variables, prompts, and tests
+- **dev**: add lefthook to setup-environment and tests for Taskfile
+- **proxy**: split proxy_urls into http_proxy, https_proxy and no_proxy
+
 ## 17.2.5 (2026-02-06)
 
 ### Fix
