@@ -7,6 +7,18 @@ vars:
   TASK_GITLEAKS_CONFIG: '{{.TASK_GITLEAKS_CONFIG | default ".config/gitleaks/config.toml"}}'
   TASK_GITLEAKS_VERBOSE: '{{.TASK_GITLEAKS_VERBOSE | default "true"}}'
 
+  # Proxy forwarding (transparent: only set if proxy env vars exist)
+  TASK_GITLEAKS_PROXY_ARGS:
+    sh: |
+      args=""
+      [ -n "${HTTP_PROXY:-}" ] && args="$args -e HTTP_PROXY=$HTTP_PROXY"
+      [ -n "${HTTPS_PROXY:-}" ] && args="$args -e HTTPS_PROXY=$HTTPS_PROXY"
+      [ -n "${NO_PROXY:-}" ] && args="$args -e NO_PROXY=$NO_PROXY"
+      [ -n "${http_proxy:-}" ] && args="$args -e http_proxy=$http_proxy"
+      [ -n "${https_proxy:-}" ] && args="$args -e https_proxy=$https_proxy"
+      [ -n "${no_proxy:-}" ] && args="$args -e no_proxy=$no_proxy"
+      echo "$args"
+
 tasks:
   default:
     desc: Scan the repository for secrets using gitleaks (full scan).
@@ -51,6 +63,7 @@ tasks:
           if ! docker run --rm \
             -v "{{.ROOT_DIR}}:/path" \
             -w /path \
+            {{.TASK_GITLEAKS_PROXY_ARGS}} \
             {{.TASK_GITLEAKS_IMAGE}} \
             detect \
             --source="/path" \
@@ -92,6 +105,7 @@ tasks:
           if ! docker run --rm \
             -v "{{.ROOT_DIR}}:/path" \
             -w /path \
+            {{.TASK_GITLEAKS_PROXY_ARGS}} \
             {{.TASK_GITLEAKS_IMAGE}} \
             protect \
             --source="/path" \
@@ -153,6 +167,7 @@ tasks:
           if ! docker run --rm \
             -v "{{.ROOT_DIR}}:/path" \
             -w /path \
+            {{.TASK_GITLEAKS_PROXY_ARGS}} \
             {{.TASK_GITLEAKS_IMAGE}} \
             detect \
             --source="/path" \
@@ -165,4 +180,17 @@ tasks:
           fi
         silent: true
       - cmd: echo "🎉 No secrets detected in branch commits."
+        silent: true
+
+  proxy:debug:
+    desc: 🔍 Display resolved proxy arguments for debugging
+    summary: |
+      ℹ️ Description:
+        Displays the proxy arguments that would be passed to Gitleaks Docker containers.
+        Useful for verifying proxy configuration without running Gitleaks.
+
+      🔄 Execution:
+        Echoes resolved TASK_GITLEAKS_PROXY_ARGS
+    cmds:
+      - cmd: echo "PROXY_ARGS={{.TASK_GITLEAKS_PROXY_ARGS}}"
         silent: true
