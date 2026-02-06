@@ -2,6 +2,18 @@
 
 # Changelog
 
+## 17.2.5 (2026-02-06)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.5
+
+## 17.2.4 (2026-02-06)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.10.11
+
 ## 17.2.3 (2026-02-05)
 
 ### Fix
