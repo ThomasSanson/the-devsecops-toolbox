@@ -1,29 +1,18 @@
 /**
  * GitLab Domain Steps
  *
- * Steps for testing GitLab CI tags and proxy configuration.
+ * Steps for testing GitLab CI tags configuration.
  */
 
 const fs = require('fs')
 const { resolvePath } = require('../step_objects/content')
 const { executeCopier } = require('../step_objects/commands')
 const { assertFileExists, assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
-const { getKeyValuePairs } = require('../step_objects/tables')
 
 function register () {
   // Given - Tags
   Given('a project was generated with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { ci_platform: ciPlatform })
-  })
-
-  // Given - Proxy
-  Given('a project was generated with proxy disabled', function () { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: false })
-  })
-
-  Given('a project was generated with proxy enabled and proxies configured with:', function (dataTable) { // eslint-disable-line no-undef
-    const proxies = getKeyValuePairs(dataTable)
-    executeCopier(this.projectRoot, { proxy_enabled: true, ...proxies })
   })
 
   // When - CI Platform
@@ -33,25 +22,6 @@ function register () {
 
   When('the project is updated with CI platform {string}', function (ciPlatform) { // eslint-disable-line no-undef
     executeCopier(this.projectRoot, { ci_platform: ciPlatform }, { force: true })
-  })
-
-  // When - Proxy
-  When('the copier command is executed with proxy enabled {string}', function (enabled) { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true' })
-  })
-
-  When('the copier command is executed with proxy enabled {string} and proxies configured with:', function (enabled, dataTable) { // eslint-disable-line no-undef
-    const proxies = getKeyValuePairs(dataTable)
-    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', ...proxies })
-  })
-
-  When('the project is updated with proxy enabled {string} and proxies configured with:', function (enabled, dataTable) { // eslint-disable-line no-undef
-    const proxies = getKeyValuePairs(dataTable)
-    executeCopier(this.projectRoot, { proxy_enabled: enabled === 'true', ...proxies }, { force: true })
-  })
-
-  When('the project is updated with proxy disabled', function () { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot, { proxy_enabled: false }, { force: true })
   })
 
   // Then - Tags
@@ -86,13 +56,6 @@ function register () {
     assertFileNotContains(codeYmlPath, 'saas-linux-medium-amd64')
   })
 
-  // Then - Proxy
-  Then('the GitLab CI variables should NOT contain proxy configuration', function () { // eslint-disable-line no-undef
-    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
-    assertFileNotContains(variablesPath, 'HTTP_PROXY')
-    assertFileNotContains(variablesPath, 'HTTPS_PROXY')
-  })
-
   Then('the GitLab CI variables should contain {string}', function (content) { // eslint-disable-line no-undef
     const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
     assertFileContains(variablesPath, content)
@@ -101,31 +64,6 @@ function register () {
   Then('the GitLab CI variables should NOT contain {string}', function (content) { // eslint-disable-line no-undef
     const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
     assertFileNotContains(variablesPath, content)
-  })
-
-  Then('the GitLab CI variables should contain HTTP_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
-    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
-    assertFileContains(variablesPath, `HTTP_PROXY: "${proxyUrl}"`)
-  })
-
-  Then('the GitLab CI variables should contain HTTPS_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
-    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
-    assertFileContains(variablesPath, `HTTPS_PROXY: "${proxyUrl}"`)
-  })
-
-  Then('the GitLab CI variables should contain NO_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
-    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
-    assertFileContains(variablesPath, `NO_PROXY: "${proxyUrl}"`)
-  })
-
-  Then('the {string} file should contain proxy variables', function (fileName) { // eslint-disable-line no-undef
-    const filePath = resolvePath(this, fileName)
-    assertFileContains(filePath, 'HTTP_PROXY')
-  })
-
-  Then('the {string} file should NOT contain proxy variables', function (fileName) { // eslint-disable-line no-undef
-    const filePath = resolvePath(this, fileName)
-    assertFileNotContains(filePath, 'HTTP_PROXY')
   })
 }
 

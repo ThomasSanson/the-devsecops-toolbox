@@ -45,29 +45,6 @@ devsecops_automerge:
   help: Enable automerge for DevSecOps Toolbox updates?
   default: true
 
-proxy_enabled:
-  type: bool
-  help: Do you need to configure proxy settings for CI/CD jobs?
-  default: false
-
-http_proxy:
-  type: str
-  help: HTTP Proxy URL (e.g. http://proxy.example.com:8080)
-  default: ""
-  when: "{{ proxy_enabled }}"
-
-https_proxy:
-  type: str
-  help: HTTPS Proxy URL (e.g. https://proxy.example.com:8443)
-  default: ""
-  when: "{{ proxy_enabled }}"
-
-no_proxy:
-  type: str
-  help: NO_PROXY list (comma-separated)
-  default: "localhost,127.0.0.1,docker,*.local"
-  when: "{{ proxy_enabled }}"
-
 project_enabled:
   type: bool
   help: Would you like to enable the project workspace (backend, frontend, data, auth, analytics, tests) to manage component-specific tasks?

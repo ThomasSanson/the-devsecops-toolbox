@@ -79,15 +79,3 @@ variables:
   TASK_DEVSECOPS_RELEASE_DEPLOY_KEY: $CZ_DEPLOY_KEY
   TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: $CI_SERVER_SHELL_SSH_HOST
   TASK_DEVSECOPS_RELEASE_PROJECT_PATH: $CI_PROJECT_PATH
-{%- if proxy_enabled %}
-  # Proxy configuration
-  {%- if http_proxy %}
-  HTTP_PROXY: "{{ http_proxy }}"
-  {%- endif %}
-  {%- if https_proxy %}
-  HTTPS_PROXY: "{{ https_proxy }}"
-  {%- endif %}
-  {%- if no_proxy %}
-  NO_PROXY: "{{ no_proxy }}"
-  {%- endif %}
-{%- endif %}
