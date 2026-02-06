@@ -8,6 +8,7 @@ variables:
 
   GIT_STRATEGY: clone
   GIT_DEPTH: 0
+
   # When using dind service, you must instruct Docker to talk with
   # the daemon started inside of the service. The daemon is available
   # with a network connection instead of the default
@@ -30,16 +31,16 @@ variables:
   # Kubernetes executor doesn't run entrypoints
   # https://gitlab.com/gitlab-org/gitlab-runner/-/issues/4125
   DOCKER_TLS_VERIFY: 1
-
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  DOCKER_DRIVER: overlay2
   # Docker BuildKit settings
   DOCKER_BUILDKIT: "1" # Enable Docker BuildKit at the Docker engine level
+
   TASK_DOCKER_CE_BUILDKIT_ENABLED: "true" # Enable BuildKit in our Taskfile
   TASK_DOCKER_CE_BUILDKIT_CACHE_TYPE: "registry" # Use registry-based caching
   TASK_DOCKER_CE_AUTH_ENABLED: "true" # Enable registry authentication
   TASK_DOCKER_CE_PUSH: "true" # Enable pushing to registry including cache images
 
-  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
-  DOCKER_DRIVER: overlay2
   CZ_ALLOW_PUSH: "true"
   # Variables for the init Taskfile
   TASK_DEV_INIT_PROJECT_DIR: $CI_PROJECT_DIR
