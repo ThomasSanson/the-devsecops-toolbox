@@ -17,6 +17,29 @@ ci_platform:
     GitLab Self-Hosted: gitlab_self_hosted
   default: gitlab_saas
 
+gitlab_docker_host:
+  type: str
+  help: |
+    Value for DOCKER_HOST variable.
+    Leave empty to use the runner's default context (e.g. for shell executors or if DOCKER_HOST is injected).
+  default: ""
+  when: "{{ ci_platform == 'gitlab_self_hosted' }}"
+
+gitlab_docker_tls_certdir:
+  type: str
+  help: |
+    Value for DOCKER_TLS_CERTDIR variable.
+    Set to "" (empty string) to disable TLS certificate generation.
+    Default for SaaS is "/certs".
+  default: ""
+  when: "{{ ci_platform == 'gitlab_self_hosted' }}"
+
+gitlab_docker_driver:
+  type: str
+  help: Value for DOCKER_DRIVER variable.
+  default: overlay2
+  when: "{{ ci_platform == 'gitlab_self_hosted' }}"
+
 devsecops_automerge:
   type: bool
   help: Enable automerge for DevSecOps Toolbox updates?

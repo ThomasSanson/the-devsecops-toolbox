@@ -93,6 +93,16 @@ function register () {
     assertFileNotContains(variablesPath, 'HTTPS_PROXY')
   })
 
+  Then('the GitLab CI variables should contain {string}', function (content) { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileContains(variablesPath, content)
+  })
+
+  Then('the GitLab CI variables should NOT contain {string}', function (content) { // eslint-disable-line no-undef
+    const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
+    assertFileNotContains(variablesPath, content)
+  })
+
   Then('the GitLab CI variables should contain HTTP_PROXY {string}', function (proxyUrl) { // eslint-disable-line no-undef
     const variablesPath = resolvePath(this, '.config/gitlab/ci/variables.yml')
     assertFileContains(variablesPath, `HTTP_PROXY: "${proxyUrl}"`)
