@@ -6,6 +6,7 @@ vars:
   TASK_GITLEAKS_IMAGE: '{{.TASK_GITLEAKS_IMAGE | default "zricethezav/gitleaks:latest"}}'
   TASK_GITLEAKS_CONFIG: '{{.TASK_GITLEAKS_CONFIG | default ".config/gitleaks/config.toml"}}'
   TASK_GITLEAKS_VERBOSE: '{{.TASK_GITLEAKS_VERBOSE | default "true"}}'
+  TASK_GITLEAKS_CONTAINER_NAME: '{{.TASK_GITLEAKS_CONTAINER_NAME | default "gitleaks-container"}}'
 
   # Proxy forwarding (transparent: only set if proxy env vars exist)
   TASK_GITLEAKS_PROXY_ARGS:
@@ -59,13 +60,13 @@ tasks:
     cmds:
       - cmd: echo "🔍 Scanning repository for secrets with gitleaks"
         silent: true
+      - docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_GITLEAKS_CONTAINER_NAME}} {{.TASK_GITLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_GITLEAKS_IMAGE}} infinity
+      - docker cp {{.ROOT_DIR}}/. {{.TASK_GITLEAKS_CONTAINER_NAME}}:/path
       - cmd: |
-          if ! docker run --rm \
-            -v "{{.ROOT_DIR}}:/path" \
-            -w /path \
-            {{.TASK_GITLEAKS_PROXY_ARGS}} \
-            {{.TASK_GITLEAKS_IMAGE}} \
-            detect \
+          if ! docker exec {{.TASK_GITLEAKS_CONTAINER_NAME}} \
+            gitleaks detect \
             --source="/path" \
             --config="/path/{{.TASK_GITLEAKS_CONFIG}}" \
             --no-git \
@@ -101,13 +102,13 @@ tasks:
     cmds:
       - cmd: echo "🔍 Scanning staged files for secrets with gitleaks"
         silent: true
+      - docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_GITLEAKS_CONTAINER_NAME}} {{.TASK_GITLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_GITLEAKS_IMAGE}} infinity
+      - docker cp {{.ROOT_DIR}}/. {{.TASK_GITLEAKS_CONTAINER_NAME}}:/path
       - cmd: |
-          if ! docker run --rm \
-            -v "{{.ROOT_DIR}}:/path" \
-            -w /path \
-            {{.TASK_GITLEAKS_PROXY_ARGS}} \
-            {{.TASK_GITLEAKS_IMAGE}} \
-            protect \
+          if ! docker exec {{.TASK_GITLEAKS_CONTAINER_NAME}} \
+            gitleaks protect \
             --source="/path" \
             --config="/path/{{.TASK_GITLEAKS_CONFIG}}" \
             --staged \
@@ -159,17 +160,17 @@ tasks:
             git fetch --depth=100 origin {{.BASE_BRANCH}}:refs/remotes/origin/{{.BASE_BRANCH}} 2>/dev/null || true
           fi
         silent: false
+      - docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_GITLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_GITLEAKS_CONTAINER_NAME}} {{.TASK_GITLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_GITLEAKS_IMAGE}} infinity
+      - docker cp {{.ROOT_DIR}}/. {{.TASK_GITLEAKS_CONTAINER_NAME}}:/path
       # Find merge-base and scan only branch commits
       - cmd: |
-          MERGE_BASE=$(git merge-base origin/{{.BASE_BRANCH}} HEAD 2>/dev/null || echo "origin/{{.BASE_BRANCH}}")
+          MERGE_BASE=$(docker exec {{.TASK_GITLEAKS_CONTAINER_NAME}} git merge-base origin/{{.BASE_BRANCH}} HEAD 2>/dev/null || echo "origin/{{.BASE_BRANCH}}")
           echo "🔍 Scanning commits from ${MERGE_BASE} to HEAD"
 
-          if ! docker run --rm \
-            -v "{{.ROOT_DIR}}:/path" \
-            -w /path \
-            {{.TASK_GITLEAKS_PROXY_ARGS}} \
-            {{.TASK_GITLEAKS_IMAGE}} \
-            detect \
+          if ! docker exec {{.TASK_GITLEAKS_CONTAINER_NAME}} \
+            gitleaks detect \
             --source="/path" \
             --config="/path/{{.TASK_GITLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \

@@ -11,5 +11,10 @@ paths = [
   '''.*/sealed-secrets\.yaml''',
   '''.*/secrets\.yaml''',
   '''.*\.env''',
-  '''.*\.env\.dev'''
+  '''.*\.env\.dev''',
+  '''(^|/)\.cache/''',
+  '''(^|/)tmp/''',
+  '''(^|/)megalinter-reports/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)venv/'''
 ]
