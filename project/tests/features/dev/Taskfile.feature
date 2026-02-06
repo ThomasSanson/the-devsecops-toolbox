@@ -17,3 +17,9 @@ Feature: Dev Taskfile Standardization
     Given a clean temporary directory for "dev/taskfile" tests
     When the copier command is executed with default settings
     Then the file ".config/dev/Taskfile.yml" should contain ".config/glab/install.sh"
+
+  @lefthook-integration
+  Scenario: Verify lefthook is integrated into setup-environment
+    Given a clean temporary directory for "dev/taskfile" tests
+    When the copier command is executed with default settings
+    Then the task "setup-environment" in file ".config/dev/Taskfile.yml" should contain "- task: lefthook"

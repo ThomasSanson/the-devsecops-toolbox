@@ -28,7 +28,8 @@ exports.config = {
       './steps/kubeseal.js',
       './steps/podman.js',
       './steps/renovate.js',
-      './steps/system.js'
+      './steps/system.js',
+      './steps/taskfile.js'
     ]
   },
   name: 'devsecops-toolbox-tests'

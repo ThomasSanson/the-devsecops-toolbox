@@ -59,6 +59,7 @@ tasks:
       - .config/pipx/install.sh
       - .config/go/install.sh
       - .config/glab/install.sh
+      - task: lefthook
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true
 
@@ -76,7 +77,6 @@ tasks:
       - cmd: echo "🔄 Starting project launch sequence"
         silent: true
       - task: setup-environment
-      - task: lefthook
       - task: :deploy
       - cmd: echo "=> Run 'task dev:reset to destroy and cleanup"
         silent: true
