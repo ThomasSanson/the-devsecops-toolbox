@@ -48,10 +48,6 @@ function register () {
     initTestContext(this, 'devsecops', 'scaffolding')
   })
 
-  Given('the copier command is executed to generate a project from the template', function () { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot)
-  })
-
   Given('a generated project from the Copier template with the following answers:', function (table) { // eslint-disable-line no-undef
     initTestContext(this, 'devsecops', 'custom-answers')
     // const rows = getTableRows(table)
@@ -68,11 +64,6 @@ function register () {
     })
 
     executeCopier(this.projectRoot, answers)
-  })
-
-  // Generic copier execution
-  When('the copier command is executed to generate a project from the template', function () { // eslint-disable-line no-undef
-    executeCopier(this.projectRoot)
   })
 
   When('the copier command is executed with default settings', function () { // eslint-disable-line no-undef
