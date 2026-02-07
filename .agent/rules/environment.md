@@ -22,6 +22,30 @@ Environment files MUST be at repository root, not in subdirectories.
 - ❌ NEVER hardcode secrets in code
 - ❌ NEVER modify `.config/` contents
 
+## Environment Layering
+
+Taskfile loads dotenv files by priority (first wins):
+
+```
+dotenv: [".env", ".env.dev", ".env.dist"]
+```
+
+| File | Versioned | Secrets | Purpose |
+|------|-----------|---------|---------|
+| `.env` | ❌ gitignored | ✅ real secrets | Production/staging overrides |
+| `.env.dev` | ✅ versioned | ⚠️ dev only | Development defaults (safe for local dev) |
+| `.env.dist` | ✅ versioned | ❌ never | Base defaults for all environments |
+
+### Per environment
+
+- **Development**: `.env.dev` + `.env.dist` — works out of the box, no manual setup
+- **Production/Staging**: delete `.env.dev`, create `.env` with real values + `.env.dist`
+
+### AI agents
+
+- ❌ NEVER create or modify `.env` — reserved for production deployments
+- ✅ Use `.env.dist` for defaults and `.env.dev` for dev overrides
+
 ## Adding new variables
 
 1. Add default value in `.env.dist` at root
