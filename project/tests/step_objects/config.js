@@ -19,9 +19,6 @@ const CONFIG = {
   maxSlugLength: 80
 }
 
-// Counters per domain/feature for unique scenario IDs
-const scenarioCounters = {}
-
 /**
  * Slugify a string for use as a directory name
  * @param {string} str - String to slugify
@@ -33,21 +30,6 @@ function slugify (str) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .substring(0, CONFIG.maxSlugLength)
-}
-
-/**
- * Generate a unique scenario ID for a domain/feature combination
- * @param {string} domain - Domain name
- * @param {string} feature - Feature name
- * @returns {string} Unique scenario ID (e.g., "scenario-001")
- */
-function generateScenarioId (domain, feature) {
-  const key = `${domain}/${feature}`
-  if (!scenarioCounters[key]) {
-    scenarioCounters[key] = 0
-  }
-  scenarioCounters[key]++
-  return `scenario-${String(scenarioCounters[key]).padStart(3, '0')}`
 }
 
 /**
@@ -89,22 +71,10 @@ function resolveProjectPath (context, ...parts) {
   return path.join(getProjectRoot(context), ...parts)
 }
 
-/**
- * Legacy support: Get base path for a domain (deprecated)
- * @param {string} domain - The domain name
- * @returns {string} The base test path
- * @deprecated Use getScenarioPath with context instead
- */
-function getBasePath (domain) {
-  return path.join(CONFIG.basePath, slugify(domain))
-}
-
 module.exports = {
   CONFIG,
   slugify,
-  generateScenarioId,
   getScenarioPath,
   getProjectRoot,
-  resolveProjectPath,
-  getBasePath
+  resolveProjectPath
 }
