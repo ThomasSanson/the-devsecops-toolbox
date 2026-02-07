@@ -4,9 +4,11 @@
  * Steps for testing project mode, phases, and coverage.
  */
 
+const path = require('path')
+const fs = require('fs')
 const { resolvePath } = require('../step_objects/content')
 const { executeCopier, executeCommand, initGitRepo, createInitialCommit } = require('../step_objects/commands')
-const { deleteFileIfExists } = require('../step_objects/filesystem')
+const { deleteFileIfExists, ensureDir } = require('../step_objects/filesystem')
 const { assertFileExists, assertFileContains, assertFileNotContains, assertDirExists } = require('../step_objects/assertions')
 const { getTableCells } = require('../step_objects/tables')
 const { resolveProjectPath } = require('../step_objects/config')
@@ -160,6 +162,67 @@ function register () {
       const taskDefinition = `${taskName}:`
       assertFileContains(taskfilePath, taskDefinition)
     })
+  })
+
+  // Build coverage script steps
+  Given('a minimal project with a non-flatten Taskfile include', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'devsecops', 'build-coverage-script')
+    const root = this.projectRoot
+
+    // Root Taskfile with a non-flatten include using "project:" namespace
+    // This matches the default TASK_PREFIX so the script can find "project:build"
+    fs.writeFileSync(path.join(root, 'Taskfile.yml'), [
+      '---',
+      "version: '3'",
+      'includes:',
+      '  project:',
+      '    taskfile: services/Taskfile.yml',
+      'tasks: {}',
+      ''
+    ].join('\n'))
+
+    // Included Taskfile with a build task
+    ensureDir(path.join(root, 'services'))
+    fs.writeFileSync(path.join(root, 'services', 'Taskfile.yml'), [
+      '---',
+      "version: '3'",
+      'tasks:',
+      '  build:',
+      '    cmds:',
+      '      - echo "build"',
+      ''
+    ].join('\n'))
+
+    // Docker compose file at the root of the scan directory
+    ensureDir(path.join(root, 'project'))
+    fs.writeFileSync(path.join(root, 'project', 'docker-compose.yml'), [
+      '---',
+      "version: '3'",
+      'services:',
+      '  app:',
+      '    image: alpine',
+      ''
+    ].join('\n'))
+  })
+
+  When('the build coverage check is executed', function () { // eslint-disable-line no-undef
+    const scriptPath = path.resolve(process.cwd(), '.config/devsecops/scripts/check-build-coverage.sh')
+    const cmd = `PROJECT_ROOT=${this.projectRoot} bash ${scriptPath}`
+    try {
+      this.buildCoverageOutput = executeCommand(cmd, { silent: true })
+      this.buildCoverageError = null
+    } catch (err) {
+      this.buildCoverageError = err
+      this.buildCoverageOutput = err.message
+    }
+  })
+
+  Then('the build coverage check should succeed', function () { // eslint-disable-line no-undef
+    if (this.buildCoverageError) {
+      throw new Error(
+        `Build coverage check failed unexpectedly:\n${this.buildCoverageOutput}`
+      )
+    }
   })
 }
 

@@ -193,7 +193,7 @@ for taskfile in $(find "$PROJECT_ROOT" -type f \( -name "Taskfile.yml" -o -name 
     [ -z "$task_name" ] && continue
 
     accessible_name="$task_name"
-    if [ -n "$namespace" ] && "${flatten_include}" != "true" && [[ "$task_name" != "$namespace:"* ]]; then
+    if [ -n "$namespace" ] && [ "${flatten_include}" != "true" ] && [[ "$task_name" != "$namespace:"* ]]; then
       accessible_name="${namespace}:${task_name}"
     fi
 
