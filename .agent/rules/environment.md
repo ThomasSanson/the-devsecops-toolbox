@@ -30,11 +30,11 @@ Taskfile loads dotenv files by priority (first wins):
 dotenv: [".env", ".env.dev", ".env.dist"]
 ```
 
-| File | Versioned | Secrets | Purpose |
-|------|-----------|---------|---------|
-| `.env` | ❌ gitignored | ✅ real secrets | Production/staging overrides |
-| `.env.dev` | ✅ versioned | ⚠️ dev only | Development defaults (safe for local dev) |
-| `.env.dist` | ✅ versioned | ❌ never | Base defaults for all environments |
+| File        | Versioned    | Secrets        | Purpose                                   |
+|-------------|--------------|----------------|-------------------------------------------|
+| `.env`      | ❌ gitignored | ✅ real secrets | Production/staging overrides              |
+| `.env.dev`  | ✅ versioned  | ⚠️ dev only    | Development defaults (safe for local dev) |
+| `.env.dist` | ✅ versioned  | ❌ never        | Base defaults for all environments        |
 
 ### Per environment
 
