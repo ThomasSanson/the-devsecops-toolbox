@@ -10,12 +10,27 @@ project/tests/
 ├── entrypoint.js         # Test hooks (Before/After)
 ├── features/             # Gherkin feature files
 │   ├── ansible/
-│   ├── commitizen/       # .config/commitizen tests
-│   ├── devsecops/        # Template scaffolding, project mode, structure
+│   ├── commitizen/
+│   ├── copier/
+│   ├── dependency-check/
+│   ├── dev/
+│   ├── devsecops/
 │   ├── docker/
+│   ├── git/
 │   ├── gitlab/
+│   ├── gitleaks/
+│   ├── glab/
+│   ├── kaniko/
+│   ├── kubectl/
+│   ├── kubeseal/
+│   ├── lefthook/
+│   ├── lizard/
+│   ├── megalinter/
 │   ├── podman/
-│   └── renovate/
+│   ├── project/
+│   ├── renovate/
+│   ├── sealed-secrets/
+│   └── yamllint/
 ├── step_objects/         # Reusable logic (helpers, assertions)
 │   ├── assertions.js     # File/directory assertions
 │   ├── commands.js       # Shell command execution
@@ -27,12 +42,15 @@ project/tests/
 │   └── testContext.js    # Test metadata tracking
 └── steps/                # Domain-specific Gherkin steps
     ├── ansible.js
-    ├── commitizen.js     # .config/commitizen tests
-    ├── devsecops.js      # Project mode, phases, coverage
+    ├── commitizen.js
+    ├── devsecops.js
     ├── docker.js
     ├── gitlab.js
+    ├── glab.js
     ├── podman.js
-    └── system.js         # Generic infrastructure steps
+    ├── renovate.js
+    ├── system.js         # Generic infrastructure steps
+    └── taskfile.js
 ```
 
 ## Conventions
@@ -69,5 +87,5 @@ Given a clean temporary directory for "docker/runtime" tests
 task test
 
 # Run tests with specific tag
-task codeceptjs:run -- --grep @ansible
+task test -- --grep "@ansible"
 ```
