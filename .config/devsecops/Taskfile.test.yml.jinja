@@ -241,7 +241,7 @@ tasks:
       - cmd: echo "🎉 Check-testing-environment phase completed successfully"
         silent: true
 
-  side_effect:
+  side-effect:
     desc: |
       ℹ️ Description:
         Simulates side effects to test system resilience in the following order:
@@ -250,11 +250,11 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting side effect simulation phase"
         silent: true
-      - task: side_effect:ansible
+      - task: side-effect:ansible
       - cmd: echo "🎉 Side effect simulation phase completed successfully"
         silent: true
 
-  side_effect:ansible:
+  side-effect:ansible:
     desc: |
       ℹ️ Description:
         Executes infrastructure disruption playbooks
@@ -310,7 +310,7 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting resilience validation phase"
         silent: true
-      - task: side_effect
+      - task: side-effect
       - task: verify
       - cmd: echo "🎉 Resilience validation phase completed successfully"
         silent: true
