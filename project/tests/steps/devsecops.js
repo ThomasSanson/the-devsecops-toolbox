@@ -224,6 +224,21 @@ function register () {
       )
     }
   })
+
+  // CodeceptJS Dockerfile steps
+  Given('the CodeceptJS Dockerfile exists', function () { // eslint-disable-line no-undef
+    const dockerfilePath = path.resolve(process.cwd(), '.config/codeceptjs/Dockerfile')
+    assertFileExists(dockerfilePath)
+    this.codeceptjsDockerfilePath = dockerfilePath
+  })
+
+  Then('the CodeceptJS Dockerfile should contain {string}', function (expected) { // eslint-disable-line no-undef
+    assertFileContains(this.codeceptjsDockerfilePath, expected)
+  })
+
+  Then('the CodeceptJS Dockerfile should NOT contain {string}', function (unexpected) { // eslint-disable-line no-undef
+    assertFileNotContains(this.codeceptjsDockerfilePath, unexpected)
+  })
 }
 
 // Auto-register when loaded by CodeceptJS
