@@ -47,7 +47,7 @@ RUN mkdir -p /home/$USER && \
 # Install Taskfile
 RUN .config/task/install.sh
 
-# Run setup task with login shell to ensure .bashrc is sourced
+# Install system-level dependencies as root (apt packages, global binaries)
 RUN --mount=type=secret,id=env_vars \
     bash -l -c 'task dev:setup-environment'
 
@@ -62,7 +62,7 @@ ENV USER=$USER
 # Add local bin to PATH (append, do not shadow system interpreters)
 ENV PATH="${PATH}:/home/${USER}/.local/bin"
 
-# Run setup task with login shell to ensure .bashrc is sourced
+# Install user-level tools as $USER (nvm, uv, pipx, go bins, lefthook)
 RUN --mount=type=secret,id=env_vars \
     bash -l -c 'task dev:setup-environment'
 
