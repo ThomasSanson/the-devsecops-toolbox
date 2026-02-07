@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 18.0.2 (2026-02-07)
+
+### Fix
+
+- **deps**: update mcr.microsoft.com/playwright docker tag to v1.58.2
+
 ## 18.0.1 (2026-02-07)
 
 ### Fix
