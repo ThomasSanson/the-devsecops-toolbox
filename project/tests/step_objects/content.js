@@ -60,6 +60,10 @@ function register () {
     assertFileNotExists(resolvePath(this, filePath))
   })
 
+  Then('the file {string} should exist', function (filePath) { // eslint-disable-line no-undef
+    assertFileExists(resolvePath(this, filePath))
+  })
+
   Then('the {string} file should exist in the {string} directory', function (fileName, dirPath) { // eslint-disable-line no-undef
     assertFileExists(resolvePath(this, dirPath, fileName))
   })

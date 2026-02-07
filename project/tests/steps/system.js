@@ -40,21 +40,6 @@ function register () {
     assertFileNotContains(filePath, unexpectedContent)
   })
 
-  // Existence checks
-  Then('the {string} file should exist', function (relativePath) { // eslint-disable-line no-undef
-    const { resolvePath } = require('../step_objects/content')
-    const { assertFileExists } = require('../step_objects/assertions')
-    const filePath = resolvePath(this, relativePath)
-    assertFileExists(filePath)
-  })
-
-  Then('the {string} file should NOT exist', function (relativePath) { // eslint-disable-line no-undef
-    const { resolvePath } = require('../step_objects/content')
-    const { assertFileNotExists } = require('../step_objects/assertions')
-    const filePath = resolvePath(this, relativePath)
-    assertFileNotExists(filePath)
-  })
-
   // Copier execution with data table
   When('the copier command is executed with:', function (table) { // eslint-disable-line no-undef
     const { executeCopier } = require('../step_objects/commands')
