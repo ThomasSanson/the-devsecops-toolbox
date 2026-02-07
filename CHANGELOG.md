@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 18.0.1 (2026-02-07)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.58.2
+
 ## 18.0.0 (2026-02-06)
 
 ### Feat
