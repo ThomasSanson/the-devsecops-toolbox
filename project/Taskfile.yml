@@ -6,7 +6,7 @@ vars:
   TASK_DOCKER_CE_DOCKERFILE: ".config/devcontainer/ubuntu/Dockerfile"
 
 tasks:
-  plan:
+  project:plan:
     desc: 🚀 Run project-specific plan tasks
     summary: |
       Orchestrates the plan phase.
@@ -17,7 +17,7 @@ tasks:
       - cmd: echo "✅ Project Plan phase completed successfully"
         silent: true
 
-  code:
+  project:code:
     desc: 🚀 Run project-specific code tasks
     summary: |
       Orchestrates the code phase.
@@ -28,7 +28,7 @@ tasks:
       - cmd: echo "✅ Project Code phase completed successfully"
         silent: true
 
-  build:
+  project:build:
     desc: 🚀 Run project-specific build tasks
     summary: |
       Orchestrates the build phase.
@@ -36,7 +36,7 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project build phase"
         silent: true
-      - task: :docker-ce:build
+      - task: docker-ce:build
         vars:
           TASK_DOCKER_CE_IMAGE_NAME: "{{.TASK_DOCKER_CE_IMAGE_NAME}}"
           TASK_DOCKER_CE_DOCKERFILE: "{{.TASK_DOCKER_CE_DOCKERFILE}}"
@@ -48,7 +48,7 @@ tasks:
       - cmd: echo "✅ Project Build phase completed successfully"
         silent: true
 
-  test:
+  project:test:
     desc: 🚀 Run project-specific test tasks
     summary: |
       Orchestrates the test phase.
@@ -56,12 +56,17 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project test phase"
         silent: true
-      - rm -rf tmp/tests
-      - task: test:tdd
+      - task: project:test:clean
+      - task: project:test:tdd
       - cmd: echo "✅ Project Test phase completed successfully"
         silent: true
 
-  test:tdd:
+  project:test:clean:
+    desc: 🧹 Clean test temporary directory
+    cmds:
+      - rm -rf tmp/tests
+
+  project:test:tdd:
     desc: 🚀 Run project-specific TDD test tasks
     summary: |
       Run tests in TDD mode.
@@ -69,15 +74,15 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project TDD test phase"
         silent: true
-      - task: :deploy
-      - task: :codeceptjs:npx
+      - task: deploy
+      - task: codeceptjs:npx
         vars:
           TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
           TASK_CODECEPTJS_CONFIG: "project/tests/codecept.conf.js"
       - cmd: echo "✅ Project TDD test phase completed successfully"
         silent: true
 
-  test:copier:
+  project:test:copier:
     desc: 🚀 Run project-specific copier test tasks
     summary: |
       Run Copier template tests.
@@ -85,7 +90,7 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project copier test phase"
         silent: true
-      - task: :codeceptjs
+      - task: codeceptjs
         vars:
           TASK_CODECEPTJS_GREP: "@copier"
           TASK_CODECEPTJS_ENABLED: "true"
@@ -93,13 +98,13 @@ tasks:
       - cmd: echo "✅ Project copier test phase completed successfully"
         silent: true
 
-  release:
+  project:release:
     desc: 🚀 Run project-specific release tasks
     summary: |
       Orchestrates the release phase.
       This task tags images, packages releases, and updates versions.
     deps:
-      - task: build
+      - task: project:build
         vars:
           TASK_DOCKER_CE_IMAGE_TAG:
             sh: |
@@ -109,7 +114,7 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project release phase"
         silent: true
-      - task: :docker-ce:push
+      - task: docker-ce:push
         vars:
           TASK_DOCKER_CE_PUSH:
             sh: |
@@ -127,7 +132,7 @@ tasks:
       - cmd: echo "✅ Project Release phase completed successfully"
         silent: true
 
-  deploy:
+  project:deploy:
     desc: 🚀 Run project-specific deploy tasks
     summary: |
       Orchestrates the deploy phase.
@@ -138,7 +143,7 @@ tasks:
       - cmd: echo "✅ Project Deploy phase completed successfully"
         silent: true
 
-  operate:
+  project:operate:
     desc: 🚀 Run project-specific operate tasks
     summary: |
       Orchestrates the operate phase.
@@ -149,7 +154,7 @@ tasks:
       - cmd: echo "✅ Project Operate phase completed successfully"
         silent: true
 
-  monitor:
+  project:monitor:
     desc: 🚀 Run project-specific monitor tasks
     summary: |
       Orchestrates the monitor phase.
@@ -160,7 +165,7 @@ tasks:
       - cmd: echo "✅ Project Monitor phase completed successfully"
         silent: true
 
-  feedback:
+  project:feedback:
     desc: 🚀 Run project-specific feedback tasks
     summary: |
       Orchestrates the feedback phase.

@@ -35,6 +35,7 @@ includes:
     taskfile: .config/devsecops/Taskfile.feedback.yml
   project:
     taskfile: project/Taskfile.yml
+    flatten: true
 
   # Optional includes (For dev, testing, linting, etc.)
   ansible:
