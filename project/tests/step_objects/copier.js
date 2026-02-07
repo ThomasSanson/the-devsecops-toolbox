@@ -9,7 +9,6 @@ const { removeDirRecursive, ensureDir } = require('./filesystem')
 const { executeCopier } = require('./commands')
 const { getProjectRoot, slugify } = require('./config')
 const { getCurrentTest } = require('./testContext')
-// const { getTableRows } = require('./tables')
 
 /**
  * Initialize test context with domain and auto-detected scenario name
@@ -50,7 +49,6 @@ function register () {
 
   Given('a generated project from the Copier template with the following answers:', function (table) { // eslint-disable-line no-undef
     initTestContext(this, 'devsecops', 'custom-answers')
-    // const rows = getTableRows(table)
     const answers = {}
 
     // Check if table has headers, or use raw parsing if needed
