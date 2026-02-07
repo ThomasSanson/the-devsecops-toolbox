@@ -61,5 +61,5 @@ function getArrayItemFromFile (context, dirPath, fileName, arrayProperty, matchS
   return item
 }
 
-module.exports = { register }
 register()
+module.exports = { register }
