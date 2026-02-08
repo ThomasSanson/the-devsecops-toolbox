@@ -17,6 +17,7 @@ EXCLUDED_DIRECTORIES:
   - .config/podman/roles
   - .git
   - megalinter-reports
+  - node_modules
   - vendor
   - venv
 
@@ -36,6 +37,7 @@ REPOSITORY_KINGFISHER_ARGUMENTS:
   - "--exclude=.config/podman/roles"
   - "--exclude=.git"
   - "--exclude=megalinter-reports"
+  - "--exclude=node_modules"
   - "--exclude=vendor"
   - "--exclude=venv"
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml

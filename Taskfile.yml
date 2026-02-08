@@ -41,9 +41,6 @@ includes:
   ansible:
     taskfile: .config/ansible/Taskfile.yml
     optional: true
-  bun:
-    taskfile: .config/bun/Taskfile.yml
-    optional: true
   codeceptjs:
     taskfile: .config/codeceptjs/Taskfile.yml
     optional: true

@@ -95,13 +95,6 @@ tasks:
       - cmd: echo "🎉 Development environment reset completed successfully"
         silent: true
 
-  bun:
-    internal: true
-    status:
-      - test "{{.TASK_BUN_ENABLED}}" = "false"
-    cmds:
-      - task: :bun:install
-
   docker-ce:
     internal: true
     status:

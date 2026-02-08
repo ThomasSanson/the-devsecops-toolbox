@@ -4,7 +4,7 @@ version: "3"
 vars:
   TASK_COMMITLINT_ENABLED: '{{.TASK_COMMITLINT_ENABLED | default "true"}}'
   TASK_COMMITLINT_DIR: '{{.TASK_COMMITLINT_DIR | default ".config/commitlint"}}'
-  TASK_COMMITLINT_COMMAND: '{{.TASK_COMMITLINT_COMMAND | default "$HOME/.bun/bin/bunx --install=force --bun commitlint"}}'
+  TASK_COMMITLINT_COMMAND: '{{.TASK_COMMITLINT_COMMAND | default ".config/commitlint/node_modules/.bin/commitlint"}}'
   TASK_COMMITLINT_CONFIG: '{{.TASK_COMMITLINT_CONFIG | default ".config/commitlint/config.yml"}}'
   TASK_COMMITLINT_FROM: '{{.TASK_COMMITLINT_FROM | default "origin/main"}}'
   TASK_COMMITLINT_TO: '{{.TASK_COMMITLINT_TO | default "HEAD"}}'
@@ -13,13 +13,13 @@ tasks:
   default:
     desc: Check commit messages with commitlint.
     deps:
-      - :bun:install
+      - install
     summary: |
       ℹ️ Description:
         Runs commitlint to check commit messages.
 
       🔧 Variables:
-        - TASK_COMMITLINT_COMMAND: Command to run commitlint. Default: "$HOME/.bun/bin/bunx commitlint"
+        - TASK_COMMITLINT_COMMAND: Command to run commitlint. Default: "npx commitlint"
         - TASK_COMMITLINT_CONFIG: Path to commitlint configuration file. Default: ".config/commitlint/config.yml"
         - TASK_COMMITLINT_FROM: Starting point for commit range. Default: "HEAD~1"
         - TASK_COMMITLINT_TO: Ending point for commit range. Default: "HEAD"
@@ -64,6 +64,20 @@ tasks:
           fi
         silent: true
       - cmd: echo '🎉 All commit messages passed commitlint checks.'
+        silent: true
+
+  install:
+    desc: Install commitlint dependencies.
+    internal: true
+    deps:
+      - :nodejs:install
+    status:
+      - test -d .config/commitlint/node_modules
+    cmds:
+      - cmd: echo "🔄 Installing commitlint dependencies"
+        silent: true
+      - npm install --prefix .config/commitlint
+      - cmd: echo '🎉 Commitlint dependencies installed.'
         silent: true
 
   lint-message:
