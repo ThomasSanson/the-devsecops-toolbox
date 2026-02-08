@@ -97,8 +97,22 @@ _message_after_copy: |
   Your DevSecOps project has been created successfully!
 
   Next steps:
-  1. Review the generated configuration files
-  2. Install the required dependencies:
+  1. Set up your local environment:
     $ task dev:setup-environment
-  3. Start using the DevSecOps pipeline with:
-    $ task
+
+  2. Configure GitLab CI/CD variables (Settings > CI/CD > Variables):
+    - CZ_DEPLOY_KEY  (type: File) — SSH deploy key for automated versioning
+    - RENOVATE_TOKEN (type: Variable, protected) — GitLab API token for Renovate
+
+  3. Customize your project:
+    - Edit project/Taskfile.yml to add your project-specific tasks
+    - Edit .env.dist for default configuration values
+    - Edit .env.dev for local development overrides
+
+  4. Start using the pipeline:
+    $ task          # Show available tasks
+    $ task code     # Run linters
+    $ task test     # Run tests
+
+  Documentation: docs/guidelines/
+  AI agents: see AGENTS.md
