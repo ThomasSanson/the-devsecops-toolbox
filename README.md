@@ -74,7 +74,9 @@ The DevSecOps Toolbox is a comprehensive toolset designed to streamline and enfo
 │   ├── docker-ce/   # Docker configuration
 │   └── ...          # Other tool configurations
 ├── .devcontainer/    # Development container configuration
-├── src/             # Source code
+├── project/         # Project-specific customization
+│   ├── Taskfile.yml # Project tasks (prefixed `project:*`)
+│   └── tests/       # Template tests (CodeceptJS + Gherkin)
 └── Taskfile.yml     # Task runner configuration
 ```
 
@@ -222,16 +224,15 @@ tasks:
     cmds:
       - custom-planning-command
 
-  code:
+  project:code:
     desc: Run project-specific code tasks
     cmds:
-      - npm test
-      - custom-linting
+      - echo "Add your project linting here"
 
-  build:
+  project:build:
     desc: Run project-specific build tasks
     cmds:
-      - docker build -t myproject .
+      - echo "Add your project build here"
 
   # ... other stages (test, release, deploy, operate, monitor, feedback)
 ```

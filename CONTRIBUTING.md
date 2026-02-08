@@ -173,7 +173,9 @@ Before contributing, familiarize yourself with the project structure:
 - `.devcontainer/` : Development container configuration
 - `docs/` : Additional documentation
   - `guidelines/` : DevSecOps guidelines and best practices
-- `src/` : Source code
+- `project/` : Project-specific customization
+  - `Taskfile.yml` : Project tasks (prefixed `project:*`)
+  - `tests/template/` : Template tests (CodeceptJS + Gherkin)
 
 ### DevSecOps Pipeline Structure
 
@@ -222,19 +224,21 @@ This project follows Test-Driven Development (TDD) principles, as outlined in th
     commit type: refactor(scope): improve implementation while maintaining test
 ```
 
-For writing tests, we use standard testing frameworks appropriate for each language:
+For writing tests, we use CodeceptJS with Gherkin (BDD) and Playwright.
 
-- JavaScript/TypeScript: Jest, Mocha, etc.
-- Python: pytest, unittest
-- Shell: bats or shunit2
-
-The test directory structure follows a standard organization:
+The test directory structure follows DDD organization:
 
 ```text
-tests/
-├── unit/         # Unit tests
-├── integration/  # Integration tests
-└── e2e/          # End-to-end tests
+project/tests/template/
+├── codecept.conf.js      # CodeceptJS configuration
+├── entrypoint.js         # Test hooks (Before/After)
+├── features/             # Gherkin feature files by domain
+│   ├── ansible/
+│   ├── devsecops/
+│   ├── docker/
+│   └── ...
+├── step_objects/          # Reusable logic (assertions, helpers)
+└── steps/                 # Domain-specific Gherkin steps
 ```
 
 When developing new features or fixing bugs, always follow the TDD cycle:

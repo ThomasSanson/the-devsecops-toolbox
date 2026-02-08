@@ -66,12 +66,11 @@
 ├── docs/                      # Documentation
 ├── project/                   # Project-specific customization
 │   ├── Taskfile.yml          # Project tasks (prefixed `project:*`)
-│   └── plugin/               # Template plugin (tests)
-│       └── tests/
-│           ├── e2e/codeceptjs/    # E2E test step definitions
-│           └── features/          # Gherkin feature files
-│               ├── copier/        # Copier scaffolding tests
-│               └── renovate/      # Renovate tests
+│   └── tests/template/       # Template tests (CodeceptJS + Gherkin)
+│       ├── codecept.conf.js  # CodeceptJS configuration
+│       ├── features/         # Gherkin feature files by domain
+│       ├── step_objects/     # Reusable logic (assertions, helpers)
+│       └── steps/            # Domain-specific Gherkin steps
 ├── Taskfile.yml              # Root orchestration
 └── Taskfile.yml.jinja        # Jinja template for Taskfile
 ```
@@ -187,25 +186,32 @@ task copier:update             # Update from template
 
 ### E2E Tests (CodeceptJS + Gherkin)
 
-**Configuration**: `project/plugin/tests/e2e/codeceptjs/codecept.conf.js`
+**Configuration**: `project/tests/template/codecept.conf.js`
 
-**Features Location**: `project/plugin/tests/features/`
+**Features Location**: `project/tests/template/features/`
 
-| Feature File                            | Purpose                     |
-|-----------------------------------------|-----------------------------|
-| `copier/scaffolding/default.feature`    | Core scaffolding validation |
-| `copier/scaffolding/project.feature`    | Project mode integration    |
-| `copier/scaffolding/ansible.feature`    | Ansible configuration       |
-| `renovate/renovate_plugin_only.feature` | Renovate validation         |
+Features are organized by domain (DDD):
+`ansible/`, `commitizen/`, `devsecops/`, `docker/`, `gitlab/`, `gitleaks/`, `glab/`, `renovate/`, etc.
 
-**Step Definitions**: `project/plugin/tests/e2e/codeceptjs/step_definitions/`
+**Step Definitions**: `project/tests/template/steps/`
 
-| File            | Purpose                  |
-|-----------------|--------------------------|
-| `copier.js`     | Copier scaffolding steps |
-| `project.js`    | Project mode steps       |
-| `ansible.js`    | Ansible steps            |
-| `entrypoint.js` | Main entrypoint          |
+| File           | Purpose                       |
+|----------------|-------------------------------|
+| `ansible.js`   | Ansible integration steps     |
+| `devsecops.js` | DevSecOps scaffolding steps   |
+| `docker.js`    | Docker/Podman runtime steps   |
+| `gitlab.js`    | GitLab CI configuration steps |
+| `system.js`    | Generic infrastructure steps  |
+| `taskfile.js`  | Taskfile documentation steps  |
+
+**Step Objects**: `project/tests/template/step_objects/`
+
+| File            | Purpose                            |
+|-----------------|------------------------------------|
+| `copier.js`     | Copier execution helpers           |
+| `content.js`    | Content assertion step definitions |
+| `assertions.js` | File/directory assertions          |
+| `commands.js`   | Shell command execution            |
 
 ### Test Execution
 ```bash
@@ -240,7 +246,7 @@ task codeceptjs:npx TASK_CODECEPTJS_GREP="@copier"
 - `.config/gitlab/ci/workflow.yml`
 - `.config/gitlab/ci/devsecops/*.yml` (9 phase files)
 
-**Base Image**: `registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:15.2.1`
+**Base Image**: `registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:18.0.0`
 
 ### CI Variables Required
 
