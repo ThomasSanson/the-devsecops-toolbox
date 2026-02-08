@@ -26,7 +26,7 @@ Environment files MUST be at repository root, not in subdirectories.
 
 Taskfile loads dotenv files by priority (first wins):
 
-```
+```yaml
 dotenv: [".env", ".env.dev", ".env.dist"]
 ```
 

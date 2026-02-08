@@ -51,7 +51,7 @@ task test -- --grep "@your-tag"
 task code
 ```
 
-If any linter errors are found, you MUST fix them following the [code skill](file:///home/tsanson/workspace/gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/.agent/skills/code/SKILL.md).
+If any linter errors are found, you MUST fix them following the [code skill](file://.agent/skills/code/SKILL.md).
 
 ## Step 5: Full Test Suite
 

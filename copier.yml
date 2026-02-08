@@ -64,6 +64,11 @@ use_docker_compose:
   default: true
   when: "{{ container_runtime == 'docker' }}"
 
+gherkin_language:
+  type: str
+  help: "Language for Gherkin test specifications (ISO 639-1 code: en, fr, de, es, ...)"
+  default: en
+
 project_slug:
   type: str
   default: "{{ _copier_conf.dst_path | realpath | basename | lower | replace(' ', '-') | replace('_', '-') }}"

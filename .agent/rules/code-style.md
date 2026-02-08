@@ -17,10 +17,10 @@ alwaysApply: true
 
 ## Language conventions
 
-- ✅ Page Object methods in **French** (e.g., `naviguerVers`, `seConnecter`)
-- ✅ Gherkin features in **French**
+- ✅ Page Object methods in **English** (e.g., `navigateTo`, `login`)
+- ✅ Gherkin features in **English**
 - ✅ Code variables/functions in **English**
-- ✅ User-facing documentation in **French**
+- ✅ User-facing documentation in **English**
 
 ## Minimalism Principle
 

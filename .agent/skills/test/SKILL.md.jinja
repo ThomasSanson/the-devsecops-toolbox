@@ -1,0 +1,91 @@
+---
+name: test
+description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or managing test data. Includes visual regression testing.
+---
+
+# Test
+
+## When to use this skill
+
+- Running E2E tests
+- Debugging test failures
+- Managing test data (reset, seed)
+- Writing new tests
+
+## How to run tests
+
+### Full test suite (deploys first)
+
+```bash
+task test
+```
+
+### Targeted test by tag
+
+```bash
+task test -- --grep "@my-tag"
+```
+
+### Fast TDD cycle (no rebuild)
+
+```bash
+task project:test:tdd
+```
+
+### Application tests only
+
+```bash
+task project:test:application
+```
+
+### Infrastructure tests
+
+```bash
+task project:test:{infra-name}
+```
+
+## Test data management
+
+| Need           | Command                         |
+|----------------|---------------------------------|
+| Reset database | `task project:test:reset-db`    |
+| Reset users    | `task project:test:reset-users` |
+
+## Visual regression
+
+See `rules/tests-integrity.md` for complete rules.
+
+## Page Object Pattern
+
+Study these reference files to understand the correct patterns:
+
+### Reference Patterns
+
+| Reference        | Location                                      |
+|------------------|-----------------------------------------------|
+| Page Objects     | `project/tests/application/pages/{domain}/`   |
+| Step definitions | `project/tests/application/step_definitions/` |
+| Config           | `project/tests/application/config/`           |
+
+### ⛔ FORBIDDEN
+
+- ❌ Inline logic in steps (use Page Objects)
+- ❌ Hardcoded selectors (centralize in `this.selectors`)
+- ❌ Hardcoded `I.wait(2)` (use `TIMEOUTS`)
+- ❌ Screenshot without `assertVisualMatch()`
+- ❌ Gherkin in wrong language (write in {{ gherkin_language }})
+
+## Decision tree
+
+**Test failing?**
+1. Check if environment is deployed (`task deploy`)
+2. Check service logs (`task project:monitor:{service}`)
+3. Check test data state
+4. Reset data if needed (`task project:test:reset-db`)
+5. Re-run targeted test (`task test -- --grep "@tag"`)
+
+## Reference files
+
+- `project/tests/application/codecept.conf.js` — Configuration
+- `project/tests/application/features/` — Gherkin features
+- `project/tests/application/pages/` — Page Objects

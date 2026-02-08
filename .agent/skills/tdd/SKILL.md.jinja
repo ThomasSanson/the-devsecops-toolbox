@@ -1,0 +1,95 @@
+---
+name: tdd
+description: Test-Driven Development workflow. Use when implementing new features or fixing bugs. Enforces RED-GREEN-REFACTOR cycle with mandatory test-first approach.
+---
+
+# Test-Driven Development
+
+## When to use this skill
+
+- Implementing new features
+- Fixing bugs
+- Any code change that affects behavior
+
+## The TDD cycle
+
+```txt
+DEPLOY → RED → GREEN → REFACTOR
+```
+
+### 1. DEPLOY — Environment ready
+
+```bash
+task deploy
+```
+
+Or light restart:
+
+```bash
+task project:deploy:light
+```
+
+### 2. RED — Write failing test FIRST
+
+1. **Create Gherkin feature** in `project/tests/application/features/{domain}/`
+- Write in {{ gherkin_language }}
+- Add unique `@tag`
+
+2. **Create Page Object** if needed in `project/tests/application/pages/{domain}/`
+
+3. **Run test — IT MUST FAIL**
+
+```bash
+task test -- --grep "@my-tag"
+```
+
+> ❌ If test passes, the test is wrong!
+
+### 3. GREEN — Minimal code to pass
+
+1. Write ONLY code needed to pass
+2. No extra features
+3. No optimization
+
+```bash
+task test -- --grep "@my-tag"
+```
+
+> ✅ Test must pass now
+
+### 4. REFACTOR — Clean the code
+
+1. Remove duplication
+2. Improve naming
+3. Extract methods/classes
+4. **Run test after EACH change**
+
+```bash
+task test -- --grep "@my-tag"
+```
+
+### 5. FINALIZE
+
+```bash
+task code  # Lint check
+task test  # Full suite
+```
+
+## Quick reference
+
+| Phase    | Command                      | Expected    |
+|----------|------------------------------|-------------|
+| DEPLOY   | `task deploy`                | Services up |
+| RED      | `task test -- --grep "@tag"` | FAIL        |
+| GREEN    | `task test -- --grep "@tag"` | PASS        |
+| REFACTOR | `task test -- --grep "@tag"` | PASS        |
+| FINAL    | `task test`                  | ALL PASS    |
+
+## Rules
+
+- ❌ NEVER write code before the test
+- ❌ NEVER modify test to hide failure
+- ❌ NEVER skip REFACTOR phase
+- ✅ ALWAYS verify test fails first (RED)
+- ✅ ALWAYS run test after each refactor
+- ✅ Features in {{ gherkin_language }}, with @tag
