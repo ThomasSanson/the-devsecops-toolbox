@@ -8,12 +8,12 @@
 exports.config = {
   output: './_output',
   include: {
-    I: '../../.config/codeceptjs/steps_file.js'
+    I: '../../../.config/codeceptjs/steps_file.js'
   },
   gherkin: {
     features: './features/**/*.feature',
     steps: [
-      '../../.config/codeceptjs/step_definitions/steps.js',
+      '../../../.config/codeceptjs/step_definitions/steps.js',
       './entrypoint.js',
       // Step objects with Gherkin definitions
       './step_objects/copier.js',

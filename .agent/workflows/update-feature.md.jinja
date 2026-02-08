@@ -1,4 +1,4 @@
----
+{% raw %}---
 description: Add functionality to an existing template feature
 ---
 
@@ -17,8 +17,8 @@ This workflow guides you through adding new functionality to an **existing** tem
 ### 1. Review Existing Feature
 
 Analyze the current implementation by reading files in:
-- **Feature file:** `project/tests/template/features/{domain}/{feature}.feature`
-- **Steps:** `project/tests/template/steps/{domain}.js`
+- **Feature file:** `project/tests/application/features/{domain}/{feature}.feature`
+- **Steps:** `project/tests/application/steps/{domain}.js`
 - **Templates:** `.config/{domain}/`
 - **Config:** `copier.yml`
 
@@ -67,3 +67,4 @@ task code
 - [ ] Implementation follows existing patterns in the codebase
 - [ ] All tests pass (`task test`)
 - [ ] All linters pass (`task code`)
+{% endraw %}

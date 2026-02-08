@@ -6,51 +6,53 @@ This directory contains end-to-end tests for the DevSecOps Copier template.
 
 ```text
 project/tests/
-├── codecept.conf.js      # CodeceptJS configuration
-├── entrypoint.js         # Test hooks (Before/After)
-├── features/             # Gherkin feature files
-│   ├── ansible/
-│   ├── commitizen/
-│   ├── copier/
-│   ├── dependency-check/
-│   ├── dev/
-│   ├── devsecops/
-│   ├── docker/
-│   ├── git/
-│   ├── gitlab/
-│   ├── gitleaks/
-│   ├── glab/
-│   ├── kaniko/
-│   ├── kubectl/
-│   ├── kubeseal/
-│   ├── lefthook/
-│   ├── lizard/
-│   ├── megalinter/
-│   ├── podman/
-│   ├── project/
-│   ├── renovate/
-│   ├── sealed-secrets/
-│   └── yamllint/
-├── step_objects/         # Reusable logic (helpers, assertions)
-│   ├── assertions.js     # File/directory assertions
-│   ├── commands.js       # Shell command execution
-│   ├── config.js         # Test configuration
-│   ├── content.js        # Content step definitions
-│   ├── copier.js         # Copier execution helpers
-│   ├── filesystem.js     # File system utilities
-│   ├── tables.js         # Gherkin table parsing
-│   └── testContext.js    # Test metadata tracking
-└── steps/                # Domain-specific Gherkin steps
-    ├── ansible.js
-    ├── commitizen.js
-    ├── devsecops.js
-    ├── docker.js
-    ├── gitlab.js
-    ├── glab.js
-    ├── podman.js
-    ├── renovate.js
-    ├── system.js         # Generic infrastructure steps
-    └── taskfile.js
+├── README.md
+└── template/                 # Copier template tests
+    ├── codecept.conf.js      # CodeceptJS configuration
+    ├── entrypoint.js         # Test hooks (Before/After)
+    ├── features/             # Gherkin feature files
+    │   ├── ansible/
+    │   ├── commitizen/
+    │   ├── copier/
+    │   ├── dependency-check/
+    │   ├── dev/
+    │   ├── devsecops/
+    │   ├── docker/
+    │   ├── git/
+    │   ├── gitlab/
+    │   ├── gitleaks/
+    │   ├── glab/
+    │   ├── kaniko/
+    │   ├── kubectl/
+    │   ├── kubeseal/
+    │   ├── lefthook/
+    │   ├── lizard/
+    │   ├── megalinter/
+    │   ├── podman/
+    │   ├── project/
+    │   ├── renovate/
+    │   ├── sealed-secrets/
+    │   └── yamllint/
+    ├── step_objects/         # Reusable logic (helpers, assertions)
+    │   ├── assertions.js     # File/directory assertions
+    │   ├── commands.js       # Shell command execution
+    │   ├── config.js         # Test configuration
+    │   ├── content.js        # Content step definitions
+    │   ├── copier.js         # Copier execution helpers
+    │   ├── filesystem.js     # File system utilities
+    │   ├── tables.js         # Gherkin table parsing
+    │   └── testContext.js    # Test metadata tracking
+    └── steps/                # Domain-specific Gherkin steps
+        ├── ansible.js
+        ├── commitizen.js
+        ├── devsecops.js
+        ├── docker.js
+        ├── gitlab.js
+        ├── glab.js
+        ├── podman.js
+        ├── renovate.js
+        ├── system.js         # Generic infrastructure steps
+        └── taskfile.js
 ```
 
 ## Conventions

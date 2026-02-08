@@ -1,4 +1,4 @@
----
+{% raw %}---
 name: Development Cycle
 description: Mandatory TDD workflow for any code change. Follow steps IN ORDER. No shortcuts.
 ---
@@ -27,7 +27,7 @@ Wait for all services to be healthy.
 | Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
 
 **Requirements:**
-- Language: **{{ gherkin_language }}** (`# language: {{ gherkin_language }}`)
+- Language: **{% endraw %}{{ gherkin_language }}{% raw %}** (`# language: {% endraw %}{{ gherkin_language }}{% raw %}`)
 - Include unique **@tag**
 
 ### STEP 3: RUN TEST — MUST FAIL (RED)
@@ -80,3 +80,4 @@ See `rules/task-commands.md` and `rules/tdd-cycle.md` for complete rules.
 - ❌ Using `docker compose` directly
 
 **NOTE:** Planning is OK. But after planning, execute this workflow.
+{% endraw %}

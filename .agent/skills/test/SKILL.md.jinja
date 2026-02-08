@@ -1,4 +1,4 @@
----
+{% raw %}---
 name: test
 description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or managing test data. Includes visual regression testing.
 ---
@@ -73,7 +73,7 @@ Study these reference files to understand the correct patterns:
 - ❌ Hardcoded selectors (centralize in `this.selectors`)
 - ❌ Hardcoded `I.wait(2)` (use `TIMEOUTS`)
 - ❌ Screenshot without `assertVisualMatch()`
-- ❌ Gherkin in wrong language (write in {{ gherkin_language }})
+- ❌ Gherkin in wrong language (write in {% endraw %}{{ gherkin_language }}{% raw %})
 
 ## Decision tree
 
@@ -89,3 +89,4 @@ Study these reference files to understand the correct patterns:
 - `project/tests/application/codecept.conf.js` — Configuration
 - `project/tests/application/features/` — Gherkin features
 - `project/tests/application/pages/` — Page Objects
+{% endraw %}

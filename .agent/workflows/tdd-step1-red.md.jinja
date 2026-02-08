@@ -1,4 +1,4 @@
----
+{% raw %}---
 name: TDD Red Phase
 description: Write a failing test specification. The test MUST fail before any implementation.
 ---
@@ -24,7 +24,7 @@ Ensure services are running.
 | Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
 
 **Requirements:**
-- **Language:** {{ gherkin_language }} (`# language: {{ gherkin_language }}`)
+- **Language:** {% endraw %}{{ gherkin_language }}{% raw %} (`# language: {% endraw %}{{ gherkin_language }}{% raw %}`)
 - **Tag:** Unique `@tag` for isolation
 - **Format:** See [Gherkin i18n](https://cucumber.io/docs/gherkin/reference/#spoken-languages) for keywords in your language
 
@@ -70,3 +70,4 @@ task test -- --grep "@your-tag"
 ## Next Step
 
 Once test fails correctly, proceed to implementation (GREEN phase).
+{% endraw %}

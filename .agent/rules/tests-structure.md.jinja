@@ -1,4 +1,4 @@
----
+{% raw %}---
 description: Test organization - separation between application and infrastructure
 alwaysApply: true
 ---
@@ -44,6 +44,7 @@ project/tests/
 ## Each infrastructure test folder MUST contain
 
 1. `codecept.conf.js` — Dedicated configuration
-2. `features/` — Gherkin in **{{ gherkin_language }}**
-3. `pages/` — Page Objects with methods in **{{ gherkin_language }}**
+2. `features/` — Gherkin in **{% endraw %}{{ gherkin_language }}{% raw %}**
+3. `pages/` — Page Objects with methods in **{% endraw %}{{ gherkin_language }}{% raw %}**
 4. `step_definitions/` — Steps using Page Objects
+{% endraw %}

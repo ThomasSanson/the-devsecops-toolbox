@@ -1,4 +1,4 @@
----
+{% raw %}---
 description: Implement a new template feature using TDD with Gherkin tests
 ---
 
@@ -15,18 +15,18 @@ This workflow guides you through implementing a new template feature using Test-
 ## Test Architecture
 
 Search for existing tests and steps to understand the project structure:
-- **Feature files:** `project/tests/template/features/{domain}/{feature}.feature`
-- **Step definitions:** `project/tests/template/steps/{domain}.js`
-- **Step objects:** `project/tests/template/step_objects/*.js` (Reusable logic pointers)
+- **Feature files:** `project/tests/application/features/{domain}/{feature}.feature`
+- **Step definitions:** `project/tests/application/steps/{domain}.js`
+- **Step objects:** `project/tests/application/step_objects/*.js` (Reusable logic pointers)
 
 ## Workflow Steps
 
 ### 1. Define the Feature (Gherkin)
 
-Create a new feature file in `project/tests/template/features/{domain}/{feature}.feature`.
+Create a new feature file in `project/tests/application/features/{domain}/{feature}.feature`.
 
 **Instruction:**
-Read an existing feature file in `project/tests/template/features/` to understand the mandatory tags and step patterns.
+Read an existing feature file in `project/tests/application/features/` to understand the mandatory tags and step patterns.
 
 **Mandatory Rules:**
 - NO Background block.
@@ -35,15 +35,15 @@ Read an existing feature file in `project/tests/template/features/` to understan
 
 ### 2. Add Step Definitions
 
-Create or update the domain-specific steps file: `project/tests/template/steps/{domain}.js`.
+Create or update the domain-specific steps file: `project/tests/application/steps/{domain}.js`.
 
 **Instruction:**
-Analyze existing files in `project/tests/template/steps/*.js` to see how to:
+Analyze existing files in `project/tests/application/steps/*.js` to see how to:
 - Require step objects (assertions, commands, content, etc.).
 - Use `Given()`, `When()`, `Then()` with parameterized strings.
 - Export and call the `register()` function.
 
-**IMPORTANT:** If creating a new file, add it to the `gherkin: { steps: [...] }` section in `project/tests/template/codecept.conf.js`.
+**IMPORTANT:** If creating a new file, add it to the `gherkin: { steps: [...] }` section in `project/tests/application/codecept.conf.js`.
 
 ### 3. Run Tests (Should Fail)
 
@@ -91,3 +91,4 @@ task code
 - [ ] Domain steps file added to `codecept.conf.js`
 - [ ] `register()` called and exported in step file
 - [ ] All linters pass (`task code`)
+{% endraw %}

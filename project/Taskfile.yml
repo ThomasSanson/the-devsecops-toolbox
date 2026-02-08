@@ -78,7 +78,7 @@ tasks:
       - task: codeceptjs:npx
         vars:
           TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-          TASK_CODECEPTJS_CONFIG: "project/tests/codecept.conf.js"
+          TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
       - cmd: echo "✅ Project TDD test phase completed successfully"
         silent: true
 
@@ -94,7 +94,7 @@ tasks:
         vars:
           TASK_CODECEPTJS_GREP: "@copier"
           TASK_CODECEPTJS_ENABLED: "true"
-          TASK_CODECEPTJS_CONFIG: "project/tests/codecept.conf.js"
+          TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
       - cmd: echo "✅ Project copier test phase completed successfully"
         silent: true
 

@@ -1,4 +1,4 @@
----
+{% raw %}---
 name: tdd
 description: Test-Driven Development workflow. Use when implementing new features or fixing bugs. Enforces RED-GREEN-REFACTOR cycle with mandatory test-first approach.
 ---
@@ -32,7 +32,7 @@ task project:deploy:light
 ### 2. RED — Write failing test FIRST
 
 1. **Create Gherkin feature** in `project/tests/application/features/{domain}/`
-- Write in {{ gherkin_language }}
+- Write in {% endraw %}{{ gherkin_language }}{% raw %}
 - Add unique `@tag`
 
 2. **Create Page Object** if needed in `project/tests/application/pages/{domain}/`
@@ -92,4 +92,5 @@ task test  # Full suite
 - ❌ NEVER skip REFACTOR phase
 - ✅ ALWAYS verify test fails first (RED)
 - ✅ ALWAYS run test after each refactor
-- ✅ Features in {{ gherkin_language }}, with @tag
+- ✅ Features in {% endraw %}{{ gherkin_language }}{% raw %}, with @tag
+{% endraw %}

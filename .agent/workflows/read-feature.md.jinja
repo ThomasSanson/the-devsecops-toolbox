@@ -1,4 +1,4 @@
----
+{% raw %}---
 description: List existing template domains and features
 ---
 
@@ -13,7 +13,7 @@ Use this workflow to discover existing domains and features in the template.
 Domains are the top-level categories of features.
 
 ```bash
-ls project/tests/template/features/
+ls project/tests/application/features/
 ```
 
 ### 2. List Features in a Domain
@@ -21,7 +21,7 @@ ls project/tests/template/features/
 Each domain contains one or more `.feature` files.
 
 ```bash
-ls project/tests/template/features/{domain}/
+ls project/tests/application/features/{domain}/
 ```
 
 ### 3. Summary of Features
@@ -29,13 +29,14 @@ ls project/tests/template/features/{domain}/
 You can use `grep` to quickly see the titles of all features:
 
 ```bash
-grep -r "Feature:" project/tests/template/features/
+grep -r "Feature:" project/tests/application/features/
 ```
 
 ### 4. Check Implementation
 
 To see the implementation status or configuration for a domain:
 
-- **Step Definitions:** `cat project/tests/template/steps/{domain}.js`
+- **Step Definitions:** `cat project/tests/application/steps/{domain}.js`
 - **Template Files:** `ls .config/{domain}/`
 - **Copier Configuration:** `grep -A 10 "{domain}" copier.yml`
+{% endraw %}
