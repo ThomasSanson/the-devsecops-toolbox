@@ -8,7 +8,7 @@ _skip_if_exists:
   - VERSION
 _min_copier_version: "9.3.0"
 
-# Questions
+# Questions — CI/CD platform
 ci_platform:
   type: str
   help: Which CI/CD platform are you using?
@@ -20,36 +20,26 @@ ci_platform:
 gitlab_docker_host:
   type: str
   help: |
-    Value for DOCKER_HOST variable.
-    Leave empty to use the runner's default context (e.g. for shell executors or if DOCKER_HOST is injected).
+    DOCKER_HOST for your self-hosted runner (e.g. tcp://docker:2376).
+    Leave empty to use the runner's default context (shell executor or injected DOCKER_HOST).
   default: ""
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
 
 gitlab_docker_tls_certdir:
   type: str
   help: |
-    Value for DOCKER_TLS_CERTDIR variable.
-    Set to "" (empty string) to disable TLS certificate generation.
-    Default for SaaS is "/certs".
+    DOCKER_TLS_CERTDIR for Docker-in-Docker with TLS on your self-hosted runner.
+    Set to "" to disable TLS. GitLab SaaS uses "/certs" by default.
   default: ""
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
 
 gitlab_docker_driver:
   type: str
-  help: Value for DOCKER_DRIVER variable.
+  help: Storage driver for Docker-in-Docker on your self-hosted CI runners.
   default: overlay2
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
 
-devsecops_automerge:
-  type: bool
-  help: Enable automerge for DevSecOps Toolbox updates?
-  default: true
-
-project_enabled:
-  type: bool
-  help: Would you like to enable the project workspace (backend, frontend, data, auth, analytics, tests) to manage component-specific tasks?
-  default: true
-
+# Questions — Container runtime
 container_runtime:
   type: str
   help: Which container runtime would you like to use?
@@ -60,15 +50,33 @@ container_runtime:
 
 use_docker_compose:
   type: bool
-  help: Should we generate a standard docker-compose.yml file?
+  help: Generate a docker-compose.yml file in the project/ directory?
   default: true
   when: "{{ container_runtime == 'docker' }}"
 
+# Questions — Project workspace
+project_enabled:
+  type: bool
+  help: |
+    Enable the project workspace? This generates project/Taskfile.yml for your
+    custom tasks (build, test, deploy) and project/docker-compose.yml.
+  default: true
+
+# Questions — Maintenance
+devsecops_automerge:
+  type: bool
+  help: |
+    Auto-merge Renovate merge requests for DevSecOps Toolbox updates?
+    When enabled, minor and patch updates are merged automatically.
+  default: true
+
+# Questions — Testing
 gherkin_language:
   type: str
   help: "Language for Gherkin test specifications (ISO 639-1 code: en, fr, de, es, ...)"
   default: en
 
+# Internal
 project_slug:
   type: str
   default: "{{ _copier_conf.dst_path | realpath | basename | lower | replace(' ', '-') | replace('_', '-') }}"
