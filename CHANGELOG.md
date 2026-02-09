@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.0.1 (2026-02-09)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v20
+
 ## 19.0.0 (2026-02-09)
 
 ### Feat
