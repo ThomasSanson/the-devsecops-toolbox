@@ -2,6 +2,28 @@
 
 # Changelog
 
+## 19.0.0 (2026-02-09)
+
+### Feat
+
+- **gitleaks**: use docker exec/cp pattern and add ignore paths
+- **gitleaks**: add proxy argument handling and tests
+- **megalinter**: add proxy handling and related tests
+
+### Fix
+
+- **tests**: export register after invoking it to ensure proper init
+
+### Refactor
+
+- **jinja**: wrap agent docs with raw blocks for proper template rendering
+- **taskfile**: rename side_effect tasks to side-effect
+- **copier**: remove unused import and dead code from test step object
+- **config**: drop unused scenario ID generator and legacy base path
+- **taskfile**: prefix tasks with project: and add flatten include
+- **tests**: centralize file existence steps in content.js and delete kubeseal step
+- **ci**: remove proxy configuration support and related tests
+
 ## 18.0.4 (2026-02-08)
 
 ### Fix
