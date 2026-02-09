@@ -2,6 +2,30 @@
 
 # Changelog
 
+## 18.0.4 (2026-02-08)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.6
+
+## 18.0.3 (2026-02-08)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.10.12
+
+## 18.0.2 (2026-02-07)
+
+### Fix
+
+- **deps**: update mcr.microsoft.com/playwright docker tag to v1.58.2
+
+## 18.0.1 (2026-02-07)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.58.2
+
 ## 18.0.0 (2026-02-06)
 
 ### Feat
