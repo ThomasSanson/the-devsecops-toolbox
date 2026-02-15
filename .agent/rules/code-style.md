@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Project code style conventions
-alwaysApply: true
 ---
 
 # Code Style

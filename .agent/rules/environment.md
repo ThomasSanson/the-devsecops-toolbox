@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Environment files at repository root only
-alwaysApply: true
 ---
 
 # Environment Files

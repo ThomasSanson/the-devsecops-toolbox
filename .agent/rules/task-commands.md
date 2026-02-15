@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Use Task commands only from repository root
-alwaysApply: true
 ---
 
 # Task Commands Only

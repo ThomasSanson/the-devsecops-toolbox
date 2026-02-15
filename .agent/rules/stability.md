@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Core stability and integrity rules to prevent unauthorized modifications
-alwaysApply: true
 ---
 
 # Stability & Integrity

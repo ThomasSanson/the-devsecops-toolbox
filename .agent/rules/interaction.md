@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Interaction and communication rules with the user
-alwaysApply: true
 ---
 
 # Interaction & Communication

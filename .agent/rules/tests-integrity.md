@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Test integrity - never cheat
-alwaysApply: true
 ---
 
 # Tests Integrity

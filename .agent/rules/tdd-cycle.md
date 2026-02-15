@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Mandatory TDD cycle for any code change
-alwaysApply: true
 ---
 
 # TDD Cycle

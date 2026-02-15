@@ -1,6 +1,6 @@
 ---
+trigger: always_on
 description: Test organization - separation between application and infrastructure
-alwaysApply: true
 ---
 
 # Tests Structure
