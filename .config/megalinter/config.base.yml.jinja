@@ -25,11 +25,16 @@ DISABLE_LINTERS:
   - COPYPASTE_JSCPD
   - ANSIBLE_ANSIBLE_LINT
 
+# IMPORTANT: EXCLUDED_DIRECTORIES does NOT work for linters in "project" mode
+# Use FILTER_REGEX_EXCLUDE for linters in file/list_of_files mode
+# And configure individual linters in project mode separately
 EXCLUDED_DIRECTORIES:
   - .ansible
   - .cache
   - .config/podman/roles
+  - .diagnostics
   - .git
+  - .ruff_cache
   - megalinter-reports
   - node_modules
   - tmp
