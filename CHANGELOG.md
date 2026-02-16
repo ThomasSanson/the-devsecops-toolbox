@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 19.1.0 (2026-02-16)
+
+### Feat
+
+- **megalinter**: add base config, inheritance support and related tests
+
+### Refactor
+
+- **tests**: extract file helpers and normalize docstring handling
+
 ## 19.0.3 (2026-02-11)
 
 ### Fix
