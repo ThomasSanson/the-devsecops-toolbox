@@ -5,7 +5,25 @@
  * These are generic steps used across all domains.
  */
 
+const fs = require('fs')
 const { initTestContext } = require('../step_objects/copier')
+const { executeCopier } = require('../step_objects/commands')
+const { resolvePath } = require('../step_objects/content')
+const { assertFileContains, assertFileNotContains } = require('../step_objects/assertions')
+const { getKeyValuePairs } = require('../step_objects/tables')
+
+function appendContentToFile (context, relativePath, content) {
+  const filePath = resolvePath(context, relativePath)
+  fs.appendFileSync(filePath, '\n' + content)
+}
+
+function normalizeDocStringContent (content) {
+  if (typeof content === 'object' && content.content) {
+    return content.content
+  }
+
+  return content
+}
 
 function register () {
   /**
@@ -27,48 +45,31 @@ function register () {
    * Useful for verifying Taskfile definitions, variable names, etc.
    */
   Then('the file {string} should contain {string}', function (relativePath, expectedContent) { // eslint-disable-line no-undef
-    const { resolvePath } = require('../step_objects/content')
-    const { assertFileContains } = require('../step_objects/assertions')
     const filePath = resolvePath(this, relativePath)
     assertFileContains(filePath, expectedContent)
   })
 
   Then('the file {string} should NOT contain {string}', function (relativePath, unexpectedContent) { // eslint-disable-line no-undef
-    const { resolvePath } = require('../step_objects/content')
-    const { assertFileNotContains } = require('../step_objects/assertions')
     const filePath = resolvePath(this, relativePath)
     assertFileNotContains(filePath, unexpectedContent)
   })
 
   // Copier execution with data table
   When('the copier command is executed with:', function (table) { // eslint-disable-line no-undef
-    const { executeCopier } = require('../step_objects/commands')
-    const { getKeyValuePairs } = require('../step_objects/tables')
-
     // Parse table to key-value pairs using shared helper
     const data = getKeyValuePairs(table)
-
     executeCopier(this.projectRoot, data, { force: true })
   })
 
   // Append content to file
   When('I append {string} to the file {string}', function (content, relativePath) { // eslint-disable-line no-undef
-    const fs = require('fs')
-    const { resolvePath } = require('../step_objects/content')
-    const filePath = resolvePath(this, relativePath)
-    fs.appendFileSync(filePath, '\n' + content)
+    appendContentToFile(this, relativePath, content)
   })
 
   // Append block content to file (DocString)
   When('I append the following content to the file {string}:', function (relativePath, content) { // eslint-disable-line no-undef
-    const fs = require('fs')
-    const { resolvePath } = require('../step_objects/content')
-    const filePath = resolvePath(this, relativePath)
-
-    // Handle DocString object wrapper if present
-    const contentString = (typeof content === 'object' && content.content) ? content.content : content
-
-    fs.appendFileSync(filePath, '\n' + contentString)
+    const contentString = normalizeDocStringContent(content)
+    appendContentToFile(this, relativePath, contentString)
   })
 }
 
