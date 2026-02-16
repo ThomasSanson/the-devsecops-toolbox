@@ -50,6 +50,26 @@ function register () {
 
     executeCopier(this.projectRoot, data, { force: true })
   })
+
+  // Append content to file
+  When('I append {string} to the file {string}', function (content, relativePath) { // eslint-disable-line no-undef
+    const fs = require('fs')
+    const { resolvePath } = require('../step_objects/content')
+    const filePath = resolvePath(this, relativePath)
+    fs.appendFileSync(filePath, '\n' + content)
+  })
+
+  // Append block content to file (DocString)
+  When('I append the following content to the file {string}:', function (relativePath, content) { // eslint-disable-line no-undef
+    const fs = require('fs')
+    const { resolvePath } = require('../step_objects/content')
+    const filePath = resolvePath(this, relativePath)
+
+    // Handle DocString object wrapper if present
+    const contentString = (typeof content === 'object' && content.content) ? content.content : content
+
+    fs.appendFileSync(filePath, '\n' + contentString)
+  })
 }
 
 // Auto-register when loaded by CodeceptJS

@@ -5,5 +5,5 @@ Feature: Kingfisher excludes node_modules
   So that secret scanning does not flag false positives from npm dependencies
 
   Scenario: Generated project Kingfisher config excludes node_modules
-    Given a generated project from the Copier template
-    Then the file ".config/megalinter/config.yml" should contain "--exclude=node_modules"
+    Given a generated project for "megalinter/kingfisher" tests
+    Then the file ".config/megalinter/config.base.yml" should contain "--exclude=node_modules"

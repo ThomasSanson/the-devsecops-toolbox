@@ -28,7 +28,8 @@ exports.config = {
       './steps/podman.js',
       './steps/renovate.js',
       './steps/system.js',
-      './steps/taskfile.js'
+      './steps/taskfile.js',
+      './steps/megalinter.js'
     ]
   },
   name: 'devsecops-toolbox-tests'

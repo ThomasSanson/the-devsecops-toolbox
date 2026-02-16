@@ -1,5 +1,11 @@
-{% raw -%}
 ---
+# Configuration Inheritance Strategy
+# ----------------------------------
+# We use CONFIG_PROPERTIES_TO_APPEND to ensure that list-based configurations
+# (like arguments) are merged rather than overwritten when extended.
+CONFIG_PROPERTIES_TO_APPEND:
+  - REPOSITORY_KINGFISHER_ARGUMENTS
+
 APPLY_FIXES:
   - JSON_PRETTIER
   - YAML_PRETTIER
@@ -19,6 +25,7 @@ EXCLUDED_DIRECTORIES:
   - .git
   - megalinter-reports
   - node_modules
+  - tmp
   - vendor
   - venv
 
@@ -36,6 +43,7 @@ REPOSITORY_KINGFISHER_ARGUMENTS:
   - "--exclude=.git"
   - "--exclude=megalinter-reports"
   - "--exclude=node_modules"
+  - "--exclude=tmp"
   - "--exclude=vendor"
   - "--exclude=venv"
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
@@ -43,22 +51,14 @@ SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
 SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(package-lock\.json)'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
-{%- endraw %}
-{%- if project_enabled %}
 REPOSITORY_DUSTILOCK_ARGUMENTS:
   - "-p"
   - "project"
-{%- else %}
-REPOSITORY_DUSTILOCK_ARGUMENTS:
-  - "-p"
-  - "."
-{%- endif %}
-{% raw %}
 
 SHOW_ELAPSED_TIME: true
 SARIF_REPORTER: true
 CLEAR_REPORT_FOLDER: true
-# PARALLEL_PROCESS_NUMBER: 2 # Limiting to 2 cores is necessary to prevent Dustilock or Checkov from crashing.
+PARALLEL_PROCESS_NUMBER: 2 # Limiting to 2 cores is necessary to prevent Dustilock or Checkov from crashing.
 
 PRE_COMMANDS:
   # - command: cd /tmp/lint && mkdir -p /usr/share/ansible && find . -type f \( -iname 'requirements.yml' -o -iname 'requirements.yaml' \) -print0 | xargs -0 -I{} sh -c 'grep -Eq "^[[:space:]]*collections[[:space:]]*:" "{}" && ansible-galaxy collection install -r "{}" -p /usr/share/ansible/collections || ansible-galaxy role install -r "{}" --roles-path /usr/share/ansible/roles'
@@ -91,4 +91,3 @@ PYTHON_PYRIGHT_PRE_COMMANDS:
         "reportMissingModuleSource": false
       }' > pyrightconfig.json
     continue_if_failed: false
-{%- endraw %}
