@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.0 (2026-02-16)
+
+### Feat
+
+- **gitleaks**: add selective copy to Taskfile and comprehensive tests
+
 ## 19.1.0 (2026-02-16)
 
 ### Feat
