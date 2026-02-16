@@ -23,6 +23,7 @@ exports.config = {
       './steps/commitizen.js',
       './steps/devsecops.js',
       './steps/docker.js',
+      './steps/gitleaks.js',
       './steps/gitlab.js',
       './steps/glab.js',
       './steps/podman.js',
