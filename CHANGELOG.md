@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.1 (2026-02-20)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.8
+
 ## 19.2.0 (2026-02-16)
 
 ### Feat
