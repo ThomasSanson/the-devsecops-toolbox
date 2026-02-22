@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.3 (2026-02-22)
+
+### Fix
+
+- **deps**: update dependency copier to v9.12.0
+
 ## 19.2.2 (2026-02-20)
 
 ### Fix
