@@ -32,7 +32,7 @@ task project:deploy:light
 ### 2. RED — Write failing test FIRST
 
 1. **Create Gherkin feature** in `project/tests/application/features/{domain}/`
-- Write in French
+- Write in **en**
 - Add unique `@tag`
 
 2. **Create Page Object** if needed in `project/tests/application/pages/{domain}/`
@@ -92,4 +92,4 @@ task test  # Full suite
 - ❌ NEVER skip REFACTOR phase
 - ✅ ALWAYS verify test fails first (RED)
 - ✅ ALWAYS run test after each refactor
-- ✅ Features in French, with @tag
+- ✅ Features in **en**, with @tag

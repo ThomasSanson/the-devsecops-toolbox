@@ -1,6 +1,7 @@
 ---
 trigger: always_on
 description: Test organization - separation between application and infrastructure
+alwaysApply: true
 ---
 
 # Tests Structure
@@ -44,6 +45,6 @@ project/tests/
 ## Each infrastructure test folder MUST contain
 
 1. `codecept.conf.js` — Dedicated configuration
-2. `features/` — Gherkin in **FRENCH**
-3. `pages/` — Page Objects with methods in **FRENCH**
+2. `features/` — Gherkin in **en**
+3. `pages/` — Page Objects with methods in **en**
 4. `step_definitions/` — Steps using Page Objects

@@ -73,7 +73,7 @@ Study these reference files to understand the correct patterns:
 - ❌ Hardcoded selectors (centralize in `this.selectors`)
 - ❌ Hardcoded `I.wait(2)` (use `TIMEOUTS`)
 - ❌ Screenshot without `assertVisualMatch()`
-- ❌ Gherkin in English (write in French)
+- ❌ Gherkin in wrong language (write in **en**)
 
 ## Decision tree
 

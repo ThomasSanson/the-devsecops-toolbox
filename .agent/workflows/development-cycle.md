@@ -27,7 +27,7 @@ Wait for all services to be healthy.
 | Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
 
 **Requirements:**
-- Language: **French** (`# language: fr`)
+- Language: **en** (`# language: en`)
 - Include unique **@tag**
 
 ### STEP 3: RUN TEST — MUST FAIL (RED)
