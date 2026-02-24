@@ -21,17 +21,17 @@ description: Naming conventions for Taskfile tasks and environment variables
 
 ### Phase Mapping Guide
 
-| Phase      | Purpose                              | Examples                                           |
-|------------|--------------------------------------|----------------------------------------------------|
-| `plan`     | Planning, migrations check           | `project:plan:db:migrations`                       |
-| `code`     | Linters, formatters, static analysis | `project:code:eleventy:lint`                        |
-| `build`    | Install deps, compile, package       | `project:build:eleventy`                            |
-| `test`     | Unit, integration, E2E tests         | `project:test:application`, `project:test:tdd`      |
-| `release`  | Tag, version, changelog              | `project:release:bump`                              |
-| `deploy`   | Deploy to env, local dev server      | `project:deploy:eleventy`, `project:deploy:scalingo`|
-| `operate`  | Env vars, backups, scaling, SSH      | `project:operate:scalingo:env`                      |
+| Phase      | Purpose                              | Examples                                                    |
+|------------|--------------------------------------|-------------------------------------------------------------|
+| `plan`     | Planning, migrations check           | `project:plan:db:migrations`                                |
+| `code`     | Linters, formatters, static analysis | `project:code:eleventy:lint`                                |
+| `build`    | Install deps, compile, package       | `project:build:eleventy`                                    |
+| `test`     | Unit, integration, E2E tests         | `project:test:application`, `project:test:tdd`              |
+| `release`  | Tag, version, changelog              | `project:release:bump`                                      |
+| `deploy`   | Deploy to env, local dev server      | `project:deploy:eleventy`, `project:deploy:scalingo`        |
+| `operate`  | Env vars, backups, scaling, SSH      | `project:operate:scalingo:env`                              |
 | `monitor`  | Logs, health checks, metrics         | `project:monitor:scalingo`, `project:monitor:scalingo:info` |
-| `feedback` | Feedback metrics, reports            | `project:feedback:renovate`                         |
+| `feedback` | Feedback metrics, reports            | `project:feedback:renovate`                                 |
 
 ## Environment Variables
 

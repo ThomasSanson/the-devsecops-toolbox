@@ -9,16 +9,17 @@
 
 **You MUST read and comply with ALL rule files before performing any action.**
 
-| Rule file                                                            | Description                                                                                                             |
-|----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-| [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)     | All commands MUST go through `task` from repository root. Never use `docker compose`, `npm run`, or `cd` directly.      |
-| [`.agent/rules/environment.md`](.agent/rules/environment.md)         | Environment files live at repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
-| [`.agent/rules/stability.md`](.agent/rules/stability.md)             | Respect existing architecture. Never modify `.config/` or root `Taskfile.yml`.                                          |
-| [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)             | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                    |
-| [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md) | Never modify a test to hide a failure. Never delete or weaken existing tests.                                           |
-| [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md) | Tests separated by type: business in `tests/application/`, infrastructure in `tests/{infra-name}/`.                     |
-| [`.agent/rules/code-style.md`](.agent/rules/code-style.md)           | Code style conventions, script organisation, language conventions, minimalism principle.                                |
-| [`.agent/rules/interaction.md`](.agent/rules/interaction.md)         | Mirror the user's language. Be professional, direct, and proactive.                                                     |
+| Rule file                                                                  | Description                                                                                                             |
+|----------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)           | All commands MUST go through `task` from repository root. Never use `docker compose`, `npm run`, or `cd` directly.      |
+| [`.agent/rules/environment.md`](.agent/rules/environment.md)               | Environment files live at repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
+| [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Respect existing architecture. Never modify `.config/` or root `Taskfile.yml`.                                          |
+| [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                    |
+| [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                           |
+| [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Tests separated by type: business in `tests/application/`, infrastructure in `tests/{infra-name}/`.                     |
+| [`.agent/rules/code-style.md`](.agent/rules/code-style.md)                 | Code style conventions, script organisation, language conventions, minimalism principle.                                |
+| [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                     |
+| [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Redirect terminal output to `./tmp/exec_logs.log`. Check the log file if the terminal hangs instead of waiting.         |
 
 ---
 
