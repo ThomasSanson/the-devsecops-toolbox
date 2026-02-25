@@ -1,0 +1,53 @@
+# kics-scan disable=451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,8c978947-0ff6-485c-b0c2-0bfca6026466
+# ↳ 451d79dc: host interface — bound to 127.0.0.1 but KICS doesn't resolve ${} vars
+# ↳ bc2908f3: privileged port — internal port 80 required by GitLab CE
+# ↳ 8c978947: shared volumes — false positive, single container
+---
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:17.8.7-ce.0
+    restart: unless-stopped
+    profiles: ["debug", "dev", "local"]
+    cap_drop:
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GITLAB_ROOT_PASSWORD: ${TASK_GITLAB_ROOT_PASSWORD}
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab'
+        # Disable heavy services to reduce resource usage
+        prometheus_monitoring['enable'] = false
+        alertmanager['enable'] = false
+        node_exporter['enable'] = false
+        redis_exporter['enable'] = false
+        postgres_exporter['enable'] = false
+        gitlab_exporter['enable'] = false
+        # Disable unused features
+        registry['enable'] = false
+        gitlab_pages['enable'] = false
+        gitlab_kas['enable'] = false
+        # Reduce resource consumption
+        puma['worker_processes'] = 2
+        sidekiq['concurrency'] = 5
+    ports:
+      - "127.0.0.1:${TASK_GITLAB_WEB_PORT}:80"
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://127.0.0.1:80/users/sign_in | grep -q 'sign_in' || exit 1",
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 300s
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:

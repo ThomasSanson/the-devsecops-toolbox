@@ -48,6 +48,12 @@ tasks:
       - cmd: echo "✅ Project Build phase completed successfully"
         silent: true
 
+  project:build:gitlab:
+    desc: 🔽 Pull GitLab CE image (pre-built, no local build)
+    cmds:
+      - cmd: echo "🔽 GitLab CE uses a pre-built image, nothing to build"
+        silent: true
+
   project:test:
     desc: 🚀 Run project-specific test tasks
     summary: |
@@ -75,27 +81,40 @@ tasks:
       - cmd: echo "🚀 Starting project TDD test phase"
         silent: true
       - task: deploy
-      - task: codeceptjs:npx
-        vars:
-          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-          TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
+      - task: project:test:template
+      - task: project:test:gitlab
       - cmd: echo "✅ Project TDD test phase completed successfully"
         silent: true
 
-  project:test:copier:
-    desc: 🚀 Run project-specific copier test tasks
+  project:test:template:
+    desc: 🚀 Run template test tasks
     summary: |
       Run Copier template tests.
       This task validates the project generation logic.
     cmds:
-      - cmd: echo "🚀 Starting project copier test phase"
+      - cmd: echo "🚀 Starting project template test phase"
         silent: true
-      - task: codeceptjs
+      - task: codeceptjs:npx
         vars:
-          TASK_CODECEPTJS_GREP: "@copier"
-          TASK_CODECEPTJS_ENABLED: "true"
+          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
           TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
-      - cmd: echo "✅ Project copier test phase completed successfully"
+      - cmd: echo "✅ Project template test phase completed successfully"
+        silent: true
+
+  project:test:gitlab:
+    desc: 🚀 Run GitLab E2E tests
+    summary: |
+      Run CodeceptJS E2E tests against the local GitLab CE instance.
+    cmds:
+      - cmd: echo "🚀 Starting project GitLab test phase"
+        silent: true
+      - task: codeceptjs:npx
+        vars:
+          CODECEPTJS_BASE_URL: "{{.TASK_GITLAB_URL}}"
+          CODECEPTJS_BASE_URL_CI: "{{.TASK_GITLAB_URL}}"
+          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
+          TASK_CODECEPTJS_CONFIG: "project/tests/gitlab/codecept.conf.js"
+      - cmd: echo "✅ Project GitLab test phase completed successfully"
         silent: true
 
   project:release:
@@ -140,7 +159,20 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project deploy phase"
         silent: true
+      - task: project:deploy:gitlab
       - cmd: echo "✅ Project Deploy phase completed successfully"
+        silent: true
+
+  project:deploy:gitlab:
+    desc: 🚀 Deploy GitLab CE test instance
+    summary: |
+      Start the local GitLab CE instance for testing.
+      Uses docker compose with the dev profile.
+    cmds:
+      - cmd: echo "🚀 Starting GitLab CE instance"
+        silent: true
+      - cmd: docker compose -f project/gitlab/docker-compose.yml --profile dev up -d --force-recreate
+      - cmd: echo "✅ GitLab CE instance started (healthcheck may take ~5 min)"
         silent: true
 
   project:operate:

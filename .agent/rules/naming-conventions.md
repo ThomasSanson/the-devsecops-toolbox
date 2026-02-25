@@ -7,7 +7,7 @@ description: Naming conventions for Taskfile tasks and environment variables
 
 ## Taskfile Tasks
 
-### ⛔ MANDATORY
+### ⛔ MANDATORY — Task Naming
 
 - ✅ All project tasks MUST follow the DevSecOps phase pattern: `project:{phase}:{service}:{action}`
 - ✅ `{phase}` MUST be one of: `plan`, `code`, `build`, `test`, `release`, `deploy`, `operate`, `monitor`, `feedback`
@@ -35,7 +35,7 @@ description: Naming conventions for Taskfile tasks and environment variables
 
 ## Environment Variables
 
-### ⛔ MANDATORY
+### ⛔ MANDATORY — Variable Naming
 
 - ✅ All Taskfile configuration variables MUST be prefixed with `TASK_`
 - ✅ Service-specific variables follow: `TASK_{SERVICE}_{SETTING}` (e.g., `TASK_SCALINGO_APP`)

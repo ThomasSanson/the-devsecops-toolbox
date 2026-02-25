@@ -86,6 +86,7 @@ _exclude:
   - .agent/rules/code-style.md
   - .cache
   - .config/**/roles
+  - .env.ci
   - .git
   - .vscode
   - CONTRIBUTING.md
@@ -93,6 +94,7 @@ _exclude:
   - megalinter-reports
   - node_modules
   - README.md
+  - project/gitlab
   - project/tests
   - tmp
   - venv

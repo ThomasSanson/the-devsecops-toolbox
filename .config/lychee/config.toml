@@ -2,6 +2,8 @@ exclude = [
   '.*package-lock\.json',
   'file://*',
   'file://charts/',
+  'http://127.0.0.1',
+  'http://gitlab',
   'http://localhost',
   'http://proxy',
   'https://dl.k8s.io/release/',
