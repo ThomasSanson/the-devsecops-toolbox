@@ -52,13 +52,12 @@ tasks:
   project:build:gitlab:
     desc: Build tests component (gitlab)
     cmds:
-      - '{{.PROJECT_DOCKER_COMPOSE}} build gitlab'
+      - "{{.PROJECT_DOCKER_COMPOSE}} build gitlab"
 
   project:build:tests:
     desc: Build tests component (codeceptjs)
     cmds:
-      - '{{.PROJECT_DOCKER_COMPOSE}} build codeceptjs'
-
+      - "{{.PROJECT_DOCKER_COMPOSE}} build codeceptjs"
 
   project:test:
     desc: 🚀 Run project-specific test tasks

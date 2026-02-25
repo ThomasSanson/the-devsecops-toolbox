@@ -2,7 +2,8 @@ exports.config = {
   output: './_output',
   include: {
     I: '../../../.config/codeceptjs/steps_file.js',
-    GitLabLoginPage: './pages/GitLabLoginPage.js'
+    GitLabLoginPage: './pages/GitLabLoginPage.js',
+    GitLabUserPage: './pages/GitLabUserPage.js'
   },
   helpers: {
     Playwright: {
@@ -28,6 +29,9 @@ exports.config = {
       actualDir: './_output/',
       tolerance: 2,
       threshold: 0.1
+    },
+    REST: {
+      endpoint: 'http://gitlab:80'
     }
   },
   hooks: [],
@@ -35,7 +39,8 @@ exports.config = {
     features: './features/**/*.feature',
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
-      './step_definitions/page_connexion_gitlab_steps.js'
+      './step_definitions/page_connexion_gitlab_steps.js',
+      './step_definitions/user_lambda_steps.js'
     ]
   },
   plugins: {

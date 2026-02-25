@@ -2,22 +2,22 @@
 const { GitLabLoginPage } = inject()
 
 // ============================================
-// WHEN - Actions connexion GitLab
+// WHEN - GitLab login actions
 // ============================================
 
-When('je me connecte à GitLab avec les identifiants root', () => {
+When('I log in to GitLab with root credentials', () => {
   GitLabLoginPage.navigateTo()
   GitLabLoginPage.login(process.env.TASK_GITLAB_ROOT_USER, process.env.TASK_GITLAB_ROOT_PASSWORD)
 })
 
 // ============================================
-// THEN - Vérifications connexion GitLab
+// THEN - GitLab login verifications
 // ============================================
 
-Then('le tableau de bord GitLab est affiché', () => {
+Then('the GitLab dashboard is displayed', () => {
   GitLabLoginPage.verifyDashboard()
 })
 
-Then('la page du tableau de bord GitLab correspond à la référence visuelle', () => {
+Then('the GitLab dashboard page matches the visual reference', () => {
   GitLabLoginPage.verifyVisualRegression()
 })

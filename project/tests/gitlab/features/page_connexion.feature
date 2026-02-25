@@ -1,11 +1,10 @@
-# language: fr
 @gitlab-connexion
-Fonctionnalité: Connexion à GitLab
-  En tant qu'utilisateur
-  Je veux me connecter à GitLab
-  Afin d'accéder au tableau de bord
+Feature: GitLab Login
+  As a user
+  I want to log in to GitLab
+  In order to access the dashboard
 
-  Scénario: Connexion avec les identifiants root
-    Quand je me connecte à GitLab avec les identifiants root
-    Alors le tableau de bord GitLab est affiché
-    Et la page du tableau de bord GitLab correspond à la référence visuelle
+  Scenario: Login with root credentials
+    When I log in to GitLab with root credentials
+    Then the GitLab dashboard is displayed
+    And the GitLab dashboard page matches the visual reference

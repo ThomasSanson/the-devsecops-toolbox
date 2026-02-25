@@ -14,8 +14,14 @@ services:
       - TERM=xterm-256color
       - TASK_GITLAB_ROOT_USER=${TASK_GITLAB_ROOT_USER}
       - TASK_GITLAB_ROOT_PASSWORD=${TASK_GITLAB_ROOT_PASSWORD}
+      - TASK_GITLAB_LAMBDA_USER=${TASK_GITLAB_LAMBDA_USER}
+      - TASK_GITLAB_LAMBDA_PASSWORD=${TASK_GITLAB_LAMBDA_PASSWORD}
+      - TASK_GITLAB_LAMBDA_EMAIL=${TASK_GITLAB_LAMBDA_EMAIL}
     networks:
       - the-devsecops-toolbox
+    depends_on:
+      gitlab:
+        condition: service_healthy
     command: sleep infinity
     cap_drop:
       - NET_RAW
