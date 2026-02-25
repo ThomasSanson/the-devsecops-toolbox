@@ -4,6 +4,7 @@ version: "3"
 vars:
   TASK_DOCKER_CE_IMAGE_NAME: "registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
   TASK_DOCKER_CE_DOCKERFILE: ".config/devcontainer/ubuntu/Dockerfile"
+  PROJECT_DOCKER_COMPOSE: "cd project && docker compose"
 
 tasks:
   project:plan:
@@ -49,10 +50,15 @@ tasks:
         silent: true
 
   project:build:gitlab:
-    desc: 🔽 Pull GitLab CE image (pre-built, no local build)
+    desc: Build tests component (gitlab)
     cmds:
-      - cmd: echo "🔽 GitLab CE uses a pre-built image, nothing to build"
-        silent: true
+      - '{{.PROJECT_DOCKER_COMPOSE}} build gitlab'
+
+  project:build:tests:
+    desc: Build tests component (codeceptjs)
+    cmds:
+      - '{{.PROJECT_DOCKER_COMPOSE}} build codeceptjs'
+
 
   project:test:
     desc: 🚀 Run project-specific test tasks
@@ -105,15 +111,16 @@ tasks:
     desc: 🚀 Run GitLab E2E tests
     summary: |
       Run CodeceptJS E2E tests against the local GitLab CE instance.
+      Uses codeceptjs:docker to run inside a container on the same network.
     cmds:
       - cmd: echo "🚀 Starting project GitLab test phase"
         silent: true
-      - task: codeceptjs:npx
+      - task: codeceptjs:docker
         vars:
-          CODECEPTJS_BASE_URL: "{{.TASK_GITLAB_URL}}"
-          CODECEPTJS_BASE_URL_CI: "{{.TASK_GITLAB_URL}}"
-          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-          TASK_CODECEPTJS_CONFIG: "project/tests/gitlab/codecept.conf.js"
+          TASK_CODECEPTJS_CONFIG: project/tests/gitlab/codecept.conf.js
+          TASK_CODECEPTJS_TESTS_PATH_HOST: tests
+          TASK_CODECEPTJS_TESTS_PATH_CONTAINER: /app/project/tests
+          TASK_CODECEPTJS_COMPOSE_COMMAND: "{{.PROJECT_DOCKER_COMPOSE}}"
       - cmd: echo "✅ Project GitLab test phase completed successfully"
         silent: true
 
@@ -167,11 +174,11 @@ tasks:
     desc: 🚀 Deploy GitLab CE test instance
     summary: |
       Start the local GitLab CE instance for testing.
-      Uses docker compose with the dev profile.
+      Uses the project docker-compose with the dev profile.
     cmds:
       - cmd: echo "🚀 Starting GitLab CE instance"
         silent: true
-      - cmd: docker compose -f project/gitlab/docker-compose.yml --profile dev up -d --force-recreate
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} --profile dev up -d --force-recreate"
       - cmd: echo "✅ GitLab CE instance started (healthcheck may take ~5 min)"
         silent: true
 

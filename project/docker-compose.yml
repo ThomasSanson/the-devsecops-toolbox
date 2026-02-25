@@ -1,0 +1,9 @@
+---
+name: the-devsecops-toolbox
+
+include:
+  - gitlab/docker-compose.yml
+  - tests/docker-compose.yml
+
+networks:
+  the-devsecops-toolbox:

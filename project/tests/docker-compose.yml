@@ -1,0 +1,25 @@
+# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8
+# ↳ 698ed579: healthcheck — test runner container, not a long-lived service
+---
+services:
+  codeceptjs:
+    init: true
+    build:
+      context: ../..
+      dockerfile: .config/codeceptjs/Dockerfile
+    profiles: ["test"]
+    working_dir: /app
+    environment:
+      - FORCE_COLOR=1
+      - TERM=xterm-256color
+      - TASK_GITLAB_ROOT_USER=${TASK_GITLAB_ROOT_USER}
+      - TASK_GITLAB_ROOT_PASSWORD=${TASK_GITLAB_ROOT_PASSWORD}
+    networks:
+      - the-devsecops-toolbox
+    command: sleep infinity
+    cap_drop:
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true

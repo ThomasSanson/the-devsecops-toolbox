@@ -86,7 +86,6 @@ _exclude:
   - .agent/rules/code-style.md
   - .cache
   - .config/**/roles
-  - .env.ci
   - .git
   - .vscode
   - CONTRIBUTING.md

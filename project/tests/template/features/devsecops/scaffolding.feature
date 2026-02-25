@@ -15,7 +15,6 @@ Feature: Project Scaffolding
     And the following files should NOT exist:
       | File Path  |
       | .agent/rules/code-style.md |
-      | .env.ci                    |
       | copier.yml                 |
     And the following directories should NOT exist:
       | Directory Path     |

@@ -7,7 +7,7 @@ exports.config = {
   helpers: {
     Playwright: {
       browser: 'chromium',
-      url: process.env.CODECEPTJS_BASE_URL,
+      url: 'http://gitlab:80',
       show: false,
       windowSize: '1920x1080',
       waitForNavigation: 'domcontentloaded',
