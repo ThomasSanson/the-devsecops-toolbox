@@ -23,8 +23,8 @@ Given('a lambda user is created via the GitLab API', async () => {
 // WHEN - GitLab lambda user actions
 // ============================================
 
-When('I log in to GitLab as the lambda user', () => {
-  GitLabUserPage.loginAs(
+When('I log in to GitLab as the lambda user', async () => {
+  await GitLabUserPage.loginAs(
     process.env.TASK_GITLAB_LAMBDA_USER,
     process.env.TASK_GITLAB_LAMBDA_PASSWORD
   )

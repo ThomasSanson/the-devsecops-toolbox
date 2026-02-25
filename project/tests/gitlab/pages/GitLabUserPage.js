@@ -24,16 +24,11 @@ class GitLabUserPage {
     )
 
     if (existingUsers.data && existingUsers.data.length > 0) {
-      // User exists — update password to ensure we can login
-      await I.sendPutRequest(
-        `${baseUrl}/api/v4/users/${existingUsers.data[0].id}`,
-        { password: userData.password },
-        headers
-      )
+      // User already exists — skip creation
       return
     }
 
-    // User does not exist — create
+    // Create user
     const response = await I.sendPostRequest(
       `${baseUrl}/api/v4/users`,
       {
@@ -42,7 +37,8 @@ class GitLabUserPage {
         name: userData.name,
         password: userData.password,
         skip_confirmation: true,
-        force_random_password: false
+        force_random_password: false,
+        reset_password: false
       },
       headers
     )
@@ -52,11 +48,31 @@ class GitLabUserPage {
     }
   }
 
-  loginAs (username, password) {
-    I.amOnPage(this.urls.login)
-    I.fillField('#user_login', username)
-    I.fillField('#user_password', password)
-    I.click('.js-sign-in-button')
+  async loginAs (username, password) {
+    await I.amOnPage(this.urls.login)
+    await I.fillField('#user_login', username)
+    await I.fillField('#user_password', password)
+    await I.click('.js-sign-in-button')
+    await I.wait(3)
+    const url = await I.grabCurrentUrl()
+    if (url.includes('password/new') || url.includes('user_settings/password')) {
+      // GitLab forced password change — use label-based selectors
+      const newPassword = password + '!'
+      await I.fillField('Current password', password)
+      await I.fillField('New password', newPassword)
+      await I.fillField('Confirm password', newPassword)
+      await I.click('Update password')
+      await I.wait(3)
+
+      // After password update GitLab redirects to sign_in
+      const newUrl = await I.grabCurrentUrl()
+      if (newUrl.includes('sign_in')) {
+        await I.fillField('#user_login', username)
+        await I.fillField('#user_password', newPassword)
+        await I.click('.js-sign-in-button')
+        await I.wait(3)
+      }
+    }
   }
 
   verifyHomepage () {

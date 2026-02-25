@@ -3,7 +3,8 @@ exports.config = {
   include: {
     I: '../../../.config/codeceptjs/steps_file.js',
     GitLabLoginPage: './pages/GitLabLoginPage.js',
-    GitLabUserPage: './pages/GitLabUserPage.js'
+    GitLabUserPage: './pages/GitLabUserPage.js',
+    GitLabProjectPage: './pages/GitLabProjectPage.js'
   },
   helpers: {
     Playwright: {
@@ -40,7 +41,8 @@ exports.config = {
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
       './step_definitions/page_connexion_gitlab_steps.js',
-      './step_definitions/user_lambda_steps.js'
+      './step_definitions/user_lambda_steps.js',
+      './step_definitions/create_public_project_steps.js'
     ]
   },
   plugins: {
