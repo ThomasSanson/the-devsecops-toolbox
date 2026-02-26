@@ -221,7 +221,15 @@ tasks:
             if [ "$CURRENT" = "ff" ]; then
               echo "✅ merge_method is already set to fast-forward"
             else
-              echo "⚠️  merge_method is '$CURRENT', expected 'ff'"
+              echo ""
+              echo "❌ merge_method is '$CURRENT', expected 'ff'"
+              echo ""
+              echo "ℹ️  The GitLab project merge method has not been configured yet."
+              echo "   A user with Maintainer (or higher) role must run locally:"
+              echo ""
+              echo "     task devsecops:init"
+              echo ""
+              echo "   This initializes the full DevSecOps project (tools, GitLab settings, services)."
               exit 1
             fi
           else

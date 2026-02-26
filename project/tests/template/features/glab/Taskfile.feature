@@ -19,3 +19,10 @@ Feature: Glab Taskfile Standardization
     When the copier command is executed with default settings
     Then the file ".config/glab/Taskfile.yml" should contain "desc: 🦊 Configure GitLab merge method to fast-forward"
     And the file ".config/glab/Taskfile.yml" should contain "desc: 🔐 Create GitLab project access token for CI"
+
+  @merge-method-error-message
+  Scenario: Merge-method task provides actionable error message on failure
+    Given a clean temporary directory for "glab/taskfile" tests
+    When the copier command is executed with default settings
+    Then the file ".config/glab/Taskfile.yml" should contain "A user with Maintainer (or higher) role must run locally:"
+    And the file ".config/glab/Taskfile.yml" should contain "task devsecops:init"
