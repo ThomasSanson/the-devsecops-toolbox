@@ -13,15 +13,18 @@ Feature: Install scripts cross-platform compatibility
 
     @jq-cross-platform
     Examples:
-      | tool | os           | verify_cmd   |
-      | jq   | ubuntu:24.04 | jq --version |
-      | jq   | debian:12    | jq --version |
-      | jq   | alpine:3.19  | jq --version |
-      | jq   | fedora:40    | jq --version |
+      | tool | os            | verify_cmd   |
+      | jq   | ubuntu:24.04  | jq --version |
+      | jq   | debian:12     | jq --version |
+      | jq   | alpine:3.19   | jq --version |
+      | jq   | fedora:40     | jq --version |
+      | jq   | homebrew/brew | jq --version |
 
     @glab-cross-platform
     Examples:
-      | tool | os           | verify_cmd     |
-      | glab | ubuntu:24.04 | glab --version |
-      | glab | debian:12    | glab --version |
-      | glab | alpine:3.19  | glab --version |
+      | tool | os            | verify_cmd     |
+      | glab | ubuntu:24.04  | glab --version |
+      | glab | debian:12     | glab --version |
+      | glab | alpine:3.19   | glab --version |
+      | glab | fedora:40     | glab --version |
+      | glab | homebrew/brew | glab --version |

@@ -116,10 +116,11 @@ install_from_package_manager() {
 }
 
 # Try installation methods in order
-if install_from_github; then
-  log "✅ glab installed successfully via GitHub releases"
-elif install_from_homebrew; then
+# Prefer Homebrew first when available (ensures binary is in PATH)
+if install_from_homebrew; then
   log "✅ glab installed successfully via Homebrew"
+elif install_from_github; then
+  log "✅ glab installed successfully via GitHub releases"
 elif install_from_package_manager; then
   log "✅ glab installed successfully via package manager"
 else
