@@ -28,3 +28,11 @@ Feature: Renovate plugin-only configuration
       """
       "depNameTemplate": "gitlab-org/cli"
       """
+
+  @jq-renovate
+  Scenario: Renovate config includes jq version tracking
+    Given a generated project for "renovate/config" tests
+    And the content of the file ".config/renovate/config.json" should contain:
+      """
+      "depNameTemplate": "jqlang/jq"
+      """

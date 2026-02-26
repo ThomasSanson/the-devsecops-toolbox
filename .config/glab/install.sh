@@ -4,7 +4,13 @@
 
 set -eu
 
-GLAB_VERSION="${GLAB_VERSION:-1.52.0}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+GLAB_VERSION="${GLAB_VERSION:-$(cat "$SCRIPT_DIR/version" 2>/dev/null)}"
+
+if [ -z "$GLAB_VERSION" ]; then
+  log "Error: Could not determine glab version. Check .config/glab/version file."
+  exit 1
+fi
 GLAB_FORCE_UPDATE="${GLAB_FORCE_UPDATE:-false}"
 
 log() { printf "%s\n" "$*"; }

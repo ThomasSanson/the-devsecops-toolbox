@@ -49,13 +49,19 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["\\.config/glab/install\\.sh$"],
-      "matchStrings": [
-        "GLAB_VERSION=\"\\${GLAB_VERSION:-(?<currentValue>\\d+\\.\\d+\\.\\d+)}\""
-      ],
+      "fileMatch": ["\\.config/glab/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "gitlab-org/cli",
       "datasourceTemplate": "gitlab-releases",
       "registryUrlTemplate": "https://gitlab.com"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/jq/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "jqlang/jq",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^jq-(?<version>.*)$"
     }
   ]{% endif %}
 }
