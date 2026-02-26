@@ -64,26 +64,6 @@ tasks:
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true
 
-  up:
-    desc: 🆙 Launch the project (setup + deploy)
-    summary: |
-      ℹ️ Description:
-        Sets up the development environment and deploys the project.
-
-      🔄 Execution:
-        1. setup-environment
-        2. lefthook
-        3. :deploy
-    cmds:
-      - cmd: echo "🔄 Starting project launch sequence"
-        silent: true
-      - task: setup-environment
-      - task: :deploy
-      - cmd: echo "=> Run 'task dev:reset to destroy and cleanup"
-        silent: true
-      - cmd: echo "🎉 Project launch sequence completed successfully"
-        silent: true
-
   reset:
     desc: 🔄 Reset the development environment
     summary: |

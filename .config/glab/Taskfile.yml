@@ -149,52 +149,18 @@ tasks:
           fi
         silent: false
 
-  setup-token:
-    desc: 🔐 Create GitLab project access token for CI
-    summary: |
-      ℹ️ Description:
-        Creates a project access token for CI/CD automation and sets it
-        as a protected, masked CI/CD variable (GITLAB_TOKEN).
-
-      🔄 Execution:
-        1. Checks if a 'devsecops-plan' token already exists
-        2. Creates the token with api scope and maintainer access
-        3. Pipes the token directly to glab variable set (never stored)
-
-      📝 Note:
-        Requires Maintainer or Owner role on the project.
-        Token is piped between processes and never stored in files or variables.
-    status:
-      - test "{{.TASK_GLAB_ENABLED}}" = "false"
-    cmds:
-      - cmd: |
-          EXISTING=$(glab api projects/:id/access_tokens 2>/dev/null | jq -r '.[] | select(.name=="devsecops-plan") | .id' 2>/dev/null || echo "")
-          if [ -n "$EXISTING" ]; then
-            echo "✅ Project access token 'devsecops-plan' already exists (id: $EXISTING)"
-            exit 0
-          fi
-          echo "🔐 Creating project access token..."
-          EXPIRY=$(date -d '+365 days' +%Y-%m-%d 2>/dev/null || date -v+365d +%Y-%m-%d 2>/dev/null || echo "2027-02-25")
-          glab api --method POST projects/:id/access_tokens \
-            -f name=devsecops-plan \
-            -f "scopes[]=api" \
-            -f access_level=40 \
-            -f "expires_at=$EXPIRY" \
-            | jq -r '.token' \
-            | glab variable set GITLAB_TOKEN --masked --protected
-          echo "✅ GITLAB_TOKEN created and set as protected CI variable"
-
   merge-method:
     desc: 🦊 Configure GitLab merge method to fast-forward
     summary: |
       ℹ️ Description:
         Configures the GitLab project merge method to fast-forward (ff).
-        On CI MR branches, runs in check-only mode (verifies setting).
-        On default branch or locally, applies the setting.
+        In CI on non-protected branches (MR), skips the check (GITLAB_TOKEN
+        is a protected variable, only available on protected branches).
+        On default branch (CI) or locally, applies/verifies the setting.
 
       🔄 Execution:
         - Local / CI default branch: PUT projects/:id merge_method=ff
-        - CI MR branch: GET projects/:id and verify merge_method=ff
+        - CI MR branch: skip (GITLAB_TOKEN not available)
     vars:
       TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
       TASK_GIT_IS_DEFAULT_BRANCH:
@@ -216,20 +182,26 @@ tasks:
     cmds:
       - cmd: |
           if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "false" ]; then
-            echo "🔍 Check mode (MR branch) — verifying merge_method..."
-            CURRENT=$(glab api projects/:id | jq -r '.merge_method')
+            echo "⏩ Skipping merge_method check (MR branch — GITLAB_TOKEN is protected)"
+            echo "   This check will run on the default branch after merge."
+          elif [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "true" ]; then
+            echo "🔍 Verifying merge_method on default branch..."
+            CURRENT=$(glab api projects/:id 2>/dev/null | jq -r '.merge_method // empty')
             if [ "$CURRENT" = "ff" ]; then
               echo "✅ merge_method is already set to fast-forward"
             else
               echo ""
-              echo "❌ merge_method is '$CURRENT', expected 'ff'"
+              if [ -z "$CURRENT" ]; then
+                echo "❌ merge_method could not be retrieved"
+              else
+                echo "❌ merge_method is '$CURRENT', expected 'ff'"
+              fi
               echo ""
-              echo "ℹ️  The GitLab project merge method has not been configured yet."
-              echo "   A user with Maintainer (or higher) role must run locally:"
+              echo "ℹ️  A user with Maintainer (or higher) role must run locally:"
               echo ""
               echo "     task devsecops:init"
               echo ""
-              echo "   This initializes the full DevSecOps project (tools, GitLab settings, services)."
+              echo "   This configures fast-forward merge for the project."
               exit 1
             fi
           else

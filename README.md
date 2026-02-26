@@ -167,7 +167,7 @@ Use `.` to create in the current directory
 4. Commit the toolbox
 
 ```bash
-task dev:up
+task deploy
 git add .
 git commit -m"feat(devsecops): init"
 ```

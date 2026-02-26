@@ -12,9 +12,3 @@ Feature: DevSecOps Plan Taskfile Standardization
     And the file ".config/devsecops/Taskfile.plan.yml" should contain "desc: 📋 Run all generic plan tasks"
     And the file ".config/devsecops/Taskfile.plan.yml" should contain "summary: |"
     And the file ".config/devsecops/Taskfile.plan.yml" should contain "Orchestrates the planning phase"
-
-  @gitlab-merge-method
-  Scenario: Plan Taskfile includes glab merge-method for GitLab projects
-    Given a clean temporary directory for "devsecops/plan" tests
-    When the copier command is executed with default settings
-    Then the file ".config/devsecops/Taskfile.plan.yml" should contain "glab:merge-method"

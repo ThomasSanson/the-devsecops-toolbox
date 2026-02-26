@@ -16,6 +16,5 @@ tasks:
       - cmd: echo "🔄 Starting plan phase"
         silent: true
       - task: :project:plan
-      - task: :glab:merge-method
       - cmd: echo "🎉 Plan phase completed successfully"
         silent: true

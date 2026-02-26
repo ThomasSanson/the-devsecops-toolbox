@@ -152,7 +152,6 @@ task feedback                  # Run all feedback tasks
 ```bash
 task dev:setup-environment     # Setup dev environment
 task dev:init:ci               # CI/CD initialization (CI-only)
-task dev:up                    # Launch project
 task dev:reset                 # Destroy and cleanup
 task devsecops:init            # Full project initialization (local)
 task lefthook:install          # Install git hooks

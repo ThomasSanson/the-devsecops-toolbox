@@ -49,10 +49,10 @@ task dev:setup-environment
 or
 
 ```bash
-task dev:up
+task deploy
 ```
 
-This command will install all necessary dependencies and configure the local environment for development.
+This command will deploy the project services.
 
 ### 4. Local Development
 
