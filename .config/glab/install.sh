@@ -43,6 +43,21 @@ i386 | i686)
   ;;
 esac
 
+# Ensure curl is available (required for GitHub download)
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+  log "Neither curl nor wget found. Installing curl..."
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq && apt-get install -y curl
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache curl
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y curl
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y curl
+  fi
+fi
+
 # Method 1: Direct binary download from GitHub releases
 install_from_github() {
   log "Attempting installation from GitHub releases..."

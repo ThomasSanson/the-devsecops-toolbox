@@ -20,3 +20,11 @@ Feature: Renovate plugin-only configuration
       """
       "git checkout -- . && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref {{{newVersion}}}'"
       """
+
+  @glab-renovate
+  Scenario: Renovate config includes glab version tracking
+    Given a generated project for "renovate/config" tests
+    And the content of the file ".config/renovate/config.json" should contain:
+      """
+      "depNameTemplate": "gitlab-org/cli"
+      """

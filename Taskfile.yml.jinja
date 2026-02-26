@@ -33,6 +33,9 @@ includes:
     taskfile: .config/devsecops/Taskfile.monitor.yml
   devsecops:feedback:
     taskfile: .config/devsecops/Taskfile.feedback.yml
+  devsecops:init:
+    taskfile: .config/devsecops/Taskfile.init.yml
+    optional: true
 {%- if project_enabled %}
   project:
     taskfile: project/Taskfile.yml

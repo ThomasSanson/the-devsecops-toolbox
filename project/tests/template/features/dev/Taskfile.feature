@@ -9,7 +9,7 @@ Feature: Dev Taskfile Standardization
     Given a clean temporary directory for "dev/taskfile" tests
     When the copier command is executed with default settings
     Then the file ".config/dev/Taskfile.yml" should exist
-    And the file ".config/dev/Taskfile.yml" should contain "desc: 🚀 Run all CI/CD initialization steps"
+    And the file ".config/dev/Taskfile.yml" should contain "desc: 🚀 Run all CI/CD initialization steps (CI-only)"
     And the file ".config/dev/Taskfile.yml" should contain "desc: ⚙️ Configure the development environment"
 
   @glab-install
@@ -17,6 +17,12 @@ Feature: Dev Taskfile Standardization
     Given a clean temporary directory for "dev/taskfile" tests
     When the copier command is executed with default settings
     Then the file ".config/dev/Taskfile.yml" should contain ".config/glab/install.sh"
+
+  @jq-install
+  Scenario: Verify jq is installed during setup-environment
+    Given a clean temporary directory for "dev/taskfile" tests
+    When the copier command is executed with default settings
+    Then the file ".config/dev/Taskfile.yml" should contain ".config/jq/install.sh"
 
   @lefthook-integration
   Scenario: Verify lefthook is integrated into setup-environment

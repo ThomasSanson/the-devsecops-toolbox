@@ -45,5 +45,17 @@
       "automergeStrategy": "fast-forward",
       "prCreation": "immediate"
     }
-  ]
+  ]{% if ci_platform.startswith('gitlab') %},
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/glab/install\\.sh$"],
+      "matchStrings": [
+        "GLAB_VERSION=\"\\${GLAB_VERSION:-(?<currentValue>\\d+\\.\\d+\\.\\d+)}\""
+      ],
+      "depNameTemplate": "gitlab-org/cli",
+      "datasourceTemplate": "gitlab-releases",
+      "registryUrlTemplate": "https://gitlab.com"
+    }
+  ]{% endif %}
 }

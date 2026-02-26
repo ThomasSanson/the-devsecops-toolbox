@@ -19,12 +19,16 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
-  "enabledManagers": [
-    "npm",
-    "dockerfile",
-    "devcontainer",
-    "docker-compose",
-    "pip_requirements",
-    "custom.regex"
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/glab/install\\.sh$"],
+      "matchStrings": [
+        "GLAB_VERSION=\"\\${GLAB_VERSION:-(?<currentValue>\\d+\\.\\d+\\.\\d+)}\""
+      ],
+      "depNameTemplate": "gitlab-org/cli",
+      "datasourceTemplate": "gitlab-releases",
+      "registryUrlTemplate": "https://gitlab.com"
+    }
   ]
 }

@@ -18,6 +18,7 @@ exports.config = {
       // Step objects with Gherkin definitions
       './step_objects/copier.js',
       './step_objects/content.js',
+      './step_objects/docker.js',
       // Domain steps
       './steps/ansible.js',
       './steps/commitizen.js',

@@ -1,5 +1,6 @@
 const { resolvePath } = require('../step_objects/content')
 const { assertFileExists } = require('../step_objects/assertions')
+const { executeCommand } = require('../step_objects/commands')
 const fs = require('fs')
 
 function register () {
@@ -34,6 +35,29 @@ function register () {
         throw new Error(`Expected property '${prop}' to be undefined/absent, but it was '${item[prop]}' in item matching '${matchString}'`)
       }
     })
+  })
+
+  When('I validate the Renovate configuration {string}', function (configPath) { // eslint-disable-line no-undef
+    const fullPath = resolvePath(this, configPath)
+    assertFileExists(fullPath)
+    try {
+      this.renovateValidationOutput = executeCommand(
+        `npx --yes --package renovate -- renovate-config-validator ${fullPath}`,
+        { silent: true }
+      )
+      this.renovateValidationExitCode = 0
+    } catch (err) {
+      this.renovateValidationOutput = err.message
+      this.renovateValidationExitCode = 1
+    }
+  })
+
+  Then('the Renovate configuration should be valid', function () { // eslint-disable-line no-undef
+    if (this.renovateValidationExitCode !== 0) {
+      throw new Error(
+        `Renovate config validation failed:\n${this.renovateValidationOutput}`
+      )
+    }
   })
 }
 

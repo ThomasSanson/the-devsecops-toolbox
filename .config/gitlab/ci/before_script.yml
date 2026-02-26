@@ -7,7 +7,7 @@ before_script:
   - .config/task/install.sh
 
   # Execute the initialization Taskfile
-  - task dev:init
+  - task dev:init:ci
 
   # Source bash profile (optional; only if present)
   - test -f ~/.bash_profile && . ~/.bash_profile || true

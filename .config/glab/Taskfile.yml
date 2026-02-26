@@ -4,7 +4,6 @@ version: "3"
 vars:
   TASK_GLAB_ENABLED: '{{.TASK_GLAB_ENABLED | default "true"}}'
   TASK_GLAB_CONFIG_DIR: '{{.TASK_GLAB_CONFIG_DIR | default ".config/glab"}}'
-  TASK_GLAB_VERSION: '{{.TASK_GLAB_VERSION | default "1.52.0"}}'
 
 tasks:
   default:
@@ -18,7 +17,6 @@ tasks:
       🔧 Variables:
         - TASK_GLAB_ENABLED: Enable or disable glab tasks. Default: "true"
         - TASK_GLAB_CONFIG_DIR: Path to glab configuration directory. Default: ".config/glab"
-        - TASK_GLAB_VERSION: Version of glab to install. Default: "1.52.0"
 
       🔄 Execution:
         Runs the install task if glab is not already installed.
@@ -150,3 +148,84 @@ tasks:
             echo "Run 'task glab:auth' to authenticate."
           fi
         silent: false
+
+  setup-token:
+    desc: 🔐 Create GitLab project access token for CI
+    summary: |
+      ℹ️ Description:
+        Creates a project access token for CI/CD automation and sets it
+        as a protected, masked CI/CD variable (GITLAB_TOKEN).
+
+      🔄 Execution:
+        1. Checks if a 'devsecops-plan' token already exists
+        2. Creates the token with api scope and maintainer access
+        3. Pipes the token directly to glab variable set (never stored)
+
+      📝 Note:
+        Requires Maintainer or Owner role on the project.
+        Token is piped between processes and never stored in files or variables.
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          EXISTING=$(glab api projects/:id/access_tokens 2>/dev/null | jq -r '.[] | select(.name=="devsecops-plan") | .id' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            echo "✅ Project access token 'devsecops-plan' already exists (id: $EXISTING)"
+            exit 0
+          fi
+          echo "🔐 Creating project access token..."
+          EXPIRY=$(date -d '+365 days' +%Y-%m-%d 2>/dev/null || date -v+365d +%Y-%m-%d 2>/dev/null || echo "2027-02-25")
+          glab api --method POST projects/:id/access_tokens \
+            -f name=devsecops-plan \
+            -f "scopes[]=api" \
+            -f access_level=40 \
+            -f "expires_at=$EXPIRY" \
+            | jq -r '.token' \
+            | glab variable set GITLAB_TOKEN --masked --protected
+          echo "✅ GITLAB_TOKEN created and set as protected CI variable"
+
+  merge-method:
+    desc: 🦊 Configure GitLab merge method to fast-forward
+    summary: |
+      ℹ️ Description:
+        Configures the GitLab project merge method to fast-forward (ff).
+        On CI MR branches, runs in check-only mode (verifies setting).
+        On default branch or locally, applies the setting.
+
+      🔄 Execution:
+        - Local / CI default branch: PUT projects/:id merge_method=ff
+        - CI MR branch: GET projects/:id and verify merge_method=ff
+    vars:
+      TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
+      TASK_GIT_IS_DEFAULT_BRANCH:
+        sh: |
+          if [ -n "${CI_COMMIT_BRANCH:-}" ]; then
+            CURRENT_BRANCH="$CI_COMMIT_BRANCH"
+          elif [ -n "${CI_COMMIT_REF_NAME:-}" ]; then
+            CURRENT_BRANCH="$CI_COMMIT_REF_NAME"
+          elif git rev-parse --is-inside-work-tree &>/dev/null; then
+            CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+          else
+            CURRENT_BRANCH="main"
+          fi
+          if [ "$CURRENT_BRANCH" = "{{.TASK_GIT_DEFAULT_BRANCH}}" ]; then echo true; else echo false; fi
+      TASK_GLAB_IS_CI:
+        sh: if [ -n "${CI:-}" ]; then echo true; else echo false; fi
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "false" ]; then
+            echo "🔍 Check mode (MR branch) — verifying merge_method..."
+            CURRENT=$(glab api projects/:id | jq -r '.merge_method')
+            if [ "$CURRENT" = "ff" ]; then
+              echo "✅ merge_method is already set to fast-forward"
+            else
+              echo "⚠️  merge_method is '$CURRENT', expected 'ff'"
+              exit 1
+            fi
+          else
+            echo "🦊 Applying merge_method=ff..."
+            glab api --method PUT projects/:id -f merge_method=ff
+            echo "✅ GitLab merge method set to fast-forward"
+          fi

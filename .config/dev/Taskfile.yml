@@ -12,8 +12,8 @@ vars:
   TASK_DEV_INIT_GIT_USER_EMAIL: '{{.TASK_DEV_INIT_GIT_USER_EMAIL | default ""}}'
 
 tasks:
-  init:
-    desc: 🚀 Run all CI/CD initialization steps
+  init:ci:
+    desc: 🚀 Run all CI/CD initialization steps (CI-only)
     summary: |
       ℹ️ Description:
         Runs all initialization steps for CI/CD environment setup.
@@ -53,6 +53,7 @@ tasks:
       - .config/curl/install.sh
       - .config/git/install.sh
       - .config/unzip/install.sh
+      - .config/jq/install.sh
       - .config/uv/install.sh
       - .config/docker/install.sh
       - .config/node/install.sh
