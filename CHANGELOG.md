@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.5 (2026-02-26)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.9
+
 ## 19.2.4 (2026-02-24)
 
 ### Fix
