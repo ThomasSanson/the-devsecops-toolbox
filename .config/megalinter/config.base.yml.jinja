@@ -34,6 +34,7 @@ EXCLUDED_DIRECTORIES:
   - .config/podman/roles
   - .diagnostics
   - .git
+  - _output
   - .ruff_cache
   - megalinter-reports
   - node_modules
@@ -53,6 +54,7 @@ REPOSITORY_KINGFISHER_ARGUMENTS:
   - "--exclude=.cache"
   - "--exclude=.config/podman/roles"
   - "--exclude=.git"
+  - "--exclude=_output"
   - "--exclude=megalinter-reports"
   - "--exclude=node_modules"
   - "--exclude=tmp"
@@ -61,7 +63,7 @@ REPOSITORY_KINGFISHER_ARGUMENTS:
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
 SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
-SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(package-lock\.json)'
+SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(^|/)package-lock\.json$'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 {%- endraw %}
 {%- if project_enabled %}

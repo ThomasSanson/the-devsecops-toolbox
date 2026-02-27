@@ -242,3 +242,48 @@ tasks:
               -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}}
             echo "✅ GitLab merge request settings configured"
           fi
+
+  renovate-token:
+    desc: 🔑 Create or refresh a Project Access Token for Renovate
+    summary: |
+      ℹ️ Description:
+        Manages a GitLab Project Access Token for Renovate.
+        Creates the token if it doesn't exist, rotates it if the CI/CD
+        variable is missing, and enforces Maintainer access level (access_level=40).
+        The token is piped directly to CI/CD storage — never stored locally.
+
+      🔧 Variables:
+        - TASK_GLAB_RENOVATE_TOKEN_NAME: CI/CD variable name (default: TASK_RENOVATE_TOKEN)
+        - TASK_GLAB_RENOVATE_TOKEN_PROTECTED: Whether variable is protected (default: true)
+        - TASK_GLAB_RENOVATE_TOKEN_FORCE: Force token refresh (default: false)
+
+      🔐 Preconditions:
+        - glab must be installed and authenticated
+        - jq must be installed
+        - User must have Maintainer (or higher) role
+
+      🔄 Execution:
+        1. Check permissions (Maintainer required)
+        2. Check existing tokens and their access_level
+        3. Create, rotate, or recreate as needed
+        4. Store token as CI/CD variable (masked, optionally protected)
+    vars:
+      TASK_GLAB_RENOVATE_TOKEN_NAME: '{{.TASK_GLAB_RENOVATE_TOKEN_NAME | default "TASK_RENOVATE_TOKEN"}}'
+      TASK_GLAB_RENOVATE_TOKEN_PROTECTED: '{{.TASK_GLAB_RENOVATE_TOKEN_PROTECTED | default "true"}}'
+      TASK_GLAB_RENOVATE_TOKEN_FORCE: '{{.TASK_GLAB_RENOVATE_TOKEN_FORCE | default "false"}}'
+    preconditions:
+      - sh: command -v glab >/dev/null 2>&1
+        msg: "❌ glab is not installed. Run 'task glab:install' first."
+      - sh: command -v jq >/dev/null 2>&1
+        msg: "❌ jq is not installed."
+      - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+        msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          TASK_GLAB_RENOVATE_TOKEN_NAME="{{.TASK_GLAB_RENOVATE_TOKEN_NAME}}" \
+          TASK_GLAB_RENOVATE_TOKEN_PROTECTED="{{.TASK_GLAB_RENOVATE_TOKEN_PROTECTED}}" \
+          TASK_GLAB_RENOVATE_TOKEN_FORCE="{{.TASK_GLAB_RENOVATE_TOKEN_FORCE}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/renovate-token.sh
+        silent: true

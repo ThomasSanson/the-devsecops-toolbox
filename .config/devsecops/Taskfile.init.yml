@@ -34,5 +34,6 @@ tasks:
       - cmd: echo "🦊 Configuring GitLab project..."
         silent: true
       - task: :glab:merge-settings
+      - task: :glab:renovate-token
       - cmd: echo "✅ GitLab project configured"
         silent: true

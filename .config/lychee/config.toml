@@ -1,5 +1,4 @@
 exclude = [
-  '.*package-lock\.json',
   'file://*',
   'file://charts/',
   'http://127.0.0.1',
@@ -11,4 +10,8 @@ exclude = [
   'https://localhost',
   'https://tidelift.com/funding/github/npm/parse-function',
   'tcp://*'
+]
+
+exclude_path = [
+  '(^|/)package-lock\.json$'
 ]

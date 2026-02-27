@@ -114,6 +114,19 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting project GitLab test phase"
         silent: true
+      # Pre-step: Copy entire repo to container for task devsecops:init
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
+      - cmd: |
+          tar \
+            --exclude='.git' \
+            --exclude='.cache' \
+            --exclude='tmp' \
+            --exclude='megalinter-reports' \
+            --exclude='node_modules' \
+            -cf - . | \
+            (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
       - task: codeceptjs:docker
         vars:
           TASK_CODECEPTJS_CONFIG: project/tests/gitlab/codecept.conf.js

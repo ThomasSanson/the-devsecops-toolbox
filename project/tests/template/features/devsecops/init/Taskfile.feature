@@ -19,3 +19,9 @@ Feature: DevSecOps Init Taskfile Standardization
     Then the source template file "copier.yml" should contain "_tasks"
     And the source template file "copier.yml" should contain "task devsecops:init"
     And the source template file "copier.yml" should contain "_copier_operation == 'copy'"
+
+  @renovate-token
+  Scenario: Init Taskfile includes renovate-token in setup-gitlab
+    Given a clean temporary directory for "devsecops/init" tests
+    When the copier command is executed with default settings
+    Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:renovate-token"
