@@ -239,6 +239,13 @@ function register () {
   Then('the CodeceptJS Dockerfile should NOT contain {string}', function (unexpected) { // eslint-disable-line no-undef
     assertFileNotContains(this.codeceptjsDockerfilePath, unexpected)
   })
+
+  // Source template file steps
+  Then('the source template file {string} should contain {string}', function (filePath, expected) { // eslint-disable-line no-undef
+    const absPath = path.resolve(process.cwd(), filePath)
+    assertFileExists(absPath)
+    assertFileContains(absPath, expected)
+  })
 }
 
 // Auto-register when loaded by CodeceptJS

@@ -43,7 +43,7 @@ function executeCopier (projectRoot, data = {}, options = {}) {
 
   const forceArg = options.force ? '--force' : '--overwrite'
 
-  const cmd = `task copier -- copy . --vcs-ref=HEAD --defaults ${dataArgs} ${forceArg} ${projectRoot}`.trim()
+  const cmd = `task copier -- copy . --vcs-ref=HEAD --defaults --skip-tasks ${dataArgs} ${forceArg} ${projectRoot}`.trim()
   executeCommand(cmd)
 }
 

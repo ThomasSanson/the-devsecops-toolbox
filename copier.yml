@@ -102,26 +102,31 @@ _exclude:
   - "{% if container_runtime != 'podman' %}.config/podman{% endif %}"
   - "{% if not use_docker_compose or container_runtime != 'docker' %}project/docker-compose.yml{% endif %}"
 
+_tasks:
+  - command: "sh .config/task/install.sh"
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: "task devsecops:init"
+    when: "{{ _copier_operation == 'copy' }}"
+
 _message_after_copy: |
   Your DevSecOps project has been created successfully!
 
+  The project initialization (task devsecops:init) has been run automatically.
+  If it failed or was skipped (missing --trust flag), you can run it manually:
+    $ task devsecops:init
+
   Next steps:
-  1. Set up your local environment:
-    $ task dev:setup-environment
-
-  2. Configure GitLab CI/CD variables (Settings > CI/CD > Variables):
-    - CZ_DEPLOY_KEY  (type: File) — SSH deploy key for automated versioning
-    - RENOVATE_TOKEN (type: Variable, protected) — GitLab API token for Renovate
-
-  3. Customize your project:
+  1. Customize your project:
     - Edit project/Taskfile.yml to add your project-specific tasks
     - Edit .env.dist for default configuration values
     - Edit .env.dev for local development overrides
 
-  4. Start using the pipeline:
+  2. Start using the pipeline:
     $ task          # Show available tasks
     $ task code     # Run linters
     $ task test     # Run tests
+
+  Note: copier copy must be run with --trust to enable automatic initialization.
 
   Documentation: docs/guidelines/
   AI agents: see AGENTS.md
