@@ -7,11 +7,11 @@ tasks:
     summary: |
       ℹ️ Description:
         Full local initialization: installs dev tools and configures GitLab
-        project settings (merge method).
+        project settings (merge request settings).
 
       🔄 Execution:
         1. dev:setup-environment (install all tools)
-        2. setup-gitlab (configure merge method)
+        2. setup-gitlab (configure merge request settings)
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
@@ -27,12 +27,12 @@ tasks:
     summary: |
       ℹ️ Description:
         Configures the GitLab project:
-        1. Configures the merge method to fast-forward
+        1. Configures merge request settings
     deps:
       - :glab:install
     cmds:
       - cmd: echo "🦊 Configuring GitLab project..."
         silent: true
-      - task: :glab:merge-method
+      - task: :glab:merge-settings
       - cmd: echo "✅ GitLab project configured"
         silent: true

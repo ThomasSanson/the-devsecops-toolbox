@@ -13,14 +13,20 @@ Feature: Glab Taskfile Standardization
     And the file ".config/glab/Taskfile.yml" should contain "desc: 🔄 Update glab to latest version"
     And the file ".config/glab/Taskfile.yml" should contain "desc: 🔐 Authenticate with GitLab"
 
-  @gitlab-merge-method
-  Scenario: Glab Taskfile includes merge-method task
+  @gitlab-merge-settings
+  Scenario: Glab Taskfile includes merge-settings task with configurable variables
     Given a clean temporary directory for "glab/taskfile" tests
     When the copier command is executed with default settings
-    Then the file ".config/glab/Taskfile.yml" should contain "desc: 🦊 Configure GitLab merge method to fast-forward"
+    Then the file ".config/glab/Taskfile.yml" should contain "desc: 🦊 Configure GitLab merge request settings"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_MERGE_METHOD"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_SQUASH_OPTION"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_REMOVE_SOURCE_BRANCH"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_PIPELINE_MUST_SUCCEED"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_ALL_THREADS_RESOLVED"
+    And the file ".config/glab/Taskfile.yml" should contain "TASK_GLAB_MR_LINK_ENABLED"
 
-  @merge-method-error-message
-  Scenario: Merge-method task provides actionable error message on failure
+  @merge-settings-error-message
+  Scenario: Merge-settings task provides actionable error message on failure
     Given a clean temporary directory for "glab/taskfile" tests
     When the copier command is executed with default settings
     Then the file ".config/glab/Taskfile.yml" should contain "A user with Maintainer (or higher) role must run locally:"

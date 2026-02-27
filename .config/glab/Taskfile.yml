@@ -149,19 +149,33 @@ tasks:
           fi
         silent: false
 
-  merge-method:
-    desc: 🦊 Configure GitLab merge method to fast-forward
+  merge-settings:
+    desc: 🦊 Configure GitLab merge request settings
     summary: |
       ℹ️ Description:
-        Configures the GitLab project merge method to fast-forward (ff).
+        Configures GitLab merge request settings for the project.
         In CI on non-protected branches (MR), skips the check (GITLAB_TOKEN
         is a protected variable, only available on protected branches).
-        On default branch (CI) or locally, applies/verifies the setting.
+        On default branch (CI) or locally, applies/verifies the settings.
+
+      🔧 Variables:
+        - TASK_GLAB_MERGE_METHOD: Merge method (default: ff)
+        - TASK_GLAB_SQUASH_OPTION: Squash option (default: default_off)
+        - TASK_GLAB_REMOVE_SOURCE_BRANCH: Delete source branch after merge (default: true)
+        - TASK_GLAB_PIPELINE_MUST_SUCCEED: Pipelines must succeed to merge (default: true)
+        - TASK_GLAB_ALL_THREADS_RESOLVED: All threads must be resolved to merge (default: true)
+        - TASK_GLAB_MR_LINK_ENABLED: Show MR link when pushing (default: true)
 
       🔄 Execution:
-        - Local / CI default branch: PUT projects/:id merge_method=ff
+        - Local / CI default branch: PUT projects/:id with all settings
         - CI MR branch: skip (GITLAB_TOKEN not available)
     vars:
+      TASK_GLAB_MERGE_METHOD: '{{.TASK_GLAB_MERGE_METHOD | default "ff"}}'
+      TASK_GLAB_SQUASH_OPTION: '{{.TASK_GLAB_SQUASH_OPTION | default "default_off"}}'
+      TASK_GLAB_REMOVE_SOURCE_BRANCH: '{{.TASK_GLAB_REMOVE_SOURCE_BRANCH | default "true"}}'
+      TASK_GLAB_PIPELINE_MUST_SUCCEED: '{{.TASK_GLAB_PIPELINE_MUST_SUCCEED | default "true"}}'
+      TASK_GLAB_ALL_THREADS_RESOLVED: '{{.TASK_GLAB_ALL_THREADS_RESOLVED | default "true"}}'
+      TASK_GLAB_MR_LINK_ENABLED: '{{.TASK_GLAB_MR_LINK_ENABLED | default "true"}}'
       TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
       TASK_GIT_IS_DEFAULT_BRANCH:
         sh: |
@@ -182,30 +196,49 @@ tasks:
     cmds:
       - cmd: |
           if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "false" ]; then
-            echo "⏩ Skipping merge_method check (MR branch — GITLAB_TOKEN is protected)"
+            echo "⏩ Skipping merge request settings check (MR branch — GITLAB_TOKEN is protected)"
             echo "   This check will run on the default branch after merge."
           elif [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "true" ]; then
-            echo "🔍 Verifying merge_method on default branch..."
-            CURRENT=$(glab api projects/:id 2>/dev/null | jq -r '.merge_method // empty')
-            if [ "$CURRENT" = "ff" ]; then
-              echo "✅ merge_method is already set to fast-forward"
-            else
-              echo ""
-              if [ -z "$CURRENT" ]; then
-                echo "❌ merge_method could not be retrieved"
+            echo "🔍 Verifying merge request settings on default branch..."
+            PROJECT=$(glab api projects/:id 2>/dev/null)
+            ERROR=0
+
+            check_setting() {
+              local field="$1" expected="$2" label="$3"
+              local actual
+              actual=$(echo "$PROJECT" | jq -r ".${field} // empty")
+              if [ "$actual" = "$expected" ]; then
+                echo "  ✅ ${label} = ${actual}"
               else
-                echo "❌ merge_method is '$CURRENT', expected 'ff'"
+                echo "  ❌ ${label} is '${actual}', expected '${expected}'"
+                ERROR=1
               fi
+            }
+
+            check_setting "merge_method" "{{.TASK_GLAB_MERGE_METHOD}}" "merge_method"
+            check_setting "squash_option" "{{.TASK_GLAB_SQUASH_OPTION}}" "squash_option"
+            check_setting "remove_source_branch_after_merge" "{{.TASK_GLAB_REMOVE_SOURCE_BRANCH}}" "remove_source_branch_after_merge"
+            check_setting "only_allow_merge_if_pipeline_succeeds" "{{.TASK_GLAB_PIPELINE_MUST_SUCCEED}}" "only_allow_merge_if_pipeline_succeeds"
+            check_setting "only_allow_merge_if_all_discussions_are_resolved" "{{.TASK_GLAB_ALL_THREADS_RESOLVED}}" "only_allow_merge_if_all_discussions_are_resolved"
+            check_setting "printing_merge_request_link_enabled" "{{.TASK_GLAB_MR_LINK_ENABLED}}" "printing_merge_request_link_enabled"
+
+            if [ "$ERROR" -eq 1 ]; then
               echo ""
               echo "ℹ️  A user with Maintainer (or higher) role must run locally:"
               echo ""
               echo "     task devsecops:init"
               echo ""
-              echo "   This configures fast-forward merge for the project."
+              echo "   This configures merge request settings for the project."
               exit 1
             fi
           else
-            echo "🦊 Applying merge_method=ff..."
-            glab api --method PUT projects/:id -f merge_method=ff
-            echo "✅ GitLab merge method set to fast-forward"
+            echo "🦊 Applying merge request settings..."
+            glab api --method PUT projects/:id \
+              -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
+              -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
+              -f remove_source_branch_after_merge={{.TASK_GLAB_REMOVE_SOURCE_BRANCH}} \
+              -f only_allow_merge_if_pipeline_succeeds={{.TASK_GLAB_PIPELINE_MUST_SUCCEED}} \
+              -f only_allow_merge_if_all_discussions_are_resolved={{.TASK_GLAB_ALL_THREADS_RESOLVED}} \
+              -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}}
+            echo "✅ GitLab merge request settings configured"
           fi

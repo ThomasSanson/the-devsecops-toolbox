@@ -11,7 +11,7 @@ Feature: DevSecOps Init Taskfile Standardization
     Then the file ".config/devsecops/Taskfile.init.yml" should exist
     And the file ".config/devsecops/Taskfile.init.yml" should contain "desc: 🚀 Initialize DevSecOps project"
     And the file ".config/devsecops/Taskfile.init.yml" should contain "setup-gitlab"
-    And the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:merge-method"
+    And the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:merge-settings"
 
   @post-copy
   Scenario: Copier template runs devsecops:init after first copy
