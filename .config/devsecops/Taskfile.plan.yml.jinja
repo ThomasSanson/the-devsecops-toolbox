@@ -21,10 +21,6 @@ tasks:
 {% raw %}      - task: :project:plan
 {%- endraw %}
 {%- endif %}
-{%- if ci_platform.startswith('gitlab') %}
-{% raw %}      - task: :glab:merge-method
-{%- endraw %}
-{%- endif %}
 {% raw %}      - cmd: echo "🎉 Plan phase completed successfully"
         silent: true
 {%- endraw %}

@@ -7,13 +7,12 @@ tasks:
     desc: 🚀 Initialize DevSecOps project (local setup)
     summary: |
       ℹ️ Description:
-        Full local initialization: installs dev tools, configures GitLab project
-        settings (access token, merge method), and starts the environment.
+        Full local initialization: installs dev tools and configures GitLab
+        project settings (merge method).
 
       🔄 Execution:
         1. dev:setup-environment (install all tools)
-        2. setup-gitlab (create CI token + configure merge method)
-        3. dev:up (deploy services)
+        2. setup-gitlab (configure merge method)
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
@@ -23,28 +22,24 @@ tasks:
 {% raw %}      - task: setup-gitlab
 {%- endraw %}
 {%- endif %}
-{% raw %}      - task: :dev:up
-      - cmd: echo "✅ DevSecOps project initialization completed"
+{% raw %}      - cmd: echo "✅ DevSecOps project initialization completed"
         silent: true
 {%- endraw %}
 {%- if ci_platform.startswith('gitlab') %}
 {% raw %}
   setup-gitlab:
-    desc: 🦊 Configure GitLab project (access token + merge settings)
+    desc: 🦊 Configure GitLab project settings
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
     summary: |
       ℹ️ Description:
-        Configures the GitLab project for CI/CD:
-        1. Creates a project access token (devsecops-plan) if not exists
-        2. Sets the token as a masked, protected CI variable
-        3. Configures the merge method to fast-forward
+        Configures the GitLab project:
+        1. Configures the merge method to fast-forward
     deps:
       - :glab:install
     cmds:
       - cmd: echo "🦊 Configuring GitLab project..."
         silent: true
-      - task: :glab:setup-token
       - task: :glab:merge-method
       - cmd: echo "✅ GitLab project configured"
         silent: true
