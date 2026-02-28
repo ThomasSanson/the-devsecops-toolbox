@@ -79,6 +79,27 @@ store_ci_variable() {
   fi
 }
 
+# --- Helper: verify CI/CD variable holds a working token ---
+# Reads the variable value via glab api, then tests it with an authenticated
+# API call. The credential flows through a pipe and a local subshell variable
+# named 'cred' — it is never exported, logged, or written to disk.
+verify_ci_variable_token() {
+  local var_name="$1"
+  local protocol host
+  protocol=$(glab config get api_protocol 2>/dev/null || echo "https")
+  host=$(glab config get host 2>/dev/null || echo "gitlab.com")
+
+  glab api "projects/:id/variables/${var_name}" 2>/dev/null |
+    strip_glab_noise |
+    jq -r '.value // empty' |
+    {
+      read -r cred
+      [ -n "$cred" ] &&
+        curl -sf -o /dev/null "${protocol}://${host}/api/v4/user" \
+          -H "Authorization: Bearer ${cred}"
+    }
+}
+
 # --- Check permissions (Maintainer required: access_level >= 40) ---
 check_permissions() {
   local perms project_lvl group_lvl
@@ -135,13 +156,13 @@ if [ "$COUNT" -eq 1 ]; then
     glab api --method DELETE "projects/:id/access_tokens/${EXISTING_ID}" >/dev/null 2>&1
     COUNT=0
   else
-    # Check CI/CD variable exists
-    if glab api "projects/:id/variables/${RENOVATE_TOKEN_NAME}" >/dev/null 2>&1; then
+    # Check CI/CD variable exists AND holds a valid, working token
+    if glab api "projects/:id/variables/${RENOVATE_TOKEN_NAME}" >/dev/null 2>&1 && verify_ci_variable_token "$RENOVATE_TOKEN_NAME"; then
       echo "   ✅ Token '${RENOVATE_TOKEN_NAME}' exists and is valid (access_level=${EXISTING_ACCESS})"
       echo "✅ Done! Renovate is ready to use."
       exit 0
     else
-      echo "   🔄 Token exists but CI/CD variable is missing. Rotating..."
+      echo "   🔄 Token exists but CI/CD variable is missing or out of sync. Rotating..."
       glab api --method POST "projects/:id/access_tokens/${EXISTING_ID}/rotate" \
         -f "expires_at=${EXPIRES_AT}" | strip_glab_noise |
         store_ci_variable "$RENOVATE_TOKEN_NAME" "$RENOVATE_TOKEN_PROTECTED"

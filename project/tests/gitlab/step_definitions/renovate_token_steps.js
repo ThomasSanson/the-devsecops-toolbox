@@ -185,6 +185,31 @@ When('the Renovate access token {string} is revoked from project {string}', asyn
   }
 })
 
+When('the CI\\/CD variable {string} is tampered with for project {string}', async (variableName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  // Get root OAuth token
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  // Replace the CI/CD variable value with an invalid token
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  await I.sendPutRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
+    { value: 'glpat-invalid-tampered-value', masked: true }, // gitleaks:allow
+    headers
+  )
+})
+
 When('I re-run {string} for project {string}', async (command, projectName) => {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   const baseUrl = 'http://gitlab:80'
@@ -232,6 +257,44 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
     headers
   )
   global.renovateTokenForClone = varResponse.data.value
+})
+
+Then('the CI\\/CD variable {string} must hold a valid token for project {string}', async (variableName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  // Get root OAuth token to read the CI/CD variable
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  // Read the CI/CD variable value
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  const varResponse = await I.sendGetRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
+    headers
+  )
+  const tokenValue = varResponse.data.value
+
+  // Verify the token is valid by using it for an authenticated API call
+  // GET /api/v4/user requires a valid token and returns the associated user
+  const authCheck = await I.sendGetRequest(
+    `${baseUrl}/api/v4/user`,
+    { 'PRIVATE-TOKEN': tokenValue }
+  )
+
+  if (authCheck.status !== 200) {
+    throw new Error(
+      `CI/CD variable '${variableName}' holds an invalid token (API returned ${authCheck.status})`
+    )
+  }
 })
 
 Then('I can clone the repository from the GitLab container', async () => {
