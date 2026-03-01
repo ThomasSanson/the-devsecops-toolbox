@@ -2,6 +2,18 @@
 const { GitLabAccessTokenPage } = inject()
 const { execSync } = require('child_process')
 
+// Retry an async function with delay between attempts
+async function retry (fn, { retries = 3, delay = 2000 } = {}) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt === retries) throw err
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+}
+
 // ============================================
 // GIVEN - Setup test user and project
 // ============================================
@@ -123,10 +135,10 @@ When('I run the command {string} for project {string} with local authentication'
 
   // 8. Retrieve the generated token from CI/CD variables for clone verification
   const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await I.sendGetRequest(
+  const varResponse = await retry(() => I.sendGetRequest(
     `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
     headers
-  )
+  ))
   global.renovateTokenForClone = varResponse.data.value
 })
 
@@ -252,10 +264,10 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
 
   // Retrieve the new token value for clone verification
   const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await I.sendGetRequest(
+  const varResponse = await retry(() => I.sendGetRequest(
     `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
     headers
-  )
+  ))
   global.renovateTokenForClone = varResponse.data.value
 })
 
