@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.8 (2026-03-01)
+
+### Fix
+
+- **deps**: update dependency mega-linter-runner to v9.4.0
+
 ## 19.2.7 (2026-03-01)
 
 ### Fix
