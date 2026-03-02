@@ -1,17 +1,46 @@
 /* global inject Given When Then */
 const { GitLabAccessTokenPage } = inject()
 const { execSync } = require('child_process')
+const http = require('http')
 
-// Retry an async function with delay between attempts
-async function retry (fn, { retries = 3, delay = 2000 } = {}) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      if (attempt === retries) throw err
-      await new Promise(resolve => setTimeout(resolve, delay))
+// HTTP GET with a fresh TCP connection (no keep-alive pool).
+// Avoids EPIPE / socket-hang-up after a long execSync that lets
+// idle connections die while axios still holds them in its pool.
+function freshGet (url, headers, { retries = 5, delay = 3000 } = {}) {
+  const parsed = new URL(url)
+  const attempt = () => new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: parsed.hostname,
+      port: parsed.port || 80,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers,
+      agent: false
+    }, (res) => {
+      let body = ''
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => {
+        try {
+          resolve({ data: JSON.parse(body), status: res.statusCode })
+        } catch (e) {
+          reject(new Error(`Invalid JSON from ${url}: ${body}`))
+        }
+      })
+    })
+    req.on('error', reject)
+    req.end()
+  })
+
+  return (async () => {
+    for (let i = 1; i <= retries; i++) {
+      try {
+        return await attempt()
+      } catch (err) {
+        if (i === retries) throw err
+        await new Promise(r => setTimeout(r, delay))
+      }
     }
-  }
+  })()
 }
 
 // ============================================
@@ -135,10 +164,10 @@ When('I run the command {string} for project {string} with local authentication'
 
   // 8. Retrieve the generated token from CI/CD variables for clone verification
   const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await retry(() => I.sendGetRequest(
+  const varResponse = await freshGet(
     `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
     headers
-  ))
+  )
   global.renovateTokenForClone = varResponse.data.value
 })
 
@@ -264,10 +293,10 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
 
   // Retrieve the new token value for clone verification
   const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await retry(() => I.sendGetRequest(
+  const varResponse = await freshGet(
     `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
     headers
-  ))
+  )
   global.renovateTokenForClone = varResponse.data.value
 })
 
@@ -305,6 +334,69 @@ Then('the CI\\/CD variable {string} must hold a valid token for project {string}
   if (authCheck.status !== 200) {
     throw new Error(
       `CI/CD variable '${variableName}' holds an invalid token (API returned ${authCheck.status})`
+    )
+  }
+})
+
+Given('a duplicate Renovate token {string} is created for project {string}', async (tokenName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  // Get root OAuth token
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  // Create a duplicate project access token via API
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  await I.sendPostRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens`,
+    {
+      name: tokenName,
+      scopes: ['api'],
+      access_level: 40,
+      expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    headers
+  )
+})
+
+Then('only one active token named {string} must exist for {string}', async (tokenName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  // Get root OAuth token
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  // List all project access tokens
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  const tokensResponse = await I.sendGetRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens`, headers
+  )
+
+  const activeTokens = tokensResponse.data.filter(
+    t => t.name === tokenName && t.active && !t.revoked
+  )
+
+  if (activeTokens.length !== 1) {
+    throw new Error(
+      `Expected exactly 1 active token named '${tokenName}', found ${activeTokens.length}`
     )
   }
 })
