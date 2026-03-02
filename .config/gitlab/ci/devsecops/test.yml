@@ -42,7 +42,7 @@ test:template:
   extends: .default-tags
   parallel:
     matrix:
-      - SHARD: ["1/3", "2/3", "3/3"]
+      - SHARD: ["1/4", "2/4", "3/4", "4/4"]
   script:
     - task project:test:template -- --shard $SHARD
   <<: *test_rules
