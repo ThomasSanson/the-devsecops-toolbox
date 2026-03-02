@@ -28,6 +28,14 @@ test:build-coverage:
     - task devsecops:test:check:build-coverage
   <<: *test_rules
 
+test:check-test-coverage:
+  stage: test
+  needs: []
+  extends: .default-tags
+  script:
+    - task devsecops:test:check:test-coverage
+  <<: *test_rules
+
 test:template:
   stage: test
   needs: []

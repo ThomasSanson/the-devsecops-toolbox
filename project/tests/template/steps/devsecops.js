@@ -225,6 +225,151 @@ function register () {
     }
   })
 
+  // Test coverage script steps
+  Given('a minimal project with test tasks and matching CI jobs', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'devsecops', 'test-coverage-script')
+    const root = this.projectRoot
+
+    // project/Taskfile.yml with project:test:tdd referencing test suites
+    ensureDir(path.join(root, 'project'))
+    fs.writeFileSync(path.join(root, 'project', 'Taskfile.yml'), [
+      '---',
+      "version: '3'",
+      'tasks:',
+      '  project:test:tdd:',
+      '    cmds:',
+      '      - task: deploy',
+      '      - task: project:test:template',
+      '      - task: project:test:gitlab',
+      ''
+    ].join('\n'))
+
+    // .config/devsecops/Taskfile.test.yml with default referencing checks
+    ensureDir(path.join(root, '.config', 'devsecops'))
+    fs.writeFileSync(path.join(root, '.config', 'devsecops', 'Taskfile.test.yml'), [
+      '---',
+      "version: '3'",
+      'tasks:',
+      '  default:',
+      '    cmds:',
+      '      - task: check:build-coverage',
+      '      - task: check:test-coverage',
+      '      - task: :project:test',
+      ''
+    ].join('\n'))
+
+    // .config/gitlab/ci/devsecops/test.yml with matching CI jobs
+    ensureDir(path.join(root, '.config', 'gitlab', 'ci', 'devsecops'))
+    fs.writeFileSync(path.join(root, '.config', 'gitlab', 'ci', 'devsecops', 'test.yml'), [
+      '---',
+      'test:build-coverage:',
+      '  script:',
+      '    - task devsecops:test:check:build-coverage',
+      'test:check-test-coverage:',
+      '  script:',
+      '    - task devsecops:test:check:test-coverage',
+      'test:template:',
+      '  script:',
+      '    - task project:test:template',
+      'test:gitlab:',
+      '  script:',
+      '    - task project:test:clean',
+      '    - task deploy',
+      '    - task project:test:gitlab',
+      ''
+    ].join('\n'))
+  })
+
+  Given('a minimal project with a test task missing from CI', function () { // eslint-disable-line no-undef
+    initTestContext(this, 'devsecops', 'test-coverage-script')
+    const root = this.projectRoot
+
+    // project/Taskfile.yml with an extra test suite (project:test:security) not covered by CI
+    ensureDir(path.join(root, 'project'))
+    fs.writeFileSync(path.join(root, 'project', 'Taskfile.yml'), [
+      '---',
+      "version: '3'",
+      'tasks:',
+      '  project:test:tdd:',
+      '    cmds:',
+      '      - task: deploy',
+      '      - task: project:test:template',
+      '      - task: project:test:gitlab',
+      '      - task: project:test:security',
+      ''
+    ].join('\n'))
+
+    // .config/devsecops/Taskfile.test.yml
+    ensureDir(path.join(root, '.config', 'devsecops'))
+    fs.writeFileSync(path.join(root, '.config', 'devsecops', 'Taskfile.test.yml'), [
+      '---',
+      "version: '3'",
+      'tasks:',
+      '  default:',
+      '    cmds:',
+      '      - task: check:build-coverage',
+      '      - task: check:test-coverage',
+      '      - task: :project:test',
+      ''
+    ].join('\n'))
+
+    // .config/gitlab/ci/devsecops/test.yml — missing test:security job
+    ensureDir(path.join(root, '.config', 'gitlab', 'ci', 'devsecops'))
+    fs.writeFileSync(path.join(root, '.config', 'gitlab', 'ci', 'devsecops', 'test.yml'), [
+      '---',
+      'test:build-coverage:',
+      '  script:',
+      '    - task devsecops:test:check:build-coverage',
+      'test:check-test-coverage:',
+      '  script:',
+      '    - task devsecops:test:check:test-coverage',
+      'test:template:',
+      '  script:',
+      '    - task project:test:template',
+      'test:gitlab:',
+      '  script:',
+      '    - task project:test:clean',
+      '    - task deploy',
+      '    - task project:test:gitlab',
+      ''
+    ].join('\n'))
+  })
+
+  When('the test coverage check is executed', function () { // eslint-disable-line no-undef
+    const { execSync } = require('child_process')
+    const scriptPath = path.resolve(process.cwd(), '.config/devsecops/scripts/check-test-coverage.sh')
+    const cmd = `PROJECT_ROOT=${this.projectRoot} bash ${scriptPath}`
+    try {
+      this.testCoverageOutput = execSync(cmd, { encoding: 'utf8' })
+      this.testCoverageError = null
+    } catch (err) {
+      this.testCoverageError = err
+      this.testCoverageOutput = (err.stdout || '') + (err.stderr || '')
+    }
+  })
+
+  Then('the test coverage check should succeed', function () { // eslint-disable-line no-undef
+    if (this.testCoverageError) {
+      throw new Error(
+        `Test coverage check failed unexpectedly:\n${this.testCoverageOutput}`
+      )
+    }
+  })
+
+  Then('the test coverage check should fail', function () { // eslint-disable-line no-undef
+    if (!this.testCoverageError) {
+      throw new Error('Test coverage check should have failed but succeeded')
+    }
+  })
+
+  Then('the test coverage output should contain {string}', function (expected) { // eslint-disable-line no-undef
+    if (!this.testCoverageOutput || !this.testCoverageOutput.includes(expected)) {
+      throw new Error(
+        `Expected output to contain "${expected}" but got:\n${this.testCoverageOutput}`
+      )
+    }
+  })
+
   // CodeceptJS Dockerfile steps
   Given('the CodeceptJS Dockerfile exists', function () { // eslint-disable-line no-undef
     const dockerfilePath = path.resolve(process.cwd(), '.config/codeceptjs/Dockerfile')

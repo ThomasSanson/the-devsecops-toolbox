@@ -21,6 +21,7 @@ tasks:
       - cmd: echo "🔄 Starting test phase"
         silent: true
       - task: check:build-coverage
+      - task: check:test-coverage
       - task: :project:test
       - cmd: echo "🎉 Test phase completed successfully"
         silent: true
@@ -335,4 +336,29 @@ tasks:
         TASK_BUILD_KEYWORD="{{.TASK_DEVSECOPS_TEST_BUILD_COVERAGE_TASK_BUILD_KEYWORD}}" \
         bash .config/devsecops/scripts/check-build-coverage.sh
       - cmd: echo "🎉 Build coverage check completed successfully"
+        silent: true
+
+  check:test-coverage:
+    desc: |
+      ℹ️ Description:
+        Verifies that every test task from the Taskfile chain has
+        a corresponding CI job in the GitLab CI test configuration.
+
+        This validation ensures no test task is forgotten when
+        splitting CI jobs for parallel execution.
+
+      ⚙️ How it works:
+        1. Parses project/Taskfile.yml for test suites in project:test:tdd
+        2. Parses .config/devsecops/Taskfile.test.yml for checks in default
+        3. Parses .config/gitlab/ci/devsecops/test.yml for CI job scripts
+        4. Verifies correspondence and displays a detailed report
+
+      📊 Exit codes:
+        - 0: All test tasks have an associated CI job
+        - 1: At least one test task is missing a CI job
+    cmds:
+      - cmd: echo "🔄 Starting test coverage check"
+        silent: true
+      - bash .config/devsecops/scripts/check-test-coverage.sh
+      - cmd: echo "🎉 Test coverage check completed successfully"
         silent: true
