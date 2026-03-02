@@ -37,7 +37,7 @@ function freshGet (url, headers, { retries = 5, delay = 3000 } = {}) {
         return await attempt()
       } catch (err) {
         if (i === retries) throw err
-        await new Promise(r => setTimeout(r, delay))
+        await new Promise(resolve => setTimeout(resolve, delay))
       }
     }
   })()
