@@ -1,6 +1,7 @@
 {
   "dictionaries": ["companies", "en-gb", "fr-fr", "python", "software-terms"],
   "ignorePaths": [
+    "**/.claude/**",
     "**/.config/devsecops/.copier-answers.yml",
     ".vscode",
     "**/.git/**",

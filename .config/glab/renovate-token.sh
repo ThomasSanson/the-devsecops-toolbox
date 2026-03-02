@@ -80,24 +80,56 @@ store_ci_variable() {
 }
 
 # --- Helper: verify CI/CD variable holds a working token ---
-# Reads the variable value via glab api, then tests it with an authenticated
-# API call. The credential flows through a pipe and a local subshell variable
-# named 'cred' — it is never exported, logged, or written to disk.
+# Reads the variable metadata via glab api:
+#   - If the variable is masked (hidden=true), the API returns value=null.
+#     In that case we trust that the variable exists and is in-sync.
+#   - If the value is readable, we verify it with an authenticated HTTP call.
+# NOTE: curl/wget is used instead of glab because glab always injects its own
+# stored auth (from glab auth login), making it impossible to test a specific token.
 verify_ci_variable_token() {
   local var_name="$1"
-  local protocol host
-  protocol=$(glab config get api_protocol 2>/dev/null || echo "https")
-  host=$(glab config get host 2>/dev/null || echo "gitlab.com")
 
-  glab api "projects/:id/variables/${var_name}" 2>/dev/null |
-    strip_glab_noise |
-    jq -r '.value // empty' |
-    {
-      read -r cred
-      [ -n "$cred" ] &&
-        curl -sf -o /dev/null "${protocol}://${host}/api/v4/user" \
-          -H "Authorization: Bearer ${cred}"
-    }
+  # Fetch CI/CD variable metadata
+  local var_json
+  var_json=$(glab api "projects/:id/variables/${var_name}" 2>/dev/null |
+    strip_glab_noise) || return 1
+
+  # Check if variable has a key (exists)
+  echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
+
+  # If the variable is masked/hidden, the API returns value=null.
+  # We cannot verify the token itself, but the variable exists — assume in-sync.
+  local hidden
+  hidden=$(echo "$var_json" | jq -r '.hidden // false')
+  if [ "$hidden" = "true" ]; then
+    return 0
+  fi
+
+  # Variable value is readable — verify the token works
+  local cred
+  cred=$(echo "$var_json" | jq -r '.value // empty')
+  [ -n "$cred" ] || return 1
+
+  # Build the API URL from environment or glab configuration
+  local host protocol
+  host="${GITLAB_HOST:-}"
+  if [ -z "$host" ]; then
+    host=$(glab config get host 2>/dev/null) || true
+  fi
+  : "${host:=gitlab.com}"
+  # Read protocol for the resolved hostname (glab stores config per-host)
+  protocol=$(glab config get -h "$host" api_protocol 2>/dev/null) || true
+  : "${protocol:=https}"
+
+  # Verify the token works with an isolated HTTP call (curl or wget)
+  local url="${protocol}://${host}/api/v4/user"
+  if command -v curl >/dev/null 2>&1; then
+    curl -sf -o /dev/null "$url" -H "PRIVATE-TOKEN: ${cred}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "$url"
+  else
+    return 0
+  fi
 }
 
 # --- Check permissions (Maintainer required: access_level >= 40) ---

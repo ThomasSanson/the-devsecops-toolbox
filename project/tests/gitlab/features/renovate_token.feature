@@ -25,8 +25,10 @@ Feature: GitLab Renovate Project Access Token
   @gitlab-renovate-token-idempotent
   Scenario: Re-running devsecops:init is idempotent when token and variable are already in sync
     Given the user "lambda" is logged in to GitLab
+    And the CI/CD variable "TASK_RENOVATE_TOKEN" value is saved for project "renovate-token-test"
     When I re-run "task devsecops:init" for project "renovate-token-test"
-    Then a Renovate token "TASK_RENOVATE_TOKEN" must exist with Maintainer role for "renovate-token-test"
+    Then the CI/CD variable "TASK_RENOVATE_TOKEN" must not have changed for project "renovate-token-test"
+    And a Renovate token "TASK_RENOVATE_TOKEN" must exist with Maintainer role for "renovate-token-test"
     And the token must be present in the project CI/CD variables for "renovate-token-test"
     And I can clone the repository from the GitLab container
 

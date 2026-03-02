@@ -189,6 +189,58 @@ Then('the token must be present in the project CI\\/CD variables for {string}', 
   await GitLabAccessTokenPage.verifyVisualRegressionCiCd()
 })
 
+Given('the CI\\/CD variable {string} value is saved for project {string}', async (variableName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  const varResponse = await I.sendGetRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
+    headers
+  )
+  global.savedCiVariableValue = varResponse.data.value
+})
+
+Then('the CI\\/CD variable {string} must not have changed for project {string}', async (variableName, projectName) => {
+  const baseUrl = 'http://gitlab:80'
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const I = inject().I
+
+  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: rootUser,
+    password: rootPassword
+  })
+  const rootToken = tokenResponse.data.access_token
+  const headers = { Authorization: `Bearer ${rootToken}` }
+
+  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
+  const varResponse = await I.sendGetRequest(
+    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
+    headers
+  )
+
+  if (varResponse.data.value !== global.savedCiVariableValue) {
+    throw new Error(
+      `CI/CD variable '${variableName}' was modified (token was rotated). ` +
+      'Expected idempotent behavior — the value should not change when token and variable are in sync.'
+    )
+  }
+})
+
 Given('the user {string} is logged in to GitLab', async (userName) => {
   const { GitLabUserPage } = inject()
   const password = process.env.TASK_GITLAB_LAMBDA_PASSWORD
