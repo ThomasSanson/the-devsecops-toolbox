@@ -40,8 +40,11 @@ test:template:
   stage: test
   needs: []
   extends: .default-tags
+  parallel:
+    matrix:
+      - SHARD: ["1/3", "2/3", "3/3"]
   script:
-    - task project:test:template
+    - task project:test:template -- --shard $SHARD
   <<: *test_rules
 
 test:gitlab:
