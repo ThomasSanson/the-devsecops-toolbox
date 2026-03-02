@@ -1,0 +1,26 @@
+---
+test:
+  stage: test
+  retry: 1
+  needs: [] # Allows parallel execution
+  extends: .default-tags
+  script:
+    - task test
+  artifacts:
+    when: on_failure
+    paths:
+      - .diagnostics
+      - project
+    expire_in: 3 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_TEST_SCHEDULE == "1"'
+      when: always
+    - if: $CI_COMMIT_TAG =~ /^staging$/
+      when: never
+    # Do not execute default jobs on the main branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    # Run in all other cases (MRs, feature branches, etc.)
+    - when: always
