@@ -1,11 +1,6 @@
 ---
-test:
-  stage: test
+.test-rules: &test_rules
   retry: 1
-  needs: [] # Allows parallel execution
-  extends: .default-tags
-  script:
-    - task test
   artifacts:
     when: on_failure
     paths:
@@ -24,3 +19,29 @@ test:
       when: never
     # Run in all other cases (MRs, feature branches, etc.)
     - when: always
+
+test:build-coverage:
+  stage: test
+  needs: []
+  extends: .default-tags
+  script:
+    - task devsecops:test:check:build-coverage
+  <<: *test_rules
+
+test:template:
+  stage: test
+  needs: []
+  extends: .default-tags
+  script:
+    - task project:test:template
+  <<: *test_rules
+
+test:gitlab:
+  stage: test
+  needs: []
+  extends: .default-tags
+  script:
+    - task project:test:clean
+    - task deploy
+    - task project:test:gitlab
+  <<: *test_rules
