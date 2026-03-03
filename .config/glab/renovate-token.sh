@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Disable xtrace to prevent leaking the token in CI logs
+set +x
+
 # -------------------------------------------------------------------
 # Renovate Project Access Token Manager
 #
@@ -124,9 +127,9 @@ verify_ci_variable_token() {
   # Verify the token works with an isolated HTTP call (curl or wget)
   local url="${protocol}://${host}/api/v4/user"
   if command -v curl >/dev/null 2>&1; then
-    curl -sf -o /dev/null "$url" -H "PRIVATE-TOKEN: ${cred}"
+    curl -sf -o /dev/null "$url" -H "Authorization: Bearer ${cred}"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "$url"
+    wget -q -O /dev/null --header="Authorization: Bearer ${cred}" "$url"
   else
     return 0
   fi
