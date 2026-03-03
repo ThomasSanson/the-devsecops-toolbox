@@ -7,8 +7,6 @@
   ],
   "onboarding": false,
   "requireConfig": "optional",
-  "prConcurrentLimit": 1,
-
   "automerge": true,
   "platformAutomerge": true,
   "automergeType": "pr",
@@ -19,6 +17,16 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
+  "packageRules": [
+    {
+      "description": "Version managed by commitizen, not Renovate",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
+      ],
+      "enabled": false
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",

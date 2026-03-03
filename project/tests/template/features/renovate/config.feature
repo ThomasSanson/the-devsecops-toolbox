@@ -36,3 +36,8 @@ Feature: Renovate plugin-only configuration
       """
       "depNameTemplate": "jqlang/jq"
       """
+
+  @renovate-no-concurrent-limit
+  Scenario: Renovate config delegates concurrent limit to config:recommended defaults
+    Given a generated project for "renovate/config" tests
+    Then the file ".config/renovate/config.json" should NOT contain "prConcurrentLimit"
