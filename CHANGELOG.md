@@ -2,6 +2,36 @@
 
 # Changelog
 
+## 19.2.9 (2026-03-03)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.21.2
+
+## 19.2.8 (2026-03-01)
+
+### Fix
+
+- **deps**: update dependency mega-linter-runner to v9.4.0
+
+## 19.2.7 (2026-03-01)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.11.0
+
+## 19.2.6 (2026-02-27)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.10.15
+
+## 19.2.5 (2026-02-26)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.9
+
 ## 19.2.4 (2026-02-24)
 
 ### Fix
