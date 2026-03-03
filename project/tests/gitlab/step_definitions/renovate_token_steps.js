@@ -1,47 +1,7 @@
 /* global inject Given When Then */
 const { GitLabAccessTokenPage } = inject()
 const { execSync } = require('child_process')
-const http = require('http')
-
-// HTTP GET with a fresh TCP connection (no keep-alive pool).
-// Avoids EPIPE / socket-hang-up after a long execSync that lets
-// idle connections die while axios still holds them in its pool.
-function freshGet (url, headers, { retries = 5, delay = 3000 } = {}) {
-  const parsed = new URL(url)
-  const attempt = () => new Promise((resolve, reject) => {
-    const req = http.request({
-      hostname: parsed.hostname,
-      port: parsed.port || 80,
-      path: parsed.pathname + parsed.search,
-      method: 'GET',
-      headers,
-      agent: false
-    }, (res) => {
-      let body = ''
-      res.on('data', chunk => { body += chunk })
-      res.on('end', () => {
-        try {
-          resolve({ data: JSON.parse(body), status: res.statusCode })
-        } catch (e) {
-          reject(new Error(`Invalid JSON from ${url}: ${body}`))
-        }
-      })
-    })
-    req.on('error', reject)
-    req.end()
-  })
-
-  return (async () => {
-    for (let i = 1; i <= retries; i++) {
-      try {
-        return await attempt()
-      } catch (err) {
-        if (i === retries) throw err
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  })()
-}
+const { freshGet } = require('../helpers/http')
 
 // ============================================
 // GIVEN - Setup test user and project

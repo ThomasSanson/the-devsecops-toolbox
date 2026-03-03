@@ -18,8 +18,8 @@ CI_VAR_NAME="${TASK_GLAB_DEPLOY_KEY_VAR_NAME:-CZ_DEPLOY_KEY}"
 CI_VAR_PROTECTED="${TASK_GLAB_DEPLOY_KEY_PROTECTED:-true}"
 
 # --- Secure temp directory with cleanup trap ---
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+KEY_DIR=$(mktemp -d)
+trap 'rm -rf "$KEY_DIR"' EXIT
 
 # --- Helper: extract JSON from glab output ---
 # glab may append version upgrade notices on the same line as JSON output.
@@ -73,10 +73,10 @@ fi
 
 # --- Generate SSH key pair ---
 echo "   🔐 Generating SSH key pair (ed25519)..."
-ssh-keygen -t ed25519 -C "${DEPLOY_KEY_TITLE}" -f "${TMPDIR}/cz_deploy_key" -N "" -q
+ssh-keygen -t ed25519 -C "${DEPLOY_KEY_TITLE}" -f "${KEY_DIR}/cz_deploy_key" -N "" -q
 
-PUBLIC_KEY=$(cat "${TMPDIR}/cz_deploy_key.pub")
-PRIVATE_KEY=$(cat "${TMPDIR}/cz_deploy_key")
+PUBLIC_KEY=$(cat "${KEY_DIR}/cz_deploy_key.pub")
+PRIVATE_KEY=$(cat "${KEY_DIR}/cz_deploy_key")
 
 # --- Create deploy key via API ---
 echo "   🔑 Creating deploy key '${DEPLOY_KEY_TITLE}' with write access..."
@@ -117,9 +117,6 @@ else
     glab api --method POST "projects/:id/variables" \
       --input - -H "Content-Type: application/json" 2>/dev/null | strip_glab_noise)
 fi
-
-# Explicit cleanup (trap handles edge cases, this is belt-and-suspenders)
-rm -rf "$TMPDIR"
 
 if echo "$RESULT" | jq -e '.key' >/dev/null 2>&1; then
   echo "   ✅ CI/CD variable '${CI_VAR_NAME}' stored (type=file, protected=${CI_VAR_PROTECTED})"

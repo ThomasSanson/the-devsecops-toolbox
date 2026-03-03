@@ -8,78 +8,37 @@ class GitLabDeployKeyPage {
     await I.wait(2)
   }
 
-  async verifyDeployKeyViaApi (baseUrl, rootUser, rootPassword, projectPath, keyTitle) {
-    const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-      grant_type: 'password',
-      username: rootUser,
-      password: rootPassword
+  async _scrollToDeployKeysSection () {
+    await I.executeScript(() => {
+      const headers = Array.from(document.querySelectorAll('h2, h3, h4, span'))
+      const target = headers.find(el => el.textContent.trim() === 'Deploy keys')
+      if (target) {
+        const section = target.closest('section') || target.closest('div[id*="deploy-keys"]')
+        if (section) {
+          section.classList.add('expanded')
+          section.scrollIntoView({ behavior: 'instant', block: 'start' })
+        } else {
+          target.scrollIntoView({ behavior: 'instant', block: 'start' })
+        }
+      } else {
+        const section = document.querySelector('#js-deploy-keys-settings') || document.querySelector('#deploy-keys-settings')
+        if (section) {
+          section.classList.add('expanded')
+          section.scrollIntoView({ behavior: 'instant', block: 'start' })
+        }
+      }
     })
-    const accessToken = tokenResponse.data.access_token
-    const headers = { Authorization: `Bearer ${accessToken}` }
-
-    const encodedPath = encodeURIComponent(projectPath)
-    const keysResponse = await I.sendGetRequest(
-      `${baseUrl}/api/v4/projects/${encodedPath}/deploy_keys`, headers
-    )
-
-    const matchingKey = keysResponse.data.find(k => k.title === keyTitle)
-    if (!matchingKey) {
-      throw new Error(`Deploy key '${keyTitle}' not found for project '${projectPath}'`)
-    }
-    if (!matchingKey.can_push) {
-      throw new Error(`Deploy key '${keyTitle}' does not have write access (can_push=${matchingKey.can_push})`)
-    }
+    await I.wait(2)
   }
 
   async verifyDeployKey (keyTitle) {
     await I.waitForText('Deploy keys', 10)
-
-    // Scroll to and expand the "Deploy keys" section
-    await I.executeScript(() => {
-      const headers = Array.from(document.querySelectorAll('h2, h3, h4, span'))
-      const target = headers.find(el => el.textContent.trim() === 'Deploy keys')
-      if (target) {
-        const section = target.closest('section') || target.closest('div[id*="deploy-keys"]')
-        if (section) {
-          section.classList.add('expanded')
-          section.scrollIntoView({ behavior: 'instant', block: 'start' })
-        } else {
-          target.scrollIntoView({ behavior: 'instant', block: 'start' })
-        }
-      } else {
-        const section = document.querySelector('#js-deploy-keys-settings') || document.querySelector('#deploy-keys-settings')
-        if (section) {
-          section.classList.add('expanded')
-          section.scrollIntoView({ behavior: 'instant', block: 'start' })
-        }
-      }
-    })
-    await I.wait(2)
+    await this._scrollToDeployKeysSection()
     await I.see(keyTitle)
   }
 
   async verifyVisualRegression () {
-    // Scroll to the Deploy keys section for the screenshot
-    await I.executeScript(() => {
-      const headers = Array.from(document.querySelectorAll('h2, h3, h4, span'))
-      const target = headers.find(el => el.textContent.trim() === 'Deploy keys')
-      if (target) {
-        const section = target.closest('section') || target.closest('div[id*="deploy-keys"]')
-        if (section) {
-          section.classList.add('expanded')
-          section.scrollIntoView({ behavior: 'instant', block: 'start' })
-        } else {
-          target.scrollIntoView({ behavior: 'instant', block: 'start' })
-        }
-      } else {
-        const section = document.querySelector('#js-deploy-keys-settings') || document.querySelector('#deploy-keys-settings')
-        if (section) {
-          section.classList.add('expanded')
-          section.scrollIntoView({ behavior: 'instant', block: 'start' })
-        }
-      }
-    })
-    await I.wait(2)
+    await this._scrollToDeployKeysSection()
     await I.moveCursorTo('body', 1, 1)
 
     const screenshotName = 'gitlab_repository_settings_deploy_key'

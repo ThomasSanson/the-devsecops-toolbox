@@ -1,6 +1,7 @@
 /* global inject When Then */
 const { GitLabDeployKeyPage } = inject()
 const { execSync } = require('child_process')
+const { freshGet, freshPost } = require('../helpers/http')
 
 // ============================================
 // WHEN - Run deploy key setup via devsecops:init
@@ -85,15 +86,29 @@ When('I run the deploy key setup for project {string} with local authentication'
 Then('a deploy key {string} must exist with write access for {string}', async (keyTitle, projectName) => {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   const projectPath = `${lambdaUser}/${projectName}`
+  const baseUrl = 'http://gitlab:80'
 
-  // Verify write access via API (can_push=true is not visible in the UI)
-  await GitLabDeployKeyPage.verifyDeployKeyViaApi(
-    'http://gitlab:80',
-    process.env.TASK_GITLAB_ROOT_USER,
-    process.env.TASK_GITLAB_ROOT_PASSWORD,
-    projectPath,
-    keyTitle
+  // Verify write access via API using fresh TCP connections
+  // (can_push=true is not visible in the UI, and axios pool is stale after execSync)
+  const tokenResponse = await freshPost(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: process.env.TASK_GITLAB_ROOT_USER,
+    password: process.env.TASK_GITLAB_ROOT_PASSWORD
+  })
+  const headers = { Authorization: `Bearer ${tokenResponse.data.access_token}` }
+
+  const encodedPath = encodeURIComponent(projectPath)
+  const keysResponse = await freshGet(
+    `${baseUrl}/api/v4/projects/${encodedPath}/deploy_keys`, headers
   )
+
+  const matchingKey = keysResponse.data.find(k => k.title === keyTitle)
+  if (!matchingKey) {
+    throw new Error(`Deploy key '${keyTitle}' not found for project '${projectPath}'`)
+  }
+  if (!matchingKey.can_push) {
+    throw new Error(`Deploy key '${keyTitle}' does not have write access (can_push=${matchingKey.can_push})`)
+  }
 
   // Verify key is visible in the UI + visual regression
   await GitLabDeployKeyPage.navigateToRepositorySettings(projectPath)
