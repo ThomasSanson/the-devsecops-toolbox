@@ -152,6 +152,7 @@
     "jscoverage",
     "jspm",
     "kaniko",
+    "keygen",
     "kics",
     "kubeconfig",
     "kubeseal",
