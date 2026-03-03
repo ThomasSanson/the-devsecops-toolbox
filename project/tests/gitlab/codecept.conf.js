@@ -6,7 +6,8 @@ exports.config = {
     GitLabUserPage: './pages/GitLabUserPage.js',
     GitLabProjectPage: './pages/GitLabProjectPage.js',
     GitLabMergeSettingsPage: './pages/GitLabMergeSettingsPage.js',
-    GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js'
+    GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js',
+    GitLabRepositorySettingsPage: './pages/GitLabRepositorySettingsPage.js'
   },
   helpers: {
     Playwright: {
@@ -46,7 +47,8 @@ exports.config = {
       './step_definitions/user_lambda_steps.js',
       './step_definitions/create_public_project_steps.js',
       './step_definitions/configure_merge_method_steps.js',
-      './step_definitions/renovate_token_steps.js'
+      './step_definitions/renovate_token_steps.js',
+      './step_definitions/configure_default_branch_steps.js'
     ]
   },
   plugins: {

@@ -215,6 +215,7 @@ tasks:
               fi
             }
 
+            check_setting "default_branch" "{{.TASK_GIT_DEFAULT_BRANCH}}" "default_branch"
             check_setting "merge_method" "{{.TASK_GLAB_MERGE_METHOD}}" "merge_method"
             check_setting "squash_option" "{{.TASK_GLAB_SQUASH_OPTION}}" "squash_option"
             check_setting "remove_source_branch_after_merge" "{{.TASK_GLAB_REMOVE_SOURCE_BRANCH}}" "remove_source_branch_after_merge"
@@ -234,6 +235,7 @@ tasks:
           else
             echo "🦊 Applying merge request settings..."
             glab api --method PUT projects/:id \
+              -f default_branch={{.TASK_GIT_DEFAULT_BRANCH}} \
               -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
               -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
               -f remove_source_branch_after_merge={{.TASK_GLAB_REMOVE_SOURCE_BRANCH}} \

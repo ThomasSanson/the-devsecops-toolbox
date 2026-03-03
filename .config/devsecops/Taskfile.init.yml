@@ -7,7 +7,7 @@ tasks:
     summary: |
       ℹ️ Description:
         Full local initialization: installs dev tools and configures GitLab
-        project settings (merge request settings).
+        project settings (default branch, merge request settings).
 
       🔄 Execution:
         1. dev:setup-environment (install all tools)
@@ -27,7 +27,7 @@ tasks:
     summary: |
       ℹ️ Description:
         Configures the GitLab project:
-        1. Configures merge request settings
+        1. Configures default branch and merge request settings
     deps:
       - :glab:install
     cmds:

@@ -107,6 +107,7 @@
     "datawarehouse",
     "dbaeumer",
     "debian",
+    "dedup",
     "defaultdict",
     "devrelease",
     "devskim",
@@ -223,6 +224,7 @@
     "webassets",
     "webui",
     "wscript",
+    "xtrace",
     "xunit",
     "zricethezav"
   ]

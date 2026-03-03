@@ -157,7 +157,7 @@ cd ~/workspace/path/to/your/new/project
 
 
 ```bash
-copier copy -a .config/devsecops/.copier-answers.yml https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox.git .
+copier copy --trust -a .config/devsecops/.copier-answers.yml https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox.git .
 ```
 
 Replace `/path/to/your/new/project` with your desired project location.
