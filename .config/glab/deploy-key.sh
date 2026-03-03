@@ -42,6 +42,35 @@ check_permissions() {
   echo "   ✅ Permissions verified (Maintainer or higher)"
 }
 
+# --- Verify deploy key and CI/CD variable are valid and in sync ---
+# Derives the public key from the stored private key and compares it
+# with the registered deploy key. This is a non-destructive cryptographic
+# proof that the key pair would work for git operations.
+verify_deploy_key() {
+  # 1. Fetch CI/CD variable (private key)
+  local var_data stored_key
+  var_data=$(glab api "projects/:id/variables/${CI_VAR_NAME}" 2>/dev/null | strip_glab_noise) || return 1
+  stored_key=$(echo "$var_data" | jq -r '.value // empty')
+  [ -n "$stored_key" ] || return 1
+
+  # 2. Derive public key from stored private key
+  echo "$stored_key" >"${KEY_DIR}/verify_key"
+  chmod 600 "${KEY_DIR}/verify_key"
+  local derived_pub
+  derived_pub=$(ssh-keygen -y -f "${KEY_DIR}/verify_key" 2>/dev/null) || return 1
+  rm -f "${KEY_DIR}/verify_key"
+
+  # 3. Compare with registered deploy key (type + data, ignore comment)
+  local registered_pub
+  registered_pub=$(echo "$MATCHING" | jq -r '.[0].key // empty')
+  [ -n "$registered_pub" ] || return 1
+
+  local derived_fp registered_fp
+  derived_fp=$(echo "$derived_pub" | awk '{print $1, $2}')
+  registered_fp=$(echo "$registered_pub" | awk '{print $1, $2}')
+  [ "$derived_fp" = "$registered_fp" ]
+}
+
 # --- Main logic ---
 echo "🔑 Deploy Key Setup"
 
@@ -52,14 +81,14 @@ EXISTING_KEYS=$(glab api "projects/:id/deploy_keys?per_page=100" 2>/dev/null || 
 MATCHING=$(echo "$EXISTING_KEYS" | jq -r "[.[] | select(.title == \"${DEPLOY_KEY_TITLE}\")]")
 COUNT=$(echo "$MATCHING" | jq 'length')
 
-# --- Idempotency: deploy key + CI/CD variable both exist → nothing to do ---
+# --- Idempotency: deploy key + CI/CD variable both exist and in sync → nothing to do ---
 if [ "$COUNT" -ge 1 ]; then
-  var_check=$(glab api "projects/:id/variables/${CI_VAR_NAME}" 2>/dev/null | strip_glab_noise) || true
-  if echo "$var_check" | jq -e '.key' >/dev/null 2>&1; then
-    echo "   ✅ Deploy key '${DEPLOY_KEY_TITLE}' and CI/CD variable '${CI_VAR_NAME}' already exist"
+  if verify_deploy_key; then
+    echo "   ✅ Deploy key '${DEPLOY_KEY_TITLE}' and CI/CD variable '${CI_VAR_NAME}' are valid and in sync"
     echo "✅ Done! Deploy key is ready."
     exit 0
   fi
+  echo "   🔄 Key pair out of sync or variable missing, regenerating..."
 fi
 
 # --- Remove existing deploy keys with same title (start fresh) ---
