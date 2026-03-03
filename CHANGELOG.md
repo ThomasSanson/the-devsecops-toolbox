@@ -2,6 +2,33 @@
 
 # Changelog
 
+## 20.0.0 (2026-03-03)
+
+### Feat
+
+- **ci**: add idempotent token verification and exclude .claude checks
+- **devsecops**: add test coverage check script, task and CI job
+- **gitlab**: add idempotent, resync and dedup scenarios with freshGet
+- **renovate-token**: add token verification, sync check and tests
+- add Renovate token task, script and tests; update configs
+- **glab**: replace merge-method task with configurable merge-settings
+- **copier**: add post‑copy devsecops:init task and update tests
+- **glab**: improve merge method error message and add test scenario
+- **glab**: prefer Homebrew install and add it to cross‑platform test matrix
+- add DevSecOps init, GitLab merge‑method, jq installer, and CI tests
+- **gitlab**: add public project creation feature and related tests
+- **tests**: add lambda user test support and related config
+- **gitlab**: add GitLab CE test service, CI env, docs and related tasks
+
+### Fix
+
+- **renovate-token**: use Bearer header and disable xtrace to hide token
+
+### Refactor
+
+- **gitlab**: rename Promise callback param to resolve for clarity
+- **devsecops**: simplify init and plan tasks, remove token setup
+
 ## 19.2.9 (2026-03-03)
 
 ### Fix
