@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 19.2.9 (2026-03-03)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.21.2
+
 ## 19.2.8 (2026-03-01)
 
 ### Fix
