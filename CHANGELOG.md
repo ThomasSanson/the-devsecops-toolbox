@@ -2,6 +2,20 @@
 
 # Changelog
 
+## 21.0.0 (2026-03-04)
+
+### Feat
+
+- **renovate**: drop prConcurrentLimit, add rule to ignore Docker image
+- **deploy-key**: add verification and idempotent tests for setup
+- add GitLab deploy key task, script, and end‑to‑end tests
+- **gitlab**: add protected‑branch page, steps, feature and config updates
+- **gitlab**: add default‑branch configuration support and related tests
+
+### Refactor
+
+- share fresh HTTP helpers, extract scroll helper, rename port
+
 ## 20.0.0 (2026-03-03)
 
 ### Feat
