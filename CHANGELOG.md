@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.1.0 (2026-03-04)
+
+### Feat
+
+- **glab**: add protected‑branch task, script, tests; fix key newline
+
 ## 21.0.0 (2026-03-04)
 
 ### Feat
