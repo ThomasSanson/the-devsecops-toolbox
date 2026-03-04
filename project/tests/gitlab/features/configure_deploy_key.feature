@@ -11,6 +11,8 @@ Feature: GitLab Deploy Key Configuration
     When I run the deploy key setup for project "deploy-key-test" with local authentication
     Then a deploy key "Commitizen Deploy Key" must exist with write access for "deploy-key-test"
     And the CI/CD variable "CZ_DEPLOY_KEY" must exist as file type for "deploy-key-test"
+    And the CI/CD variable "CZ_DEPLOY_KEY" value must end with a trailing newline for "deploy-key-test"
+    And the branch "main" is protected with merge for maintainers and push for no one for "deploy-key-test"
 
   @gitlab-deploy-key-idempotent
   Scenario: Re-running devsecops:init keeps existing deploy key when key pair is in sync

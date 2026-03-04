@@ -107,6 +107,12 @@ ssh-keygen -t ed25519 -C "${DEPLOY_KEY_TITLE}" -f "${KEY_DIR}/cz_deploy_key" -N 
 PUBLIC_KEY=$(cat "${KEY_DIR}/cz_deploy_key.pub")
 PRIVATE_KEY=$(cat "${KEY_DIR}/cz_deploy_key")
 
+# Ensure private key ends with a newline (required by OpenSSH)
+case "$PRIVATE_KEY" in
+*$'\n') ;; # Already ends with newline
+*) PRIVATE_KEY="${PRIVATE_KEY}"$'\n' ;;
+esac
+
 # --- Create deploy key via API ---
 echo "   🔑 Creating deploy key '${DEPLOY_KEY_TITLE}' with write access..."
 PAYLOAD=$(jq -n \

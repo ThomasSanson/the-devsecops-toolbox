@@ -341,3 +341,48 @@ tasks:
           TASK_GLAB_DEPLOY_KEY_PROTECTED="{{.TASK_GLAB_DEPLOY_KEY_PROTECTED}}" \
           bash {{.TASK_GLAB_CONFIG_DIR}}/deploy-key.sh
         silent: true
+
+  protected-branch:
+    desc: 🔒 Configure protected branch with strict rules
+    summary: |
+      ℹ️ Description:
+        Configures the default branch with strict protection rules.
+        Purges any stale access levels and sets:
+        - Allowed to merge: Maintainers
+        - Allowed to push: No one + Commitizen Deploy Key
+        On CE/Free, falls back to interactive guidance if API
+        does not support deploy_key_id in push access.
+
+      🔧 Variables:
+        - TASK_GLAB_DEPLOY_KEY_TITLE: Deploy key title (default: Commitizen Deploy Key)
+        - TASK_GLAB_PROTECTED_BRANCH: Branch to protect (default: main)
+
+      🔐 Preconditions:
+        - glab must be installed and authenticated
+        - jq must be installed
+        - User must have Maintainer (or higher) role
+
+      🔄 Execution:
+        1. Check permissions (Maintainer required)
+        2. Delete existing protection (purge stale rules)
+        3. Re-create protection with strict rules
+        4. Attempt to add deploy key via API (Premium)
+        5. Fall back to interactive guidance (CE/Free)
+    vars:
+      TASK_GLAB_DEPLOY_KEY_TITLE: '{{.TASK_GLAB_DEPLOY_KEY_TITLE | default "Commitizen Deploy Key"}}'
+      TASK_GLAB_PROTECTED_BRANCH: '{{.TASK_GLAB_PROTECTED_BRANCH | default "main"}}'
+    preconditions:
+      - sh: command -v glab >/dev/null 2>&1
+        msg: "❌ glab is not installed. Run 'task glab:install' first."
+      - sh: command -v jq >/dev/null 2>&1
+        msg: "❌ jq is not installed."
+      - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+        msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          TASK_GLAB_DEPLOY_KEY_TITLE="{{.TASK_GLAB_DEPLOY_KEY_TITLE}}" \
+          TASK_GLAB_PROTECTED_BRANCH="{{.TASK_GLAB_PROTECTED_BRANCH}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/protected-branch.sh
+        silent: true

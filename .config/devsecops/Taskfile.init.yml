@@ -36,5 +36,6 @@ tasks:
       - task: :glab:merge-settings
       - task: :glab:renovate-token
       - task: :glab:deploy-key
+      - task: :glab:protected-branch
       - cmd: echo "✅ GitLab project configured"
         silent: true
