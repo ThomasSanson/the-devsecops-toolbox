@@ -61,57 +61,6 @@ tasks:
       - cmd: echo "🎉 Commitizen release bump completed successfully"
         silent: true
 
-  gitlab:lock-default-branch:
-    desc: Ensure default branch is protected with push access set to No one.
-    preconditions:
-      - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH}}"
-        msg: "PROJECT_PATH (TASK_DEVSECOPS_RELEASE_PROJECT_PATH) is not set. Set TASK_DEVSECOPS_RELEASE_PROJECT_PATH or CI_PROJECT_PATH env var."
-      - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
-        msg: "CURRENT_BRANCH (TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH) is not set. Set TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH or ensure git setup is correct."
-    cmds:
-      - cmd: |
-          if [ "{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH}}" != "true" ] || \
-            [ "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}" != "{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}" ]; then
-            echo "Skip: default branch lock not required for this context."
-            exit 0
-          fi
-
-          require_var() {
-            local value="$1"
-            local label="$2"
-            if [ -z "$value" ]; then
-              echo "❌ Missing required variable: ${label}" >&2
-              exit 1
-            fi
-          }
-
-          TOKEN="${TASK_DEVSECOPS_RELEASE_PUSH_TOKEN:-}"
-          API_URL="${TASK_DEVSECOPS_RELEASE_GITLAB_API_URL:-}"
-          PROJECT_PATH="${TASK_DEVSECOPS_RELEASE_PROJECT_PATH:-}"
-          BRANCH="${TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH:-{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}}"
-
-          require_var "$TOKEN" "TASK_DEVSECOPS_RELEASE_PUSH_TOKEN (or TASK_COMMITIZEN_TOKEN)"
-          require_var "$API_URL" "TASK_DEVSECOPS_RELEASE_GITLAB_API_URL"
-          require_var "$PROJECT_PATH" "TASK_DEVSECOPS_RELEASE_PROJECT_PATH"
-
-          PROJECT_PATH_ENCODED=$(printf '%s' "$PROJECT_PATH" | jq -sRr @uri)
-          BRANCH_ENCODED=$(printf '%s' "$BRANCH" | jq -sRr @uri)
-
-          curl --silent --show-error --fail \
-            --request DELETE \
-            --header "PRIVATE-TOKEN: ${TOKEN}" \
-            "${API_URL}/projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH_ENCODED}" \
-            >/dev/null 2>&1 || true
-
-          curl --silent --show-error --fail \
-            --request POST \
-            --header "PRIVATE-TOKEN: ${TOKEN}" \
-            "${API_URL}/projects/${PROJECT_PATH_ENCODED}/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=0" \
-            >/dev/null
-
-          echo "✅ Default branch protection restored (push=No one)."
-        silent: true
-
   push-release:
     desc: Run Commitizen and push release with temporary branch push window.
     preconditions:
@@ -180,7 +129,7 @@ tasks:
           restore_branch_protection() {
             echo "🔒 Restoring branch protection (push=No one)..."
             set +e
-            set_branch_protection 0
+            task glab:release:lock-default-branch
             status=$?
             set -e
             if [ "$status" -ne 0 ]; then
