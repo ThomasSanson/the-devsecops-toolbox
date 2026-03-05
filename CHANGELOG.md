@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.2.1 (2026-03-05)
+
+### Fix
+
+- **deps**: update python docker tag to v3.14
+
 ## 21.2.0 (2026-03-05)
 
 ### Feat
