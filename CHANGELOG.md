@@ -2,6 +2,19 @@
 
 # Changelog
 
+## 21.2.0 (2026-03-05)
+
+### Feat
+
+- **node**: add retry logic to Node install script and related tests
+- switch Commitizen from SSH deploy key to project access token
+
+### Refactor
+
+- **release**: rename lock-default-branch task to glab namespace
+- **gitlab**: rename lock-default-branch task and add helper
+- **devsecops**: use project-token, add lock-default-branch task
+
 ## 21.1.1 (2026-03-04)
 
 ### Fix
