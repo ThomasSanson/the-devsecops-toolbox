@@ -1,37 +1,12 @@
-/* global inject When Then */
+/* global When Then */
 const { execSync } = require('child_process')
 const fs = require('fs')
-const { freshGet } = require('../helpers/http')
-
-async function getRootHeaders () {
-  const I = inject().I
-  const baseUrl = 'http://gitlab:80'
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: process.env.TASK_GITLAB_ROOT_USER,
-    password: process.env.TASK_GITLAB_ROOT_PASSWORD
-  })
-  return { Authorization: `Bearer ${tokenResponse.data.access_token}` }
-}
-
-async function createGlabTokenForLambda (tokenName) {
-  const I = inject().I
-  const baseUrl = 'http://gitlab:80'
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const headers = await getRootHeaders()
-
-  const usersResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/users?username=${lambdaUser}`, headers
-  )
-  const lambdaUserId = usersResponse.data[0].id
-
-  const patResponse = await I.sendPostRequest(
-    `${baseUrl}/api/v4/users/${lambdaUserId}/personal_access_tokens`,
-    { name: tokenName, scopes: ['api', 'write_repository'] },
-    headers
-  )
-  return patResponse.data.token
-}
+const {
+  BASE_URL,
+  getRootHeaders,
+  createLambdaPersonalAccessToken,
+  readProjectVariable
+} = require('../helpers/gitlabApi')
 
 function prepareWorkspaceRepo (projectName, repoDir, glabToken) {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
@@ -67,11 +42,15 @@ function prepareWorkspaceRepo (projectName, repoDir, glabToken) {
 }
 
 async function runInitAndRelease (projectName, { expectFailure }) {
-  const baseUrl = 'http://gitlab:80'
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   const repoDir = `/tmp/${projectName}-repo`
 
-  const glabToken = await createGlabTokenForLambda(`glab-cli-token-for-${projectName}`)
+  const rootHeaders = await getRootHeaders()
+  const glabToken = await createLambdaPersonalAccessToken(
+    `glab-cli-token-for-${projectName}`,
+    ['api', 'write_repository'],
+    rootHeaders
+  )
   prepareWorkspaceRepo(projectName, repoDir, glabToken)
 
   const baseEnv = {
@@ -101,12 +80,7 @@ async function runInitAndRelease (projectName, { expectFailure }) {
     encoding: 'utf8'
   })
 
-  const headers = await getRootHeaders()
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const variableResponse = await freshGet(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_COMMITIZEN_TOKEN`,
-    headers
-  )
+  const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
   const commitizenToken = variableResponse.data.value
   if (!commitizenToken) {
     throw new Error(`CI/CD variable TASK_COMMITIZEN_TOKEN is empty for project '${lambdaUser}/${projectName}'`)
@@ -116,7 +90,7 @@ async function runInitAndRelease (projectName, { expectFailure }) {
     ...baseEnv,
     TASK_DOCKER_CE_ENABLED: 'false',
     TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: commitizenToken,
-    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${baseUrl}/api/v4`,
+    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
     TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: expectFailure ? 'invalid-host-for-release' : 'gitlab',
     TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
     TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',

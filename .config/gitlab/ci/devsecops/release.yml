@@ -13,6 +13,8 @@ release:
     TASK_DOCKER_CE_REGISTRY_USERNAME: ${CI_REGISTRY_USER}
   script:
     - task release
+  after_script:
+    - task devsecops:release:lock-default-branch || true
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always

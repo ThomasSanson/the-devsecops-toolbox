@@ -33,14 +33,23 @@ Feature: Glab Renovate Token Task
     And the file ".config/glab/Taskfile.yml" should contain "glab auth status"
 
   @no-token-leak
-  Scenario: Renovate token validation uses glab api instead of curl with exposed token
+  Scenario: Shared project token manager uses glab api instead of curl with exposed token
     Given a clean temporary directory for "glab/renovate-token" tests
     When the copier command is executed with default settings
-    Then the file ".config/glab/renovate-token.sh" should contain "glab api"
-    And the file ".config/glab/renovate-token.sh" should NOT contain "PRIVATE-TOKEN"
+    Then the file ".config/glab/project-token.sh" should contain "glab api"
+    And the file ".config/glab/project-token.sh" should NOT contain "PRIVATE-TOKEN"
 
   @no-token-in-variable
   Scenario: Renovate token script does not capture token in a shell variable
     Given a clean temporary directory for "glab/renovate-token" tests
     When the copier command is executed with default settings
     Then the file ".config/glab/renovate-token.sh" should NOT contain "TOKEN=$("
+
+  @shared-manager
+  Scenario: Renovate and Commitizen wrappers use a shared project token manager
+    Given a clean temporary directory for "glab/renovate-token" tests
+    When the copier command is executed with default settings
+    Then the file ".config/glab/project-token.sh" should exist
+    And the file ".config/glab/project-token.sh" should contain "glab api"
+    And the file ".config/glab/renovate-token.sh" should contain "project-token.sh"
+    And the file ".config/glab/commitizen-token.sh" should contain "project-token.sh"

@@ -54,4 +54,12 @@ function freshPost (url, body, headers, opts) {
   return freshRequest('POST', url, { body, headers, ...opts })
 }
 
-module.exports = { freshGet, freshPost }
+function freshPut (url, body, headers, opts) {
+  return freshRequest('PUT', url, { body, headers, ...opts })
+}
+
+function freshDelete (url, headers, opts) {
+  return freshRequest('DELETE', url, { headers, ...opts })
+}
+
+module.exports = { freshGet, freshPost, freshPut, freshDelete }

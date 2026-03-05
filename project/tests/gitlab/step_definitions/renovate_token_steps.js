@@ -1,47 +1,55 @@
 /* global inject Given When Then */
 const { GitLabAccessTokenPage } = inject()
 const { execSync } = require('child_process')
-const { freshGet } = require('../helpers/http')
+const {
+  BASE_URL,
+  projectPath,
+  getRootHeaders,
+  createLambdaPersonalAccessToken,
+  readProjectVariable,
+  updateProjectVariable,
+  listProjectAccessTokens,
+  createProjectAccessToken,
+  revokeProjectAccessToken
+} = require('../helpers/gitlabApi')
 
 // ============================================
 // GIVEN - Setup test user and project
 // ============================================
 
 Given('a GitLab runs in a container configured with user {string}', async (userName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-
   // Ensure lambda user exists
   const I = inject().I
   const title = await I.grabTitle()
   if (!title) {
     const { GitLabUserPage } = inject()
-    await GitLabUserPage.ensureUserViaApi(baseUrl, rootUser, rootPassword, {
-      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
-      username: lambdaUser,
-      name: 'Lambda User',
-      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
-    })
+    await GitLabUserPage.ensureUserViaApi(
+      BASE_URL,
+      process.env.TASK_GITLAB_ROOT_USER,
+      process.env.TASK_GITLAB_ROOT_PASSWORD,
+      {
+        email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
+        username: process.env.TASK_GITLAB_LAMBDA_USER,
+        name: 'Lambda User',
+        password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
+      }
+    )
   }
 })
 
 Given('a test repository {string} is created in GitLab', async (projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-
   const { GitLabProjectPage, GitLabUserPage } = inject()
 
   // Delete project if exists
   await GitLabProjectPage.deleteProjectIfExists(
-    baseUrl, rootUser, rootPassword, `${lambdaUser}/${projectName}`
+    BASE_URL,
+    process.env.TASK_GITLAB_ROOT_USER,
+    process.env.TASK_GITLAB_ROOT_PASSWORD,
+    projectPath(projectName)
   )
 
   // Login as lambda user
-  await GitLabUserPage.loginAs(lambdaUser, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
 
   // Create fresh project
   await GitLabProjectPage.createBlankPublicProject(projectName)
@@ -53,37 +61,12 @@ Given('a test repository {string} is created in GitLab', async (projectName) => 
 
 When('I run the command {string} for project {string} with local authentication', async (command, projectName) => {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const baseUrl = 'http://gitlab:80'
-
-  const I = inject().I
-
-  // 1. Get root OAuth token to create PAT for lambda user
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // 2. Get lambda user ID
-  const usersResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/users?username=${lambdaUser}`, headers
+  const rootHeaders = await getRootHeaders()
+  const glabToken = await createLambdaPersonalAccessToken(
+    'glab-cli-token-for-test',
+    ['api', 'write_repository'],
+    rootHeaders
   )
-  const lambdaUserId = usersResponse.data[0].id
-
-  // 3. Create a Personal Access Token for glab CLI
-  const patResponse = await I.sendPostRequest(
-    `${baseUrl}/api/v4/users/${lambdaUserId}/personal_access_tokens`,
-    {
-      name: 'glab-cli-token-for-test',
-      scopes: ['api', 'write_repository']
-    },
-    headers
-  )
-  const glabToken = patResponse.data.token
 
   // 4. Clone the test project and copy toolbox source
   execSync(`
@@ -123,11 +106,7 @@ When('I run the command {string} for project {string} with local authentication'
   `, { stdio: 'inherit', timeout: 300000 })
 
   // 8. Retrieve the generated token from CI/CD variables for clone verification
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await freshGet(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
-    headers
-  )
+  const varResponse = await readProjectVariable(projectName, 'TASK_RENOVATE_TOKEN', rootHeaders)
   global.renovateTokenForClone = varResponse.data.value
 })
 
@@ -136,62 +115,26 @@ When('I run the command {string} for project {string} with local authentication'
 // ============================================
 
 Then('a Renovate token {string} must exist with Maintainer role for {string}', async (tokenName, projectName) => {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  await GitLabAccessTokenPage.navigateToAccessTokenSettings(`${lambdaUser}/${projectName}`)
+  await GitLabAccessTokenPage.navigateToAccessTokenSettings(projectPath(projectName))
   await GitLabAccessTokenPage.verifyTokenWithMaintainerRole(tokenName)
   await GitLabAccessTokenPage.verifyVisualRegression()
 })
 
 Then('the token must be present in the project CI\\/CD variables for {string}', async (projectName) => {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  await GitLabAccessTokenPage.navigateToCiCdSettings(`${lambdaUser}/${projectName}`)
+  await GitLabAccessTokenPage.navigateToCiCdSettings(projectPath(projectName))
   await GitLabAccessTokenPage.verifyCiCdVariable('TASK_RENOVATE_TOKEN')
   await GitLabAccessTokenPage.verifyVisualRegressionCiCd()
 })
 
 Given('the CI\\/CD variable {string} value is saved for project {string}', async (variableName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
-    headers
-  )
+  const headers = await getRootHeaders()
+  const varResponse = await readProjectVariable(projectName, variableName, headers)
   global.savedCiVariableValue = varResponse.data.value
 })
 
 Then('the CI\\/CD variable {string} must not have changed for project {string}', async (variableName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
-    headers
-  )
+  const headers = await getRootHeaders()
+  const varResponse = await readProjectVariable(projectName, variableName, headers)
 
   if (varResponse.data.value !== global.savedCiVariableValue) {
     throw new Error(
@@ -208,90 +151,33 @@ Given('the user {string} is logged in to GitLab', async (userName) => {
 })
 
 When('the Renovate access token {string} is revoked from project {string}', async (tokenName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  // Get root OAuth token
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // List project access tokens and revoke matching ones
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const tokensResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens`, headers
-  )
+  const headers = await getRootHeaders()
+  const tokensResponse = await listProjectAccessTokens(projectName, headers)
 
   for (const token of tokensResponse.data) {
     if (token.name === tokenName && token.active && !token.revoked) {
-      await I.sendDeleteRequest(
-        `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens/${token.id}`, headers
-      )
+      await revokeProjectAccessToken(projectName, token.id, headers)
     }
   }
 })
 
 When('the CI\\/CD variable {string} is tampered with for project {string}', async (variableName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  // Get root OAuth token
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // Replace the CI/CD variable value with an invalid token
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  await I.sendPutRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
+  const headers = await getRootHeaders()
+  await updateProjectVariable(
+    projectName,
+    variableName,
     { value: 'glpat-invalid-tampered-value', masked: true }, // gitleaks:allow
     headers
   )
 })
 
 When('I re-run {string} for project {string}', async (command, projectName) => {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const baseUrl = 'http://gitlab:80'
-  const I = inject().I
-
-  // Get root OAuth token to create a PAT for lambda user
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // Get lambda user ID
-  const usersResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/users?username=${lambdaUser}`, headers
-  )
-  const lambdaUserId = usersResponse.data[0].id
-
-  // Create a fresh PAT for glab CLI
-  const patResponse = await I.sendPostRequest(
-    `${baseUrl}/api/v4/users/${lambdaUserId}/personal_access_tokens`,
-    { name: 'glab-cli-token-for-rerun', scopes: ['api', 'write_repository'] },
+  const headers = await getRootHeaders()
+  const glabToken = await createLambdaPersonalAccessToken(
+    'glab-cli-token-for-rerun',
+    ['api', 'write_repository'],
     headers
   )
-  const glabToken = patResponse.data.token
 
   // Re-run from existing /tmp/test-repo
   execSync(`
@@ -304,42 +190,20 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
   `, { stdio: 'inherit', timeout: 300000 })
 
   // Retrieve the new token value for clone verification
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await freshGet(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/TASK_RENOVATE_TOKEN`,
-    headers
-  )
+  const varResponse = await readProjectVariable(projectName, 'TASK_RENOVATE_TOKEN', headers)
   global.renovateTokenForClone = varResponse.data.value
 })
 
 Then('the CI\\/CD variable {string} must hold a valid token for project {string}', async (variableName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   const I = inject().I
-
-  // Get root OAuth token to read the CI/CD variable
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // Read the CI/CD variable value
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const varResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/variables/${variableName}`,
-    headers
-  )
+  const headers = await getRootHeaders()
+  const varResponse = await readProjectVariable(projectName, variableName, headers)
   const tokenValue = varResponse.data.value
 
   // Verify the token is valid by using it for an authenticated API call
   // GET /api/v4/user requires a valid token and returns the associated user
   const authCheck = await I.sendGetRequest(
-    `${baseUrl}/api/v4/user`,
+    `${BASE_URL}/api/v4/user`,
     { 'PRIVATE-TOKEN': tokenValue }
   )
 
@@ -351,25 +215,9 @@ Then('the CI\\/CD variable {string} must hold a valid token for project {string}
 })
 
 Given('a duplicate Renovate token {string} is created for project {string}', async (tokenName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  // Get root OAuth token
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // Create a duplicate project access token via API
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  await I.sendPostRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens`,
+  const headers = await getRootHeaders()
+  await createProjectAccessToken(
+    projectName,
     {
       name: tokenName,
       scopes: ['api'],
@@ -381,26 +229,8 @@ Given('a duplicate Renovate token {string} is created for project {string}', asy
 })
 
 Then('only one active token named {string} must exist for {string}', async (tokenName, projectName) => {
-  const baseUrl = 'http://gitlab:80'
-  const rootUser = process.env.TASK_GITLAB_ROOT_USER
-  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const I = inject().I
-
-  // Get root OAuth token
-  const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-    grant_type: 'password',
-    username: rootUser,
-    password: rootPassword
-  })
-  const rootToken = tokenResponse.data.access_token
-  const headers = { Authorization: `Bearer ${rootToken}` }
-
-  // List all project access tokens
-  const encodedPath = encodeURIComponent(`${lambdaUser}/${projectName}`)
-  const tokensResponse = await I.sendGetRequest(
-    `${baseUrl}/api/v4/projects/${encodedPath}/access_tokens`, headers
-  )
+  const headers = await getRootHeaders()
+  const tokensResponse = await listProjectAccessTokens(projectName, headers)
 
   const activeTokens = tokensResponse.data.filter(
     t => t.name === tokenName && t.active && !t.revoked
