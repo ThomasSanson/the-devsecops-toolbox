@@ -2,6 +2,18 @@
 
 # Changelog
 
+## 21.1.1 (2026-03-04)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v20.4.3
+
+## 21.1.0 (2026-03-04)
+
+### Feat
+
+- **glab**: add protected‑branch task, script, tests; fix key newline
+
 ## 21.0.0 (2026-03-04)
 
 ### Feat
