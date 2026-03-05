@@ -9,5 +9,5 @@ Feature: GitLab Release Job Branch Lock Safety
     Given a clean temporary directory for "gitlab/release" tests
     When the copier command is executed with CI platform "gitlab_saas"
     Then the file ".config/gitlab/ci/devsecops/release.yml" should contain "after_script:"
-    And the file ".config/gitlab/ci/devsecops/release.yml" should contain "task devsecops:release:lock-default-branch || true"
-    And the file ".config/devsecops/Taskfile.release.yml" should contain "lock-default-branch:"
+    And the file ".config/gitlab/ci/devsecops/release.yml" should contain "task devsecops:release:gitlab:lock-default-branch || true"
+    And the file ".config/devsecops/Taskfile.release.yml" should contain "gitlab:lock-default-branch:"

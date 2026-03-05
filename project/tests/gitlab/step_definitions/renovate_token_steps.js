@@ -12,6 +12,10 @@ const {
   createProjectAccessToken,
   revokeProjectAccessToken
 } = require('../helpers/gitlabApi')
+const {
+  bootstrapWorkspaceRepo,
+  runTaskInRepo
+} = require('../helpers/workspaceRepo')
 
 // ============================================
 // GIVEN - Setup test user and project
@@ -60,50 +64,20 @@ Given('a test repository {string} is created in GitLab', async (projectName) => 
 // ============================================
 
 When('I run the command {string} for project {string} with local authentication', async (command, projectName) => {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  if (command !== 'task devsecops:init') {
+    throw new Error(`Unexpected command: '${command}'`)
+  }
+
   const rootHeaders = await getRootHeaders()
   const glabToken = await createLambdaPersonalAccessToken(
     'glab-cli-token-for-test',
     ['api', 'write_repository'],
     rootHeaders
   )
-
-  // 4. Clone the test project and copy toolbox source
-  execSync(`
-    set -e
-    export PATH="$HOME/.local/bin:$PATH"
-
-    # Clone the test project
-    rm -rf /tmp/test-repo || true
-    git clone http://${lambdaUser}:${glabToken}@gitlab/${lambdaUser}/${projectName}.git /tmp/test-repo
-
-    # Copy toolbox source into cloned repo
-    cp -r /workspace/. /tmp/test-repo/
-
-    # Configure git user
-    cd /tmp/test-repo
-    git config user.email "lambda@test.local"
-    git config user.name "Lambda"
-
-    # Step 1: Install tools (glab, jq, etc.)
-    task dev:setup-environment
-
-    # Step 2: Clean stale glab config and configure like a dev
-    rm -rf ~/.config/glab-cli || true
-    glab auth login \\
-      --hostname gitlab \\
-      --token ${glabToken} \\
-      --api-protocol http \\
-      --api-host gitlab:80 \\
-      --git-protocol http
-
-    # Set env vars so glab uses our local instance by default
-    export GITLAB_HOST=gitlab
-    export GITLAB_TOKEN=${glabToken}
-
-    # Step 3: Configure DevSecOps Framework
-    task devsecops:init
-  `, { stdio: 'inherit', timeout: 300000 })
+  bootstrapWorkspaceRepo(projectName, '/tmp/test-repo', glabToken, {
+    runInit: true,
+    timeout: 300000
+  })
 
   // 8. Retrieve the generated token from CI/CD variables for clone verification
   const varResponse = await readProjectVariable(projectName, 'TASK_RENOVATE_TOKEN', rootHeaders)
@@ -179,15 +153,7 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
     headers
   )
 
-  // Re-run from existing /tmp/test-repo
-  execSync(`
-    set -e
-    export PATH="$HOME/.local/bin:$PATH"
-    cd /tmp/test-repo
-    export GITLAB_HOST=gitlab
-    export GITLAB_TOKEN=${glabToken}
-    ${command}
-  `, { stdio: 'inherit', timeout: 300000 })
+  runTaskInRepo(command, '/tmp/test-repo', glabToken, { timeout: 300000 })
 
   // Retrieve the new token value for clone verification
   const varResponse = await readProjectVariable(projectName, 'TASK_RENOVATE_TOKEN', headers)

@@ -67,7 +67,7 @@ tasks:
       - cmd: echo "🎉 Commitizen release bump completed successfully"
         silent: true
 
-  lock-default-branch:
+  gitlab:lock-default-branch:
     desc: Ensure default branch is protected with push access set to No one.
     preconditions:
       - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH}}"

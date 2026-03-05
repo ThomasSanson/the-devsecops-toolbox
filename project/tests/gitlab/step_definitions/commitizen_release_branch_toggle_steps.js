@@ -1,5 +1,4 @@
 /* global When Then */
-const { execSync } = require('child_process')
 const fs = require('fs')
 const {
   BASE_URL,
@@ -7,39 +6,10 @@ const {
   createLambdaPersonalAccessToken,
   readProjectVariable
 } = require('../helpers/gitlabApi')
-
-function prepareWorkspaceRepo (projectName, repoDir, glabToken) {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const cloneToken = encodeURIComponent(glabToken)
-
-  execSync(`
-    set -e
-    export PATH="$HOME/.local/bin:$PATH"
-
-    rm -rf ${repoDir} || true
-    git clone http://${lambdaUser}:${cloneToken}@gitlab/${lambdaUser}/${projectName}.git ${repoDir}
-
-    cp -r /workspace/. ${repoDir}/
-
-    cd ${repoDir}
-    git config user.email "lambda@test.local"
-    git config user.name "Lambda"
-
-    task dev:setup-environment
-
-    rm -rf ~/.config/glab-cli || true
-    glab auth login \\
-      --hostname gitlab \\
-      --token "$GLAB_TEST_TOKEN" \\
-      --api-protocol http \\
-      --api-host gitlab:80 \\
-      --git-protocol http
-  `, {
-    env: { ...process.env, GLAB_TEST_TOKEN: glabToken },
-    stdio: 'inherit',
-    timeout: 600000
-  })
-}
+const {
+  bootstrapWorkspaceRepo,
+  runTaskInRepo
+} = require('../helpers/workspaceRepo')
 
 async function runInitAndRelease (projectName, { expectFailure }) {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
@@ -51,34 +21,20 @@ async function runInitAndRelease (projectName, { expectFailure }) {
     ['api', 'write_repository'],
     rootHeaders
   )
-  prepareWorkspaceRepo(projectName, repoDir, glabToken)
-
-  const baseEnv = {
-    ...process.env,
-    PATH: `${process.env.PATH}:${process.env.HOME}/.local/bin`,
-    GITLAB_HOST: 'gitlab',
-    GITLAB_TOKEN: glabToken
-  }
-
-  execSync('task devsecops:init', {
-    cwd: repoDir,
-    env: baseEnv,
-    stdio: 'inherit',
-    timeout: 600000
-  })
+  bootstrapWorkspaceRepo(projectName, repoDir, glabToken, { runInit: true })
 
   // Local GitLab test environment serves HTTP only.
   // Keep release code HTTPS-based and rewrite transport at git level for E2E.
-  execSync('git config --local url."http://".insteadOf "https://"', {
-    cwd: repoDir,
-    env: baseEnv,
-    stdio: 'inherit'
-  })
-  const rewriteRules = execSync('git config --local --get-regexp "^url\\." || true', {
-    cwd: repoDir,
-    env: baseEnv,
-    encoding: 'utf8'
-  })
+  runTaskInRepo('git config --local url."http://".insteadOf "https://"', repoDir, glabToken)
+  const rewriteRules = runTaskInRepo(
+    'git config --local --get-regexp "^url\\." || true',
+    repoDir,
+    glabToken,
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  )
 
   const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
   const commitizenToken = variableResponse.data.value
@@ -87,7 +43,6 @@ async function runInitAndRelease (projectName, { expectFailure }) {
   }
 
   const releaseEnv = {
-    ...baseEnv,
     TASK_DOCKER_CE_ENABLED: 'false',
     TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: commitizenToken,
     TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
@@ -99,12 +54,11 @@ async function runInitAndRelease (projectName, { expectFailure }) {
   }
 
   try {
-    const output = execSync('task release', {
-      cwd: repoDir,
-      env: releaseEnv,
+    const output = runTaskInRepo('task release', repoDir, glabToken, {
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
-      timeout: 600000
+      timeout: 600000,
+      extraEnv: releaseEnv
     })
 
     global.commitizenReleaseLogs = `Rewrite rules:\n${rewriteRules}\n\n${output || ''}`
