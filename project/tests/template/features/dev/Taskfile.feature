@@ -29,3 +29,10 @@ Feature: Dev Taskfile Standardization
     Given a clean temporary directory for "dev/taskfile" tests
     When the copier command is executed with default settings
     Then the task "setup-environment" in file ".config/dev/Taskfile.yml" should contain "- task: lefthook"
+
+  @commitizen-token
+  Scenario: Verify setup-ssh no longer depends on deploy-key file variables
+    Given a clean temporary directory for "dev/taskfile" tests
+    When the copier command is executed with default settings
+    Then the file ".config/dev/Taskfile.yml" should NOT contain "TASK_DEV_INIT_DEPLOY_KEY_PATH"
+    And the file ".config/dev/Taskfile.yml" should NOT contain "~/.ssh/id_rsa"

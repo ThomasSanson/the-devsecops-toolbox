@@ -290,56 +290,49 @@ tasks:
           bash {{.TASK_GLAB_CONFIG_DIR}}/renovate-token.sh
         silent: true
 
-  deploy-key:
-    desc: 🔑 Create or refresh an SSH deploy key for Commitizen
+  commitizen-token:
+    desc: 🔑 Create or refresh a Project Access Token for Commitizen
     summary: |
       ℹ️ Description:
-        Manages an SSH deploy key for Commitizen (automated releases).
-        Creates the key pair if it doesn't exist, registers the public key
-        as a GitLab deploy key with write access, and stores the private key
-        as a CI/CD variable (type=file, protected).
-        The key pair is generated in a secure temp directory and cleaned up
-        immediately after use — private keys never persist on the filesystem.
+        Manages a GitLab Project Access Token dedicated to Commitizen releases.
+        Creates the token if it doesn't exist, rotates it if the CI/CD
+        variable is missing, and enforces Maintainer access level (access_level=40).
+        The token is piped directly to CI/CD storage — never stored locally.
 
       🔧 Variables:
-        - TASK_GLAB_DEPLOY_KEY_TITLE: Deploy key title (default: Commitizen Deploy Key)
-        - TASK_GLAB_DEPLOY_KEY_VAR_NAME: CI/CD variable name (default: CZ_DEPLOY_KEY)
-        - TASK_GLAB_DEPLOY_KEY_PROTECTED: Whether variable is protected (default: true)
+        - TASK_GLAB_COMMITIZEN_TOKEN_NAME: CI/CD variable name (default: TASK_COMMITIZEN_TOKEN)
+        - TASK_GLAB_COMMITIZEN_TOKEN_PROTECTED: Whether variable is protected (default: true)
+        - TASK_GLAB_COMMITIZEN_TOKEN_FORCE: Force token refresh (default: false)
 
       🔐 Preconditions:
         - glab must be installed and authenticated
         - jq must be installed
-        - ssh-keygen must be available
         - User must have Maintainer (or higher) role
 
       🔄 Execution:
         1. Check permissions (Maintainer required)
-        2. Check existing deploy key and CI/CD variable (idempotent)
-        3. Generate SSH key pair (ed25519)
-        4. Create deploy key with write access
-        5. Store private key as CI/CD variable (type=file, protected)
-        6. Clean up temporary key files
+        2. Check existing tokens and their access_level
+        3. Create, rotate, or recreate as needed
+        4. Store token as CI/CD variable (masked, optionally protected)
     vars:
-      TASK_GLAB_DEPLOY_KEY_TITLE: '{{.TASK_GLAB_DEPLOY_KEY_TITLE | default "Commitizen Deploy Key"}}'
-      TASK_GLAB_DEPLOY_KEY_VAR_NAME: '{{.TASK_GLAB_DEPLOY_KEY_VAR_NAME | default "CZ_DEPLOY_KEY"}}'
-      TASK_GLAB_DEPLOY_KEY_PROTECTED: '{{.TASK_GLAB_DEPLOY_KEY_PROTECTED | default "true"}}'
+      TASK_GLAB_COMMITIZEN_TOKEN_NAME: '{{.TASK_GLAB_COMMITIZEN_TOKEN_NAME | default "TASK_COMMITIZEN_TOKEN"}}'
+      TASK_GLAB_COMMITIZEN_TOKEN_PROTECTED: '{{.TASK_GLAB_COMMITIZEN_TOKEN_PROTECTED | default "true"}}'
+      TASK_GLAB_COMMITIZEN_TOKEN_FORCE: '{{.TASK_GLAB_COMMITIZEN_TOKEN_FORCE | default "false"}}'
     preconditions:
       - sh: command -v glab >/dev/null 2>&1
         msg: "❌ glab is not installed. Run 'task glab:install' first."
       - sh: command -v jq >/dev/null 2>&1
         msg: "❌ jq is not installed."
-      - sh: command -v ssh-keygen >/dev/null 2>&1
-        msg: "❌ ssh-keygen is not installed."
       - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
         msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
     cmds:
       - cmd: |
-          TASK_GLAB_DEPLOY_KEY_TITLE="{{.TASK_GLAB_DEPLOY_KEY_TITLE}}" \
-          TASK_GLAB_DEPLOY_KEY_VAR_NAME="{{.TASK_GLAB_DEPLOY_KEY_VAR_NAME}}" \
-          TASK_GLAB_DEPLOY_KEY_PROTECTED="{{.TASK_GLAB_DEPLOY_KEY_PROTECTED}}" \
-          bash {{.TASK_GLAB_CONFIG_DIR}}/deploy-key.sh
+          TASK_GLAB_COMMITIZEN_TOKEN_NAME="{{.TASK_GLAB_COMMITIZEN_TOKEN_NAME}}" \
+          TASK_GLAB_COMMITIZEN_TOKEN_PROTECTED="{{.TASK_GLAB_COMMITIZEN_TOKEN_PROTECTED}}" \
+          TASK_GLAB_COMMITIZEN_TOKEN_FORCE="{{.TASK_GLAB_COMMITIZEN_TOKEN_FORCE}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/commitizen-token.sh
         silent: true
 
   protected-branch:
@@ -349,12 +342,9 @@ tasks:
         Configures the default branch with strict protection rules.
         Purges any stale access levels and sets:
         - Allowed to merge: Maintainers
-        - Allowed to push: No one + Commitizen Deploy Key
-        On CE/Free, falls back to interactive guidance if API
-        does not support deploy_key_id in push access.
+        - Allowed to push: No one
 
       🔧 Variables:
-        - TASK_GLAB_DEPLOY_KEY_TITLE: Deploy key title (default: Commitizen Deploy Key)
         - TASK_GLAB_PROTECTED_BRANCH: Branch to protect (default: main)
 
       🔐 Preconditions:
@@ -366,10 +356,7 @@ tasks:
         1. Check permissions (Maintainer required)
         2. Delete existing protection (purge stale rules)
         3. Re-create protection with strict rules
-        4. Attempt to add deploy key via API (Premium)
-        5. Fall back to interactive guidance (CE/Free)
     vars:
-      TASK_GLAB_DEPLOY_KEY_TITLE: '{{.TASK_GLAB_DEPLOY_KEY_TITLE | default "Commitizen Deploy Key"}}'
       TASK_GLAB_PROTECTED_BRANCH: '{{.TASK_GLAB_PROTECTED_BRANCH | default "main"}}'
     preconditions:
       - sh: command -v glab >/dev/null 2>&1
@@ -382,7 +369,6 @@ tasks:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
     cmds:
       - cmd: |
-          TASK_GLAB_DEPLOY_KEY_TITLE="{{.TASK_GLAB_DEPLOY_KEY_TITLE}}" \
           TASK_GLAB_PROTECTED_BRANCH="{{.TASK_GLAB_PROTECTED_BRANCH}}" \
           bash {{.TASK_GLAB_CONFIG_DIR}}/protected-branch.sh
         silent: true

@@ -6,7 +6,6 @@ vars:
   # Initialization Variables
   TASK_DEV_INIT_PROJECT_DIR: '{{.TASK_DEV_INIT_PROJECT_DIR | default "."}}'
   TASK_DEV_INIT_OWNER: '{{.TASK_DEV_INIT_OWNER | default "$USER:$USER" }}' # Format UID:GID, using shell command as default
-  TASK_DEV_INIT_DEPLOY_KEY_PATH: '{{.TASK_DEV_INIT_DEPLOY_KEY_PATH | default ""}}'
   TASK_DEV_INIT_GIT_SERVER_HOST: '{{.TASK_DEV_INIT_GIT_SERVER_HOST | default ""}}'
   TASK_DEV_INIT_GIT_USER_NAME: '{{.TASK_DEV_INIT_GIT_USER_NAME | default ""}}'
   TASK_DEV_INIT_GIT_USER_EMAIL: '{{.TASK_DEV_INIT_GIT_USER_EMAIL | default ""}}'
@@ -186,29 +185,6 @@ tasks:
         eval $(ssh-agent -s)
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
-        # Check if the variable is defined and points to an existing file
-        if [ -n "{{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}" ] && [ -f "{{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}" ]; then
-          echo "INFO: Using SSH key from variable located at: {{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}"
-          # Copy the key file provided by GitLab CI to the standard location
-          cp "{{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}" ~/.ssh/id_rsa
-          # Set correct permissions
-          chmod 600 ~/.ssh/id_rsa
-
-          # Add the key to the ssh-agent (now in the same shell context)
-          ssh-add ~/.ssh/id_rsa
-          echo "INFO: SSH Key added to agent. Listing keys:"
-          ssh-add -l # Verify key was added
-        else
-          # Add a check to differentiate between undefined variable and non-existent file path
-          if [ -z "{{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}" ]; then
-            echo "WARN: TASK_DEV_INIT_DEPLOY_KEY_PATH variable is not defined. Skipping SSH key setup."
-          else
-            echo "ERROR: TASK_DEV_INIT_DEPLOY_KEY_PATH is defined but does not point to a valid file: {{.TASK_DEV_INIT_DEPLOY_KEY_PATH}}" >&2
-            # Consider failing the job if the key is mandatory
-            # exit 1
-          fi
-          echo "WARN: Skipping SSH key setup."
-        fi
         # Disable strict host key checking if inside Docker, otherwise rely on known_hosts
         [[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
         # Add Git server host key to known_hosts

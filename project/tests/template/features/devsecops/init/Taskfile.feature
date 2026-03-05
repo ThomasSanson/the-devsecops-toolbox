@@ -26,8 +26,9 @@ Feature: DevSecOps Init Taskfile Standardization
     When the copier command is executed with default settings
     Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:renovate-token"
 
-  @deploy-key
-  Scenario: Init Taskfile includes deploy-key in setup-gitlab
+  @commitizen-token
+  Scenario: Init Taskfile includes commitizen-token and removes deploy-key from setup-gitlab
     Given a clean temporary directory for "devsecops/init" tests
     When the copier command is executed with default settings
-    Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:deploy-key"
+    Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:commitizen-token"
+    And the file ".config/devsecops/Taskfile.init.yml" should NOT contain ":glab:deploy-key"

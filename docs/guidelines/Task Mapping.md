@@ -250,11 +250,11 @@ task codeceptjs:npx TASK_CODECEPTJS_GREP="@copier"
 
 ### CI Variables Required
 
-| Variable            | Purpose                     |
-|---------------------|-----------------------------|
-| `CZ_DEPLOY_KEY`     | Base64 SSH key for git push |
-| `GITLAB_USER_LOGIN` | GitLab username (auto)      |
-| `GITLAB_USER_EMAIL` | GitLab email (auto)         |
+| Variable                | Purpose                                                         |
+|-------------------------|-----------------------------------------------------------------|
+| `TASK_COMMITIZEN_TOKEN` | Commitizen release token for Git push and branch-protection API |
+| `GITLAB_USER_LOGIN`     | GitLab username (auto)                                          |
+| `GITLAB_USER_EMAIL`     | GitLab email (auto)                                             |
 
 ---
 

@@ -1,6 +1,7 @@
 /* global inject When Then */
 const { GitLabProtectedBranchPage } = inject()
 const { execSync } = require('child_process')
+const { freshGet, freshPost } = require('../helpers/http')
 
 // ============================================
 // WHEN - Protected branch configuration
@@ -89,4 +90,37 @@ Then('the repository settings show {string} as protected for {string}', async (b
   await GitLabProtectedBranchPage.navigateToRepositorySettings(`${lambdaUser}/${projectName}`)
   await GitLabProtectedBranchPage.verifyProtectedBranch(branch)
   await GitLabProtectedBranchPage.verifyVisualRegression()
+})
+
+Then('the branch {string} is protected with merge for maintainers and push for no one for {string}', async (branch, projectName) => {
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const projectPath = `${lambdaUser}/${projectName}`
+  const baseUrl = 'http://gitlab:80'
+
+  const tokenResponse = await freshPost(`${baseUrl}/oauth/token`, {
+    grant_type: 'password',
+    username: process.env.TASK_GITLAB_ROOT_USER,
+    password: process.env.TASK_GITLAB_ROOT_PASSWORD
+  })
+  const headers = { Authorization: `Bearer ${tokenResponse.data.access_token}` }
+
+  const encodedPath = encodeURIComponent(projectPath)
+  const branchResponse = await freshGet(
+    `${baseUrl}/api/v4/projects/${encodedPath}/protected_branches/${branch}`, headers
+  )
+  const data = branchResponse.data
+
+  const mergeLevel = data.merge_access_levels.find(l => l.access_level === 40)
+  if (!mergeLevel) {
+    throw new Error(
+      `Expected merge_access_levels to contain access_level=40 (Maintainers), got: ${JSON.stringify(data.merge_access_levels)}`
+    )
+  }
+
+  const pushLevel = data.push_access_levels.find(l => l.access_level === 0)
+  if (!pushLevel) {
+    throw new Error(
+      `Expected push_access_levels to contain access_level=0 (No one), got: ${JSON.stringify(data.push_access_levels)}`
+    )
+  }
 })

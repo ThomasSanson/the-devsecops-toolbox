@@ -294,7 +294,7 @@ For the complete list of variables and their default values, see [`.env.dist`](.
 ### GitLab CI/CD Variables
 The following variables need to be configured in your GitLab CI/CD settings:
 
-- `CZ_DEPLOY_KEY`: Base64 encoded SSH private key for git operations (required for releases)
+- `TASK_COMMITIZEN_TOKEN`: Project access token used by release push/protection workflow (managed by `task devsecops:init`)
 - `GITLAB_USER_LOGIN`: Your GitLab username (automatically provided)
 - `GITLAB_USER_EMAIL`: Your GitLab email (automatically provided)
 

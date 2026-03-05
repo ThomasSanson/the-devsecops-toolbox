@@ -9,17 +9,16 @@ vars:
       if [ -n "${TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH:-}" ]; then
         echo "${TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}"
       else
-        # Check if we are in a Git repository
         if git rev-parse --is-inside-work-tree &>/dev/null; then
           git config --global --add safe.directory "${PWD}"
           git rev-parse --abbrev-ref HEAD
         else
-          # Default value if we are not in a Git repository
           echo "main"
         fi
       fi
   TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: '{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH | default "true"}}'
-  TASK_DEVSECOPS_RELEASE_DEPLOY_KEY: '{{.TASK_DEVSECOPS_RELEASE_DEPLOY_KEY | default ""}}'
+  TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN | default (env "TASK_COMMITIZEN_TOKEN")}}'
+  TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL | default "https://gitlab.com/api/v4"}}'
   TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: '{{.TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST | default ""}}'
   TASK_DEVSECOPS_RELEASE_PROJECT_PATH: '{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH | default "${PWD##*/}"}}'
 
@@ -31,7 +30,6 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting release phase"
         silent: true
-      - task: commitizen
       - task: push-release
       - task: :project:release
       - cmd: echo "🎉 Release phase completed successfully"
@@ -64,7 +62,7 @@ tasks:
         silent: true
 
   push-release:
-    desc: Pushes release commit and tags to the remote repository, mirroring GitLab CI logic.
+    desc: Run Commitizen and push release with temporary branch push window.
     preconditions:
       - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH}}"
         msg: "PROJECT_PATH (TASK_DEVSECOPS_RELEASE_PROJECT_PATH) is not set. Set TASK_DEVSECOPS_RELEASE_PROJECT_PATH or CI_PROJECT_PATH env var."
@@ -73,29 +71,89 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting release push"
         silent: true
-      - |
-        echo "Current branch: {{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
-        echo "Default branch: {{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}"
-        if [ "{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH}}" = "true" ] && [ "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}" = "{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}" ]; then
-          if [ -n "{{.TASK_DEVSECOPS_RELEASE_DEPLOY_KEY}}" ]; then
-            echo "Using DEPLOY_KEY (TASK_DEVSECOPS_RELEASE_DEPLOY_KEY) to push..."
-            git remote set-url origin git@{{.TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST}}:{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH}}.git
-          else
-            echo "Pushing with default credentials (no DEPLOY_KEY/TASK_DEVSECOPS_RELEASE_DEPLOY_KEY found)..."
-            # Assuming 'origin' is already configured for push
+      - cmd: |
+          echo "Current branch: {{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
+          echo "Default branch: {{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}"
+
+          if [ "{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH}}" != "true" ] || \
+            [ "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}" != "{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}" ]; then
+            echo "Push window not required (ALLOW_PUSH disabled or not on default branch)."
+            task devsecops:release:commitizen
+            echo "Skip: no remote push performed."
+            exit 0
           fi
+
+          require_var() {
+            local value="$1"
+            local label="$2"
+            if [ -z "$value" ]; then
+              echo "❌ Missing required variable: ${label}" >&2
+              exit 1
+            fi
+          }
+
+          TOKEN="${TASK_DEVSECOPS_RELEASE_PUSH_TOKEN:-}"
+          API_URL="${TASK_DEVSECOPS_RELEASE_GITLAB_API_URL:-}"
+          HOST="${TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST:-}"
+          PROJECT_PATH="${TASK_DEVSECOPS_RELEASE_PROJECT_PATH:-}"
+          BRANCH="${TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH:-{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}}"
+
+          require_var "$TOKEN" "TASK_DEVSECOPS_RELEASE_PUSH_TOKEN (or TASK_COMMITIZEN_TOKEN)"
+          require_var "$API_URL" "TASK_DEVSECOPS_RELEASE_GITLAB_API_URL"
+          require_var "$HOST" "TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST"
+          require_var "$PROJECT_PATH" "TASK_DEVSECOPS_RELEASE_PROJECT_PATH"
+
+          REMOTE_PROTOCOL="https"
+          if echo "$API_URL" | grep -Eq '^http://'; then
+            REMOTE_PROTOCOL="http"
+          fi
+
+          PROJECT_PATH_ENCODED=$(printf '%s' "$PROJECT_PATH" | jq -sRr @uri)
+          BRANCH_ENCODED=$(printf '%s' "$BRANCH" | jq -sRr @uri)
+
+          set_branch_protection() {
+            local push_level="$1"
+            curl --silent --show-error --fail \
+              --request DELETE \
+              --header "PRIVATE-TOKEN: ${TOKEN}" \
+              "${API_URL}/projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH_ENCODED}" \
+              >/dev/null 2>&1 || true
+
+            curl --silent --show-error --fail \
+              --request POST \
+              --header "PRIVATE-TOKEN: ${TOKEN}" \
+              "${API_URL}/projects/${PROJECT_PATH_ENCODED}/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=${push_level}" \
+              >/dev/null
+          }
+
+          restore_branch_protection() {
+            echo "🔒 Restoring branch protection (push=No one)..."
+            set +e
+            set_branch_protection 0
+            status=$?
+            set -e
+            if [ "$status" -ne 0 ]; then
+              echo "❌ Failed to restore protected branch state (push=No one)." >&2
+              exit "$status"
+            fi
+          }
+
+          trap restore_branch_protection EXIT
+
+          echo "🔓 Temporarily opening push access for Maintainers..."
+          set_branch_protection 40
+
+          echo "🧩 Running Commitizen with temporary push access..."
+          task devsecops:release:commitizen
+
+          echo "🔐 Configuring ${REMOTE_PROTOCOL^^} remote with Commitizen token..."
+          git remote set-url origin "${REMOTE_PROTOCOL}://oauth2:${TOKEN}@${HOST}/${PROJECT_PATH}.git"
+
           echo "Pushing tags..."
           git push origin --tags
-          # Check current branch against default again, mirroring the CI script's inner check
-          if [ "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}" = "{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}" ]; then
-            echo "Pushing commit to default branch ({{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}})..."
-            git push origin HEAD:{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}
-          else
-            # This part might not be strictly reachable if the outer condition holds
-            echo "Not on default branch ({{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}), skipping commit push."
-          fi
-        else
-          echo "Skip: Pushing is disabled (ALLOW_PUSH is not 'true' or not on default branch). Check TASK_DEVSECOPS_RELEASE_ALLOW_PUSH / OVERRIDE_ or CZ_ALLOW_PUSH env var."
-        fi
+
+          echo "Pushing commit to default branch (${BRANCH})..."
+          git push origin HEAD:"${BRANCH}"
+        silent: true
       - cmd: echo "🎉 Release push completed successfully"
         silent: true

@@ -10,6 +10,12 @@ Feature: GitLab CI Variables Configuration
     When the copier command is executed with CI platform "gitlab_saas"
     Then the GitLab CI variables should contain "DOCKER_HOST: tcp://docker:2376"
     And the GitLab CI variables should contain "DOCKER_TLS_CERTDIR: \"/certs\""
+    And the GitLab CI variables should contain "TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: $TASK_COMMITIZEN_TOKEN"
+    And the GitLab CI variables should contain "TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: $CI_API_V4_URL"
+    And the GitLab CI variables should contain "TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: $CI_SERVER_HOST"
+    And the GitLab CI variables should NOT contain "CZ_DEPLOY_KEY"
+    And the GitLab CI variables should NOT contain "TASK_DEV_INIT_DEPLOY_KEY_PATH"
+    And the GitLab CI variables should NOT contain "TASK_DEVSECOPS_RELEASE_DEPLOY_KEY"
 
   @self-hosted
   Scenario: Generate project for GitLab Self-Hosted with custom Docker settings

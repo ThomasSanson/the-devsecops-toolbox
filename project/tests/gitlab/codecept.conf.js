@@ -8,8 +8,7 @@ exports.config = {
     GitLabMergeSettingsPage: './pages/GitLabMergeSettingsPage.js',
     GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js',
     GitLabRepositorySettingsPage: './pages/GitLabRepositorySettingsPage.js',
-    GitLabProtectedBranchPage: './pages/GitLabProtectedBranchPage.js',
-    GitLabDeployKeyPage: './pages/GitLabDeployKeyPage.js'
+    GitLabProtectedBranchPage: './pages/GitLabProtectedBranchPage.js'
   },
   helpers: {
     Playwright: {
@@ -52,7 +51,8 @@ exports.config = {
       './step_definitions/renovate_token_steps.js',
       './step_definitions/configure_default_branch_steps.js',
       './step_definitions/configure_protected_branch_steps.js',
-      './step_definitions/configure_deploy_key_steps.js'
+      './step_definitions/configure_commitizen_token_steps.js',
+      './step_definitions/commitizen_release_branch_toggle_steps.js'
     ]
   },
   plugins: {
