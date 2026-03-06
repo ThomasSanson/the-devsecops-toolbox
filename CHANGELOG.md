@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.3.1 (2026-03-06)
+
+### Fix
+
+- **renovate**: add extractVersionTemplate for glab version tracking
+
 ## 21.3.0 (2026-03-06)
 
 ### Feat
