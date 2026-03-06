@@ -7,6 +7,8 @@ const { execSync } = require('child_process')
 const { executeCopier } = require('../../template/step_objects/commands')
 
 const activeContainers = []
+const CONTAINER_WORKDIR = '/workspace'
+const CONTAINER_TASKFILE = `${CONTAINER_WORKDIR}/Taskfile.yml`
 
 function runCommand (command, options = {}) {
   return execSync(command, {
@@ -39,6 +41,20 @@ function shellEscape (value) {
 
 function containerName () {
   return `bootstrap-unzip-${crypto.randomBytes(4).toString('hex')}`
+}
+
+function normalizeBootstrapCommand (command) {
+  const trimmedCommand = command.trim()
+
+  if (trimmedCommand === 'task') {
+    return `task --taskfile ${shellEscape(CONTAINER_TASKFILE)}`
+  }
+
+  if (trimmedCommand.startsWith('task ')) {
+    return `task --taskfile ${shellEscape(CONTAINER_TASKFILE)} ${trimmedCommand.slice(5)}`
+  }
+
+  return trimmedCommand
 }
 
 function execInContainer (name, command, options = {}) {
@@ -103,7 +119,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
     [
       'docker run -d',
       `--name ${shellEscape(this.containerName)}`,
-      `-v ${shellEscape(this.generatedProjectDir)}:/workspace`,
+      `-v ${shellEscape(this.generatedProjectDir)}:${CONTAINER_WORKDIR}`,
       'ubuntu:24.04',
       'sleep infinity'
     ].join(' ')
@@ -137,12 +153,17 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
   }
 
   this.containerUser = userResult.output.trim()
+
+  const workspaceResult = execInContainer(this.containerName, `test -f ${shellEscape(CONTAINER_TASKFILE)}`)
+  if (workspaceResult.exitCode !== 0) {
+    throw new Error(`Failed to mount the generated toolbox project in ${CONTAINER_WORKDIR}.`)
+  }
 })
 
 When('I run {string} in the Ubuntu bootstrap container', function (command) { // eslint-disable-line no-undef
-  this.lastBootstrapResult = execInContainer(this.containerName, command, {
+  this.lastBootstrapResult = execInContainer(this.containerName, normalizeBootstrapCommand(command), {
     user: this.containerUser,
-    workdir: '/workspace',
+    workdir: CONTAINER_WORKDIR,
     env: {
       PATH: '/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
     }
@@ -176,7 +197,7 @@ Then('the bootstrap command output should not contain {string}', function (unexp
 Then('{string} should be available in the Ubuntu bootstrap container', function (binaryName) { // eslint-disable-line no-undef
   const result = execInContainer(this.containerName, `command -v ${binaryName}`, {
     user: this.containerUser,
-    workdir: '/workspace'
+    workdir: CONTAINER_WORKDIR
   })
 
   if (result.exitCode !== 0) {
