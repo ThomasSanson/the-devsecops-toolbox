@@ -2,6 +2,30 @@
 
 # Changelog
 
+## 21.2.4 (2026-03-06)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.12.0
+
+## 21.2.3 (2026-03-06)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.11.1
+
+## 21.2.2 (2026-03-05)
+
+### Fix
+
+- **deps**: update dependency copier to v9.13.0
+
+## 21.2.1 (2026-03-05)
+
+### Fix
+
+- **deps**: update python docker tag to v3.14
+
 ## 21.2.0 (2026-03-05)
 
 ### Feat
