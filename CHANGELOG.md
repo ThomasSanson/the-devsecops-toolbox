@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.2.3 (2026-03-06)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.11.1
+
 ## 21.2.2 (2026-03-05)
 
 ### Fix
