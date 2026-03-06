@@ -51,7 +51,6 @@ variables:
   TASK_CODECEPTJS_RUNNER: "codeceptjs"
   TASK_RENOVATE_REPOSITORY: $CI_PROJECT_PATH
   TASK_RENOVATE_PLATFORM: "gitlab"
-  TASK_RENOVATE_LOG_LEVEL: "debug"
 
   # Variables for commitizen bump (likely used within 'task release')
   TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: $CI_COMMIT_BRANCH
