@@ -109,6 +109,58 @@ function register () {
     }
   })
 
+  Then('the task {string} in file {string} should contain {string} before {string}', function (taskName, relativePath, firstCommand, secondCommand) { // eslint-disable-line no-undef
+    const filePath = resolvePath(this, relativePath)
+    const fileContent = fs.readFileSync(filePath, 'utf8')
+    const lines = fileContent.split('\n')
+
+    let inTargetTask = false
+    let taskIndentation = -1
+    let firstIndex = -1
+    let secondIndex = -1
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmedLine = line.trim()
+
+      if (!trimmedLine || trimmedLine.startsWith('#')) continue
+
+      const taskMatch = line.match(new RegExp(`^(\\s*)${taskName}:`))
+      if (taskMatch) {
+        inTargetTask = true
+        taskIndentation = taskMatch[1].length
+        continue
+      }
+
+      if (!inTargetTask) continue
+
+      const currentIndentation = line.match(/^(\s*)/)[1].length
+      if (currentIndentation <= taskIndentation) {
+        break
+      }
+
+      if (firstIndex === -1 && trimmedLine.includes(firstCommand.trim())) {
+        firstIndex = i
+      }
+
+      if (secondIndex === -1 && trimmedLine.includes(secondCommand.trim())) {
+        secondIndex = i
+      }
+    }
+
+    if (firstIndex === -1) {
+      throw new Error(`Task "${taskName}" in ${relativePath} does not contain command: "${firstCommand}".`)
+    }
+
+    if (secondIndex === -1) {
+      throw new Error(`Task "${taskName}" in ${relativePath} does not contain command: "${secondCommand}".`)
+    }
+
+    if (firstIndex >= secondIndex) {
+      throw new Error(`Expected "${firstCommand}" to appear before "${secondCommand}" in task "${taskName}" from ${relativePath}.`)
+    }
+  })
+
   /**
    * Run a task in the generated project directory with specific env vars
    *

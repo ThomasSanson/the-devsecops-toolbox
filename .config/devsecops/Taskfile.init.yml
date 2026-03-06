@@ -6,19 +6,60 @@ tasks:
     desc: 🚀 Initialize DevSecOps project (local setup)
     summary: |
       ℹ️ Description:
-        Full local initialization: installs dev tools and configures GitLab
-        project settings (default branch, merge request settings).
+        Full local initialization: checks required prerequisites, installs
+        dev tools, and configures GitLab project settings.
 
       🔄 Execution:
-        1. dev:setup-environment (install all tools)
-        2. setup-gitlab (configure merge request settings)
+        1. dependency (check init prerequisites)
+        2. dev:setup-environment (install all tools)
+        3. setup-gitlab (configure merge request settings)
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
+      - task: dependency
       - task: :dev:setup-environment
       - task: setup-gitlab
       - cmd: echo "✅ DevSecOps project initialization completed"
         silent: true
+
+  dependency:
+    desc: 🔎 Check init prerequisites
+    summary: |
+      ℹ️ Description:
+        Verifies the required prerequisites before running the local init flow.
+
+      🔄 Execution:
+        Runs the unzip prerequisite check and stops early with guidance when
+        unzip is missing.
+    cmds:
+      - cmd: echo "🔎 Checking init prerequisites"
+        silent: true
+      - task: :unzip:check:installed
+
+  prerequisites:
+    desc: 📦 Install missing prerequisites and rerun init
+    summary: |
+      ℹ️ Description:
+        Installs the currently required prerequisites and reruns
+        task devsecops:init automatically.
+
+      🔄 Execution:
+        1. Installs unzip with sudo
+        2. Reruns task devsecops:init
+    cmds:
+      - cmd: echo "📦 Installing missing prerequisites..."
+        silent: true
+      - task: :unzip:install:sudo
+      - cmd: |
+          TASK_BIN="$(command -v task)"
+          echo "🔄 Re-running task devsecops:init..."
+          sudo env \
+            PATH="$PATH" \
+            GITLAB_HOST="${GITLAB_HOST:-}" \
+            GITLAB_TOKEN="${GITLAB_TOKEN:-}" \
+            GLAB_TEST_TOKEN="${GLAB_TEST_TOKEN:-}" \
+            "$TASK_BIN" devsecops:init
+        silent: false
 
   setup-gitlab:
     desc: 🦊 Configure GitLab project settings

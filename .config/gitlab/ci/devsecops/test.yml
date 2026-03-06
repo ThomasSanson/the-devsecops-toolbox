@@ -47,6 +47,15 @@ test:template:
     - task project:test:template -- --shard $SHARD
   <<: *test_rules
 
+test:bootstrap:
+  stage: test
+  needs: []
+  extends: .default-tags
+  script:
+    - task project:test:clean
+    - task project:test:bootstrap
+  <<: *test_rules
+
 test:gitlab:
   stage: test
   needs: []

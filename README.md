@@ -321,6 +321,12 @@ task dev:setup-environment
 task devsecops
 ```
 
+If `task devsecops:init` stops because `unzip` is missing, recover with:
+```bash
+task devsecops:init:prerequisites
+```
+This command installs the missing prerequisite with `sudo` and reruns `task devsecops:init` automatically.
+
 ## Architecture
 
 The toolbox follows a modular architecture:

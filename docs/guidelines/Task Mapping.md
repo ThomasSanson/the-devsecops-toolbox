@@ -154,6 +154,7 @@ task dev:setup-environment     # Setup dev environment
 task dev:init:ci               # CI/CD initialization (CI-only)
 task dev:reset                 # Destroy and cleanup
 task devsecops:init            # Full project initialization (local)
+task devsecops:init:prerequisites  # Install missing prerequisites and rerun init
 task lefthook:install          # Install git hooks
 ```
 

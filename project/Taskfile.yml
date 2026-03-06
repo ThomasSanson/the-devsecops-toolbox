@@ -87,6 +87,7 @@ tasks:
         silent: true
       - task: deploy
       - task: project:test:template
+      - task: project:test:bootstrap
       - task: project:test:gitlab
       - cmd: echo "✅ Project TDD test phase completed successfully"
         silent: true
@@ -104,6 +105,21 @@ tasks:
           TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
           TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
       - cmd: echo "✅ Project template test phase completed successfully"
+        silent: true
+
+  project:test:bootstrap:
+    desc: 🚀 Run bootstrap E2E tests
+    summary: |
+      Run CodeceptJS bootstrap tests against a generated toolbox project in a
+      fresh Ubuntu container.
+    cmds:
+      - cmd: echo "🚀 Starting project bootstrap test phase"
+        silent: true
+      - task: codeceptjs:npx
+        vars:
+          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
+          TASK_CODECEPTJS_CONFIG: "project/tests/bootstrap/codecept.conf.js"
+      - cmd: echo "✅ Project bootstrap test phase completed successfully"
         silent: true
 
   project:test:gitlab:

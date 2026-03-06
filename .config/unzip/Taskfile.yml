@@ -1,0 +1,62 @@
+---
+version: "3"
+
+tasks:
+  check:installed:
+    desc: 🔎 Check whether unzip is installed
+    summary: |
+      ℹ️ Description:
+        Stops early when unzip is missing and guides the user to the
+        prerequisite installer before rerunning task devsecops:init.
+    status:
+      - command -v unzip
+    cmds:
+      - cmd: |
+          OS_ID=""
+          if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            OS_ID="${ID:-}"
+          fi
+
+          echo "❌ unzip is required before task devsecops:init."
+          echo ""
+          echo "Run the prerequisite installer:"
+          echo "  task devsecops:init:prerequisites"
+          echo ""
+          echo "Or install unzip manually, then rerun:"
+
+          case "$OS_ID" in
+            ubuntu|debian)
+              echo "  sudo apt-get update && sudo apt-get install -y unzip"
+              ;;
+            fedora|rhel|centos|rocky)
+              echo "  sudo dnf install -y unzip"
+              ;;
+            *)
+              echo "  Install unzip manually with your package manager"
+              ;;
+          esac
+
+          echo "  task devsecops:init"
+          exit 1
+        silent: false
+
+  install:sudo:
+    desc: 📦 Install unzip with sudo
+    summary: |
+      ℹ️ Description:
+        Installs unzip with sudo.
+
+      🔄 Execution:
+        1. Installs unzip with sudo
+    preconditions:
+      - sh: command -v sudo >/dev/null 2>&1
+        msg: |
+          ❌ sudo is not available.
+          Install unzip manually with your package manager, then rerun:
+            task devsecops:init
+    cmds:
+      - cmd: echo "📦 Installing unzip with sudo..."
+        silent: true
+      - cmd: sudo sh .config/unzip/install.sh
+        silent: false
