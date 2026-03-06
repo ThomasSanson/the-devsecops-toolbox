@@ -1,6 +1,7 @@
 const { resolvePath } = require('../step_objects/content')
 const { assertFileExists } = require('../step_objects/assertions')
-const { executeCommand } = require('../step_objects/commands')
+const { executeCommand, initGitRepo, createInitialCommit } = require('../step_objects/commands')
+const { execSync } = require('child_process')
 const fs = require('fs')
 
 function register () {
@@ -56,6 +57,40 @@ function register () {
     if (this.renovateValidationExitCode !== 0) {
       throw new Error(
         `Renovate config validation failed:\n${this.renovateValidationOutput}`
+      )
+    }
+  })
+
+  Given('a git repository initialized in the generated project', function () { // eslint-disable-line no-undef
+    initGitRepo(this.projectRoot)
+    createInitialCommit(this.projectRoot)
+  })
+
+  When('I run a Renovate dry-run on the generated project', function () { // eslint-disable-line no-undef
+    const configPath = '.config/renovate/config.json'
+    const cmd = `LOG_LEVEL=debug RENOVATE_CONFIG_FILE="${configPath}" npx --yes -p renovate renovate --platform=local 2>&1`
+    try {
+      const output = execSync(cmd, {
+        cwd: this.projectRoot,
+        encoding: 'utf8',
+        timeout: 120000
+      })
+      this.renovateDryRunOutput = output
+    } catch (err) {
+      const stdout = err.stdout ? String(err.stdout) : ''
+      const stderr = err.stderr ? String(err.stderr) : ''
+      this.renovateDryRunOutput = stdout + stderr
+    }
+  })
+
+  Then('the Renovate output should not contain a v-prefixed newValue', function () { // eslint-disable-line no-undef
+    if (!this.renovateDryRunOutput) {
+      throw new Error('No Renovate dry-run output captured')
+    }
+    const match = this.renovateDryRunOutput.match(/"newValue":\s*"v\d+\.\d+\.\d+"/)
+    if (match) {
+      throw new Error(
+        `Renovate computed a v-prefixed newValue (${match[0]}), indicating extractVersionTemplate is missing`
       )
     }
   })

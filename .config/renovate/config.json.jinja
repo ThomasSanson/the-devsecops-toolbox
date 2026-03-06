@@ -11,7 +11,7 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
-  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"],
+  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version"{% endif %}],
   "allowedCommands": [
     "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
   ],
