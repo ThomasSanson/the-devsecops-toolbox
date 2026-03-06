@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 21.3.0 (2026-03-06)
+
+### Feat
+
+- **init**: add unzip prerequisite tasks, bootstrap test, rename port
+
+### Refactor
+
+- **python**: centralize version file and improve uv install flow
+
 ## 21.2.4 (2026-03-06)
 
 ### Fix
