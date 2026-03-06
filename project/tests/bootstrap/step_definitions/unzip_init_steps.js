@@ -9,6 +9,7 @@ const { executeCopier } = require('../../template/step_objects/commands')
 const activeContainers = []
 const CONTAINER_WORKDIR = '/workspace'
 const CONTAINER_TASKFILE = `${CONTAINER_WORKDIR}/Taskfile.yml`
+const STEP_DEFINITIONS_FILE = __filename
 
 function runCommand (command, options = {}) {
   return execSync(command, {
@@ -119,13 +120,19 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
     [
       'docker run -d',
       `--name ${shellEscape(this.containerName)}`,
-      `-v ${shellEscape(this.generatedProjectDir)}:${CONTAINER_WORKDIR}`,
       'ubuntu:24.04',
       'sleep infinity'
     ].join(' ')
   )
   activeContainers.push(this.containerName)
+
+  const workspacePrepareResult = execInContainer(this.containerName, `mkdir -p ${shellEscape(CONTAINER_WORKDIR)}`)
+  if (workspacePrepareResult.exitCode !== 0) {
+    throw new Error(`Failed to create ${CONTAINER_WORKDIR} in the Ubuntu bootstrap container:\n${workspacePrepareResult.output}`)
+  }
+
   runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${this.containerName}:/usr/local/bin/task`)}`)
+  runCommand(`docker cp ${shellEscape(`${this.generatedProjectDir}/.`)} ${shellEscape(`${this.containerName}:${CONTAINER_WORKDIR}`)}`)
 
   const prepareResult = execInContainer(this.containerName, [
     'set -eu',
@@ -156,7 +163,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
 
   const workspaceResult = execInContainer(this.containerName, `test -f ${shellEscape(CONTAINER_TASKFILE)}`)
   if (workspaceResult.exitCode !== 0) {
-    throw new Error(`Failed to mount the generated toolbox project in ${CONTAINER_WORKDIR}.`)
+    throw new Error(`Failed to copy the generated toolbox project into ${CONTAINER_WORKDIR}.`)
   }
 })
 
@@ -191,6 +198,22 @@ Then('the bootstrap command output should contain {string}', function (expected)
 Then('the bootstrap command output should not contain {string}', function (unexpected) { // eslint-disable-line no-undef
   if (this.lastBootstrapResult && this.lastBootstrapResult.output.includes(unexpected)) {
     throw new Error(`Expected bootstrap output not to contain "${unexpected}", but it was found:\n${this.lastBootstrapResult.output}`)
+  }
+})
+
+Then('the bootstrap step definitions file should contain {string}', function (expected) { // eslint-disable-line no-undef
+  const content = fs.readFileSync(STEP_DEFINITIONS_FILE, 'utf8')
+
+  if (!content.includes(expected)) {
+    throw new Error(`Expected bootstrap step definitions to contain "${expected}", but it was not found.`)
+  }
+})
+
+Then('the bootstrap step definitions file should not contain {string}', function (unexpected) { // eslint-disable-line no-undef
+  const content = fs.readFileSync(STEP_DEFINITIONS_FILE, 'utf8')
+
+  if (content.includes(unexpected)) {
+    throw new Error(`Expected bootstrap step definitions not to contain "${unexpected}", but it was found.`)
   }
 })
 
