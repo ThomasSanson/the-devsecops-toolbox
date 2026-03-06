@@ -8,7 +8,7 @@ install_uv() {
   pipx ensurepath
   pipx install uv
 
-  uv python install "$(cut -d '=' -f 2 .config/python/.python-version)"
+  uv python install "$(cat .config/python/.python-version)"
 
   echo "UV installation completed."
 }

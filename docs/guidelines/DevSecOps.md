@@ -156,6 +156,13 @@ When implementing any aspect of this repository:
 > - Prevention is better than recovery
 > - Every verification step saves potential future issues
 
+### 2.2.4. Python Runtime Version
+
+The toolbox Python source of truth is `.config/python/.python-version`.
+
+- Install the declared Python runtime with uv before running Python-based toolbox tasks.
+- Use `uv python install "$(cat .config/python/.python-version)"` instead of hardcoding a Python version in local setup instructions.
+
 ## 3. DevOps Loop and Task Files
 
 ### 3.1. DevOps Phases

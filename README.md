@@ -135,11 +135,13 @@ pipx install uv
 pipx ensurepath
 ```
 
-2. Install Python 3.12 with uv:
+2. Install the declared Python version with uv:
 
 ```bash
-uv python install 3.12
+uv python install "$(cat .config/python/.python-version)"
 ```
+
+The toolbox Python source of truth is `.config/python/.python-version`.
 
 3. Install Copier with pipx:
 

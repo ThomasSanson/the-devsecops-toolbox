@@ -23,4 +23,4 @@ else
   exit 1
 fi
 
-uv python install "$(cut -d '=' -f 2 .config/python/.python-version)"
+uv python install "$(cat .config/python/.python-version)"

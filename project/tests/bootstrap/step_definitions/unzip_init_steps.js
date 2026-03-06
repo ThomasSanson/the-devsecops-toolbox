@@ -93,7 +93,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
 
   executeCopier(this.generatedProjectDir)
 
-  const taskBinary = runCommand('command -v task').trim()
+  const taskBinary = fs.realpathSync(runCommand('command -v task').trim())
   const uid = process.getuid()
   const gid = process.getgid()
 
@@ -104,17 +104,18 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
       'docker run -d',
       `--name ${shellEscape(this.containerName)}`,
       `-v ${shellEscape(this.generatedProjectDir)}:/workspace`,
-      `-v ${shellEscape(taskBinary)}:/usr/local/bin/task:ro`,
       'ubuntu:24.04',
       'sleep infinity'
     ].join(' ')
   )
   activeContainers.push(this.containerName)
+  runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${this.containerName}:/usr/local/bin/task`)}`)
 
   const prepareResult = execInContainer(this.containerName, [
     'set -eu',
     'apt-get update -qq',
     'apt-get install -y -qq sudo',
+    'chmod 0755 /usr/local/bin/task',
     `BOOTSTRAP_USER="$(getent passwd ${uid} | cut -d: -f1 || true)"`,
     'if [ -z "$BOOTSTRAP_USER" ]; then',
     `  if ! getent group ${gid} >/dev/null 2>&1; then groupadd -g ${gid} bootstrap; fi`,
