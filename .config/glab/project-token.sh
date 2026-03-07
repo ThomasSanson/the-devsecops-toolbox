@@ -118,11 +118,11 @@ verify_ci_variable_token() {
   # Try HTTPS first (gitlab.com default), fall back to HTTP (self-hosted/local).
   # Avoids fragile protocol detection via glab config which varies across versions.
   if command -v curl >/dev/null 2>&1; then
-    curl -sf --connect-timeout 5 -o /dev/null "https://${host}/api/v4/user" -H "PRIVATE-TOKEN: ${cred}" 2>/dev/null ||
-      curl -sf --connect-timeout 5 -o /dev/null "http://${host}/api/v4/user" -H "PRIVATE-TOKEN: ${cred}"
+    curl -sf --connect-timeout 5 -o /dev/null "https://${host}/api/v4/user" -H "Authorization: Bearer ${cred}" 2>/dev/null ||
+      curl -sf --connect-timeout 5 -o /dev/null "http://${host}/api/v4/user" -H "Authorization: Bearer ${cred}"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -T 5 -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
-      wget -q -T 5 -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "http://${host}/api/v4/user"
+    wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
+      wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "http://${host}/api/v4/user"
   else
     return 0
   fi
