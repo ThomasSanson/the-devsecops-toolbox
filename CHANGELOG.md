@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 21.3.2 (2026-03-07)
+
+### Fix
+
+- **project-token.sh**: switch to Bearer auth header for API calls
+- **project-token.sh**: use PRIVATE-TOKEN header and simplify verification
+- **config**: enhance CI token verification and correct yaml list indent
+- **deps**: update dependency gitlab-org/cli to v1.89.0
+
 ## 21.3.1 (2026-03-06)
 
 ### Fix
