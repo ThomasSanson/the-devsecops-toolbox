@@ -96,7 +96,7 @@ store_ci_variable() {
 
 verify_ci_variable_token() {
   local var_name="$1"
-  local var_json hidden cred host protocol
+  local var_json hidden cred host
 
   var_json=$(glab api "projects/:id/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
   echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
@@ -115,23 +115,14 @@ verify_ci_variable_token() {
   fi
   : "${host:=gitlab.com}"
 
-  protocol=$(glab config get -h "$host" api_protocol 2>/dev/null) || true
-
+  # Try HTTPS first (gitlab.com default), fall back to HTTP (self-hosted/local).
+  # Avoids fragile protocol detection via glab config which varies across versions.
   if command -v curl >/dev/null 2>&1; then
-    if [ -n "$protocol" ]; then
-      curl -sf -o /dev/null "${protocol}://${host}/api/v4/user" -H "Authorization: Bearer ${cred}"
-    else
-      # Protocol unknown: try https first, then http
-      curl -sf -o /dev/null "https://${host}/api/v4/user" -H "Authorization: Bearer ${cred}" 2>/dev/null ||
-        curl -sf -o /dev/null "http://${host}/api/v4/user" -H "Authorization: Bearer ${cred}"
-    fi
+    curl -sf --connect-timeout 5 -o /dev/null "https://${host}/api/v4/user" -H "PRIVATE-TOKEN: ${cred}" 2>/dev/null ||
+      curl -sf --connect-timeout 5 -o /dev/null "http://${host}/api/v4/user" -H "PRIVATE-TOKEN: ${cred}"
   elif command -v wget >/dev/null 2>&1; then
-    if [ -n "$protocol" ]; then
-      wget -q -O /dev/null --header="Authorization: Bearer ${cred}" "${protocol}://${host}/api/v4/user"
-    else
-      wget -q -O /dev/null --header="Authorization: Bearer ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
-        wget -q -O /dev/null --header="Authorization: Bearer ${cred}" "http://${host}/api/v4/user"
-    fi
+    wget -q -T 5 -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
+      wget -q -T 5 -O /dev/null --header="PRIVATE-TOKEN: ${cred}" "http://${host}/api/v4/user"
   else
     return 0
   fi
