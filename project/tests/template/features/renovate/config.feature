@@ -37,6 +37,14 @@ Feature: Renovate plugin-only configuration
       "depNameTemplate": "jqlang/jq"
       """
 
+  @task-renovate
+  Scenario: Renovate config includes task version tracking
+    Given a generated project for "renovate/config" tests
+    And the content of the file ".config/renovate/config.json" should contain:
+      """
+      "depNameTemplate": "go-task/task"
+      """
+
   @renovate-no-concurrent-limit
   Scenario: Renovate config delegates concurrent limit to config:recommended defaults
     Given a generated project for "renovate/config" tests

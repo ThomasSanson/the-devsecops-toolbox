@@ -44,6 +44,14 @@
       "depNameTemplate": "jqlang/jq",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^jq-(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/task/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "go-task/task",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ]
 }

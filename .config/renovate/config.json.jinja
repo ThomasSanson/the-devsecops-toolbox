@@ -11,7 +11,7 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
-  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version"{% endif %}],
+  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version", ".config/task/version"{% endif %}],
   "allowedCommands": [
     "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
   ],
@@ -62,6 +62,14 @@
       "depNameTemplate": "jqlang/jq",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^jq-(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/task/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "go-task/task",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ]{% endif %}
 }
