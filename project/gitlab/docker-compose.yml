@@ -40,7 +40,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl -sf http://127.0.0.1:80/users/sign_in | grep -q 'sign_in' || exit 1",
+          "curl -sf http://127.0.0.1:80/users/sign_in | grep -q 'user_login' || exit 1",
         ]
       interval: 30s
       timeout: 15s

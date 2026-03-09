@@ -26,6 +26,13 @@ class GitLabAccessTokenPage {
     await I.amOnPage(`/${projectPath}/-/settings/ci_cd`)
     await I.waitForElement('body', 30)
     await I.wait(2)
+    // Dismiss Docker Hub rate limit banner if present
+    try {
+      await I.click('.gl-dismiss-btn')
+      await I.wait(1)
+    } catch (e) {
+      // Banner not present or already dismissed
+    }
     // Expand Variables section
     await I.click('Expand', '#js-cicd-variables-settings')
     await I.wait(2)
@@ -36,7 +43,8 @@ class GitLabAccessTokenPage {
   }
 
   async verifyVisualRegressionCiCd () {
-    await I.waitForElement('body', 30)
+    await I.scrollTo('#js-cicd-variables-settings')
+    await I.wait(1)
     await I.moveCursorTo('body', 1, 1)
 
     const screenshotName = 'gitlab_ci_cd_variable_renovate'

@@ -22,6 +22,10 @@ function freshRequest (method, url, { body, headers = {}, retries = 5, delay = 3
       let respBody = ''
       res.on('data', chunk => { respBody += chunk })
       res.on('end', () => {
+        if (!respBody.trim()) {
+          resolve({ data: null, status: res.statusCode })
+          return
+        }
         try {
           resolve({ data: JSON.parse(respBody), status: res.statusCode })
         } catch (e) {

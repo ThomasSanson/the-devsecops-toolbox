@@ -6,9 +6,9 @@ Ce dossier contient la configuration Docker Compose pour exécuter une instance 
 
 ## Services
 
-| Service  | Description                                                                                    | Ports                        |
-|----------|------------------------------------------------------------------------------------------------|------------------------------|
-| `gitlab` | GitLab CE (`gitlab/gitlab-ce:17.8.7-ce.0`). Instance minimale avec services lourds désactivés. | `${TASK_GITLAB_WEB_PORT}:80` |
+| Service  | Description                                                                                     | Ports                        |
+|----------|-------------------------------------------------------------------------------------------------|------------------------------|
+| `gitlab` | GitLab CE (`gitlab/gitlab-ce:17.11.7-ce.0`). Instance minimale avec services lourds désactivés. | `${TASK_GITLAB_WEB_PORT}:80` |
 
 - Les volumes `gitlab_config`, `gitlab_logs` et `gitlab_data` assurent la persistance entre les redéploiements.
 - Le `healthcheck` probe `/users/sign_in` avec un `start_period` de 300s (GitLab est lent au démarrage).
