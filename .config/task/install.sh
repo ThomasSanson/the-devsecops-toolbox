@@ -34,7 +34,15 @@ if command -v task >/dev/null 2>&1; then
 fi
 
 log "Installing Taskfile v${TASK_VERSION}..."
-sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin "v${TASK_VERSION}"
+INSTALL_CMD="sh -c \"\$(curl --location https://taskfile.dev/install.sh)\" -- -d -b /usr/local/bin \"v${TASK_VERSION}\""
+if [ -w /usr/local/bin ]; then
+  eval "$INSTALL_CMD"
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo -n sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin "v${TASK_VERSION}"
+else
+  log "Warning: /usr/local/bin not writable and no passwordless sudo. Trying anyway..."
+  eval "$INSTALL_CMD"
+fi
 
 if command -v task >/dev/null 2>&1; then
   log "Taskfile installed successfully: $(task --version)"
