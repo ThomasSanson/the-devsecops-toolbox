@@ -2,6 +2,18 @@
 
 # Changelog
 
+## 21.4.0 (2026-03-09)
+
+### Feat
+
+- **task**: improve install script with sudo fallback and version pinning
+- **task**: add sudo removal of binary in install script, test and cspell
+- **renovate**: add go-task version tracking and pin Taskfile install
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v17.11.7
+
 ## 21.3.2 (2026-03-07)
 
 ### Fix
