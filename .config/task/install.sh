@@ -20,6 +20,17 @@ if command -v task >/dev/null 2>&1; then
     exit 0
   fi
   log "Taskfile $CURRENT found, but pinned version is v$TASK_VERSION. Reinstalling..."
+
+  # Remove existing binary if not writable (e.g. installed as root in Docker image)
+  TASK_BIN="$(command -v task)"
+  if [ -n "$TASK_BIN" ] && [ ! -w "$TASK_BIN" ]; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      log "Removing existing binary with sudo: $TASK_BIN"
+      sudo -n rm -f "$TASK_BIN"
+    else
+      log "Warning: Cannot remove $TASK_BIN (no passwordless sudo). Trying install anyway..."
+    fi
+  fi
 fi
 
 log "Installing Taskfile v${TASK_VERSION}..."

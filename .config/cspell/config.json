@@ -182,6 +182,7 @@
     "oxsecurity",
     "pacman",
     "parameterised",
+    "passwordless",
     "phplint",
     "pipefail",
     "pkill",
