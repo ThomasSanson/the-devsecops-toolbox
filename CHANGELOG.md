@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 21.5.0 (2026-03-11)
+
+### Feat
+
+- update GitLab e2e tests for v18 and add container down/destroy tasks
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v18
+
 ## 21.4.1 (2026-03-09)
 
 ### Fix
