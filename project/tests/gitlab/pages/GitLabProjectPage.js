@@ -43,6 +43,12 @@ class GitLabProjectPage {
     await I.waitForElement('#project_name', 10)
     await I.fillField('#project_name', projectName)
 
+    // GitLab 18: select namespace explicitly (no longer defaults to user namespace)
+    await I.click('[data-testid="select-namespace-dropdown"] [data-testid="base-dropdown-toggle"]')
+    await I.waitForElement('[role="listbox"]', 5)
+    // Select the first available namespace (the user's own namespace)
+    await I.click('[role="listbox"] [role="option"]')
+
     // Select Public visibility
     await I.waitForElement('#project_visibility_level_20', 5)
     await I.checkOption('#project_visibility_level_20')
@@ -52,7 +58,7 @@ class GitLabProjectPage {
   }
 
   async verifyProjectCreated (projectName) {
-    await I.waitForText(projectName, 30, 'h1')
+    await I.waitForText(projectName, 30, '[data-testid="project-name-content"]')
     await I.dontSeeInCurrentUrl('/projects/new')
   }
 
@@ -68,3 +74,4 @@ class GitLabProjectPage {
 }
 
 module.exports = GitLabProjectPage
+

@@ -52,7 +52,7 @@ class GitLabUserPage {
     await I.amOnPage(this.urls.login)
     await I.fillField('#user_login', username)
     await I.fillField('#user_password', password)
-    await I.click('.js-sign-in-button')
+    await I.click('[data-testid="sign-in-button"]')
     await I.wait(3)
     const url = await I.grabCurrentUrl()
     if (url.includes('password/new') || url.includes('user_settings/password')) {
@@ -69,7 +69,7 @@ class GitLabUserPage {
       if (newUrl.includes('sign_in')) {
         await I.fillField('#user_login', username)
         await I.fillField('#user_password', newPassword)
-        await I.click('.js-sign-in-button')
+        await I.click('[data-testid="sign-in-button"]')
         await I.wait(3)
       }
     }

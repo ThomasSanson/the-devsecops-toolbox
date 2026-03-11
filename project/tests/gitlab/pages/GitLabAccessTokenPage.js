@@ -15,6 +15,12 @@ class GitLabAccessTokenPage {
 
   async verifyVisualRegression () {
     await I.waitForElement('body', 30)
+    // GitLab 18: revoked tokens stay visible in an "Inactive" section for 30 days.
+    // Remove the entire inactive section from the DOM before taking the screenshot.
+    await I.executeScript(() => {
+      const inactive = document.querySelector('section#inactive-project-access-tokens')
+      if (inactive) inactive.remove()
+    })
     await I.moveCursorTo('body', 1, 1)
 
     const screenshotName = 'gitlab_access_token_renovate'
@@ -26,12 +32,11 @@ class GitLabAccessTokenPage {
     await I.amOnPage(`/${projectPath}/-/settings/ci_cd`)
     await I.waitForElement('body', 30)
     await I.wait(2)
-    // Dismiss Docker Hub rate limit banner if present
-    try {
+    // Dismiss Docker Hub rate limit banner if present (removed in GitLab 18)
+    const dismissBtns = await I.grabNumberOfVisibleElements('.gl-dismiss-btn')
+    if (dismissBtns > 0) {
       await I.click('.gl-dismiss-btn')
       await I.wait(1)
-    } catch (e) {
-      // Banner not present or already dismissed
     }
     // Expand Variables section
     await I.click('Expand', '#js-cicd-variables-settings')
@@ -43,7 +48,7 @@ class GitLabAccessTokenPage {
   }
 
   async verifyVisualRegressionCiCd () {
-    await I.scrollTo('#js-cicd-variables-settings')
+    await I.scrollTo('[data-testid="ci-variable-table"]')
     await I.wait(1)
     await I.moveCursorTo('body', 1, 1)
 

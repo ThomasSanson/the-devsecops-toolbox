@@ -15,7 +15,7 @@ class GitLabLoginPage {
   login (user, password) {
     I.fillField('#user_login', user)
     I.fillField('#user_password', password)
-    I.click('.js-sign-in-button')
+    I.click('[data-testid="sign-in-button"]')
   }
 
   verifyDashboard () {

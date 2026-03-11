@@ -221,6 +221,30 @@ tasks:
       - cmd: echo "✅ Project Operate phase completed successfully"
         silent: true
 
+  project:operate:down:
+    desc: 🛑 Stop all project containers (keep volumes)
+    summary: |
+      Stops and removes all project containers.
+      Volumes and images are preserved.
+    cmds:
+      - cmd: echo "🛑 Stopping project containers"
+        silent: true
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} --profile dev down"
+      - cmd: echo "✅ Project containers stopped"
+        silent: true
+
+  project:operate:destroy:
+    desc: 💥 Stop containers and remove volumes (images preserved)
+    summary: |
+      Stops and removes all project containers AND their volumes.
+      Images are NOT removed. Use this to reset persistent data (e.g. GitLab DB).
+    cmds:
+      - cmd: echo "💥 Destroying project containers and volumes"
+        silent: true
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} --profile dev down --volumes"
+      - cmd: echo "✅ Project containers and volumes destroyed (images preserved)"
+        silent: true
+
   project:monitor:
     desc: 🚀 Run project-specific monitor tasks
     summary: |
