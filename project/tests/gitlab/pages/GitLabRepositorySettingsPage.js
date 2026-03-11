@@ -22,7 +22,7 @@ class GitLabRepositorySettingsPage {
       await I.sendPostRequest(
         `${baseUrl}/api/v4/projects/${encodedPath}/repository/files/README.md`,
         {
-          branch: branch,
+          branch,
           content: '# Project\n',
           commit_message: 'Initial commit'
         },

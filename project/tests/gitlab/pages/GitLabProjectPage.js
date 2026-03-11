@@ -74,4 +74,3 @@ class GitLabProjectPage {
 }
 
 module.exports = GitLabProjectPage
-
