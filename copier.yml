@@ -114,7 +114,7 @@ _message_after_copy: |
   The project initialization (task devsecops:init) has been run automatically.
   If it failed or was skipped (missing --trust flag), you can run it manually:
     $ task devsecops:init
-  If it stopped because unzip is missing, run:
+  If it reports missing prerequisites, run:
     $ task devsecops:init:prerequisites
 
   Next steps:

@@ -4,42 +4,30 @@ version: "3"
 
 tasks:
   default:
-    desc: 🚀 Initialize DevSecOps project (local setup)
+    desc: 🚀 Initialize DevSecOps project
     summary: |
       ℹ️ Description:
-        Full local initialization: checks required prerequisites, installs
+        Full project initialization: verifies prerequisites, installs
         dev tools, and configures GitLab project settings.
 
       🔄 Execution:
-        1. dependency (check init prerequisites)
+        1. unzip check (fail fast if missing)
         2. dev:setup-environment (install all tools)
-        3. setup-gitlab (configure merge request settings)
+        3. configure (GitLab project settings)
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
-      - task: dependency
+      - task: :unzip:check:installed
+      - cmd: echo "📦 Checking prerequisites..."
+        silent: true
       - task: :dev:setup-environment
 {%- endraw %}
 {%- if ci_platform.startswith('gitlab') %}
-{% raw %}      - task: setup-gitlab
+{% raw %}      - task: configure
 {%- endraw %}
 {%- endif %}
 {% raw %}      - cmd: echo "✅ DevSecOps project initialization completed"
         silent: true
-
-  dependency:
-    desc: 🔎 Check init prerequisites
-    summary: |
-      ℹ️ Description:
-        Verifies the required prerequisites before running the local init flow.
-
-      🔄 Execution:
-        Runs the unzip prerequisite check and stops early with guidance when
-        unzip is missing.
-    cmds:
-      - cmd: echo "🔎 Checking init prerequisites"
-        silent: true
-      - task: :unzip:check:installed
 
   prerequisites:
     desc: 📦 Install missing prerequisites and rerun init
@@ -65,21 +53,46 @@ tasks:
             GLAB_TEST_TOKEN="${GLAB_TEST_TOKEN:-}" \
             "$TASK_BIN" devsecops:init
         silent: false
+
+  template:
+    interactive: true
+    desc: � Scaffold or update project from template
+    summary: |
+      ℹ️ Description:
+        Runs Copier to scaffold a new project or update an existing one
+        from the DevSecOps Toolbox template.
+
+      🔄 Execution:
+        Delegates to the copier task with the template URL.
+
+      📝 Usage:
+        task devsecops:init:template                          # scaffold
+        task devsecops:init:template -- --defaults            # scaffold with defaults
+        task devsecops:init:template TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml  # update
+    cmds:
+      - cmd: echo "📋 Running Copier template..."
+        silent: true
+      - task: :copier
+      - cmd: echo "✅ Template applied"
+        silent: true
 {%- endraw %}
 {%- if ci_platform.startswith('gitlab') %}
 {% raw %}
-  setup-gitlab:
-    desc: 🦊 Configure GitLab project settings
+  configure:
+    desc: ⚙️ Configure GitLab project settings
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
     summary: |
       ℹ️ Description:
         Configures the GitLab project:
-        1. Configures default branch and merge request settings
+        1. Installs glab CLI
+        2. Configures merge request settings
+        3. Sets up project access tokens (Renovate, Commitizen)
+        4. Configures protected branches
     deps:
       - :glab:install
     cmds:
-      - cmd: echo "🦊 Configuring GitLab project..."
+      - cmd: echo "⚙️ Configuring GitLab project..."
         silent: true
       - task: :glab:merge-settings
       - task: :glab:renovate-token

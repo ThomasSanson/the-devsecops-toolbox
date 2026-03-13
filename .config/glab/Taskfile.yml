@@ -198,51 +198,101 @@ tasks:
           if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "false" ]; then
             echo "⏩ Skipping merge request settings check (MR branch — GITLAB_TOKEN is protected)"
             echo "   This check will run on the default branch after merge."
-          elif [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "true" ]; then
-            echo "🔍 Verifying merge request settings on default branch..."
-            PROJECT=$(glab api projects/:id 2>/dev/null)
-            ERROR=0
+          else
+            detect_gitlab_host_from_remotes() {
+              for remote_name in $(git remote 2>/dev/null); do
+                remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+                [ -n "$remote_url" ] || continue
 
-            check_setting() {
-              local field="$1" expected="$2" label="$3"
-              local actual
-              actual=$(echo "$PROJECT" | jq -r ".${field} // empty")
-              if [ "$actual" = "$expected" ]; then
-                echo "  ✅ ${label} = ${actual}"
-              else
-                echo "  ❌ ${label} is '${actual}', expected '${expected}'"
-                ERROR=1
-              fi
+                remote_without_scheme="${remote_url#*://}"
+                if [ "$remote_without_scheme" != "$remote_url" ]; then
+                  remote_url="$remote_without_scheme"
+                fi
+
+                remote_url="${remote_url#*@}"
+                remote_host="${remote_url%%[:/]*}"
+
+                if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                  echo "$remote_host"
+                  return 0
+                fi
+              done
+              return 1
             }
 
-            check_setting "default_branch" "{{.TASK_GIT_DEFAULT_BRANCH}}" "default_branch"
-            check_setting "merge_method" "{{.TASK_GLAB_MERGE_METHOD}}" "merge_method"
-            check_setting "squash_option" "{{.TASK_GLAB_SQUASH_OPTION}}" "squash_option"
-            check_setting "remove_source_branch_after_merge" "{{.TASK_GLAB_REMOVE_SOURCE_BRANCH}}" "remove_source_branch_after_merge"
-            check_setting "only_allow_merge_if_pipeline_succeeds" "{{.TASK_GLAB_PIPELINE_MUST_SUCCEED}}" "only_allow_merge_if_pipeline_succeeds"
-            check_setting "only_allow_merge_if_all_discussions_are_resolved" "{{.TASK_GLAB_ALL_THREADS_RESOLVED}}" "only_allow_merge_if_all_discussions_are_resolved"
-            check_setting "printing_merge_request_link_enabled" "{{.TASK_GLAB_MR_LINK_ENABLED}}" "printing_merge_request_link_enabled"
+            GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+            if [ -z "$GITLAB_REMOTE_HOST" ]; then
+              GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+            fi
 
-            if [ "$ERROR" -eq 1 ]; then
+            if [ -z "$GITLAB_REMOTE_HOST" ]; then
+              echo "❌ No GitLab repository remote was detected."
               echo ""
-              echo "ℹ️  A user with Maintainer (or higher) role must run locally:"
-              echo ""
-              echo "     task devsecops:init"
-              echo ""
-              echo "   This configures merge request settings for the project."
+              echo "Align your repository remote, then rerun:"
+              echo "  git remote set-url origin https://gitlab.com/<namespace>/<project>.git"
+              echo "  task devsecops:init"
               exit 1
             fi
-          else
-            echo "🦊 Applying merge request settings..."
-            glab api --method PUT projects/:id \
-              -f default_branch={{.TASK_GIT_DEFAULT_BRANCH}} \
-              -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
-              -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
-              -f remove_source_branch_after_merge={{.TASK_GLAB_REMOVE_SOURCE_BRANCH}} \
-              -f only_allow_merge_if_pipeline_succeeds={{.TASK_GLAB_PIPELINE_MUST_SUCCEED}} \
-              -f only_allow_merge_if_all_discussions_are_resolved={{.TASK_GLAB_ALL_THREADS_RESOLVED}} \
-              -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}}
-            echo "✅ GitLab merge request settings configured"
+
+            if ! glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1; then
+              echo "❌ GitLab authentication is not configured for host '$GITLAB_REMOTE_HOST'."
+              echo "Run 'task glab:auth' to authenticate."
+              if [ "$GITLAB_REMOTE_HOST" = "gitlab.com" ]; then
+                echo "  glab auth login"
+              else
+                echo "  glab auth login --hostname $GITLAB_REMOTE_HOST"
+                echo "  glab auth status --hostname $GITLAB_REMOTE_HOST"
+              fi
+              echo "  task devsecops:init"
+              exit 1
+            fi
+
+            if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "true" ]; then
+              echo "🔍 Verifying merge request settings on default branch..."
+              PROJECT=$(glab api projects/:id 2>/dev/null)
+              ERROR=0
+
+              check_setting() {
+                local field="$1" expected="$2" label="$3"
+                local actual
+                actual=$(echo "$PROJECT" | jq -r ".${field} // empty")
+                if [ "$actual" = "$expected" ]; then
+                  echo "  ✅ ${label} = ${actual}"
+                else
+                  echo "  ❌ ${label} is '${actual}', expected '${expected}'"
+                  ERROR=1
+                fi
+              }
+
+              check_setting "default_branch" "{{.TASK_GIT_DEFAULT_BRANCH}}" "default_branch"
+              check_setting "merge_method" "{{.TASK_GLAB_MERGE_METHOD}}" "merge_method"
+              check_setting "squash_option" "{{.TASK_GLAB_SQUASH_OPTION}}" "squash_option"
+              check_setting "remove_source_branch_after_merge" "{{.TASK_GLAB_REMOVE_SOURCE_BRANCH}}" "remove_source_branch_after_merge"
+              check_setting "only_allow_merge_if_pipeline_succeeds" "{{.TASK_GLAB_PIPELINE_MUST_SUCCEED}}" "only_allow_merge_if_pipeline_succeeds"
+              check_setting "only_allow_merge_if_all_discussions_are_resolved" "{{.TASK_GLAB_ALL_THREADS_RESOLVED}}" "only_allow_merge_if_all_discussions_are_resolved"
+              check_setting "printing_merge_request_link_enabled" "{{.TASK_GLAB_MR_LINK_ENABLED}}" "printing_merge_request_link_enabled"
+
+              if [ "$ERROR" -eq 1 ]; then
+                echo ""
+                echo "ℹ️  A user with Maintainer (or higher) role must run locally:"
+                echo ""
+                echo "     task devsecops:init"
+                echo ""
+                echo "   This configures merge request settings for the project."
+                exit 1
+              fi
+            else
+              echo "🦊 Applying merge request settings..."
+              glab api --method PUT projects/:id \
+                -f default_branch={{.TASK_GIT_DEFAULT_BRANCH}} \
+                -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
+                -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
+                -f remove_source_branch_after_merge={{.TASK_GLAB_REMOVE_SOURCE_BRANCH}} \
+                -f only_allow_merge_if_pipeline_succeeds={{.TASK_GLAB_PIPELINE_MUST_SUCCEED}} \
+                -f only_allow_merge_if_all_discussions_are_resolved={{.TASK_GLAB_ALL_THREADS_RESOLVED}} \
+                -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}}
+              echo "✅ GitLab merge request settings configured"
+            fi
           fi
 
   renovate-token:

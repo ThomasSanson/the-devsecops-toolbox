@@ -127,6 +127,34 @@ Before using the DevSecOps Toolbox, ensure you have the following installed:
 
 ### Installation
 
+From your project directory, run:
+
+```bash
+curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh | bash
+```
+
+That's it. The installer sets up `task`, `uv`, scaffolds your project with Copier, and runs the initial configuration.
+
+> **🔒 Security:** Review the script before executing it:
+>
+> ```bash
+> curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh | less
+> ```
+>
+> **New project?** Create a git repository first:
+>
+> ```bash
+> mkdir my-project && cd my-project && git init
+> ```
+>
+> **⚠️ PATH:** After installation, add `$HOME/.local/bin` to your `PATH` if not already present:
+>
+> ```bash
+> export PATH="$HOME/.local/bin:$PATH"  # add to .bashrc or .zshrc
+> ```
+
+#### Standard installation
+
 1. Install uv with pipx:
 
 ```bash
@@ -323,11 +351,11 @@ task dev:setup-environment
 task devsecops
 ```
 
-If `task devsecops:init` stops because `unzip` is missing, recover with:
+If `task devsecops:init` reports missing prerequisites, recover with:
 ```bash
 task devsecops:init:prerequisites
 ```
-This command installs the missing prerequisite with `sudo` and reruns `task devsecops:init` automatically.
+This command installs missing tools and verifies the environment.
 
 ## Architecture
 

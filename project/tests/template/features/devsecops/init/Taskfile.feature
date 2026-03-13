@@ -10,7 +10,7 @@ Feature: DevSecOps Init Taskfile Standardization
     When the copier command is executed with default settings
     Then the file ".config/devsecops/Taskfile.init.yml" should exist
     And the file ".config/devsecops/Taskfile.init.yml" should contain "desc: 🚀 Initialize DevSecOps project"
-    And the file ".config/devsecops/Taskfile.init.yml" should contain "setup-gitlab"
+    And the file ".config/devsecops/Taskfile.init.yml" should contain "configure"
     And the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:merge-settings"
 
   @post-copy
@@ -21,13 +21,13 @@ Feature: DevSecOps Init Taskfile Standardization
     And the source template file "copier.yml" should contain "_copier_operation == 'copy'"
 
   @renovate-token
-  Scenario: Init Taskfile includes renovate-token in setup-gitlab
+  Scenario: Init Taskfile includes renovate-token in configure
     Given a clean temporary directory for "devsecops/init" tests
     When the copier command is executed with default settings
     Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:renovate-token"
 
   @commitizen-token
-  Scenario: Init Taskfile includes commitizen-token and removes deploy-key from setup-gitlab
+  Scenario: Init Taskfile includes commitizen-token and removes deploy-key from configure
     Given a clean temporary directory for "devsecops/init" tests
     When the copier command is executed with default settings
     Then the file ".config/devsecops/Taskfile.init.yml" should contain ":glab:commitizen-token"

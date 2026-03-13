@@ -20,7 +20,7 @@ tasks:
 
           echo "❌ unzip is required before task devsecops:init."
           echo ""
-          echo "Run the prerequisite installer:"
+          echo "Run the prerequisites check:"
           echo "  task devsecops:init:prerequisites"
           echo ""
           echo "Or install unzip manually, then rerun:"
