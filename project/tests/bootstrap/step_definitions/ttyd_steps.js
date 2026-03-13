@@ -4,7 +4,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { execSync } = require('child_process')
 
-const { I } = inject()
+const { I } = global.inject()
 const { executeCopier } = require('../../template/step_objects/commands')
 
 const CONTAINER_WORKDIR = '/workspace'
@@ -153,7 +153,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
     'set -eu',
     'TTYD_VERSION="1.7.7"',
     'UNAME_ARCH="$(uname -m)"',
-    'curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${UNAME_ARCH}" -o /usr/local/bin/ttyd',
+    'curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$UNAME_ARCH" -o /usr/local/bin/ttyd',
     'chmod +x /usr/local/bin/ttyd'
   ].join('\n'))
 
@@ -211,7 +211,7 @@ Then('the terminal output should visually match {string}', async function (basel
   const outputDir = path.resolve(__dirname, '..', '_output')
 
   const scrollInfo = await I.executeScript(function () {
-    var vp = document.querySelector('.xterm-viewport')
+    const vp = document.querySelector('.xterm-viewport')
     if (!vp) return null
     return { scrollHeight: vp.scrollHeight, clientHeight: vp.clientHeight }
   })
@@ -262,9 +262,9 @@ Then('the terminal output should visually match {string}', async function (basel
 
         await stitchPage.evaluate(async (args) => {
           return new Promise(function (resolve) {
-            var img = new Image()
+            const img = new window.Image()
             img.onload = function () {
-              var ctx = document.getElementById('c').getContext('2d')
+              const ctx = document.getElementById('c').getContext('2d')
               ctx.drawImage(img, 0, args.srcY, 1920, args.drawH, 0, args.yDest, 1920, args.drawH)
               resolve()
             }

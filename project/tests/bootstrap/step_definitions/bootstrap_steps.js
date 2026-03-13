@@ -174,7 +174,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu bootstrap contai
 
 When('I run {string} in the Ubuntu bootstrap container with user {string}', function (command, user) { // eslint-disable-line no-undef
   this.lastBootstrapResult = execInContainer(this.containerName, command, {
-    user: user,
+    user,
     workdir: CONTAINER_WORKDIR,
     env: {
       PATH: '/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
