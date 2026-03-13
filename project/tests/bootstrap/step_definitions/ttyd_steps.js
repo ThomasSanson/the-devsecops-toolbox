@@ -11,6 +11,12 @@ const CONTAINER_WORKDIR = '/workspace'
 const TTYD_READY_TIMEOUT = 15000
 const TERMINAL_CMD_TIMEOUT = 120000
 
+function dockerHost () {
+  const dh = process.env.DOCKER_HOST || ''
+  const match = dh.match(/tcp:\/\/([^:]+)/)
+  return match ? match[1] : '127.0.0.1'
+}
+
 const activeContainers = []
 
 function runCommand (command, options = {}) {
@@ -73,7 +79,7 @@ function waitForTtyd (port, timeoutMs) {
 
   while (Date.now() - start < timeoutMs) {
     try {
-      runCommand(`curl -sf http://127.0.0.1:${port}/ >/dev/null 2>&1`) // DevSkim: ignore DS162092
+      runCommand(`curl -sf http://${dockerHost()}:${port}/ >/dev/null 2>&1`) // DevSkim: ignore DS162092
       return true
     } catch (_) {
       execSync('sleep 0.5')
@@ -119,7 +125,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
     [
       'docker run -d',
       `--name ${shellEscape(this.ttydContainerName)}`,
-      `-p 127.0.0.1:${this.ttydPort}:7681`,
+      `-p ${this.ttydPort}:7681`,
       'ubuntu:24.04',
       'bash -c', shellEscape('while :; do sleep 10 & wait; done')
     ].join(' ')
@@ -175,7 +181,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
 })
 
 When('I open the web terminal', async function () { // eslint-disable-line no-undef
-  I.amOnPage(`http://127.0.0.1:${this.ttydPort}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${dockerHost()}:${this.ttydPort}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(1)
 })
