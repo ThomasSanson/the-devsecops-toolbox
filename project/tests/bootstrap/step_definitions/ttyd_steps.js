@@ -8,6 +8,7 @@ const { I } = global.inject()
 const { executeCopier } = require('../../template/step_objects/commands')
 
 const CONTAINER_WORKDIR = '/workspace'
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..')
 const TTYD_READY_TIMEOUT = 30000
 const TERMINAL_CMD_TIMEOUT = 300000
 
@@ -110,37 +111,40 @@ After(function () { // eslint-disable-line no-undef
   }
 })
 
-Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container', function () { // eslint-disable-line no-undef
-  const tempBaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttyd-bootstrap-'))
-  this.ttydGeneratedProjectDir = path.join(tempBaseDir, 'generated')
-  fs.mkdirSync(this.ttydGeneratedProjectDir, { recursive: true })
+function setupTtydContainer (scenario, options = {}) {
+  const { extraPackages = [], gitRemote } = options
 
-  executeCopier(this.ttydGeneratedProjectDir)
+  const tempBaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttyd-bootstrap-'))
+  scenario.ttydGeneratedProjectDir = path.join(tempBaseDir, 'generated')
+  fs.mkdirSync(scenario.ttydGeneratedProjectDir, { recursive: true })
+
+  executeCopier(scenario.ttydGeneratedProjectDir)
 
   const taskBinary = fs.realpathSync(runCommand('command -v task').trim())
-  this.ttydPort = randomPort()
-  this.ttydContainerName = containerName()
+  scenario.ttydPort = randomPort()
+  scenario.ttydContainerName = containerName()
 
   runCommand(
     [
       'docker run -d',
-      `--name ${shellEscape(this.ttydContainerName)}`,
-      `-p ${this.ttydPort}:7681`,
+      `--name ${shellEscape(scenario.ttydContainerName)}`,
+      `-p ${scenario.ttydPort}:7681`,
       'ubuntu:24.04',
       'bash -c', shellEscape('while :; do sleep 10 & wait; done')
     ].join(' ')
   )
-  activeContainers.push(this.ttydContainerName)
+  activeContainers.push(scenario.ttydContainerName)
 
-  execInContainer(this.ttydContainerName, `mkdir -p ${CONTAINER_WORKDIR}`)
+  execInContainer(scenario.ttydContainerName, `mkdir -p ${CONTAINER_WORKDIR}`)
 
-  runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${this.ttydContainerName}:/usr/local/bin/task`)}`)
-  runCommand(`docker cp ${shellEscape(`${this.ttydGeneratedProjectDir}/.`)} ${shellEscape(`${this.ttydContainerName}:${CONTAINER_WORKDIR}`)}`)
+  runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${scenario.ttydContainerName}:/usr/local/bin/task`)}`)
+  runCommand(`docker cp ${shellEscape(`${scenario.ttydGeneratedProjectDir}/.`)} ${shellEscape(`${scenario.ttydContainerName}:${CONTAINER_WORKDIR}`)}`)
 
-  const prepareResult = execInContainer(this.ttydContainerName, [
+  const allPackages = ['sudo', 'curl'].concat(extraPackages)
+  const prepareResult = execInContainer(scenario.ttydContainerName, [
     'set -eu',
     'apt-get update -qq',
-    'apt-get install -y -qq sudo curl',
+    `apt-get install -y -qq ${allPackages.join(' ')}`,
     'if ! id bootstrap >/dev/null 2>&1; then',
     '  useradd -m -s /bin/bash bootstrap',
     'fi',
@@ -155,7 +159,25 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
     throw new Error(`Failed to prepare ttyd container:\n${prepareResult.output}`)
   }
 
-  const ttydInstall = execInContainer(this.ttydContainerName, [
+  if (gitRemote) {
+    const gitResult = execInContainer(scenario.ttydContainerName, [
+      'set -eu',
+      `cd ${CONTAINER_WORKDIR}`,
+      `git config --global --add safe.directory ${CONTAINER_WORKDIR}`,
+      'git config --global user.email "bootstrap@example.com"',
+      'git config --global user.name "Bootstrap"',
+      'git init -q',
+      'git add .',
+      'git commit -q -m "bootstrap init"',
+      `git remote add origin ${gitRemote}`
+    ].join('\n'))
+
+    if (gitResult.exitCode !== 0) {
+      throw new Error(`Failed to set up git remote:\n${gitResult.output}`)
+    }
+  }
+
+  const ttydInstall = execInContainer(scenario.ttydContainerName, [
     'set -eu',
     'TTYD_VERSION="1.7.7"',
     'UNAME_ARCH="$(uname -m)"',
@@ -167,7 +189,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
     throw new Error(`Failed to install ttyd:\n${ttydInstall.output}`)
   }
 
-  const ttydStart = execInContainer(this.ttydContainerName, [
+  const ttydStart = execInContainer(scenario.ttydContainerName, [
     'set -eu',
     `nohup su - bootstrap -c 'cd ${CONTAINER_WORKDIR} && PROMPT_COMMAND="touch /tmp/ttyd-cmd-done" ttyd -p 7681 -W -t scrollback=5000 bash' >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
@@ -177,7 +199,28 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
     throw new Error(`Failed to start ttyd:\n${ttydStart.output}`)
   }
 
-  waitForTtyd(this.ttydPort, TTYD_READY_TIMEOUT)
+  waitForTtyd(scenario.ttydPort, TTYD_READY_TIMEOUT)
+}
+
+Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container', function () { // eslint-disable-line no-undef
+  setupTtydContainer(this)
+})
+
+Given('a generated toolbox project with git remote {string} is mounted in a fresh Ubuntu ttyd container', function (gitRemote) { // eslint-disable-line no-undef
+  setupTtydContainer(this, { extraPackages: ['git', 'unzip'], gitRemote })
+})
+
+Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container with extra packages {string}', function (packages) { // eslint-disable-line no-undef
+  setupTtydContainer(this, { extraPackages: packages.split(/\s+/) })
+})
+
+Given('the repository file {string} is copied into the ttyd container', function (filePath) { // eslint-disable-line no-undef
+  const srcPath = path.join(REPO_ROOT, filePath)
+  if (!fs.existsSync(srcPath)) {
+    throw new Error(`Repository file "${filePath}" not found at "${srcPath}"`)
+  }
+  runCommand(`docker cp ${shellEscape(srcPath)} ${shellEscape(`${this.ttydContainerName}:${CONTAINER_WORKDIR}/${filePath}`)}`)
+  execInContainer(this.ttydContainerName, `chown bootstrap:bootstrap ${CONTAINER_WORKDIR}/${shellEscape(filePath)}`)
 })
 
 When('I open the web terminal', async function () { // eslint-disable-line no-undef

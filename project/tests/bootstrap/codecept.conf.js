@@ -31,8 +31,6 @@ exports.config = {
     features: './features/**/*.feature',
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
-      './step_definitions/unzip_init_steps.js',
-      './step_definitions/bootstrap_steps.js',
       './step_definitions/ttyd_steps.js'
     ]
   },
