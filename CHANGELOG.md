@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.5.3 (2026-03-14)
+
+### Fix
+
+- **deps**: update dependency copier to v9.14.0
+
 ## 21.5.2 (2026-03-13)
 
 ### Fix
