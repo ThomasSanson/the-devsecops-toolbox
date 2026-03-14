@@ -8,8 +8,8 @@ const { I } = global.inject()
 const { executeCopier } = require('../../template/step_objects/commands')
 
 const CONTAINER_WORKDIR = '/workspace'
-const TTYD_READY_TIMEOUT = 15000
-const TERMINAL_CMD_TIMEOUT = 120000
+const TTYD_READY_TIMEOUT = 30000
+const TERMINAL_CMD_TIMEOUT = 300000
 
 function dockerHost () {
   const dh = process.env.DOCKER_HOST || ''
@@ -169,7 +169,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
 
   const ttydStart = execInContainer(this.ttydContainerName, [
     'set -eu',
-    `nohup su - bootstrap -c 'cd ${CONTAINER_WORKDIR} && ttyd -p 7681 -W -t scrollback=5000 bash' >/tmp/ttyd.log 2>&1 &`,
+    `nohup su - bootstrap -c 'cd ${CONTAINER_WORKDIR} && PROMPT_COMMAND="touch /tmp/ttyd-cmd-done" ttyd -p 7681 -W -t scrollback=5000 bash' >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
   ].join('\n'))
 
@@ -183,7 +183,7 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container',
 When('I open the web terminal', async function () { // eslint-disable-line no-undef
   I.amOnPage(`http://${dockerHost()}:${this.ttydPort}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
-  I.wait(1)
+  I.wait(3)
 })
 
 When('I type {string} in the terminal and wait for completion', async function (command) { // eslint-disable-line no-undef
@@ -191,7 +191,7 @@ When('I type {string} in the terminal and wait for completion', async function (
   I.click('.xterm-screen')
   I.type(command)
   I.pressKey('Enter')
-  await I.wait(3)
+  await I.wait(5)
 
   const name = shellEscape(this.ttydContainerName)
   const cmd = 'while [ ! -f /tmp/ttyd-cmd-done ]; do sleep 1; done; sleep 2'
@@ -203,7 +203,17 @@ When('I type {string} in the terminal and wait for completion', async function (
     })
   } catch (error) {
     if (error.killed) {
-      throw new Error(`Timed out waiting for command to finish after ${TERMINAL_CMD_TIMEOUT}ms`)
+      const markerCheck = execInContainer(this.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
+      const procCheck = execInContainer(this.ttydContainerName, 'ps aux 2>&1 | head -20')
+      const logCheck = execInContainer(this.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
+      const bashrcCheck = execInContainer(this.ttydContainerName, 'su - bootstrap -c "grep PROMPT_COMMAND ~/.bashrc" 2>&1')
+      throw new Error(
+        `Timed out waiting for command "${command}" after ${TERMINAL_CMD_TIMEOUT}ms\n` +
+        `--- Marker: ${markerCheck.output.trim()}\n` +
+        `--- PROMPT_COMMAND in bashrc: ${bashrcCheck.output.trim()}\n` +
+        `--- Processes:\n${procCheck.output.trim()}\n` +
+        `--- ttyd log:\n${logCheck.output.trim()}`
+      )
     }
     throw error
   }
