@@ -64,7 +64,7 @@ cd project && ...
 
 ### Repository Layout
 
-```
+```txt
 /
 ├── .agent/           # AI agent rules, skills, and workflows (source of truth)
 ├── .config/          # Tool configurations — DO NOT MODIFY
@@ -116,16 +116,16 @@ Example: `project:operate:xxx:env`, `project:monitor:xxx`
 
 Every code change follows RED → GREEN → REFACTOR in strict order:
 
-| Step | Action | Command | Expected |
-|------|--------|---------|----------|
-| 1 | Write test with unique `@tag` | — | Feature file created |
-| 2 | **RED** — Verify test fails | `task test -- --grep "@tag"` | FAIL |
-| 3 | Implement minimal code | — | Code written |
-| 4 | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS |
-| 5 | Refactor (do NOT touch test) | — | Code improved |
-| 6 | Verify after refactor | `task test -- --grep "@tag"` | PASS |
-| 7 | Quality check | `task code` | PASS |
-| 8 | Full test suite | `task test` | ALL PASS |
+| Step | Action                         | Command                      | Expected             |
+|------|--------------------------------|------------------------------|----------------------|
+| 1    | Write test with unique `@tag`  | —                            | Feature file created |
+| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"` | FAIL                 |
+| 3    | Implement minimal code         | —                            | Code written         |
+| 4    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |
+| 5    | Refactor (do NOT touch test)   | —                            | Code improved        |
+| 6    | Verify after refactor          | `task test -- --grep "@tag"` | PASS                 |
+| 7    | Quality check                  | `task code`                  | PASS                 |
+| 8    | Full test suite                | `task test`                  | ALL PASS             |
 
 **Never write code before the test. Never modify a test to make it pass.**
 

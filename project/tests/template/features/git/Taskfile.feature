@@ -4,7 +4,7 @@ Feature: Git Taskfile Standardization
   I want a standard Taskfile for Git operations
   So that I can use consistent commands and documentation
 
-  @default
+  @default @git-prerequisites-move
   Scenario: Verify Git Taskfile structure and documentation
     Given a clean temporary directory for "git/taskfile" tests
     When the copier command is executed with default settings
@@ -13,3 +13,6 @@ Feature: Git Taskfile Standardization
     And the file ".config/git/Taskfile.yml" should contain "install:"
     And the file ".config/git/Taskfile.yml" should contain "summary: |"
     And the file ".config/git/Taskfile.yml" should contain "Installs Git on the system"
+    And the task "install" in file ".config/git/Taskfile.yml" should contain "status:"
+    And the task "install" in file ".config/git/Taskfile.yml" should contain "command -v git"
+    And the task "install" in file ".config/git/Taskfile.yml" should contain "bash {{.TASK_GIT_CONFIG_DIR}}/install.sh"

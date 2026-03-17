@@ -53,6 +53,7 @@
     "Kubeconfig",
     "Kubeseal",
     "LEFTHOOK",
+    "LOGNAME",
     "Lefthook",
     "MAXTIMEOUT",
     "MEGALINTER",

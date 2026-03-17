@@ -81,6 +81,6 @@ tasks:
     cmds:
       - cmd: echo "🔄 Updating Copier project using {{.TASK_COPIER_ANSWER_FILE}}"
         silent: true
-      - "{{.TASK_COPIER_COMMAND}} update {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
+      - "{{.TASK_COPIER_COMMAND}} update --trust {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
       - cmd: echo "🎉 Copier update completed successfully."
         silent: true

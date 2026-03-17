@@ -11,13 +11,14 @@ tasks:
         dev tools, and configures GitLab project settings.
 
       🔄 Execution:
-        1. unzip check (fail fast if missing)
+        1. Checks unzip and auto-runs prerequisites when missing
         2. dev:setup-environment (install all tools)
         3. configure (GitLab project settings)
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
-      - task: :unzip:check:installed
+      - cmd: task :unzip:check:installed || task devsecops:init:prerequisites
+        silent: false
       - cmd: echo "📦 Checking prerequisites..."
         silent: true
       - task: :dev:setup-environment
@@ -30,29 +31,19 @@ tasks:
         silent: true
 
   prerequisites:
-    desc: 📦 Install missing prerequisites and rerun init
+    desc: 📦 Install missing prerequisites
     summary: |
       ℹ️ Description:
-        Installs the currently required prerequisites and reruns
-        task devsecops:init automatically.
+        Installs the currently required prerequisites.
 
       🔄 Execution:
-        1. Installs unzip with sudo
-        2. Reruns task devsecops:init
+        1. Installs git when missing
+        2. Installs unzip with sudo
     cmds:
       - cmd: echo "📦 Installing missing prerequisites..."
         silent: true
+      - task: :git:install
       - task: :unzip:install:sudo
-      - cmd: |
-          TASK_BIN="$(command -v task)"
-          echo "🔄 Re-running task devsecops:init..."
-          sudo env \
-            PATH="$PATH" \
-            GITLAB_HOST="${GITLAB_HOST:-}" \
-            GITLAB_TOKEN="${GITLAB_TOKEN:-}" \
-            GLAB_TEST_TOKEN="${GLAB_TEST_TOKEN:-}" \
-            "$TASK_BIN" devsecops:init
-        silent: false
 
   template:
     interactive: true
