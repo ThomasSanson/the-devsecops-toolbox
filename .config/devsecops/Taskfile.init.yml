@@ -16,7 +16,7 @@ tasks:
     cmds:
       - cmd: echo "🚀 Starting DevSecOps project initialization"
         silent: true
-      - cmd: task :unzip:check:installed || task devsecops:init:prerequisites
+      - cmd: task unzip:check:installed || task devsecops:init:prerequisites
         silent: false
       - cmd: echo "📦 Checking prerequisites..."
         silent: true

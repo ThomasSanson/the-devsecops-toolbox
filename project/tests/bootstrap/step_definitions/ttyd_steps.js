@@ -16,6 +16,11 @@ const GITLAB_STACK_TIMEOUT = 900000
 const GITLAB_DOCKER_NETWORK_ALIAS = 'the-devsecops-toolbox'
 const DEFAULT_INSTALL_ANSWERS_COUNT = 40
 const DOCKER_SCENARIO_USER = 'bootstrap'
+const GITLAB_READY_POLL_INTERVAL_SECONDS = 2
+const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
+const TERMINAL_SETTLE_POLL_SECONDS = 0.25
+const TERMINAL_SETTLE_STABLE_SAMPLES = 3
+const TERMINAL_BOTTOM_TOLERANCE_PX = 12
 
 function dockerHost () {
   const dh = process.env.DOCKER_HOST || ''
@@ -99,7 +104,69 @@ function runCurlJson (request, context) {
 }
 
 function gitlabApiBaseUrl () {
-  return `http://127.0.0.1:${process.env.TASK_GITLAB_WEB_PORT || '8929'}`
+  return `http://${dockerHost()}:${process.env.TASK_GITLAB_WEB_PORT || '8929'}`
+}
+
+function collectGitlabComposeDiagnostics () {
+  const checks = [
+    {
+      title: 'docker compose ps',
+      command: 'cd project && docker compose ps'
+    },
+    {
+      title: 'docker compose logs --tail=200 gitlab',
+      command: 'cd project && docker compose logs --tail=200 gitlab'
+    }
+  ]
+
+  return checks.map(function (check) {
+    const result = runCommandWithResult(check.command, { timeout: 180000 })
+    const status = result.exitCode === 0 ? 'ok' : `exit ${result.exitCode}`
+    const output = (result.output || '').trim() || '<no output>'
+
+    return `--- ${check.title} (${status}) ---\n${output}`
+  }).join('\n')
+}
+
+function withGitlabDiagnostics (error, context) {
+  return new Error(
+    `${context}.\n${error.message}\n${collectGitlabComposeDiagnostics()}`
+  )
+}
+
+function waitForGitlabReady (baseUrl, timeoutMs = GITLAB_STACK_TIMEOUT) {
+  const startedAt = Date.now()
+  const readyUrl = `${baseUrl}/users/sign_in`
+  let lastProbeOutput = ''
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const probe = runCommandWithResult(
+      `curl -sS --fail ${shellEscape(readyUrl)}`,
+      { timeout: 30000 }
+    )
+
+    if (probe.exitCode === 0 && /user_login/.test(probe.output || '')) {
+      return
+    }
+
+    lastProbeOutput = (probe.output || '').trim()
+    execSync(`sleep ${GITLAB_READY_POLL_INTERVAL_SECONDS}`)
+  }
+
+  const lastOutputMessage = lastProbeOutput ? `Last probe output:\n${lastProbeOutput}\n` : ''
+  throw new Error(
+    `GitLab did not become ready at ${readyUrl} within ${timeoutMs}ms.\n` +
+    `${lastOutputMessage}` +
+    `${collectGitlabComposeDiagnostics()}`
+  )
+}
+
+function runGitlabApiJson (request, context) {
+  try {
+    return runCurlJson(request, context)
+  } catch (error) {
+    throw withGitlabDiagnostics(error, `Failed ${context}`)
+  }
 }
 
 function resolveGitLabDockerNetwork () {
@@ -237,6 +304,88 @@ function waitForTtyd (port, timeoutMs) {
   }
 
   throw new Error(`ttyd did not become ready on port ${port} within ${timeoutMs}ms`)
+}
+
+async function readTerminalState () {
+  return I.executeScript(function (bottomTolerancePx) {
+    const viewport = document.querySelector('.xterm-viewport')
+    const screen = document.querySelector('.xterm-screen')
+
+    if (!viewport || !screen) {
+      return null
+    }
+
+    const textLength = (screen.textContent || '').length
+    const scrollHeight = viewport.scrollHeight
+    const clientHeight = viewport.clientHeight
+    const scrollTop = viewport.scrollTop
+    const expectedBottom = Math.max(0, scrollHeight - clientHeight)
+    const atBottom = Math.abs(scrollTop - expectedBottom) <= bottomTolerancePx
+
+    return {
+      scrollHeight,
+      clientHeight,
+      scrollTop,
+      textLength,
+      atBottom
+    }
+  }, TERMINAL_BOTTOM_TOLERANCE_PX)
+}
+
+async function waitForTerminalSettle (timeoutSeconds = TERMINAL_SETTLE_TIMEOUT_SECONDS) {
+  const startedAt = Date.now()
+  let stableSamples = 0
+  let previousState = null
+  let latestState = null
+
+  while ((Date.now() - startedAt) < (timeoutSeconds * 1000)) {
+    latestState = await readTerminalState()
+    if (!latestState) {
+      await I.wait(TERMINAL_SETTLE_POLL_SECONDS)
+      continue
+    }
+
+    const isStable = previousState &&
+      previousState.scrollHeight === latestState.scrollHeight &&
+      previousState.scrollTop === latestState.scrollTop &&
+      previousState.textLength === latestState.textLength
+
+    stableSamples = isStable ? stableSamples + 1 : 0
+    previousState = latestState
+
+    if (stableSamples >= TERMINAL_SETTLE_STABLE_SAMPLES) {
+      return latestState
+    }
+
+    await I.wait(TERMINAL_SETTLE_POLL_SECONDS)
+  }
+
+  return latestState
+}
+
+async function scrollTerminalToBottom () {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const state = await I.executeScript(function (bottomTolerancePx) {
+      const viewport = document.querySelector('.xterm-viewport')
+      if (!viewport) {
+        return null
+      }
+      const expectedBottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      viewport.scrollTop = expectedBottom
+
+      return {
+        atBottom: Math.abs(viewport.scrollTop - expectedBottom) <= bottomTolerancePx
+      }
+    }, TERMINAL_BOTTOM_TOLERANCE_PX)
+
+    if (state && state.atBottom) {
+      return true
+    }
+
+    await I.wait(0.2)
+  }
+
+  return false
 }
 
 Before(function (scenario) { // eslint-disable-line no-undef
@@ -458,11 +607,23 @@ When('I type {string} in the terminal and wait for completion', async function (
   execInContainer(this.ttydContainerName, 'rm -f /tmp/ttyd-cmd-done')
   I.click('.xterm-screen')
   I.type(command)
+  const commandStartedAtEpoch = Math.floor(Date.now() / 1000)
   I.pressKey('Enter')
   await I.wait(5)
 
   const name = shellEscape(this.ttydContainerName)
-  const cmd = 'while [ ! -f /tmp/ttyd-cmd-done ]; do sleep 1; done; sleep 2'
+  const cmd = [
+    'while :; do',
+    '  if [ -f /tmp/ttyd-cmd-done ]; then',
+    '    marker_mtime="$(stat -c %Y /tmp/ttyd-cmd-done 2>/dev/null || echo 0)"',
+    `    if [ "$marker_mtime" -ge "${commandStartedAtEpoch}" ]; then`,
+    '      break',
+    '    fi',
+    '  fi',
+    '  sleep 1',
+    'done',
+    'sleep 2'
+  ].join('\n')
 
   try {
     execSync(`docker exec ${name} bash -c ${shellEscape(cmd)}`, {
@@ -485,12 +646,15 @@ When('I type {string} in the terminal and wait for completion', async function (
     }
     throw error
   }
+
+  await waitForTerminalSettle()
 })
 
 Then('the terminal output should visually match {string}', async function (baselineName) { // eslint-disable-line no-undef
   await I.wait(1)
   I.resizeWindow(1920, 1080)
   await I.wait(2)
+  await waitForTerminalSettle()
 
   const outputDir = path.resolve(__dirname, '..', '_output')
 
@@ -563,10 +727,17 @@ Then('the terminal output should visually match {string}', async function (basel
 
     contentPages.forEach(function (f) { try { fs.unlinkSync(f) } catch (e) { /* ignore */ } })
 
-    await I.executeScript(function (max) {
-      document.querySelector('.xterm-viewport').scrollTop = max
-    }, totalHeight)
-    await I.wait(0.5)
+    await scrollTerminalToBottom()
+    await waitForTerminalSettle()
+  }
+
+  await scrollTerminalToBottom()
+  await waitForTerminalSettle()
+  let finalState = await readTerminalState()
+  if (!finalState || !finalState.atBottom) {
+    await scrollTerminalToBottom()
+    await waitForTerminalSettle(3)
+    finalState = await readTerminalState()
   }
 
   I.moveCursorTo('body', 1, 1)
@@ -591,7 +762,15 @@ Given('the GitLab test stack is started with docker compose', function () { // e
   this.gitlabStackStarted = true
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to start GitLab test stack:\n${result.output}`)
+    throw new Error(
+      `Failed to start GitLab test stack:\n${result.output}\n${collectGitlabComposeDiagnostics()}`
+    )
+  }
+
+  try {
+    waitForGitlabReady(gitlabApiBaseUrl())
+  } catch (error) {
+    throw withGitlabDiagnostics(error, 'GitLab stack started but readiness check failed')
   }
 })
 
@@ -676,7 +855,13 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
   const lambdaEmail = process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'
   const gitlabProjectName = `${projectName}-${crypto.randomBytes(3).toString('hex')}`
 
-  const authData = runCurlJson(
+  try {
+    waitForGitlabReady(baseUrl)
+  } catch (error) {
+    throw withGitlabDiagnostics(error, 'GitLab readiness check failed before OAuth flow')
+  }
+
+  const authData = runGitlabApiJson(
     {
       method: 'POST',
       url: `${baseUrl}/oauth/token`,
@@ -694,7 +879,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
     throw new Error(`GitLab OAuth token missing in response: ${JSON.stringify(authData)}`)
   }
 
-  let users = runCurlJson(
+  let users = runGitlabApiJson(
     {
       method: 'GET',
       url: `${baseUrl}/api/v4/users?username=${encodeURIComponent(lambdaUser)}`,
@@ -704,7 +889,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
   )
 
   if (!Array.isArray(users) || users.length === 0) {
-    runCurlJson(
+    runGitlabApiJson(
       {
         method: 'POST',
         url: `${baseUrl}/api/v4/users`,
@@ -722,7 +907,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
       'GitLab lambda user creation'
     )
 
-    users = runCurlJson(
+    users = runGitlabApiJson(
       {
         method: 'GET',
         url: `${baseUrl}/api/v4/users?username=${encodeURIComponent(lambdaUser)}`,
@@ -737,7 +922,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
     throw new Error(`Unable to resolve lambda user ID from GitLab response: ${JSON.stringify(users)}`)
   }
 
-  const projects = runCurlJson(
+  const projects = runGitlabApiJson(
     {
       method: 'GET',
       url: `${baseUrl}/api/v4/users/${lambdaData.id}/projects?search=${encodeURIComponent(gitlabProjectName)}&simple=true&per_page=100`,
@@ -751,7 +936,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
     : null
 
   if (!existingProject) {
-    runCurlJson(
+    runGitlabApiJson(
       {
         method: 'POST',
         url: `${baseUrl}/api/v4/projects`,
@@ -767,7 +952,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
   }
 
   const patName = `bootstrap-installer-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`
-  const patData = runCurlJson(
+  const patData = runGitlabApiJson(
     {
       method: 'POST',
       url: `${baseUrl}/api/v4/users/${lambdaData.id}/personal_access_tokens`,

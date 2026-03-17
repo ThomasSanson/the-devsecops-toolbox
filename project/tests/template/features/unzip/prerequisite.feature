@@ -12,7 +12,7 @@ Feature: Unzip prerequisite guidance
     And the task "prerequisites" in file ".config/devsecops/Taskfile.init.yml" should contain "task: :git:install"
     And the task "prerequisites" in file ".config/devsecops/Taskfile.init.yml" should contain "task: :unzip:install:sudo"
     And the task "prerequisites" in file ".config/devsecops/Taskfile.init.yml" should contain "task: :git:install" before "task: :unzip:install:sudo"
-    And the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task :unzip:check:installed || task devsecops:init:prerequisites"
+    And the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task unzip:check:installed || task devsecops:init:prerequisites"
 
   @check-installed
   Scenario: Generated unzip check guides users to the prerequisite installer
@@ -25,6 +25,6 @@ Feature: Unzip prerequisite guidance
   Scenario: Init auto-runs prerequisites before setup-environment when needed
     Given a clean temporary directory for "unzip/prerequisite" tests
     When the copier command is executed with default settings
-    Then the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task :unzip:check:installed || task devsecops:init:prerequisites"
+    Then the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task unzip:check:installed || task devsecops:init:prerequisites"
     And the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task: :dev:setup-environment"
-    And the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task :unzip:check:installed || task devsecops:init:prerequisites" before "task: :dev:setup-environment"
+    And the task "default" in file ".config/devsecops/Taskfile.init.yml" should contain "task unzip:check:installed || task devsecops:init:prerequisites" before "task: :dev:setup-environment"
