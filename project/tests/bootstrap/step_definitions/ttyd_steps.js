@@ -140,6 +140,26 @@ function shellEscape (value) {
   return quote + String(value).replace(/'/g, escapedQuote) + quote
 }
 
+function stripAnsiEscapeSequences (value) {
+  const input = String(value || '')
+  const escapeChar = String.fromCharCode(27)
+  let cleaned = ''
+
+  for (let index = 0; index < input.length; index++) {
+    if (input[index] === escapeChar && input[index + 1] === '[') {
+      index += 2
+      while (index < input.length && !/[A-Za-z]/.test(input[index])) {
+        index++
+      }
+      continue
+    }
+
+    cleaned += input[index]
+  }
+
+  return cleaned
+}
+
 function containerName () {
   return `ttyd-bootstrap-${crypto.randomBytes(4).toString('hex')}`
 }
@@ -862,7 +882,7 @@ Then('the command should fail', function () { // eslint-disable-line no-undef
 })
 
 When('the command output is displayed in the browser', async function () { // eslint-disable-line no-undef
-  const raw = (this.dockerOutput || '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+  const raw = stripAnsiEscapeSequences(this.dockerOutput || '')
   const output = raw.split('\n').slice(-20).join('\n')
   await I.usePlaywrightTo('render command output in browser', async ({ page }) => {
     await page.setContent(
