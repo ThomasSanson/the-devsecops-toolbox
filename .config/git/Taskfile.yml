@@ -30,3 +30,19 @@ tasks:
       - command -v git >/dev/null 2>&1
     cmds:
       - bash {{.TASK_GIT_CONFIG_DIR}}/install.sh
+
+  install:sudo:
+    desc: "📦 Install Git with sudo"
+    preconditions:
+      - sh: command -v sudo >/dev/null 2>&1
+        msg: |
+          ❌ sudo is not available.
+          Install git manually, then rerun:
+            task devsecops:init
+    status:
+      - command -v git >/dev/null 2>&1
+    cmds:
+      - cmd: echo "📦 Installing git with sudo..."
+        silent: true
+      - cmd: sudo bash {{.TASK_GIT_CONFIG_DIR}}/install.sh
+        silent: false

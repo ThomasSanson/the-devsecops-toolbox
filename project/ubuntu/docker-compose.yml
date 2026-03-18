@@ -1,0 +1,18 @@
+# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8
+# ↳ 698ed579: healthcheck — test container, not a long-lived service
+---
+services:
+  ubuntu:
+    build:
+      context: ../..
+      dockerfile: project/ubuntu/Dockerfile
+    profiles: ["test"]
+    networks:
+      - the-devsecops-toolbox
+    command: ["bash", "-c", "while :; do sleep 10 & wait; done"]
+    cap_drop:
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true

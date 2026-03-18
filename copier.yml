@@ -95,6 +95,7 @@ _exclude:
   - README.md
   - project/gitlab
   - project/tests
+  - project/ubuntu
   - tmp
   - venv
   - "{% if not project_enabled %}project{% endif %}"

@@ -12,6 +12,17 @@ fi
 
 log "go not found. Installing..."
 
+# Ensure root privileges for package installation
+if [ "$(id -u)" -ne 0 ]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    log "Error: root privileges required but sudo is not available."
+    exit 1
+  fi
+  log "Re-running with sudo..."
+  sudo env PATH="$PATH" sh "$0"
+  exit $?
+fi
+
 # Try to detect the package manager and install Go
 if command -v apt-get >/dev/null 2>&1; then
   log "Detected: Debian/Ubuntu (apt-get)"

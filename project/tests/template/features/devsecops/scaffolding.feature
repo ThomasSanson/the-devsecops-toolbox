@@ -25,6 +25,7 @@ Feature: Project Scaffolding
       | node_modules       |
       | project/gitlab     |
       | project/tests      |
+      | project/ubuntu     |
       | tmp                |
       | venv               |
     And the ".agent" directory should exist

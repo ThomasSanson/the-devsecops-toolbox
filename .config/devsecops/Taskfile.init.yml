@@ -37,7 +37,7 @@ tasks:
     cmds:
       - cmd: echo "📦 Installing missing prerequisites..."
         silent: true
-      - task: :git:install
+      - task: :git:install:sudo
       - task: :unzip:install:sudo
 
   template:

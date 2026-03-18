@@ -59,6 +59,11 @@ tasks:
     cmds:
       - "{{.PROJECT_DOCKER_COMPOSE}} build codeceptjs"
 
+  project:build:ubuntu:
+    desc: 🐳 Build Ubuntu test image
+    cmds:
+      - "{{.PROJECT_DOCKER_COMPOSE}} build ubuntu"
+
   project:test:
     desc: 🚀 Run project-specific test tasks
     summary: |

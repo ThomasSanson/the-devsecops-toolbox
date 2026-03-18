@@ -32,7 +32,7 @@ Feature: DevSecOps Toolbox Installer
     And the local file ".config/devsecops/install.sh" is copied into the container at "/tmp/install.sh"
     And the packages "git curl" are installed in the container
     And a git repository is initialized at "/workspace/my-project" in the container
-    When I run "bash /tmp/install.sh" from "/workspace/my-project" in the container
+    When I run the install script with default answers from "/workspace/my-project" in the container
     Then the command output should contain "🚀 DevSecOps Toolbox Installer"
     And the command output should contain "Installing toolchain"
     And the command output is displayed in the browser

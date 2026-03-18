@@ -1,8 +1,31 @@
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const crypto = require('crypto')
 const { execSync } = require('child_process')
+
+const {
+  GITLAB_DOCKER_NETWORK_ALIAS,
+  dockerHost,
+  shellEscape,
+  stripAnsiEscapeSequences,
+  runCommand,
+  runCommandWithResult,
+  gitlabApiBaseUrl,
+  collectGitlabComposeDiagnostics,
+  withGitlabDiagnostics,
+  waitForGitlabReady,
+  runGitlabApiJson,
+  resolveGitLabDockerNetwork,
+  containerName,
+  randomPort,
+  execInContainer,
+  execInContainerAsUser,
+  userHome,
+  removeContainer,
+  waitForTtyd,
+  runHostCommandInScenario
+} = require('./helpers')
 
 const { I } = global.inject()
 const { executeCopier } = require('../../template/step_objects/commands')
@@ -13,298 +36,14 @@ const TTYD_READY_TIMEOUT = 30000
 const TERMINAL_CMD_TIMEOUT = 300000
 const INSTALL_SCRIPT_TIMEOUT = 900000
 const GITLAB_STACK_TIMEOUT = 900000
-const GITLAB_DOCKER_NETWORK_ALIAS = 'the-devsecops-toolbox'
 const DEFAULT_INSTALL_ANSWERS_COUNT = 40
 const DOCKER_SCENARIO_USER = 'bootstrap'
-const GITLAB_READY_POLL_INTERVAL_SECONDS = 2
 const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
 const TERMINAL_SETTLE_POLL_SECONDS = 0.25
 const TERMINAL_SETTLE_STABLE_SAMPLES = 3
 const TERMINAL_BOTTOM_TOLERANCE_PX = 12
 
-function dockerHost () {
-  const dh = process.env.DOCKER_HOST || ''
-  const match = dh.match(/tcp:\/\/([^:]+)/)
-  return match ? match[1] : '127.0.0.1'
-}
-
 const activeContainers = []
-
-function runCommand (command, options = {}) {
-  return execSync(command, {
-    encoding: 'utf8',
-    timeout: 120000,
-    ...options
-  })
-}
-
-function runCommandWithResult (command, options = {}) {
-  try {
-    const output = runCommand(command, options)
-    return { exitCode: 0, output: output || '' }
-  } catch (error) {
-    const stdout = error.stdout ? String(error.stdout) : ''
-    const stderr = error.stderr ? String(error.stderr) : ''
-
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${stdout}${stderr}`
-    }
-  }
-}
-
-function runHostCommandInScenario (scenario, command, options = {}) {
-  const result = runCommandWithResult(command, {
-    timeout: TERMINAL_CMD_TIMEOUT,
-    ...options
-  })
-  scenario.lastCommandOutput = result.output
-  scenario.lastCommandExitCode = result.exitCode
-  scenario.dockerOutput += result.output
-
-  return result
-}
-
-function parseJson (raw, context) {
-  try {
-    return JSON.parse(raw)
-  } catch (error) {
-    throw new Error(`Failed to parse JSON for ${context}:\n${raw}`)
-  }
-}
-
-function buildCurlCommand ({ method = 'GET', url, headers = [], dataUrlencoded = [], jsonBody }) {
-  const parts = ['curl', '-sS', '--fail', '--request', method]
-
-  headers.forEach(function (header) {
-    parts.push('--header', shellEscape(header))
-  })
-
-  dataUrlencoded.forEach(function (value) {
-    parts.push('--data-urlencode', shellEscape(value))
-  })
-
-  if (typeof jsonBody !== 'undefined') {
-    parts.push('--header', shellEscape('Content-Type: application/json'))
-    parts.push('--data', shellEscape(JSON.stringify(jsonBody)))
-  }
-
-  parts.push(shellEscape(url))
-
-  return parts.join(' ')
-}
-
-function runCurlJson (request, context) {
-  const result = runCommandWithResult(buildCurlCommand(request), { timeout: 180000 })
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed ${context}:\n${result.output}`)
-  }
-
-  return parseJson(result.output, context)
-}
-
-function gitlabApiBaseUrl () {
-  return `http://${dockerHost()}:${process.env.TASK_GITLAB_WEB_PORT || '8929'}`
-}
-
-function collectGitlabComposeDiagnostics () {
-  const checks = [
-    {
-      title: 'docker compose ps',
-      command: 'cd project && docker compose ps'
-    },
-    {
-      title: 'docker compose logs --tail=200 gitlab',
-      command: 'cd project && docker compose logs --tail=200 gitlab'
-    }
-  ]
-
-  return checks.map(function (check) {
-    const result = runCommandWithResult(check.command, { timeout: 180000 })
-    const status = result.exitCode === 0 ? 'ok' : `exit ${result.exitCode}`
-    const output = (result.output || '').trim() || '<no output>'
-
-    return `--- ${check.title} (${status}) ---\n${output}`
-  }).join('\n')
-}
-
-function withGitlabDiagnostics (error, context) {
-  return new Error(
-    `${context}.\n${error.message}\n${collectGitlabComposeDiagnostics()}`
-  )
-}
-
-function waitForGitlabReady (baseUrl, timeoutMs = GITLAB_STACK_TIMEOUT) {
-  const startedAt = Date.now()
-  const readyUrl = `${baseUrl}/users/sign_in`
-  let lastProbeOutput = ''
-
-  while (Date.now() - startedAt < timeoutMs) {
-    const probe = runCommandWithResult(
-      `curl -sS --fail ${shellEscape(readyUrl)}`,
-      { timeout: 30000 }
-    )
-
-    if (probe.exitCode === 0 && /user_login/.test(probe.output || '')) {
-      return
-    }
-
-    lastProbeOutput = (probe.output || '').trim()
-    execSync(`sleep ${GITLAB_READY_POLL_INTERVAL_SECONDS}`)
-  }
-
-  const lastOutputMessage = lastProbeOutput ? `Last probe output:\n${lastProbeOutput}\n` : ''
-  throw new Error(
-    `GitLab did not become ready at ${readyUrl} within ${timeoutMs}ms.\n` +
-    `${lastOutputMessage}` +
-    `${collectGitlabComposeDiagnostics()}`
-  )
-}
-
-function runGitlabApiJson (request, context) {
-  try {
-    return runCurlJson(request, context)
-  } catch (error) {
-    throw withGitlabDiagnostics(error, `Failed ${context}`)
-  }
-}
-
-function resolveGitLabDockerNetwork () {
-  const result = runCommandWithResult("docker network ls --format '{{.Name}}'")
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed to list docker networks:\n${result.output}`)
-  }
-
-  const networks = result.output
-    .split('\n')
-    .map(function (line) { return line.trim() })
-    .filter(Boolean)
-  const directMatch = networks.find(function (network) {
-    return network === GITLAB_DOCKER_NETWORK_ALIAS
-  })
-  if (directMatch) {
-    return directMatch
-  }
-
-  const prefixedMatch = networks.find(function (network) {
-    return network.endsWith(`_${GITLAB_DOCKER_NETWORK_ALIAS}`)
-  })
-
-  if (prefixedMatch) {
-    return prefixedMatch
-  }
-
-  throw new Error(
-    `Unable to find GitLab docker network for alias "${GITLAB_DOCKER_NETWORK_ALIAS}".` +
-    ` Known networks: ${networks.join(', ')}`
-  )
-}
-
-function shellEscape (value) {
-  const quote = String.fromCharCode(39)
-  const escapedQuote = quote + '"' + quote + '"' + quote
-
-  return quote + String(value).replace(/'/g, escapedQuote) + quote
-}
-
-function stripAnsiEscapeSequences (value) {
-  const input = String(value || '')
-  const escapeChar = String.fromCharCode(27)
-  let cleaned = ''
-
-  for (let index = 0; index < input.length; index++) {
-    if (input[index] === escapeChar && input[index + 1] === '[') {
-      index += 2
-      while (index < input.length && !/[A-Za-z]/.test(input[index])) {
-        index++
-      }
-      continue
-    }
-
-    cleaned += input[index]
-  }
-
-  return cleaned
-}
-
-function containerName () {
-  return `ttyd-bootstrap-${crypto.randomBytes(4).toString('hex')}`
-}
-
-function randomPort () {
-  const min = 20000
-  const max = 30000
-
-  return min + Math.floor(Math.random() * (max - min))
-}
-
-function execInContainer (name, command) {
-  return runCommandWithResult(
-    `docker exec ${shellEscape(name)} sh -c ${shellEscape(command)}`
-  )
-}
-
-function userHome (user) {
-  return user === 'root' ? '/root' : `/home/${user}`
-}
-
-function execInContainerAsUser (name, user, command, options = {}) {
-  const wrappedCommand = [
-    'set -eu',
-    `export HOME=${userHome(user)}`,
-    `export USER=${user}`,
-    `export LOGNAME=${user}`,
-    command
-  ].join('\n')
-
-  return runCommandWithResult(
-    `docker exec -u ${shellEscape(user)} ${shellEscape(name)} sh -c ${shellEscape(wrappedCommand)}`,
-    options
-  )
-}
-
-function prepareDockerScenarioUser (scenario) {
-  const user = scenario.dockerUserName || DOCKER_SCENARIO_USER
-  const result = execInContainer(scenario.dockerContainerName, [
-    'set -eu',
-    'apt-get update -qq',
-    'apt-get install -y -qq sudo',
-    `if ! id ${shellEscape(user)} >/dev/null 2>&1; then`,
-    `  useradd -m -s /bin/bash ${shellEscape(user)}`,
-    'fi',
-    `echo ${shellEscape(`${user} ALL=(ALL) NOPASSWD:ALL`)} > /etc/sudoers.d/${shellEscape(user)}`,
-    `chmod 0440 /etc/sudoers.d/${shellEscape(user)}`,
-    `mkdir -p ${CONTAINER_WORKDIR}`,
-    `chown -R ${shellEscape(user)}:${shellEscape(user)} ${CONTAINER_WORKDIR}`
-  ].join('\n'))
-
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed to prepare non-root docker user "${user}":\n${result.output}`)
-  }
-}
-
-function removeContainer (name) {
-  try {
-    runCommand(`docker rm -f ${shellEscape(name)}`)
-  } catch (_) {
-    // Ignore cleanup failures.
-  }
-}
-
-function waitForTtyd (port, timeoutMs) {
-  const start = Date.now()
-
-  while (Date.now() - start < timeoutMs) {
-    try {
-      runCommand(`curl -sf http://${dockerHost()}:${port}/ >/dev/null 2>&1`) // DevSkim: ignore DS162092
-      return true
-    } catch (_) {
-      execSync('sleep 0.5')
-    }
-  }
-
-  throw new Error(`ttyd did not become ready on port ${port} within ${timeoutMs}ms`)
-}
 
 async function readTerminalState () {
   return I.executeScript(function (bottomTolerancePx) {
@@ -450,37 +189,31 @@ function setupTtydContainer (scenario, options = {}) {
   scenario.ttydPort = randomPort()
   scenario.ttydContainerName = containerName()
 
+  // Start container from pre-built ubuntu image via docker compose
   runCommand(
-    [
-      'docker run -d',
-      `--name ${shellEscape(scenario.ttydContainerName)}`,
-      `-p ${scenario.ttydPort}:7681`,
-      'ubuntu:24.04',
-      'bash -c', shellEscape('while :; do sleep 10 & wait; done')
-    ].join(' ')
+    `cd project && docker compose run -d --name ${shellEscape(scenario.ttydContainerName)} --publish ${scenario.ttydPort}:7681 ubuntu`,
+    { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(scenario.ttydContainerName)
 
-  execInContainer(scenario.ttydContainerName, `mkdir -p ${CONTAINER_WORKDIR}`)
-
+  // Copy task binary and generated project into the container
   runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${scenario.ttydContainerName}:/usr/local/bin/task`)}`)
   runCommand(`docker cp ${shellEscape(`${scenario.ttydGeneratedProjectDir}/.`)} ${shellEscape(`${scenario.ttydContainerName}:${CONTAINER_WORKDIR}`)}`)
 
-  const allPackages = ['sudo', 'curl'].concat(extraPackages)
-  const prepareResult = execInContainer(scenario.ttydContainerName, [
-    'set -eu',
-    'apt-get update -qq',
-    `apt-get install -y -qq ${allPackages.join(' ')}`,
-    'if ! id bootstrap >/dev/null 2>&1; then',
-    '  useradd -m -s /bin/bash bootstrap',
-    'fi',
-    'echo "bootstrap ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/bootstrap',
-    'chmod 0440 /etc/sudoers.d/bootstrap',
+  // Install extra packages and fix ownership as root (no-new-privileges blocks sudo)
+  const prepareCommands = ['set -eu']
+  if (extraPackages.length > 0) {
+    prepareCommands.push(
+      'apt-get update -qq',
+      `apt-get install -y -qq ${extraPackages.join(' ')}`
+    )
+  }
+  prepareCommands.push(
     `chown -R bootstrap:bootstrap ${CONTAINER_WORKDIR}`,
-    'chmod 0755 /usr/local/bin/task',
-    'echo \'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"\' >> /home/bootstrap/.bashrc'
-  ].join('\n'))
+    'chmod 0755 /usr/local/bin/task'
+  )
 
+  const prepareResult = execInContainer(scenario.ttydContainerName, prepareCommands.join('\n'), { user: 'root' })
   if (prepareResult.exitCode !== 0) {
     throw new Error(`Failed to prepare ttyd container:\n${prepareResult.output}`)
   }
@@ -503,21 +236,10 @@ function setupTtydContainer (scenario, options = {}) {
     }
   }
 
-  const ttydInstall = execInContainer(scenario.ttydContainerName, [
-    'set -eu',
-    'TTYD_VERSION="1.7.7"',
-    'UNAME_ARCH="$(uname -m)"',
-    'curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$UNAME_ARCH" -o /usr/local/bin/ttyd',
-    'chmod +x /usr/local/bin/ttyd'
-  ].join('\n'))
-
-  if (ttydInstall.exitCode !== 0) {
-    throw new Error(`Failed to install ttyd:\n${ttydInstall.output}`)
-  }
-
+  // Start ttyd as bootstrap user (already the default user in the image; .bashrc sets PROMPT_COMMAND)
   const ttydStart = execInContainer(scenario.ttydContainerName, [
     'set -eu',
-    `nohup su - bootstrap -c 'cd ${CONTAINER_WORKDIR} && PROMPT_COMMAND="touch /tmp/ttyd-cmd-done" ttyd -p 7681 -W -t scrollback=5000 bash' >/tmp/ttyd.log 2>&1 &`,
+    `cd ${CONTAINER_WORKDIR} && nohup ttyd -p 7681 -W -t scrollback=5000 bash >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
   ].join('\n'))
 
@@ -594,7 +316,7 @@ Given('the repository file {string} is copied into the ttyd container', function
     throw new Error(`Repository file "${filePath}" not found at "${srcPath}"`)
   }
   runCommand(`docker cp ${shellEscape(srcPath)} ${shellEscape(`${this.ttydContainerName}:${CONTAINER_WORKDIR}/${filePath}`)}`)
-  execInContainer(this.ttydContainerName, `chown bootstrap:bootstrap ${CONTAINER_WORKDIR}/${shellEscape(filePath)}`)
+  execInContainer(this.ttydContainerName, `chown bootstrap:bootstrap ${CONTAINER_WORKDIR}/${shellEscape(filePath)}`, { user: 'root' })
 })
 
 When('I open the web terminal', async function () { // eslint-disable-line no-undef
@@ -635,7 +357,7 @@ When('I type {string} in the terminal and wait for completion', async function (
       const markerCheck = execInContainer(this.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
       const procCheck = execInContainer(this.ttydContainerName, 'ps aux 2>&1 | head -20')
       const logCheck = execInContainer(this.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
-      const bashrcCheck = execInContainer(this.ttydContainerName, 'su - bootstrap -c "grep PROMPT_COMMAND ~/.bashrc" 2>&1')
+      const bashrcCheck = execInContainer(this.ttydContainerName, 'grep PROMPT_COMMAND /home/bootstrap/.bashrc 2>&1')
       throw new Error(
         `Timed out waiting for command "${command}" after ${TERMINAL_CMD_TIMEOUT}ms\n` +
         `--- Marker: ${markerCheck.output.trim()}\n` +
@@ -768,7 +490,7 @@ Given('the GitLab test stack is started with docker compose', function () { // e
   }
 
   try {
-    waitForGitlabReady(gitlabApiBaseUrl())
+    waitForGitlabReady(gitlabApiBaseUrl(), GITLAB_STACK_TIMEOUT)
   } catch (error) {
     throw withGitlabDiagnostics(error, 'GitLab stack started but readiness check failed')
   }
@@ -777,32 +499,20 @@ Given('the GitLab test stack is started with docker compose', function () { // e
 Given('a fresh Ubuntu docker container is running', function () { // eslint-disable-line no-undef
   this.dockerContainerName = containerName()
   runCommand(
-    [
-      'docker run -d',
-      `--name ${shellEscape(this.dockerContainerName)}`,
-      'ubuntu:24.04',
-      'bash -c', shellEscape('while :; do sleep 10 & wait; done')
-    ].join(' ')
+    `cd project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
+    { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(this.dockerContainerName)
-  prepareDockerScenarioUser(this)
 })
 
 Given('a fresh Ubuntu docker container is running on the GitLab test network', function () { // eslint-disable-line no-undef
-  const gitlabNetwork = resolveGitLabDockerNetwork()
   this.dockerContainerName = containerName()
-  this.gitlabDockerNetworkName = gitlabNetwork
+  this.gitlabDockerNetworkName = GITLAB_DOCKER_NETWORK_ALIAS
   runCommand(
-    [
-      'docker run -d',
-      `--name ${shellEscape(this.dockerContainerName)}`,
-      `--network ${shellEscape(gitlabNetwork)}`,
-      'ubuntu:24.04',
-      'bash -c', shellEscape('while :; do sleep 10 & wait; done')
-    ].join(' ')
+    `cd project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
+    { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(this.dockerContainerName)
-  prepareDockerScenarioUser(this)
 })
 
 Given('the local file {string} is copied into the container at {string}', function (localPath, containerPath) { // eslint-disable-line no-undef
@@ -811,7 +521,8 @@ Given('the local file {string} is copied into the container at {string}', functi
   if (this.dockerUserName) {
     const ownershipResult = execInContainer(
       this.dockerContainerName,
-      `chown ${shellEscape(this.dockerUserName)}:${shellEscape(this.dockerUserName)} ${shellEscape(containerPath)}`
+      `chown ${shellEscape(this.dockerUserName)}:${shellEscape(this.dockerUserName)} ${shellEscape(containerPath)}`,
+      { user: 'root' }
     )
     if (ownershipResult.exitCode !== 0) {
       throw new Error(`Failed to set ownership for "${containerPath}" to "${this.dockerUserName}":\n${ownershipResult.output}`)
@@ -820,7 +531,7 @@ Given('the local file {string} is copied into the container at {string}', functi
 })
 
 Given('the packages {string} are installed in the container', function (packages) { // eslint-disable-line no-undef
-  const result = execInContainer(this.dockerContainerName, `apt-get update -qq && apt-get install -y -qq ${packages}`)
+  const result = execInContainer(this.dockerContainerName, `apt-get update -qq && apt-get install -y -qq ${packages}`, { user: 'root' })
   if (result.exitCode !== 0) {
     throw new Error(`Failed to install packages "${packages}":\n${result.output}`)
   }
@@ -856,7 +567,7 @@ Given('a GitLab remote project {string} is configured for {string} in the contai
   const gitlabProjectName = `${projectName}-${crypto.randomBytes(3).toString('hex')}`
 
   try {
-    waitForGitlabReady(baseUrl)
+    waitForGitlabReady(baseUrl, GITLAB_STACK_TIMEOUT)
   } catch (error) {
     throw withGitlabDiagnostics(error, 'GitLab readiness check failed before OAuth flow')
   }
