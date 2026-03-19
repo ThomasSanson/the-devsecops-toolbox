@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.5.5 (2026-03-19)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v3.7.7
+
 ## 21.5.4 (2026-03-16)
 
 ### Fix
