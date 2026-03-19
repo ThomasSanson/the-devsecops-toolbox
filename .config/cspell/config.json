@@ -178,6 +178,7 @@
     "nohup",
     "noninteractive",
     "nosetests",
+    "nslookup",
     "nuxt",
     "oneline",
     "opencontainers",
