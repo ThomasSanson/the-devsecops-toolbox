@@ -69,7 +69,7 @@ function parseJson (raw, context) {
 }
 
 function buildCurlCommand ({ method = 'GET', url, headers = [], dataUrlencoded = [], jsonBody }) {
-  const parts = ['curl', '-sS', '--fail', '--request', method]
+  const parts = ['cd project && docker compose exec -T gitlab curl', '-sS', '--fail', '--request', method]
 
   headers.forEach(function (header) {
     parts.push('--header', shellEscape(header))
@@ -99,7 +99,7 @@ function runCurlJson (request, context) {
 }
 
 function gitlabApiBaseUrl () {
-  return `http://${dockerHost()}:${process.env.TASK_GITLAB_WEB_PORT || '8929'}`
+  return 'http://gitlab:80'
 }
 
 function collectGitlabComposeDiagnostics () {
@@ -132,13 +132,11 @@ function withGitlabDiagnostics (error, context) {
 function waitForGitlabReady (baseUrl, timeoutMs) {
   const startedAt = Date.now()
   const readyUrl = `${baseUrl}/users/sign_in`
+  const probeCommand = 'cd project && docker compose exec -T gitlab curl -sf http://127.0.0.1:80/users/sign_in'
   let lastProbeOutput = ''
 
   while (Date.now() - startedAt < timeoutMs) {
-    const probe = runCommandWithResult(
-      `curl -sS --fail ${shellEscape(readyUrl)}`,
-      { timeout: 30000 }
-    )
+    const probe = runCommandWithResult(probeCommand, { timeout: 30000 })
 
     if (probe.exitCode === 0 && /user_login/.test(probe.output || '')) {
       return
