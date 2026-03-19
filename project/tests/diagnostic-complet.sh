@@ -79,7 +79,7 @@ run_diagnostic ".env" "06-env.txt" cat .env
 
 # 7. Variables d'env dans les conteneurs clés
 log "🧩 Section 7: Variables d'env conteneurs"
-IMPORTANT_CONTAINERS=(php backend-db grist pgadmin)
+IMPORTANT_CONTAINERS=(gitlab codeceptjs ubuntu)
 for container in "${IMPORTANT_CONTAINERS[@]}"; do
   run_diagnostic "Env $container" "07-env-${container}.txt" docker compose -f "$COMPOSE_FILE" exec -T "$container" env
 done
