@@ -2,6 +2,26 @@
 
 # Changelog
 
+## 21.6.0 (2026-03-19)
+
+### Feat
+
+- **task**: add full diagnostic script and defer step to bootstrap test
+- add Ubuntu test container and sudo checks to install scripts
+- **ttyd_steps**: add stripAnsiEscapeSequences to clean ANSI output
+- **devsecops**: centralize git checks, add retry and template overrides
+- **test**: add ttyd terminal and visual regression for bootstrap e2e
+- **init**: add installer, rename init tasks, update GitLab config
+
+### Fix
+
+- **test**: curl via docker compose and set Gitlab URL to http://gitlab:80
+- **ttyd_steps.js**: replace hardcoded 127.0.0.1 with detected Docker host
+
+### Refactor
+
+- fix task command syntax and add GitLab diagnostics
+
 ## 21.5.5 (2026-03-19)
 
 ### Fix
