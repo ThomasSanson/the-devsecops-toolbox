@@ -118,6 +118,19 @@ tasks:
       Run CodeceptJS bootstrap tests against a generated toolbox project in a
       fresh Ubuntu container.
     cmds:
+      - defer: |
+          {{if and (or .EXIT_CODE (eq .TASK_DIAGNOSTIC_FORCE "true")) (ne (env "CI") "")}}
+            echo ""
+            echo "🔍 =============================================="
+            echo "🔍 DIAGNOSTIC COMPLET (defer)"
+            {{if .EXIT_CODE}}
+              echo "🔍 Exécuté suite à une erreur (exit code: {{.EXIT_CODE}})"
+            {{else}}
+              echo "🔍 Exécuté manuellement (TASK_DIAGNOSTIC_FORCE=true)"
+            {{end}}
+            echo "🔍 =============================================="
+            ./project/tests/diagnostic-complet.sh || true
+          {{end}}
       - cmd: echo "🚀 Starting project bootstrap test phase"
         silent: true
       - task: codeceptjs:npx
