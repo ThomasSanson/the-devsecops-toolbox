@@ -2,6 +2,30 @@
 
 # Changelog
 
+## 21.5.5 (2026-03-19)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v3.7.7
+
+## 21.5.4 (2026-03-16)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v20.5.0
+
+## 21.5.3 (2026-03-14)
+
+### Fix
+
+- **deps**: update dependency copier to v9.14.0
+
+## 21.5.2 (2026-03-13)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v20.4.4
+
 ## 21.5.1 (2026-03-11)
 
 ### Fix
