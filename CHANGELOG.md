@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.7.0 (2026-03-20)
+
+### Feat
+
+- **bootstrap**: add commitlint readiness test and robust output handling
+
 ## 21.6.0 (2026-03-19)
 
 ### Feat
