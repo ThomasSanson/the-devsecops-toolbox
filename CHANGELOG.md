@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.7.2 (2026-03-20)
+
+### Fix
+
+- **devsecops**: support interactive piped installer via tty
+
 ## 21.7.1 (2026-03-20)
 
 ### Fix
