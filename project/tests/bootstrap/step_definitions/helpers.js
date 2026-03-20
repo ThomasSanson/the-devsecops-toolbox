@@ -258,9 +258,10 @@ function runHostCommandInScenario (scenario, command, options = {}) {
     timeout: 300000,
     ...options
   })
-  scenario.lastCommandOutput = result.output
+  const commandOutput = result.output || ''
+  scenario.lastCommandOutput = commandOutput
   scenario.lastCommandExitCode = result.exitCode
-  scenario.dockerOutput += result.output
+  scenario.dockerOutput += commandOutput
 
   return result
 }

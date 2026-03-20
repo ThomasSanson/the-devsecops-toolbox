@@ -15,7 +15,7 @@
 
 ### Fix
 
-- **test**: curl via docker compose and set Gitlab URL to http://gitlab:80
+- **test**: curl via docker compose and set Gitlab URL to <http://gitlab:80>
 - **ttyd_steps.js**: replace hardcoded 127.0.0.1 with detected Docker host
 
 ### Refactor

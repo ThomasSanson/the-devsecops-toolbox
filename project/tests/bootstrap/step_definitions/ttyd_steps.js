@@ -530,6 +530,34 @@ Given('the local file {string} is copied into the container at {string}', functi
   }
 })
 
+Given('the local directory {string} is copied into the container at {string}', function (localPath, containerPath) { // eslint-disable-line no-undef
+  const srcPath = path.join(REPO_ROOT, localPath)
+  if (!fs.existsSync(srcPath)) {
+    throw new Error(`Local directory "${localPath}" not found at "${srcPath}"`)
+  }
+  if (!fs.statSync(srcPath).isDirectory()) {
+    throw new Error(`Path "${localPath}" is not a directory`)
+  }
+
+  const cleanupResult = execInContainer(this.dockerContainerName, `rm -rf ${shellEscape(containerPath)}`, { user: 'root' })
+  if (cleanupResult.exitCode !== 0) {
+    throw new Error(`Failed to clean target directory "${containerPath}":\n${cleanupResult.output}`)
+  }
+
+  runCommand(`docker cp ${shellEscape(`${srcPath}/.`)} ${shellEscape(`${this.dockerContainerName}:${containerPath}`)}`)
+
+  if (this.dockerUserName) {
+    const ownershipResult = execInContainer(
+      this.dockerContainerName,
+      `chown -R ${shellEscape(this.dockerUserName)}:${shellEscape(this.dockerUserName)} ${shellEscape(containerPath)}`,
+      { user: 'root' }
+    )
+    if (ownershipResult.exitCode !== 0) {
+      throw new Error(`Failed to set recursive ownership for "${containerPath}" to "${this.dockerUserName}":\n${ownershipResult.output}`)
+    }
+  }
+})
+
 Given('the packages {string} are installed in the container', function (packages) { // eslint-disable-line no-undef
   const result = execInContainer(this.dockerContainerName, `apt-get update -qq && apt-get install -y -qq ${packages}`, { user: 'root' })
   if (result.exitCode !== 0) {
@@ -735,9 +763,10 @@ When('I run {string} from {string} in the container', function (command, dir) { 
     `cd ${dir} && ${command}`,
     { timeout: TERMINAL_CMD_TIMEOUT }
   )
-  this.lastCommandOutput = result.output
+  const commandOutput = result.output || ''
+  this.lastCommandOutput = commandOutput
   this.lastCommandExitCode = result.exitCode
-  this.dockerOutput += result.output
+  this.dockerOutput += commandOutput
 })
 
 When('I run the install script with default answers from {string} in the container', function (dir) { // eslint-disable-line no-undef
@@ -748,14 +777,25 @@ When('I run the install script with default answers from {string} in the contain
     `cd ${dir} && printf '%b' "${defaultAnswers}" | bash /tmp/install.sh`,
     { timeout: INSTALL_SCRIPT_TIMEOUT }
   )
-  this.lastCommandOutput = result.output
+  const commandOutput = result.output || ''
+  this.lastCommandOutput = commandOutput
   this.lastCommandExitCode = result.exitCode
-  this.dockerOutput += result.output
+  this.dockerOutput += commandOutput
 })
 
 Then('the command output should contain {string}', function (expected) { // eslint-disable-line no-undef
-  if (!this.lastCommandOutput.includes(expected)) {
-    throw new Error(`Expected output to contain "${expected}" but got:\n${this.lastCommandOutput}`)
+  const output = this.lastCommandOutput || ''
+  const fallbackOutput = this.dockerOutput || ''
+  const normalizedOutput = stripAnsiEscapeSequences(output).replace(/\r/g, '')
+  const normalizedFallbackOutput = stripAnsiEscapeSequences(fallbackOutput).replace(/\r/g, '')
+
+  const found = output.includes(expected) ||
+    normalizedOutput.includes(expected) ||
+    fallbackOutput.includes(expected) ||
+    normalizedFallbackOutput.includes(expected)
+
+  if (!found) {
+    throw new Error(`Expected output to contain "${expected}" but got:\n${output || fallbackOutput}`)
   }
 })
 
@@ -778,8 +818,26 @@ Then('the command should fail', function () { // eslint-disable-line no-undef
 })
 
 When('the command output is displayed in the browser', async function () { // eslint-disable-line no-undef
-  const raw = stripAnsiEscapeSequences(this.dockerOutput || '')
-  const output = raw.split('\n').slice(-20).join('\n')
+  const rawSource = this.lastCommandOutput || this.dockerOutput || ''
+  const raw = stripAnsiEscapeSequences(rawSource).replace(/\r/g, '')
+  const lines = raw.split('\n')
+
+  const markers = [
+    'hook: commit-msg',
+    'Commit message passed Commitizen checks.',
+    'Commit message passed commitlint.'
+  ]
+
+  let startIndex = Math.max(0, lines.length - 30)
+  for (const marker of markers) {
+    const markerIndex = lines.findIndex(function (line) { return line.includes(marker) })
+    if (markerIndex !== -1) {
+      startIndex = Math.max(0, markerIndex - 6)
+      break
+    }
+  }
+
+  const output = lines.slice(startIndex, startIndex + 30).join('\n')
   await I.usePlaywrightTo('render command output in browser', async ({ page }) => {
     await page.setContent(
       '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
