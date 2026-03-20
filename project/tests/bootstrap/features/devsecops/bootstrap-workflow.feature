@@ -60,7 +60,7 @@ Feature: DevSecOps Toolbox Installer
     Then the command output should contain "🚀 DevSecOps Toolbox Installer"
     And the command output should contain "task devsecops:init failed. Attempting to install missing prerequisites..."
     And the command output should contain "Installing unzip with sudo..."
-    And the command output should contain "fatal: not a git repository"
+    And the command output should contain "No GitLab repository remote was detected."
     And the command should fail
     And the command output is displayed in the browser
     Then the terminal output should visually match "fresh-ubuntu-install-script-prerequisites-failure"
