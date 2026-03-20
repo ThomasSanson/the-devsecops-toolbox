@@ -42,6 +42,14 @@ const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
 const TERMINAL_SETTLE_POLL_SECONDS = 0.25
 const TERMINAL_SETTLE_STABLE_SAMPLES = 3
 const TERMINAL_BOTTOM_TOLERANCE_PX = 12
+const VISUAL_TAIL_LINE_COUNT = 10
+
+const VISUAL_COMPLETION_MARKERS = [
+  'Installation complete!',
+  'Commit message passed Commitizen checks.',
+  'Commit message passed commitlint.',
+  'fatal: not a git repository'
+]
 
 const activeContainers = []
 
@@ -820,24 +828,43 @@ Then('the command should fail', function () { // eslint-disable-line no-undef
 When('the command output is displayed in the browser', async function () { // eslint-disable-line no-undef
   const rawSource = this.lastCommandOutput || this.dockerOutput || ''
   const raw = stripAnsiEscapeSequences(rawSource).replace(/\r/g, '')
-  const lines = raw.split('\n')
-
-  const markers = [
-    'hook: commit-msg',
-    'Commit message passed Commitizen checks.',
-    'Commit message passed commitlint.'
-  ]
-
-  let startIndex = Math.max(0, lines.length - 30)
-  for (const marker of markers) {
-    const markerIndex = lines.findIndex(function (line) { return line.includes(marker) })
-    if (markerIndex !== -1) {
-      startIndex = Math.max(0, markerIndex - 6)
-      break
+  const lines = raw.split('\n').filter(function (line) {
+    const trimmed = line.trim()
+    if (trimmed === '') {
+      return true
     }
+
+    // Filter noisy, non-deterministic JSON payloads printed by `glab api`.
+    return !(
+      trimmed.startsWith('{"id":') &&
+      trimmed.includes('"name_with_namespace"') &&
+      trimmed.includes('"default_branch"')
+    )
+  })
+
+  let renderedLines = lines.slice(Math.max(0, lines.length - VISUAL_TAIL_LINE_COUNT))
+  const completionMarkerMatch = VISUAL_COMPLETION_MARKERS
+    .map(function (marker) {
+      return {
+        marker,
+        index: lines.reduce(function (lastIndex, line, index) {
+          return line.includes(marker) ? index : lastIndex
+        }, -1)
+      }
+    })
+    .filter(function (entry) { return entry.index >= 0 })
+    .sort(function (a, b) { return b.index - a.index })[0]
+
+  if (
+    completionMarkerMatch &&
+    !renderedLines.some(function (line) { return line.includes(completionMarkerMatch.marker) })
+  ) {
+    const sliceEnd = completionMarkerMatch.index + 1
+    const sliceStart = Math.max(0, sliceEnd - VISUAL_TAIL_LINE_COUNT)
+    renderedLines = lines.slice(sliceStart, sliceEnd)
   }
 
-  const output = lines.slice(startIndex, startIndex + 30).join('\n')
+  const output = renderedLines.join('\n')
   await I.usePlaywrightTo('render command output in browser', async ({ page }) => {
     await page.setContent(
       '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
