@@ -44,6 +44,22 @@ ensure_path() {
   esac
 }
 
+resolve_interactive_input() {
+  if [ -t 0 ]; then
+    printf "%s" "-"
+    return 0
+  fi
+
+  if [ ! -t 0 ] && [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+    printf "%s" "/dev/tty"
+    return 0
+  fi
+
+  printf "%s" "-"
+}
+
+INTERACTIVE_INPUT="$(resolve_interactive_input)"
+
 normalize_version() {
   version="$1"
   major="${version%%.*}"
@@ -88,15 +104,30 @@ prompt_yes_no_default_yes() {
   prompt="$1"
   while true; do
     printf "%s" "$prompt"
-    if ! IFS= read -r answer; then
+    if [ "$INTERACTIVE_INPUT" = "/dev/tty" ]; then
+      if ! IFS= read -r answer </dev/tty; then
+        answer="y"
+      fi
+    elif ! IFS= read -r answer; then
       answer="y"
     fi
+
     case "$answer" in
     "" | y | Y | yes | YES | Yes) return 0 ;;
     n | N | no | NO | No) return 1 ;;
     *) log_info "Please answer y or n." ;;
     esac
   done
+}
+
+run_with_interactive_input() {
+  command="$1"
+  if [ "$INTERACTIVE_INPUT" = "/dev/tty" ]; then
+    sh -c "$command" </dev/tty
+    return $?
+  fi
+
+  sh -c "$command"
 }
 
 run_with_privilege() {
@@ -254,6 +285,8 @@ install_uv() {
 # Scaffold project with Copier (only when Taskfile.yml is absent)
 # ---------------------------------------------------------------------------
 scaffold_project() {
+  copier_command=""
+
   if [ -f "Taskfile.yml" ]; then
     log_ok "Taskfile.yml already exists — skipping Copier scaffolding."
     return 0
@@ -263,12 +296,12 @@ scaffold_project() {
   log_info "Template source: ${TEMPLATE_URL}"
   if [ -n "${TEMPLATE_VCS_REF}" ]; then
     log_info "Template ref: ${TEMPLATE_VCS_REF}"
-    uvx --python "${PYTHON_VERSION}" --from "${COPIER_VERSION}" \
-      copier copy "${TEMPLATE_URL}" . --trust --skip-tasks --vcs-ref "${TEMPLATE_VCS_REF}" 2>&1
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks --vcs-ref \"${TEMPLATE_VCS_REF}\" 2>&1"
   else
-    uvx --python "${PYTHON_VERSION}" --from "${COPIER_VERSION}" \
-      copier copy "${TEMPLATE_URL}" . --trust --skip-tasks 2>&1
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks 2>&1"
   fi
+
+  run_with_interactive_input "$copier_command"
 
   if [ -f "Taskfile.yml" ]; then
     log_ok "Project scaffolded successfully."

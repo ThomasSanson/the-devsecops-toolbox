@@ -777,6 +777,29 @@ When('I run {string} from {string} in the container', function (command, dir) { 
   this.dockerOutput += commandOutput
 })
 
+When('I run {string} from {string} in the container via pseudo-tty with {int} default answers', function (command, dir, answersCount) { // eslint-disable-line no-undef
+  if (!this.dockerContainerName) {
+    throw new Error('No docker container is running for this scenario.')
+  }
+
+  const dockerUser = this.dockerUserName || 'root'
+  const dockerExecCommand = [
+    'docker exec',
+    '-u', shellEscape(dockerUser),
+    '-it',
+    shellEscape(this.dockerContainerName),
+    'sh -lc',
+    shellEscape(`cd ${dir} && ${command}`)
+  ].join(' ')
+  const hostCommand = `yes '' | head -n ${answersCount} | script -qec ${shellEscape(dockerExecCommand)} /dev/null`
+  const result = runCommandWithResult(hostCommand, { timeout: INSTALL_SCRIPT_TIMEOUT })
+
+  const commandOutput = result.output || ''
+  this.lastCommandOutput = commandOutput
+  this.lastCommandExitCode = result.exitCode
+  this.dockerOutput += commandOutput
+})
+
 When('I run the install script with default answers from {string} in the container', function (dir) { // eslint-disable-line no-undef
   const defaultAnswers = '\\n'.repeat(DEFAULT_INSTALL_ANSWERS_COUNT)
   const result = execInContainerAsUser(

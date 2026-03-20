@@ -36,3 +36,10 @@ Feature: Installer delegates git checks to init prerequisites
     Given a clean temporary directory for "devsecops/install-script-git-prerequisite" tests
     When the copier command is executed with default settings
     Then the file ".config/devsecops/install.sh" should contain "--skip-tasks"
+
+  Scenario: Generated install script falls back to /dev/tty for interactive piped execution
+    Given a clean temporary directory for "devsecops/install-script-git-prerequisite" tests
+    When the copier command is executed with default settings
+    Then the file ".config/devsecops/install.sh" should contain "INTERACTIVE_INPUT=\"$(resolve_interactive_input)\""
+    And the file ".config/devsecops/install.sh" should contain "if [ ! -t 0 ] && [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then"
+    And the file ".config/devsecops/install.sh" should contain "sh -c \"$command\" </dev/tty"
