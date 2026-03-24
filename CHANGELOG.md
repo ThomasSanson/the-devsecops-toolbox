@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.7.6 (2026-03-24)
+
+### Fix
+
+- **deps**: update dependency typescript to v6
+
 ## 21.7.5 (2026-03-24)
 
 ### Fix
