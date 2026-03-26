@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.8.0 (2026-03-26)
+
+### Feat
+
+- **glab**: add host‑scoped glab auth detection and related tests
+
 ## 21.7.7 (2026-03-25)
 
 ### Fix
