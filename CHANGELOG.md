@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.8.1 (2026-03-26)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v18.10.1
+
 ## 21.8.0 (2026-03-26)
 
 ### Feat
