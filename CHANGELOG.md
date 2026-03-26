@@ -2,6 +2,30 @@
 
 # Changelog
 
+## 21.7.7 (2026-03-25)
+
+### Fix
+
+- **deps**: update dependency @digital-commons-official/codeceptjs-visual-helper to v1.3.2
+
+## 21.7.6 (2026-03-24)
+
+### Fix
+
+- **deps**: update dependency typescript to v6
+
+## 21.7.5 (2026-03-24)
+
+### Fix
+
+- **deps**: update dependency ansible-core to v2.20.4
+
+## 21.7.4 (2026-03-24)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.90.0
+
 ## 21.7.3 (2026-03-20)
 
 ### Fix
