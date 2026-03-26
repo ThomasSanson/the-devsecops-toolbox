@@ -51,6 +51,23 @@ const VISUAL_COMPLETION_MARKERS = [
   'fatal: not a git repository'
 ]
 
+const COMPACT_GLAB_AUTH_STATUS_COMMAND = [
+  'clear',
+  'export PATH="$HOME/.local/bin:$PATH"',
+  'glab auth status || true'
+].join('; ')
+
+const COMPACT_TASK_GLAB_AUTH_STATUS_COMMAND = [
+  'clear',
+  'export PATH="$HOME/.local/bin:$PATH"',
+  'task glab:auth:status'
+].join('; ')
+
+const COMPACT_TERMINAL_VISUAL_BASELINES = new Set([
+  'glab-auth-status-multi-host',
+  'glab-auth-status-host-scoped'
+])
+
 const activeContainers = []
 
 async function readTerminalState () {
@@ -270,6 +287,259 @@ Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container w
   setupTtydContainer(this, { extraPackages: packages.split(/\s+/) })
 })
 
+Given('the ttyd project is connected to the GitLab test network with a valid glab login', function () { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+
+  const baseUrl = gitlabApiBaseUrl()
+  const rootUser = process.env.TASK_GITLAB_ROOT_USER || 'root'
+  const rootPassword = process.env.TASK_GITLAB_ROOT_PASSWORD || 'devsecops-toolbox-password'
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER || 'lambda'
+  const lambdaPassword = process.env.TASK_GITLAB_LAMBDA_PASSWORD || 'Xk9#mQ2$vR7nB4wZ'
+  const lambdaEmail = process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'
+  const gitlabProjectName = `ttyd-glab-auth-${crypto.randomBytes(3).toString('hex')}`
+
+  try {
+    waitForGitlabReady(baseUrl, GITLAB_STACK_TIMEOUT)
+  } catch (error) {
+    throw withGitlabDiagnostics(error, 'GitLab readiness check failed before ttyd glab auth setup')
+  }
+
+  const authData = runGitlabApiJson(
+    {
+      method: 'POST',
+      url: `${baseUrl}/oauth/token`,
+      dataUrlencoded: [
+        'grant_type=password',
+        `username=${rootUser}`,
+        `password=${rootPassword}`
+      ]
+    },
+    'GitLab OAuth token request for ttyd glab auth setup'
+  )
+
+  const rootToken = authData.access_token
+  if (!rootToken) {
+    throw new Error(`GitLab OAuth token missing in response: ${JSON.stringify(authData)}`)
+  }
+
+  let users = runGitlabApiJson(
+    {
+      method: 'GET',
+      url: `${baseUrl}/api/v4/users?username=${encodeURIComponent(lambdaUser)}`,
+      headers: [`Authorization: Bearer ${rootToken}`]
+    },
+    'GitLab lambda user lookup for ttyd glab auth setup'
+  )
+
+  if (!Array.isArray(users) || users.length === 0) {
+    runGitlabApiJson(
+      {
+        method: 'POST',
+        url: `${baseUrl}/api/v4/users`,
+        headers: [`Authorization: Bearer ${rootToken}`],
+        jsonBody: {
+          email: lambdaEmail,
+          username: lambdaUser,
+          name: 'Lambda User',
+          password: lambdaPassword,
+          skip_confirmation: true,
+          force_random_password: false,
+          reset_password: false
+        }
+      },
+      'GitLab lambda user creation for ttyd glab auth setup'
+    )
+
+    users = runGitlabApiJson(
+      {
+        method: 'GET',
+        url: `${baseUrl}/api/v4/users?username=${encodeURIComponent(lambdaUser)}`,
+        headers: [`Authorization: Bearer ${rootToken}`]
+      },
+      'GitLab lambda user re-lookup for ttyd glab auth setup'
+    )
+  }
+
+  const lambdaData = Array.isArray(users) ? users[0] : null
+  if (!lambdaData || !lambdaData.id) {
+    throw new Error(`Unable to resolve lambda user ID from GitLab response: ${JSON.stringify(users)}`)
+  }
+
+  runGitlabApiJson(
+    {
+      method: 'POST',
+      url: `${baseUrl}/api/v4/projects`,
+      headers: [`Authorization: Bearer ${rootToken}`],
+      jsonBody: {
+        name: gitlabProjectName,
+        namespace_id: lambdaData.id,
+        visibility: 'private'
+      }
+    },
+    'GitLab project creation for ttyd glab auth setup'
+  )
+
+  const patData = runGitlabApiJson(
+    {
+      method: 'POST',
+      url: `${baseUrl}/api/v4/users/${lambdaData.id}/personal_access_tokens`,
+      headers: [`Authorization: Bearer ${rootToken}`],
+      jsonBody: {
+        name: `ttyd-glab-auth-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`,
+        scopes: ['api', 'write_repository']
+      }
+    },
+    'GitLab personal access token creation for ttyd glab auth setup'
+  )
+
+  const glabToken = patData.token
+  if (!glabToken) {
+    throw new Error(`GitLab personal access token missing in response: ${JSON.stringify(patData)}`)
+  }
+
+  const networkConnect = runCommandWithResult(
+    `docker network connect ${shellEscape(resolveGitLabDockerNetwork())} ${shellEscape(this.ttydContainerName)}`
+  )
+  if (
+    networkConnect.exitCode !== 0 &&
+    !/already exists|already connected/i.test(networkConnect.output)
+  ) {
+    throw new Error(`Failed to connect ttyd container to GitLab network:\n${networkConnect.output}`)
+  }
+
+  const setupResult = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+    'set -eu',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    `cd ${CONTAINER_WORKDIR}`,
+    `git config --global --add safe.directory ${CONTAINER_WORKDIR}`,
+    'git config --global user.email "bootstrap@example.com"',
+    'git config --global user.name "Bootstrap"',
+    'if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then',
+    '  git init -q',
+    '  git add .',
+    '  git commit -q -m "bootstrap init"',
+    'fi',
+    'if git remote get-url origin >/dev/null 2>&1; then',
+    '  git remote remove origin',
+    'fi',
+    `git remote add origin "http://gitlab/${lambdaUser}/${gitlabProjectName}.git"`,
+    'task glab:install',
+    'rm -rf ~/.config/glab-cli || true',
+    'glab auth login \\',
+    '  --hostname gitlab \\',
+    `  --token ${shellEscape(glabToken)} \\`,
+    '  --api-protocol http \\',
+    '  --api-host gitlab:80 \\',
+    '  --git-protocol http',
+    'if ! grep -Fq \'export PATH="$HOME/.local/bin:$PATH"\' "$HOME/.bashrc"; then',
+    '  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> "$HOME/.bashrc"',
+    'fi',
+    'command -v glab >/dev/null 2>&1'
+  ].join('\n'), { timeout: INSTALL_SCRIPT_TIMEOUT })
+
+  if (setupResult.exitCode !== 0) {
+    throw new Error(`Failed to configure ttyd workspace GitLab auth:\n${setupResult.output}`)
+  }
+})
+
+Given('the ttyd glab config contains a failing secondary host', function () { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+
+  const result = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+    'set -eu',
+    'CONFIG="$HOME/.config/glab-cli/config.yml"',
+    'if [ ! -f "$CONFIG" ]; then',
+    '  echo "Missing glab config at $CONFIG" >&2',
+    '  exit 1',
+    'fi',
+    'cat > /tmp/inject-broken-host.awk <<\'AWK\'',
+    'BEGIN { inserted = 0 }',
+    '/^hosts:$/ && inserted == 0 {',
+    '  print',
+    '  print "    broken.invalid:"',
+    '  print "        api_host: broken.invalid"',
+    '  print "        api_protocol: https"',
+    '  print "        git_protocol: https"',
+    '  print "        token: invalid-token"',
+    '  print "        user: broken"',
+    '  inserted = 1',
+    '  next',
+    '}',
+    '{ print }',
+    'END {',
+    '  if (inserted == 0) {',
+    '    print "hosts:"',
+    '    print "    broken.invalid:"',
+    '    print "        api_host: broken.invalid"',
+    '    print "        api_protocol: https"',
+    '    print "        git_protocol: https"',
+    '    print "        token: invalid-token"',
+    '    print "        user: broken"',
+    '  }',
+    '}',
+    'AWK',
+    'awk -f /tmp/inject-broken-host.awk "$CONFIG" > "$CONFIG.tmp"',
+    'mv "$CONFIG.tmp" "$CONFIG"',
+    'chmod 0600 "$CONFIG"'
+  ].join('\n'))
+
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to inject a broken host into glab config:\n${result.output}`)
+  }
+})
+
+Given('glab is available in the ttyd container shell', function () { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+
+  const result = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+    'set -eu',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'command -v glab >/dev/null 2>&1',
+    'glab --version >/dev/null 2>&1'
+  ].join('\n'))
+
+  if (result.exitCode !== 0) {
+    throw new Error(`glab is not available in the ttyd container shell:\n${result.output}`)
+  }
+})
+
+Given('glab host-specific statuses include one healthy and one failing host in ttyd', function () { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+
+  const result = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+    'set -eu',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'glab auth status --hostname gitlab >/tmp/glab-status-gitlab.log 2>&1',
+    'if glab auth status --hostname broken.invalid >/tmp/glab-status-broken.log 2>&1; then',
+    '  echo "Expected broken.invalid auth status to fail" >&2',
+    '  cat /tmp/glab-status-broken.log >&2',
+    '  exit 1',
+    'fi'
+  ].join('\n'), { timeout: TERMINAL_CMD_TIMEOUT })
+
+  if (result.exitCode !== 0) {
+    const logs = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+      'set +e',
+      'echo "--- gitlab status ---"',
+      'cat /tmp/glab-status-gitlab.log 2>/dev/null || true',
+      'echo "--- broken.invalid status ---"',
+      'cat /tmp/glab-status-broken.log 2>/dev/null || true'
+    ].join('\n'))
+    throw new Error(
+      'Expected one healthy host (gitlab) and one failing host (broken.invalid), but check failed.\n' +
+      `${result.output}\n${logs.output}`
+    )
+  }
+})
+
 Given('I set docker container name to {string}', function (containerNameValue) { // eslint-disable-line no-undef
   this.dockerContainerName = containerNameValue
 })
@@ -333,15 +603,15 @@ When('I open the web terminal', async function () { // eslint-disable-line no-un
   I.wait(3)
 })
 
-When('I type {string} in the terminal and wait for completion', async function (command) { // eslint-disable-line no-undef
-  execInContainer(this.ttydContainerName, 'rm -f /tmp/ttyd-cmd-done')
+async function runTerminalCommandAndWait (scenario, command) {
+  execInContainer(scenario.ttydContainerName, 'rm -f /tmp/ttyd-cmd-done')
   I.click('.xterm-screen')
   I.type(command)
   const commandStartedAtEpoch = Math.floor(Date.now() / 1000)
   I.pressKey('Enter')
   await I.wait(5)
 
-  const name = shellEscape(this.ttydContainerName)
+  const name = shellEscape(scenario.ttydContainerName)
   const cmd = [
     'while :; do',
     '  if [ -f /tmp/ttyd-cmd-done ]; then',
@@ -362,10 +632,10 @@ When('I type {string} in the terminal and wait for completion', async function (
     })
   } catch (error) {
     if (error.killed) {
-      const markerCheck = execInContainer(this.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
-      const procCheck = execInContainer(this.ttydContainerName, 'ps aux 2>&1 | head -20')
-      const logCheck = execInContainer(this.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
-      const bashrcCheck = execInContainer(this.ttydContainerName, 'grep PROMPT_COMMAND /home/bootstrap/.bashrc 2>&1')
+      const markerCheck = execInContainer(scenario.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
+      const procCheck = execInContainer(scenario.ttydContainerName, 'ps aux 2>&1 | head -20')
+      const logCheck = execInContainer(scenario.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
+      const bashrcCheck = execInContainer(scenario.ttydContainerName, 'grep PROMPT_COMMAND /home/bootstrap/.bashrc 2>&1')
       throw new Error(
         `Timed out waiting for command "${command}" after ${TERMINAL_CMD_TIMEOUT}ms\n` +
         `--- Marker: ${markerCheck.output.trim()}\n` +
@@ -378,11 +648,61 @@ When('I type {string} in the terminal and wait for completion', async function (
   }
 
   await waitForTerminalSettle()
+}
+
+When('I type {string} in the terminal and wait for completion', async function (command) { // eslint-disable-line no-undef
+  await runTerminalCommandAndWait(this, command)
+})
+
+When('I run a condensed glab auth status report in the terminal and wait for completion', async function () { // eslint-disable-line no-undef
+  await runTerminalCommandAndWait(this, COMPACT_GLAB_AUTH_STATUS_COMMAND)
+})
+
+When('I run a condensed task glab auth status check in the terminal and wait for completion', async function () { // eslint-disable-line no-undef
+  await runTerminalCommandAndWait(this, COMPACT_TASK_GLAB_AUTH_STATUS_COMMAND)
+})
+
+Then('task glab auth status succeeds in ttyd', function () { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+
+  const result = execInContainerAsUser(this.ttydContainerName, 'bootstrap', [
+    'set -eu',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    `cd ${CONTAINER_WORKDIR}`,
+    'task glab:auth:status > /tmp/task-glab-auth-status-check.log 2>&1'
+  ].join('\n'), { timeout: TERMINAL_CMD_TIMEOUT })
+
+  if (result.exitCode !== 0) {
+    const logs = execInContainerAsUser(
+      this.ttydContainerName,
+      'bootstrap',
+      'cat /tmp/task-glab-auth-status-check.log 2>&1 || true'
+    )
+    throw new Error(`task glab:auth:status failed unexpectedly in ttyd:\n${logs.output}`)
+  }
+})
+
+Then('the terminal should contain {string}', async function (expectedText) { // eslint-disable-line no-undef
+  await waitForTerminalSettle()
+  const terminalText = await I.executeScript(function () {
+    const screen = document.querySelector('.xterm-screen')
+    return screen ? (screen.textContent || '') : ''
+  })
+
+  if (!terminalText || !terminalText.includes(expectedText)) {
+    throw new Error(
+      `Expected terminal output to contain "${expectedText}" but it was not found.\n` +
+      `Terminal content:\n${terminalText || '<empty>'}`
+    )
+  }
 })
 
 Then('the terminal output should visually match {string}', async function (baselineName) { // eslint-disable-line no-undef
+  const useCompactTerminalFrame = COMPACT_TERMINAL_VISUAL_BASELINES.has(baselineName)
   await I.wait(1)
-  I.resizeWindow(1920, 1080)
+  I.resizeWindow(1920, useCompactTerminalFrame ? 420 : 1080)
   await I.wait(2)
   await waitForTerminalSettle()
 

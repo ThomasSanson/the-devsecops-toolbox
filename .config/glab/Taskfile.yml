@@ -141,11 +141,52 @@ tasks:
       - cmd: echo "🔍 Checking GitLab authentication status..."
         silent: true
       - cmd: |
-          if glab auth status 2>&1; then
+          detect_gitlab_host_from_remotes() {
+            for remote_name in $(git remote 2>/dev/null); do
+              remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+              [ -n "$remote_url" ] || continue
+
+              remote_without_scheme="${remote_url#*://}"
+              if [ "$remote_without_scheme" != "$remote_url" ]; then
+                remote_url="$remote_without_scheme"
+              fi
+
+              remote_url="${remote_url#*@}"
+              remote_host="${remote_url%%[:/]*}"
+
+              if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                echo "$remote_host"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+          if [ -z "$GITLAB_REMOTE_HOST" ]; then
+            GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+          fi
+
+          if [ -n "$GITLAB_REMOTE_HOST" ]; then
+            if glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1; then
+              echo -e "{{.GREEN}}✅ GitLab authentication is configured for host '$GITLAB_REMOTE_HOST'.{{.NC}}"
+            else
+              echo -e "{{.RED}}❌ GitLab authentication is not configured for host '$GITLAB_REMOTE_HOST'.{{.NC}}"
+              echo "Run 'task glab:auth' to authenticate."
+              if [ "$GITLAB_REMOTE_HOST" = "gitlab.com" ]; then
+                echo "  glab auth login"
+              else
+                echo "  glab auth login --hostname $GITLAB_REMOTE_HOST"
+                echo "  glab auth status --hostname $GITLAB_REMOTE_HOST"
+              fi
+              exit 1
+            fi
+          elif glab auth status >/dev/null 2>&1; then
             echo -e "{{.GREEN}}✅ GitLab authentication is configured.{{.NC}}"
           else
             echo -e "{{.RED}}❌ Not authenticated to GitLab.{{.NC}}"
             echo "Run 'task glab:auth' to authenticate."
+            exit 1
           fi
         silent: false
 
@@ -328,7 +369,38 @@ tasks:
         msg: "❌ glab is not installed. Run 'task glab:install' first."
       - sh: command -v jq >/dev/null 2>&1
         msg: "❌ jq is not installed."
-      - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+      - sh: |
+          detect_gitlab_host_from_remotes() {
+            for remote_name in $(git remote 2>/dev/null); do
+              remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+              [ -n "$remote_url" ] || continue
+
+              remote_without_scheme="${remote_url#*://}"
+              if [ "$remote_without_scheme" != "$remote_url" ]; then
+                remote_url="$remote_without_scheme"
+              fi
+
+              remote_url="${remote_url#*@}"
+              remote_host="${remote_url%%[:/]*}"
+
+              if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                echo "$remote_host"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+          if [ -z "$GITLAB_REMOTE_HOST" ]; then
+            GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+          fi
+
+          if [ -n "$GITLAB_REMOTE_HOST" ]; then
+            glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          else
+            glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          fi
         msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
@@ -373,7 +445,38 @@ tasks:
         msg: "❌ glab is not installed. Run 'task glab:install' first."
       - sh: command -v jq >/dev/null 2>&1
         msg: "❌ jq is not installed."
-      - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+      - sh: |
+          detect_gitlab_host_from_remotes() {
+            for remote_name in $(git remote 2>/dev/null); do
+              remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+              [ -n "$remote_url" ] || continue
+
+              remote_without_scheme="${remote_url#*://}"
+              if [ "$remote_without_scheme" != "$remote_url" ]; then
+                remote_url="$remote_without_scheme"
+              fi
+
+              remote_url="${remote_url#*@}"
+              remote_host="${remote_url%%[:/]*}"
+
+              if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                echo "$remote_host"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+          if [ -z "$GITLAB_REMOTE_HOST" ]; then
+            GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+          fi
+
+          if [ -n "$GITLAB_REMOTE_HOST" ]; then
+            glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          else
+            glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          fi
         msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
@@ -413,7 +516,38 @@ tasks:
         msg: "❌ glab is not installed. Run 'task glab:install' first."
       - sh: command -v jq >/dev/null 2>&1
         msg: "❌ jq is not installed."
-      - sh: glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+      - sh: |
+          detect_gitlab_host_from_remotes() {
+            for remote_name in $(git remote 2>/dev/null); do
+              remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+              [ -n "$remote_url" ] || continue
+
+              remote_without_scheme="${remote_url#*://}"
+              if [ "$remote_without_scheme" != "$remote_url" ]; then
+                remote_url="$remote_without_scheme"
+              fi
+
+              remote_url="${remote_url#*@}"
+              remote_host="${remote_url%%[:/]*}"
+
+              if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                echo "$remote_host"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+          if [ -z "$GITLAB_REMOTE_HOST" ]; then
+            GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+          fi
+
+          if [ -n "$GITLAB_REMOTE_HOST" ]; then
+            glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          else
+            glab auth status >/dev/null 2>&1 || [ -n "${GITLAB_TOKEN:-}" ]
+          fi
         msg: "❌ Not authenticated to GitLab. Run 'task glab:auth' first."
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
