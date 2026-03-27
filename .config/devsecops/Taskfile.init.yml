@@ -78,6 +78,7 @@ tasks:
     cmds:
       - cmd: echo "🦊 Configuring GitLab project..."
         silent: true
+      - task: :glab:auth:ensure
       - task: :glab:merge-settings
       - task: :glab:renovate-token
       - task: :glab:commitizen-token

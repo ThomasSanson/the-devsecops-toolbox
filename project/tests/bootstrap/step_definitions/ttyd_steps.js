@@ -662,6 +662,13 @@ When('I type {string} in the terminal and wait for completion', async function (
   await runTerminalCommandAndWait(this, command)
 })
 
+When('I type {string} in the terminal', async function (command) { // eslint-disable-line no-undef
+  I.click('.xterm-screen')
+  I.type(command)
+  I.pressKey('Enter')
+  await waitForTerminalSettle()
+})
+
 When('I run a condensed glab auth status report in the terminal and wait for completion', async function () { // eslint-disable-line no-undef
   await runTerminalCommandAndWait(this, COMPACT_GLAB_AUTH_STATUS_COMMAND)
 })

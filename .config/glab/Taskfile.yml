@@ -153,6 +153,132 @@ tasks:
           fi
         silent: true
 
+  auth:ensure:
+    desc: 🔐 Ensure GitLab authentication is configured
+    silent: true
+    cmds:
+      - |
+        set -eu
+        
+        # Load UI helpers if available
+        if [ -f .config/devsecops/scripts/ui.sh ]; then
+          . .config/devsecops/scripts/ui.sh
+        else
+          # Fallback
+          ui_supports_color() { return 1; }
+          ui_blue() { printf "%s" "$1"; }
+          ui_dim() { printf "%s" "$1"; }
+          ui_bold() { printf "%s" "$1"; }
+          ui_success() { printf "✓ %s\n" "$1"; }
+          ui_error() { printf "✗ %s\n" "$1"; }
+          ui_pause() { printf "⏸ %s\n" "$1"; }
+          ui_resume() { printf "↻ %s\n" "$1"; }
+        fi
+
+        detect_gitlab_host_from_remotes() {
+          for remote_name in $(git remote 2>/dev/null); do
+            remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+            [ -n "$remote_url" ] || continue
+
+            remote_without_scheme="${remote_url#*://}"
+            if [ "$remote_without_scheme" != "$remote_url" ]; then
+              remote_url="$remote_without_scheme"
+            fi
+
+            remote_url="${remote_url#*@}"
+            remote_host="${remote_url%%[:/]*}"
+            case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
+
+            if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+              echo "$remote_host"
+              return 0
+            fi
+          done
+          return 1
+        }
+        
+        host="${GITLAB_HOST:-}"
+        if [ -z "$host" ]; then
+          host="$(detect_gitlab_host_from_remotes || true)"
+        fi
+        host="${host:-gitlab.example.com}"
+
+        # 1. Check if gitlab CLI is available at all
+        if ! command -v glab >/dev/null 2>&1; then
+          echo
+          ui_error "GitLab CLI not found"
+          echo
+          echo "  $(ui_dim 'install')     $(ui_bold 'glab')"
+          echo "  $(ui_dim 'then rerun')  $(ui_bold 'task devsecops:init')"
+          echo
+          exit 1
+        fi
+
+        # 2. Check if already authenticated
+        if glab auth status --hostname "$host" >/dev/null 2>&1 || glab auth status >/dev/null 2>&1; then
+          echo
+          ui_success "GitLab authentication already configured for $host"
+          echo
+          ui_resume "Continuing initialization..."
+          echo
+          exit 0
+        fi
+
+        # 3. If CI or non-interactive
+        if [ "${CI:-}" = "true" ] || [ ! -t 0 ]; then
+          echo
+          ui_error "GitLab authentication required"
+          echo
+          echo "  $(ui_dim 'host')        $host"
+          echo
+          echo "  $(ui_dim 'run locally') $(ui_bold 'task glab:auth')"
+          echo "  $(ui_dim 'then rerun')  $(ui_bold 'task devsecops:init')"
+          echo
+          exit 1
+        fi
+
+        # 4. Premium TTY Prompt
+        echo
+        printf "%s GitLab authentication required\n" "$(ui_blue '●')"
+        echo
+        echo "  $(ui_dim 'host')      $host"
+        echo "  $(ui_dim 'reason')    This setup needs GitLab access before it can continue"
+        echo "  $(ui_dim 'next')      Sign in now and resume initialization automatically"
+        echo
+        printf "%s " "$(ui_bold 'Continue now? [Y/n]')"
+        read -r answer
+
+        case "${answer:-Y}" in
+          n|N|no|NO)
+            echo
+            echo
+            ui_pause "Initialization paused"
+            echo
+            echo "  $(ui_dim 'when ready')  task glab:auth"
+            echo "  $(ui_dim 'then')        task devsecops:init"
+            echo
+            exit 1
+            ;;
+        esac
+
+        task glab:auth
+
+        if glab auth status --hostname "$host" >/dev/null 2>&1 || glab auth status >/dev/null 2>&1; then
+          echo
+          ui_success "GitLab authentication successful"
+          ui_resume "Resuming initialization..."
+          echo
+          exit 0
+        fi
+
+        echo
+        ui_error "GitLab authentication is still missing"
+        echo
+        echo "  $(ui_dim 'retry with')  $(ui_bold 'task glab:auth')"
+        echo "  $(ui_dim 'then')        $(ui_bold 'task devsecops:init')"
+        echo
+        exit 1
+
   auth:status:
     desc: 🔑 Check GitLab authentication status
     summary: |
@@ -309,15 +435,7 @@ tasks:
             fi
 
             if ! glab auth status --hostname "$GITLAB_REMOTE_HOST" >/dev/null 2>&1; then
-              echo "❌ GitLab authentication is not configured for host '$GITLAB_REMOTE_HOST'."
-              echo "Run 'task glab:auth' to authenticate."
-              if [ "$GITLAB_REMOTE_HOST" = "gitlab.com" ]; then
-                echo "  glab auth login"
-              else
-                echo "  glab auth login --hostname $GITLAB_REMOTE_HOST"
-                echo "  glab auth status --hostname $GITLAB_REMOTE_HOST"
-              fi
-              echo "  task devsecops:init"
+              echo "❌ GitLab authentication required. Run 'task glab:auth:ensure'."
               exit 1
             fi
 
