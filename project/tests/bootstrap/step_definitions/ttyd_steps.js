@@ -63,9 +63,17 @@ const COMPACT_TASK_GLAB_AUTH_STATUS_COMMAND = [
   'task glab:auth:status'
 ].join('; ')
 
+const COMPACT_TASK_GLAB_AUTH_COMMAND = [
+  'clear',
+  'export PATH="$HOME/.local/bin:$PATH"',
+  'task glab:auth || true'
+].join('; ')
+
 const COMPACT_TERMINAL_VISUAL_BASELINES = new Set([
   'glab-auth-status-multi-host',
-  'glab-auth-status-host-scoped'
+  'glab-auth-status-host-scoped',
+  'glab-auth-gitlabssh-normalization',
+  'glab-auth-host-detection'
 ])
 
 const activeContainers = []
@@ -660,6 +668,10 @@ When('I run a condensed glab auth status report in the terminal and wait for com
 
 When('I run a condensed task glab auth status check in the terminal and wait for completion', async function () { // eslint-disable-line no-undef
   await runTerminalCommandAndWait(this, COMPACT_TASK_GLAB_AUTH_STATUS_COMMAND)
+})
+
+When('I run a condensed task glab auth command in the terminal and wait for completion', async function () { // eslint-disable-line no-undef
+  await runTerminalCommandAndWait(this, COMPACT_TASK_GLAB_AUTH_COMMAND)
 })
 
 Then('task glab auth status succeeds in ttyd', function () { // eslint-disable-line no-undef

@@ -98,7 +98,7 @@ tasks:
           echo ""
           echo -e "{{.YELLOW}}Latest version available:{{.NC}}"
           curl -s https://gitlab.com/api/v4/projects/34675721/releases | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "Unable to fetch latest version"
-        silent: false
+        silent: true
 
   auth:
     desc: 🔐 Authenticate with GitLab
@@ -117,8 +117,41 @@ tasks:
     cmds:
       - cmd: echo "🔐 Starting GitLab authentication..."
         silent: true
-      - cmd: glab auth login
-        silent: false
+      - cmd: |
+          detect_gitlab_host_from_remotes() {
+            for remote_name in $(git remote 2>/dev/null); do
+              remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+              [ -n "$remote_url" ] || continue
+
+              remote_without_scheme="${remote_url#*://}"
+              if [ "$remote_without_scheme" != "$remote_url" ]; then
+                remote_url="$remote_without_scheme"
+              fi
+
+              remote_url="${remote_url#*@}"
+              remote_host="${remote_url%%[:/]*}"
+              case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
+
+              if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+                echo "$remote_host"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+          if [ -z "$GITLAB_REMOTE_HOST" ]; then
+            GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+          fi
+
+          if [ -n "$GITLAB_REMOTE_HOST" ] && [ "$GITLAB_REMOTE_HOST" != "gitlab.com" ]; then
+            echo "🔍 Detected GitLab host: $GITLAB_REMOTE_HOST"
+            glab auth login --hostname "$GITLAB_REMOTE_HOST"
+          else
+            glab auth login
+          fi
+        silent: true
 
   auth:status:
     desc: 🔑 Check GitLab authentication status
@@ -153,6 +186,7 @@ tasks:
 
               remote_url="${remote_url#*@}"
               remote_host="${remote_url%%[:/]*}"
+              case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
 
               if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
                 echo "$remote_host"
@@ -172,23 +206,21 @@ tasks:
               echo -e "{{.GREEN}}✅ GitLab authentication is configured for host '$GITLAB_REMOTE_HOST'.{{.NC}}"
             else
               echo -e "{{.RED}}❌ GitLab authentication is not configured for host '$GITLAB_REMOTE_HOST'.{{.NC}}"
-              echo "Run 'task glab:auth' to authenticate."
-              if [ "$GITLAB_REMOTE_HOST" = "gitlab.com" ]; then
-                echo "  glab auth login"
-              else
-                echo "  glab auth login --hostname $GITLAB_REMOTE_HOST"
-                echo "  glab auth status --hostname $GITLAB_REMOTE_HOST"
-              fi
+              echo ""
+              echo "  👉 Run:  task glab:auth"
+              echo ""
               exit 1
             fi
           elif glab auth status >/dev/null 2>&1; then
             echo -e "{{.GREEN}}✅ GitLab authentication is configured.{{.NC}}"
           else
             echo -e "{{.RED}}❌ Not authenticated to GitLab.{{.NC}}"
-            echo "Run 'task glab:auth' to authenticate."
+            echo ""
+            echo "  👉 Run:  task glab:auth"
+            echo ""
             exit 1
           fi
-        silent: false
+        silent: true
 
   merge-settings:
     desc: 🦊 Configure GitLab merge request settings
@@ -252,6 +284,7 @@ tasks:
 
                 remote_url="${remote_url#*@}"
                 remote_host="${remote_url%%[:/]*}"
+                case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
 
                 if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
                   echo "$remote_host"
@@ -382,6 +415,7 @@ tasks:
 
               remote_url="${remote_url#*@}"
               remote_host="${remote_url%%[:/]*}"
+              case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
 
               if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
                 echo "$remote_host"
@@ -458,6 +492,7 @@ tasks:
 
               remote_url="${remote_url#*@}"
               remote_host="${remote_url%%[:/]*}"
+              case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
 
               if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
                 echo "$remote_host"
@@ -529,6 +564,7 @@ tasks:
 
               remote_url="${remote_url#*@}"
               remote_host="${remote_url%%[:/]*}"
+              case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
 
               if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
                 echo "$remote_host"

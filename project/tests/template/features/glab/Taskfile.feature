@@ -31,3 +31,16 @@ Feature: Glab Taskfile Standardization
     When the copier command is executed with default settings
     Then the file ".config/glab/Taskfile.yml" should contain "A user with Maintainer (or higher) role must run locally:"
     And the file ".config/glab/Taskfile.yml" should contain "task devsecops:init"
+
+  @glab-auth-host-detection
+  Scenario: Auth task auto-detects GitLab host from git remotes
+    Given a clean temporary directory for "glab/taskfile" tests
+    When the copier command is executed with default settings
+    Then the file ".config/glab/Taskfile.yml" should contain "glab auth login --hostname"
+    And the file ".config/glab/Taskfile.yml" should contain "Detected GitLab host:"
+
+  @glab-gitlabssh-normalization
+  Scenario: Detect function normalizes gitlabssh hostnames to gitlab
+    Given a clean temporary directory for "glab/taskfile" tests
+    When the copier command is executed with default settings
+    Then the file ".config/glab/Taskfile.yml" should contain "gitlabssh.*"
