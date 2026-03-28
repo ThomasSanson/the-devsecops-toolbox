@@ -159,7 +159,7 @@ tasks:
     cmds:
       - |
         set -eu
-        
+
         # Load UI helpers if available
         if [ -f .config/devsecops/scripts/ui.sh ]; then
           . .config/devsecops/scripts/ui.sh
@@ -196,7 +196,7 @@ tasks:
           done
           return 1
         }
-        
+
         host="${GITLAB_HOST:-}"
         if [ -z "$host" ]; then
           host="$(detect_gitlab_host_from_remotes || true)"
