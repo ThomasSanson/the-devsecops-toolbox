@@ -27,9 +27,12 @@ RUN UNAME_ARCH="$(uname -m)" && \
       -o /usr/local/bin/ttyd && \
     chmod +x /usr/local/bin/ttyd
 
-# 4. PROMPT_COMMAND marker for ttyd command completion detection
-RUN echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
-    >> /home/${BOOTSTRAP_USER}/.bashrc
+# 4. PATH includes ~/.local/bin (where task, glab, etc. are installed)
+#    PROMPT_COMMAND marker for ttyd command completion detection
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' \
+      >> /home/${BOOTSTRAP_USER}/.bashrc && \
+    echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
+      >> /home/${BOOTSTRAP_USER}/.bashrc
 
 # 5. Workspace directory
 RUN mkdir -p /workspace && \

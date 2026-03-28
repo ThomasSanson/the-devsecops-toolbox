@@ -8,12 +8,12 @@ Feature: GitLab Auth Ensure DX
   Scenario: Missing glab binary shows clean error with labels
     Given a generated toolbox project is mounted in a fresh Ubuntu ttyd container
     And I open the web terminal
-    When I type "export PATH=$HOME/.local/bin:$PATH; task glab:auth:ensure" in the terminal and wait for completion
+    When I type "task glab:auth:ensure" in the terminal and wait for completion
     Then the terminal output should visually match "glab-auth-ensure-missing-bin"
 
   @bootstrap-glab-auth-ensure
   Scenario: CI mode with missing glab also shows clean error
     Given a generated toolbox project is mounted in a fresh Ubuntu ttyd container
     And I open the web terminal
-    When I type "export PATH=$HOME/.local/bin:$PATH; CI=true task glab:auth:ensure" in the terminal and wait for completion
+    When I type "CI=true task glab:auth:ensure" in the terminal and wait for completion
     Then the terminal output should visually match "glab-auth-ensure-ci-missing-bin"

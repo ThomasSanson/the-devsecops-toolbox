@@ -133,6 +133,7 @@ Every code change follows RED → GREEN → REFACTOR in strict order:
 
 ## Critical Rules
 
+- **Never** run `git add`, `git commit`, `git push`, or any git command that modifies the repository
 - **Never** place infrastructure tests in `tests/application/`
 - **Never** use `docker compose`, `npm run`, or `cd` into subdirectories
 - **Ask before** modifying existing tests, adding dependencies, or changing CI/CD config (`.gitlab-ci.yml`)

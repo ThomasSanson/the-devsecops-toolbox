@@ -20,6 +20,7 @@
 | [`.agent/rules/code-style.md`](.agent/rules/code-style.md)                 | Code style conventions, script organisation, language conventions, minimalism principle.                                |
 | [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                     |
 | [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Redirect terminal output to `./tmp/exec_logs.log`. Check the log file if the terminal hangs instead of waiting.         |
+| [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Never run `git add`, `git commit`, `git push`, or any git command that modifies the repository. Read-only git only.     |
 
 ---
 
@@ -200,3 +201,4 @@ Every code change MUST follow this cycle:
 - Never skip TDD steps
 - Never commit secrets or API keys
 - Never place infrastructure tests in `tests/application/`
+- Never run `git add`, `git commit`, `git push`, or any git command that modifies the repository
