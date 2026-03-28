@@ -2,6 +2,17 @@
 
 # Changelog
 
+## 21.9.0 (2026-03-28)
+
+### Feat
+
+- **glab**: add auth:ensure task with premium UI
+- **glab**: auto-detect GitLab host, normalize gitlabssh, update tests
+
+### Fix
+
+- **test**: align auth-ensure scenarios with bootstrap container reality
+
 ## 21.8.2 (2026-03-28)
 
 ### Fix
