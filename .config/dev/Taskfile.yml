@@ -60,6 +60,8 @@ tasks:
       - .config/pipx/install.sh
       - .config/go/install.sh
       - .config/glab/install.sh
+      - .config/gum/install.sh
+      - .config/glow/install.sh
       - task: lefthook
       - cmd: echo "🎉 Development environment setup completed successfully"
         silent: true

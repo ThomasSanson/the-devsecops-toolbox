@@ -66,9 +66,19 @@ log "node not found. Installing..."
 
 # Ensure root privileges for package installation
 if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "Error: root privileges required but sudo is not available."
-    exit 1
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    log "sudo unavailable or blocked. Installing node via user-space tarball..."
+    mkdir -p ~/.local/bin ~/.local/node
+    if curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz | tar -xJ -C ~/.local/node --strip-components=1; then
+      ln -sf ~/.local/node/bin/node ~/.local/bin/node
+      ln -sf ~/.local/node/bin/npm ~/.local/bin/npm
+      ln -sf ~/.local/node/bin/npx ~/.local/bin/npx
+      log "Node.js user-space installation successful."
+      exit 0
+    else
+      log "Error: Failed to download and extract Node.js tarball."
+      exit 1
+    fi
   fi
   log "Re-running with sudo..."
   sudo env PATH="$PATH" sh "$0"
@@ -82,12 +92,12 @@ if command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   rm -rf /var/lib/apt/lists/*
   retry_cmd "apt-get update -qq"
-  retry_cmd "apt-get install -y -qq ca-certificates curl gnupg"
+  retry_cmd "apt-get install -y -qq ca-certificates curl"
 
   # Add NodeSource repository for Node.js 20.x
   mkdir -p /etc/apt/keyrings
   retry_cmd "curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource-repo.gpg.key"
-  gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource-repo.gpg.key
+  gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource-repo.gpg.key 2>/dev/null
   rm -f /tmp/nodesource-repo.gpg.key
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list >/dev/null
 

@@ -14,9 +14,20 @@ log "go not found. Installing..."
 
 # Ensure root privileges for package installation
 if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "Error: root privileges required but sudo is not available."
-    exit 1
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    log "sudo unavailable or blocked. Installing go via user-space tarball..."
+    mkdir -p ~/.local/bin ~/.local/go
+    if curl -fsSL https://go.dev/dl/go1.24.2.linux-amd64.tar.gz | tar -xz -C ~/.local/go --strip-components=1; then
+      ln -sf ~/.local/go/bin/go ~/.local/bin/go
+      ln -sf ~/.local/go/bin/gofmt ~/.local/bin/gofmt
+      # Set GOPATH to ~/.local so `go install` puts binaries in ~/.local/bin (already in PATH)
+      printf '\nexport GOROOT="%s/.local/go"\nexport GOPATH="%s/.local"\n' "$HOME" "$HOME" >>~/.bashrc
+      log "Go user-space installation successful."
+      exit 0
+    else
+      log "Error: Failed to download and extract Go tarball."
+      exit 1
+    fi
   fi
   log "Re-running with sudo..."
   sudo env PATH="$PATH" sh "$0"

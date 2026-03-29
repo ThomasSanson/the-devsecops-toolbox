@@ -23,7 +23,7 @@ exports.config = {
       baselineDir: './screenshots/base/',
       diffDir: './screenshots/diff/',
       actualDir: './_output/',
-      tolerance: 3,
+      tolerance: 0,
       threshold: 0.1
     }
   },

@@ -66,9 +66,12 @@ if command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ "$IS_ROOT" -ne 1 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "Error: Python ${PYTHON_VERSION} requires root privileges for automatic installation, but sudo is not available."
-    exit 1
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    log "sudo unavailable or blocked. Installing Python ${PYTHON_VERSION} via uv in user space..."
+    export PATH="$HOME/.local/bin:$PATH"
+    ensure_uv_installed
+    uv python install "$PYTHON_VERSION"
+    exit 0
   fi
 
   log "Re-running Python ${PYTHON_VERSION} installation with sudo..."

@@ -1,0 +1,48 @@
+---
+version: "3"
+
+vars:
+  TASK_GLOW_ENABLED: '{{.TASK_GLOW_ENABLED | default "true"}}'
+  TASK_GLOW_CONFIG_DIR: '{{.TASK_GLOW_CONFIG_DIR | default ".config/glow"}}'
+
+tasks:
+  default:
+    desc: 📦 Install glow (Markdown renderer)
+    deps:
+      - install
+    summary: |
+      ℹ️ Description:
+        Installs glow for rendering Markdown in the terminal.
+      🔄 Execution:
+        Runs the install task if glow is not already installed.
+
+  install:
+    desc: 📦 Install glow (Markdown renderer)
+    summary: |
+      ℹ️ Description:
+        Installs glow from GitHub releases.
+    status:
+      - test "{{.TASK_GLOW_ENABLED}}" = "false"
+      - command -v glow
+    cmds:
+      - cmd: echo "📦 Installing glow..."
+        silent: true
+      - cmd: bash {{.TASK_GLOW_CONFIG_DIR}}/install.sh
+        silent: false
+      - cmd: echo "🎉 glow installation complete."
+        silent: true
+
+  update:
+    desc: 🔄 Update glow to latest configured version
+    summary: |
+      ℹ️ Description:
+        Forces reinstallation of glow.
+    status:
+      - test "{{.TASK_GLOW_ENABLED}}" = "false"
+    cmds:
+      - cmd: echo "🔄 Updating glow..."
+        silent: true
+      - cmd: GLOW_FORCE_UPDATE=true bash {{.TASK_GLOW_CONFIG_DIR}}/install.sh
+        silent: false
+      - cmd: echo "🎉 glow update complete."
+        silent: true

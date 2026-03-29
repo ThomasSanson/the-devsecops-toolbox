@@ -10,7 +10,7 @@ ARG BOOTSTRAP_USER=bootstrap
 # 1. Only essential packages (what a dev would already have)
 # hadolint ignore=DL3008
 RUN apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends sudo curl ca-certificates && \
+    apt-get install -y -qq --no-install-recommends sudo curl ca-certificates git jq unzip xz-utils gnupg && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Bootstrap user with passwordless sudo
@@ -30,6 +30,8 @@ RUN UNAME_ARCH="$(uname -m)" && \
 # 4. PATH includes ~/.local/bin (where task, glab, etc. are installed)
 #    PROMPT_COMMAND marker for ttyd command completion detection
 RUN echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" \
+      >> /home/${BOOTSTRAP_USER}/.bashrc && \
+    echo "export GOPATH=\"\$HOME/.local\"" \
       >> /home/${BOOTSTRAP_USER}/.bashrc && \
     echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
       >> /home/${BOOTSTRAP_USER}/.bashrc

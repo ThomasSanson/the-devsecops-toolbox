@@ -1116,6 +1116,21 @@ When('I run {string} from {string} in the container', function (command, dir) { 
   this.dockerOutput += commandOutput
 })
 
+When('I run {string} from {string} in the ttyd container', function (command, dir) { // eslint-disable-line no-undef
+  if (!this.ttydContainerName) {
+    throw new Error('No ttyd container is running for this scenario.')
+  }
+  const result = execInContainerAsUser(
+    this.ttydContainerName,
+    'bootstrap',
+    ['export PATH="$HOME/.local/bin:$PATH"', `cd ${dir}`, command].join('\n'),
+    { timeout: TERMINAL_CMD_TIMEOUT }
+  )
+  const commandOutput = result.output || ''
+  this.lastCommandOutput = commandOutput
+  this.lastCommandExitCode = result.exitCode
+})
+
 When('I run {string} from {string} in the container via pseudo-tty with {int} default answers', function (command, dir, answersCount) { // eslint-disable-line no-undef
   if (!this.dockerContainerName) {
     throw new Error('No docker container is running for this scenario.')

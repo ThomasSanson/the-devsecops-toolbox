@@ -160,20 +160,19 @@ tasks:
       - |
         set -eu
 
-        # Load UI helpers if available
-        if [ -f .config/devsecops/scripts/ui.sh ]; then
-          . .config/devsecops/scripts/ui.sh
-        else
-          # Fallback
-          ui_supports_color() { return 1; }
-          ui_blue() { printf "%s" "$1"; }
-          ui_dim() { printf "%s" "$1"; }
-          ui_bold() { printf "%s" "$1"; }
-          ui_success() { printf "✓ %s\n" "$1"; }
-          ui_error() { printf "✗ %s\n" "$1"; }
-          ui_pause() { printf "⏸ %s\n" "$1"; }
-          ui_resume() { printf "↻ %s\n" "$1"; }
-        fi
+        # 1. Check required premium UI dependencies
+        for tool in gum glow; do
+          if ! command -v "$tool" >/dev/null 2>&1; then
+            echo
+            echo "Required UI dependency missing: $tool"
+            echo "Run:"
+            echo "  task dev:setup-environment"
+            echo "Then rerun:"
+            echo "  task devsecops:init"
+            echo
+            exit 1
+          fi
+        done
 
         detect_gitlab_host_from_remotes() {
           for remote_name in $(git remote 2>/dev/null); do
@@ -203,79 +202,74 @@ tasks:
         fi
         host="${host:-gitlab.example.com}"
 
-        # 1. Check if gitlab CLI is available at all
+        # 2. Check if gitlab CLI is available at all
         if ! command -v glab >/dev/null 2>&1; then
           echo
-          ui_error "GitLab CLI not found"
-          echo
-          echo "  $(ui_dim 'install')     $(ui_bold 'glab')"
-          echo "  $(ui_dim 'then rerun')  $(ui_bold 'task devsecops:init')"
+          gum style --foreground 212 --border normal --padding "1 2" --margin "1 0" "GitLab CLI not found"
+          echo "  install     glab"
+          echo "  then rerun  task devsecops:init"
           echo
           exit 1
         fi
 
-        # 2. Check if already authenticated
+        # 3. Check if already authenticated
         if glab auth status --hostname "$host" >/dev/null 2>&1 || glab auth status >/dev/null 2>&1; then
           echo
-          ui_success "GitLab authentication already configured for $host"
-          echo
-          ui_resume "Continuing initialization..."
+          gum style --foreground 212 "✅ GitLab authentication already configured for $host"
+          gum style --foreground 240 "↻ Continuing initialization..."
           echo
           exit 0
         fi
 
-        # 3. If CI or non-interactive
+        # 4. If CI or non-interactive
         if [ "${CI:-}" = "true" ] || [ ! -t 0 ]; then
           echo
-          ui_error "GitLab authentication required"
+          gum style --foreground 196 "❌ GitLab authentication required"
+          echo "  host        $host"
           echo
-          echo "  $(ui_dim 'host')        $host"
-          echo
-          echo "  $(ui_dim 'run locally') $(ui_bold 'task glab:auth')"
-          echo "  $(ui_dim 'then rerun')  $(ui_bold 'task devsecops:init')"
+          echo "  run locally task glab:auth"
+          echo "  then rerun  task devsecops:init"
           echo
           exit 1
         fi
 
-        # 4. Premium TTY Prompt
-        echo
-        printf "%s GitLab authentication required\n" "$(ui_blue '●')"
-        echo
-        echo "  $(ui_dim 'host')      $host"
-        echo "  $(ui_dim 'reason')    This setup needs GitLab access before it can continue"
-        echo "  $(ui_dim 'next')      Sign in now and resume initialization automatically"
-        echo
-        printf "%s " "$(ui_bold 'Continue now? [Y/n]')"
-        read -r answer
+        # 5. Premium TTY Prompt
+        echo "# 🔐 GitLab Authentication Required" > /tmp/glab_auth_card.md
+        echo "" >> /tmp/glab_auth_card.md
+        echo "This setup needs GitLab access before it can continue." >> /tmp/glab_auth_card.md
+        echo "" >> /tmp/glab_auth_card.md
+        echo "**Target Host:** \`$host\`" >> /tmp/glab_auth_card.md
 
-        case "${answer:-Y}" in
-          n|N|no|NO)
-            echo
-            echo
-            ui_pause "Initialization paused"
-            echo
-            echo "  $(ui_dim 'when ready')  task glab:auth"
-            echo "  $(ui_dim 'then')        task devsecops:init"
-            echo
-            exit 1
-            ;;
-        esac
+        echo
+        glow -s dark -w 80 /tmp/glab_auth_card.md
+        rm -f /tmp/glab_auth_card.md
+        echo
+
+        if ! gum confirm "Continue and sign in now?" --default=true; then
+          echo
+          gum style --foreground 212 "⏸ Initialization paused"
+          echo
+          echo "  when ready  task glab:auth"
+          echo "  then        task devsecops:init"
+          echo
+          exit 1
+        fi
 
         task glab:auth
 
         if glab auth status --hostname "$host" >/dev/null 2>&1 || glab auth status >/dev/null 2>&1; then
           echo
-          ui_success "GitLab authentication successful"
-          ui_resume "Resuming initialization..."
+          gum style --foreground 212 "✅ GitLab authentication successful"
+          gum style --foreground 240 "↻ Resuming initialization..."
           echo
           exit 0
         fi
 
         echo
-        ui_error "GitLab authentication is still missing"
+        gum style --foreground 196 "❌ GitLab authentication is still missing"
         echo
-        echo "  $(ui_dim 'retry with')  $(ui_bold 'task glab:auth')"
-        echo "  $(ui_dim 'then')        $(ui_bold 'task devsecops:init')"
+        echo "  retry with  task glab:auth"
+        echo "  then        task devsecops:init"
         echo
         exit 1
 

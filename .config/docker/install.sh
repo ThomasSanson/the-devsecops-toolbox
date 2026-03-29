@@ -14,9 +14,16 @@ log "docker not found. Installing..."
 
 # Ensure root privileges for package installation
 if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "Error: root privileges required but sudo is not available."
-    exit 1
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    log "sudo unavailable or blocked. Installing docker CLI via user-space tarball..."
+    mkdir -p ~/.local/bin
+    if curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-26.0.0.tgz | tar -xz -C ~/.local/bin --strip-components=1 docker/docker; then
+      log "Docker CLI user-space installation successful."
+      exit 0
+    else
+      log "Error: Failed to download and extract Docker tarball."
+      exit 1
+    fi
   fi
   log "Re-running with sudo..."
   sudo env PATH="$PATH" sh "$0"

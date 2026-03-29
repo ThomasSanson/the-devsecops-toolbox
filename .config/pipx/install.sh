@@ -14,9 +14,16 @@ fi
 log "pipx not found. Installing..."
 
 # Ensure root privileges for package installation
+# Ensure root privileges for package installation
 if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1; then
-    log "Error: root privileges required but sudo is not available."
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    log "sudo unavailable or blocked. Installing pipx via uv..."
+    export PATH="$HOME/.local/bin:$PATH"
+    if command -v uv >/dev/null 2>&1; then
+      uv tool install pipx
+      exit 0
+    fi
+    log "Error: uv is required for pipx user-space install."
     exit 1
   fi
   log "Re-running with sudo..."

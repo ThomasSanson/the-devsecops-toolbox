@@ -1,0 +1,48 @@
+---
+version: "3"
+
+vars:
+  TASK_GUM_ENABLED: '{{.TASK_GUM_ENABLED | default "true"}}'
+  TASK_GUM_CONFIG_DIR: '{{.TASK_GUM_CONFIG_DIR | default ".config/gum"}}'
+
+tasks:
+  default:
+    desc: 📦 Install gum (Glamorous shell scripts)
+    deps:
+      - install
+    summary: |
+      ℹ️ Description:
+        Installs gum for glamorous shell scripts and terminal interactions.
+      🔄 Execution:
+        Runs the install task if gum is not already installed.
+
+  install:
+    desc: 📦 Install gum (Glamorous shell scripts)
+    summary: |
+      ℹ️ Description:
+        Installs gum from GitHub releases.
+    status:
+      - test "{{.TASK_GUM_ENABLED}}" = "false"
+      - command -v gum
+    cmds:
+      - cmd: echo "📦 Installing gum..."
+        silent: true
+      - cmd: bash {{.TASK_GUM_CONFIG_DIR}}/install.sh
+        silent: false
+      - cmd: echo "🎉 gum installation complete."
+        silent: true
+
+  update:
+    desc: 🔄 Update gum to latest configured version
+    summary: |
+      ℹ️ Description:
+        Forces reinstallation of gum.
+    status:
+      - test "{{.TASK_GUM_ENABLED}}" = "false"
+    cmds:
+      - cmd: echo "🔄 Updating gum..."
+        silent: true
+      - cmd: GUM_FORCE_UPDATE=true bash {{.TASK_GUM_CONFIG_DIR}}/install.sh
+        silent: false
+      - cmd: echo "🎉 gum update complete."
+        silent: true
