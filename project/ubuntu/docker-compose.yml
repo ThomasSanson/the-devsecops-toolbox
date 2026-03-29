@@ -9,6 +9,7 @@ services:
     profiles: ["test"]
     networks:
       - the-devsecops-toolbox
+    hostname: workspace
     command: ["bash", "-c", "while :; do sleep 10 & wait; done"]
     cap_drop:
       - NET_RAW
