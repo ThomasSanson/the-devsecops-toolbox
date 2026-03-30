@@ -131,6 +131,23 @@ Every code change follows RED → GREEN → REFACTOR in strict order:
 
 ---
 
+## Visual Regression Tests — No Cheating
+
+Visual regression tests (`assertVisualMatch`) are meaningful human-readable checks. The diff between actual and baseline must be **zero** (`tolerance: 0`). When a visual test fails:
+
+**FORBIDDEN — these are cheats, never do them:**
+- Raising `tolerance` in `codecept.conf.js`
+- Lowering `threshold` in `codecept.conf.js`
+- Skipping or commenting out a visual assertion
+- Regenerating baselines just to make them match without understanding why they differ
+
+**The only correct fixes:**
+- If content differs → fix the code so the terminal output is correct
+- If rendering differs between environments (sub-pixel, font, DPI) → fix the Chromium launch args in `codecept.conf.js` to force deterministic rendering (e.g. SwiftShader WebGL, device scale factor, color profile)
+- If the environment itself differs → regenerate baselines **in the same environment** where the CI runs, not locally with a different OS/font stack
+
+---
+
 ## Critical Rules
 
 - **Never** run `git add`, `git commit`, `git push`, or any git command that modifies the repository

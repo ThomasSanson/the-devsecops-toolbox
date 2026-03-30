@@ -14,7 +14,10 @@ exports.config = {
         args: [
           '--font-render-hinting=none',
           '--disable-font-subpixel-positioning',
-          '--disable-lcd-text'
+          '--disable-lcd-text',
+          '--force-device-scale-factor=1',
+          '--force-color-profile=srgb',
+          '--use-angle=swiftshader-webgl'
         ]
       }
     },
