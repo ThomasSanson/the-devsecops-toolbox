@@ -172,7 +172,7 @@ verify_ci_variable_token() {
 
 check_permissions() {
   local perms project_lvl group_lvl
-  perms=$(glab api projects/${PROJECT_PATH_ENCODED} 2>/dev/null | jq '.permissions')
+  perms=$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>/dev/null | jq '.permissions')
   project_lvl=$(echo "$perms" | jq -r '.project_access.access_level // 0')
   group_lvl=$(echo "$perms" | jq -r '.group_access.access_level // 0')
 
@@ -249,7 +249,7 @@ if [ "$COUNT" -eq 0 ]; then
     '{name: $name, scopes: $scopes, access_level: $al, expires_at: $exp}')
   TOKEN_RESPONSE=$(
     echo "$PAYLOAD" |
-      glab api --method POST projects/${PROJECT_PATH_ENCODED}/access_tokens --input - \
+      glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens" --input - \
         -H "Content-Type: application/json" |
       strip_glab_noise
   )
