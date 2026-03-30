@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 21.9.1 (2026-03-30)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.21.3
+
 ## 21.9.0 (2026-03-28)
 
 ### Feat
