@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 22.0.0 (2026-03-31)
+
+### Feat
+
+- **megalinter**: switch default task from npx to docker
+- **glab**: auto-detect host/project and replace :id in API calls
+
 ## 21.9.1 (2026-03-30)
 
 ### Fix
