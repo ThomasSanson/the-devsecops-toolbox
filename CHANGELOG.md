@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.0.1 (2026-03-31)
+
+### Fix
+
+- **deps**: update dependency copier to v9.14.1
+
 ## 22.0.0 (2026-03-31)
 
 ### Feat
