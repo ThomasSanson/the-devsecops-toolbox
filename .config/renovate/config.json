@@ -5,6 +5,7 @@
     ":semanticCommits",
     ":semanticCommitTypeAll(fix)"
   ],
+  "ignorePresets": ["monorepo:playwright"],
   "onboarding": false,
   "requireConfig": "optional",
   "automerge": true,
