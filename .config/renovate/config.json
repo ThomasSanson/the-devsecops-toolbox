@@ -19,6 +19,17 @@
   "dependencyDashboard": true,
   "packageRules": [
     {
+      "matchManagers": ["npm", "dockerfile"],
+      "matchPackageNames": ["playwright", "mcr.microsoft.com/playwright"],
+      "matchFileNames": [
+        ".config/codeceptjs/package.json",
+        ".config/codeceptjs/package-lock.json",
+        ".config/codeceptjs/Dockerfile"
+      ],
+      "groupName": "Playwright codeceptjs stack",
+      "groupSlug": "playwright-codeceptjs-stack"
+    },
+    {
       "description": "Version managed by commitizen, not Renovate",
       "matchDatasources": ["docker"],
       "matchPackageNames": [
