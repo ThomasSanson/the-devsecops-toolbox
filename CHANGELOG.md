@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.1.0 (2026-04-06)
+
+### Feat
+
+- **renovate**: add ignorePresets for Playwright grouping and test feature
+
 ## 22.0.4 (2026-04-03)
 
 ### Fix
