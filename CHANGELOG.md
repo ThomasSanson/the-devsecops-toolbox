@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.1.3 (2026-04-09)
+
+### Fix
+
+- **deps**: update playwright monorepo
+
 ## 22.1.2 (2026-04-08)
 
 ### Fix
