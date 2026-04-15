@@ -5,6 +5,24 @@ description: Mandatory TDD cycle for any code change
 
 # TDD Cycle
 
+## When this applies — no rationalization allowed
+
+The cycle triggers on ANY edit matching these patterns, regardless of motivation
+(new feature, bugfix, CI incident, hotfix, refactor, "simple tweak", "ops work"):
+
+The cycle does **NOT** trigger on:
+
+- `project/**/docker-compose.yml`, `Dockerfile`, `entrypoint.sh` — infrastructure
+- `project/Taskfile.yml`, `.gitlab-ci.yml` — orchestration
+- `project/tests/**` — test code itself
+- `.agent/**`, `CLAUDE.md`, `AGENTS.md`, `*.md` at root — meta/docs
+
+**Anti-pattern explicitly forbidden**: *"CI is red → patch `src/` fast, write
+the test afterwards."* If CI pressure pushes you to skip the cycle, stop and
+write the test first — the RED step is often the cleanest local reproduction
+of the CI failure, and the GREEN step proves you actually fixed the observed
+bug rather than a nearby symptom.
+
 ## ⛔ MANDATORY FOR ANY CODE CHANGE
 
 For ANY feature, bug fix, or modification, execute these steps IN ORDER:

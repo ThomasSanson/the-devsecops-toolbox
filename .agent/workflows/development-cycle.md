@@ -7,6 +7,20 @@ description: Mandatory TDD workflow for any code change. Follow steps IN ORDER. 
 
 **⛔ READ rules/tdd-cycle.md FIRST — IT IS MANDATORY**
 
+## Pre-flight checkpoint — ask yourself BEFORE any Edit/Write tool call
+
+> *"Is the file I'm about to edit under `project/`
+> or another path listed in the 'When this applies' section of
+> `rules/tdd-cycle.md`?"*
+
+- **YES** → you are editing code. Stop. Start at STEP 2 (write the test first).
+  No exceptions, even under CI-incident pressure.
+- **NO** → the file is infra/config/meta/test code; proceed directly.
+
+This checkpoint exists because in practice the cycle is skipped not by defying
+the rule, but by mentally reclassifying the change ("it's just ops",
+"it's a quick hotfix"). Running the checkpoint kills the reclassification.
+
 ## Execution Order
 
 You MUST execute these steps sequentially. Do NOT skip steps. Do NOT generate plans instead of executing.
