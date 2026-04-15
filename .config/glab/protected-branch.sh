@@ -11,13 +11,55 @@ set -euo pipefail
 
 BRANCH="${TASK_GLAB_PROTECTED_BRANCH:-main}"
 
+detect_gitlab_host_from_remotes() {
+  for remote_name in $(git remote 2>/dev/null); do
+    remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+    [ -n "$remote_url" ] || continue
+
+    remote_without_scheme="${remote_url#*://}"
+    if [ "$remote_without_scheme" != "$remote_url" ]; then
+      remote_url="$remote_without_scheme"
+    fi
+
+    remote_url="${remote_url#*@}"
+    remote_host="${remote_url%%[:/]*}"
+    case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
+
+    if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+      echo "$remote_host"
+      return 0
+    fi
+  done
+  return 1
+}
+
+GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+if [ -z "$GITLAB_REMOTE_HOST" ]; then
+  GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+fi
+if [ -z "$GITLAB_REMOTE_HOST" ]; then
+  GITLAB_REMOTE_HOST=$(glab config get host 2>/dev/null || echo "gitlab.com")
+fi
+export GITLAB_HOST="$GITLAB_REMOTE_HOST"
+
+PROJECT_PATH=$(git remote get-url origin 2>/dev/null || true)
+PROJECT_PATH="${PROJECT_PATH#*://*/}"
+PROJECT_PATH="${PROJECT_PATH#*:}"
+PROJECT_PATH="${PROJECT_PATH%.git}"
+if [ -n "$PROJECT_PATH" ]; then
+  PROJECT_PATH_ENCODED=$(printf "%s" "$PROJECT_PATH" | jq -sRr @uri)
+else
+  echo "❌ Could not determine project path from git remote." >&2
+  exit 1
+fi
+
 strip_glab_noise() {
   sed 's/}[^}]*$/}/'
 }
 
 check_permissions() {
   local perms project_lvl group_lvl
-  perms=$(glab api projects/:id 2>/dev/null | jq '.permissions')
+  perms=$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>/dev/null | jq '.permissions')
   project_lvl=$(echo "$perms" | jq -r '.project_access.access_level // 0')
   group_lvl=$(echo "$perms" | jq -r '.group_access.access_level // 0')
 
@@ -31,7 +73,7 @@ check_permissions() {
 verify_protected_branch_state() {
   local branch_data merge_ok push_ok errors
 
-  branch_data=$(glab api "projects/:id/protected_branches/${BRANCH}" 2>/dev/null | strip_glab_noise) || {
+  branch_data=$(glab api "projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH}" 2>/dev/null | strip_glab_noise) || {
     echo "   ❌ Branch '${BRANCH}' is not protected"
     return 1
   }
@@ -60,11 +102,11 @@ echo "🔒 Protected Branch Configuration"
 check_permissions
 
 echo "   🔄 Resetting protection on branch '${BRANCH}'..."
-glab api --method DELETE "projects/:id/protected_branches/${BRANCH}" >/dev/null 2>&1 || true
+glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH}" >/dev/null 2>&1 || true
 
 echo "   🔒 Protecting branch '${BRANCH}' (merge=Maintainers, push=No one)..."
 RESPONSE=$(glab api --method POST \
-  "projects/:id/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=0" \
+  "projects/${PROJECT_PATH_ENCODED}/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=0" \
   2>/dev/null | strip_glab_noise)
 if ! echo "$RESPONSE" | jq -e '.name' >/dev/null 2>&1; then
   echo "   ❌ Failed to protect branch: $RESPONSE"

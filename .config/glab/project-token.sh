@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Disable xtrace to prevent leaking tokens in CI logs.
-set +x
+#set +x
 
 TOKEN_NAME="${TASK_GLAB_PROJECT_TOKEN_NAME:-}"
 TOKEN_PROTECTED="${TASK_GLAB_PROJECT_TOKEN_PROTECTED:-true}"
@@ -10,6 +10,48 @@ TOKEN_FORCE="${TASK_GLAB_PROJECT_TOKEN_FORCE:-false}"
 TOKEN_ACCESS_LEVEL="${TASK_GLAB_PROJECT_TOKEN_ACCESS_LEVEL:-40}"
 TOKEN_SCOPES="${TASK_GLAB_PROJECT_TOKEN_SCOPES:-api}"
 TOKEN_LABEL="${TASK_GLAB_PROJECT_TOKEN_LABEL:-Project token}"
+
+detect_gitlab_host_from_remotes() {
+  for remote_name in $(git remote 2>/dev/null); do
+    remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+    [ -n "$remote_url" ] || continue
+
+    remote_without_scheme="${remote_url#*://}"
+    if [ "$remote_without_scheme" != "$remote_url" ]; then
+      remote_url="$remote_without_scheme"
+    fi
+
+    remote_url="${remote_url#*@}"
+    remote_host="${remote_url%%[:/]*}"
+    case "$remote_host" in gitlabssh.*) remote_host="gitlab.${remote_host#gitlabssh.}" ;; esac
+
+    if [ -n "$remote_host" ] && echo "$remote_host" | grep -qi "gitlab"; then
+      echo "$remote_host"
+      return 0
+    fi
+  done
+  return 1
+}
+
+GITLAB_REMOTE_HOST="${GITLAB_HOST:-}"
+if [ -z "$GITLAB_REMOTE_HOST" ]; then
+  GITLAB_REMOTE_HOST="$(detect_gitlab_host_from_remotes || true)"
+fi
+if [ -z "$GITLAB_REMOTE_HOST" ]; then
+  GITLAB_REMOTE_HOST=$(glab config get host 2>/dev/null || echo "gitlab.com")
+fi
+export GITLAB_HOST="$GITLAB_REMOTE_HOST"
+
+PROJECT_PATH=$(git remote get-url origin 2>/dev/null || true)
+PROJECT_PATH="${PROJECT_PATH#*://*/}"
+PROJECT_PATH="${PROJECT_PATH#*:}"
+PROJECT_PATH="${PROJECT_PATH%.git}"
+if [ -n "$PROJECT_PATH" ]; then
+  PROJECT_PATH_ENCODED=$(printf "%s" "$PROJECT_PATH" | jq -sRr @uri)
+else
+  echo "❌ Could not determine project path from git remote." >&2
+  exit 1
+fi
 
 if [ -z "$TOKEN_NAME" ]; then
   echo "❌ TASK_GLAB_PROJECT_TOKEN_NAME is required." >&2
@@ -61,7 +103,7 @@ store_ci_variable() {
     return 1
   fi
 
-  var_check=$(glab api "projects/:id/variables/${var_name}" 2>/dev/null | strip_glab_noise) || true
+  var_check=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || true
   if echo "$var_check" | jq -e '.key' >/dev/null 2>&1; then
     payload=$(jq -n \
       --arg val "$token_value" \
@@ -69,7 +111,7 @@ store_ci_variable() {
       '{value: $val, masked: "true", protected: $prot}')
     result=$(
       echo "$payload" |
-        glab api --method PUT "projects/:id/variables/${var_name}" \
+        glab api --method PUT "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" \
           --input - -H "Content-Type: application/json" 2>/dev/null |
         strip_glab_noise
     )
@@ -81,7 +123,7 @@ store_ci_variable() {
       '{key: $key, value: $val, masked: "true", protected: $prot}')
     result=$(
       echo "$payload" |
-        glab api --method POST "projects/:id/variables" \
+        glab api --method POST "projects/${PROJECT_PATH_ENCODED}/variables" \
           --input - -H "Content-Type: application/json" 2>/dev/null |
         strip_glab_noise
     )
@@ -98,7 +140,7 @@ verify_ci_variable_token() {
   local var_name="$1"
   local var_json hidden cred host
 
-  var_json=$(glab api "projects/:id/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
+  var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
   echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
 
   hidden=$(echo "$var_json" | jq -r '.hidden // false')
@@ -130,7 +172,7 @@ verify_ci_variable_token() {
 
 check_permissions() {
   local perms project_lvl group_lvl
-  perms=$(glab api projects/:id 2>/dev/null | jq '.permissions')
+  perms=$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>/dev/null | jq '.permissions')
   project_lvl=$(echo "$perms" | jq -r '.project_access.access_level // 0')
   group_lvl=$(echo "$perms" | jq -r '.group_access.access_level // 0')
 
@@ -147,7 +189,7 @@ check_permissions
 SCOPE_JSON=$(scopes_to_json "$TOKEN_SCOPES")
 REQUIRED_ACCESS_LEVEL="$TOKEN_ACCESS_LEVEL"
 
-EXISTING_TOKENS=$(glab api "projects/:id/access_tokens?per_page=100" 2>/dev/null || echo "[]")
+EXISTING_TOKENS=$(glab api "projects/${PROJECT_PATH_ENCODED}/access_tokens?per_page=100" 2>/dev/null || echo "[]")
 MATCHING=$(echo "$EXISTING_TOKENS" | jq -r "[.[] | select(.name == \"${TOKEN_NAME}\" and .revoked == false and .active == true)]")
 COUNT=$(echo "$MATCHING" | jq 'length')
 
@@ -155,7 +197,7 @@ if [ "$COUNT" -gt 1 ]; then
   echo "   ⚠️  Found $COUNT active tokens named '${TOKEN_NAME}'. Purging duplicates..."
   NEWEST_ID=$(echo "$MATCHING" | jq -r 'sort_by(.created_at) | last | .id')
   echo "$MATCHING" | jq -r ".[] | select(.id != ${NEWEST_ID}) | .id" | while read -r old_id; do
-    glab api --method DELETE "projects/:id/access_tokens/${old_id}" >/dev/null 2>&1 || true
+    glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${old_id}" >/dev/null 2>&1 || true
     echo "      🗑️  Revoked duplicate token #${old_id}"
   done
   MATCHING=$(echo "$MATCHING" | jq "[.[] | select(.id == ${NEWEST_ID})]")
@@ -165,7 +207,7 @@ fi
 if [ "$TOKEN_FORCE" = "true" ] && [ "$COUNT" -ge 1 ]; then
   EXISTING_ID=$(echo "$MATCHING" | jq -r '.[0].id')
   echo "   🔄 Force refresh: revoking existing token #${EXISTING_ID}..."
-  glab api --method DELETE "projects/:id/access_tokens/${EXISTING_ID}" >/dev/null 2>&1 || true
+  glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}" >/dev/null 2>&1 || true
   COUNT=0
 fi
 
@@ -176,10 +218,10 @@ if [ "$COUNT" -eq 1 ]; then
   if [ "$EXISTING_ACCESS" -lt "$REQUIRED_ACCESS_LEVEL" ]; then
     echo "   ⚠️  Token has access_level=${EXISTING_ACCESS}, required access_level=${REQUIRED_ACCESS_LEVEL}"
     echo "      Revoking and recreating with correct access level..."
-    glab api --method DELETE "projects/:id/access_tokens/${EXISTING_ID}" >/dev/null 2>&1
+    glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}" >/dev/null 2>&1
     COUNT=0
   else
-    if glab api "projects/:id/variables/${TOKEN_NAME}" >/dev/null 2>&1 &&
+    if glab api "projects/${PROJECT_PATH_ENCODED}/variables/${TOKEN_NAME}" >/dev/null 2>&1 &&
       verify_ci_variable_token "$TOKEN_NAME"; then
       echo "   ✅ Token '${TOKEN_NAME}' exists and is valid (access_level=${EXISTING_ACCESS})"
       echo "✅ Done! ${TOKEN_LABEL} is ready to use."
@@ -187,7 +229,7 @@ if [ "$COUNT" -eq 1 ]; then
     fi
 
     echo "   🔄 Token exists but CI/CD variable is missing or out of sync. Rotating..."
-    glab api --method POST "projects/:id/access_tokens/${EXISTING_ID}/rotate" \
+    glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}/rotate" \
       -f "expires_at=${EXPIRES_AT}" |
       strip_glab_noise |
       store_ci_variable "$TOKEN_NAME" "$TOKEN_PROTECTED"
@@ -207,7 +249,7 @@ if [ "$COUNT" -eq 0 ]; then
     '{name: $name, scopes: $scopes, access_level: $al, expires_at: $exp}')
   TOKEN_RESPONSE=$(
     echo "$PAYLOAD" |
-      glab api --method POST projects/:id/access_tokens --input - \
+      glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens" --input - \
         -H "Content-Type: application/json" |
       strip_glab_noise
   )

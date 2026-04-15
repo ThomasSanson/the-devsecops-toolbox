@@ -42,7 +42,7 @@ tasks:
   default:
     desc: 🔍 Run MegaLinter (default method)
     cmds:
-      - task: npx
+      - task: docker
 
   docker:
     desc: 🐳 Run MegaLinter for comprehensive code analysis

@@ -1,7 +1,6 @@
 ---
 trigger: always_on
 description: Mandatory TDD cycle for any code change
-alwaysApply: true
 ---
 
 # TDD Cycle
@@ -12,7 +11,7 @@ For ANY feature, bug fix, or modification, execute these steps IN ORDER:
 
 | Step | Action                         | Command                      | Expected             |
 |------|--------------------------------|------------------------------|----------------------|
-| 1    | Write test (Gherkin, fr, @tag) | —                            | Feature file created |
+| 1    | Write test (Gherkin, @tag)     | —                            | Feature file created |
 | 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"` | FAIL                 |
 | 3    | Implement minimal code         | —                            | Code written         |
 | 4    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |

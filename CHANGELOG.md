@@ -2,6 +2,79 @@
 
 # Changelog
 
+## 22.1.5 (2026-04-11)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.13.10
+
+## 22.1.4 (2026-04-10)
+
+### Fix
+
+- **deps**: update playwright monorepo
+
+## 22.1.3 (2026-04-09)
+
+### Fix
+
+- **deps**: update playwright monorepo
+
+## 22.1.2 (2026-04-08)
+
+### Fix
+
+- **deps**: update playwright monorepo
+
+## 22.1.1 (2026-04-06)
+
+### Fix
+
+- **deps**: update playwright monorepo to v1.59.1
+
+## 22.1.0 (2026-04-06)
+
+### Feat
+
+- **renovate**: add ignorePresets for Playwright grouping and test feature
+
+## 22.0.4 (2026-04-03)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.12.2
+
+## 22.0.3 (2026-04-02)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.91.0
+
+## 22.0.2 (2026-04-01)
+
+### Fix
+
+- **deps**: update dependency @digital-commons-official/codeceptjs-visual-helper to v1.3.4
+
+## 22.0.1 (2026-03-31)
+
+### Fix
+
+- **deps**: update dependency copier to v9.14.1
+
+## 22.0.0 (2026-03-31)
+
+### Feat
+
+- **megalinter**: switch default task from npx to docker
+- **glab**: auto-detect host/project and replace :id in API calls
+
+## 21.9.1 (2026-03-30)
+
+### Fix
+
+- **deps**: update dependency lizard to v1.21.3
+
 ## 21.9.0 (2026-03-28)
 
 ### Feat

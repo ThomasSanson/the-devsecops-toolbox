@@ -433,9 +433,15 @@ tasks:
               exit 1
             fi
 
+            PROJECT_PATH=$(git remote get-url origin 2>/dev/null)
+            PROJECT_PATH="${PROJECT_PATH#*://*/}"
+            PROJECT_PATH="${PROJECT_PATH#*:}"
+            PROJECT_PATH="${PROJECT_PATH%.git}"
+            PROJECT_PATH_ENCODED=$(printf "%s" "$PROJECT_PATH" | jq -sRr @uri)
+
             if [ "{{.TASK_GLAB_IS_CI}}" = "true" ] && [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = "true" ]; then
               echo "🔍 Verifying merge request settings on default branch..."
-              PROJECT=$(glab api projects/:id 2>/dev/null)
+              PROJECT=$(glab api --hostname "$GITLAB_REMOTE_HOST" "projects/$PROJECT_PATH_ENCODED" 2>/dev/null)
               ERROR=0
 
               check_setting() {
@@ -469,7 +475,7 @@ tasks:
               fi
             else
               echo "🦊 Applying merge request settings..."
-              glab api --method PUT projects/:id \
+              glab api --method PUT "projects/$PROJECT_PATH_ENCODED" --hostname "$GITLAB_REMOTE_HOST" \
                 -f default_branch={{.TASK_GIT_DEFAULT_BRANCH}} \
                 -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
                 -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
