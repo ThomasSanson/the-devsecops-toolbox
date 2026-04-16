@@ -90,6 +90,7 @@
     "azuretools",
     "baselayout",
     "bitnami",
+    "bstrap",
     "buildkit",
     "buildtools",
     "buildx",

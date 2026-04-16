@@ -28,12 +28,18 @@ RUN UNAME_ARCH="$(uname -m)" && \
     chmod +x /usr/local/bin/ttyd
 
 # 4. PATH includes ~/.local/bin (where task, glab, etc. are installed)
-#    PROMPT_COMMAND marker for ttyd command completion detection
+#    PROMPT_COMMAND increments /tmp/ttyd-cmd-seq on every top-level prompt
+#    return (including errors). Tests read the seq before typing and wait
+#    for it to strictly increase — no timestamp race, no nested-shell false
+#    positives.
+# hadolint ignore=SC2016
 RUN echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" \
       >> /home/${BOOTSTRAP_USER}/.bashrc && \
     echo "export GOPATH=\"\$HOME/.local\"" \
       >> /home/${BOOTSTRAP_USER}/.bashrc && \
-    echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
+    echo 'if [ -z "${_BSTRAP_TOP_PID:-}" ]; then export _BSTRAP_TOP_PID=$$; echo 0 > /tmp/ttyd-cmd-seq; fi' \
+      >> /home/${BOOTSTRAP_USER}/.bashrc && \
+    echo 'PROMPT_COMMAND='"'"'if [ "$$" = "$_BSTRAP_TOP_PID" ]; then __bstrap_seq=$(cat /tmp/ttyd-cmd-seq 2>/dev/null || echo 0); echo $((__bstrap_seq + 1)) > /tmp/ttyd-cmd-seq; fi'"'" \
       >> /home/${BOOTSTRAP_USER}/.bashrc
 
 # 5. Workspace directory

@@ -51,9 +51,12 @@ test:bootstrap:
   stage: test
   needs: []
   extends: .default-tags
+  parallel:
+    matrix:
+      - SHARD: ["1/5", "2/5", "3/5", "4/5", "5/5"]
   script:
     - task project:test:clean
-    - task project:test:bootstrap
+    - task project:test:bootstrap -- --shard $SHARD
   <<: *test_rules
 
 test:gitlab:

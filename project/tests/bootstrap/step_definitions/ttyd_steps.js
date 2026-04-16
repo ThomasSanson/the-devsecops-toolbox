@@ -612,41 +612,44 @@ When('I open the web terminal', async function () { // eslint-disable-line no-un
 })
 
 async function runTerminalCommandAndWait (scenario, command) {
-  execInContainer(scenario.ttydContainerName, 'rm -f /tmp/ttyd-cmd-done')
+  const name = shellEscape(scenario.ttydContainerName)
+
+  const seqBeforeResult = execInContainer(
+    scenario.ttydContainerName,
+    'cat /tmp/ttyd-cmd-seq 2>/dev/null || echo 0'
+  )
+  const seqBefore = (seqBeforeResult.output || '0').trim() || '0'
+
   I.click('.xterm-screen')
   I.type(command)
-  const commandStartedAtEpoch = Math.floor(Date.now() / 1000)
   I.pressKey('Enter')
-  await I.wait(5)
+  await I.wait(2)
 
-  const name = shellEscape(scenario.ttydContainerName)
-  const cmd = [
+  const waitScript = [
     'while :; do',
-    '  if [ -f /tmp/ttyd-cmd-done ]; then',
-    '    marker_mtime="$(stat -c %Y /tmp/ttyd-cmd-done 2>/dev/null || echo 0)"',
-    `    if [ "$marker_mtime" -ge "${commandStartedAtEpoch}" ]; then`,
-    '      break',
-    '    fi',
+    '  cur="$(cat /tmp/ttyd-cmd-seq 2>/dev/null || echo 0)"',
+    `  if [ "$cur" -gt "${seqBefore}" ]; then`,
+    '    break',
     '  fi',
     '  sleep 1',
-    'done',
-    'sleep 2'
+    'done'
   ].join('\n')
 
   try {
-    execSync(`docker exec ${name} bash -c ${shellEscape(cmd)}`, {
+    execSync(`docker exec ${name} bash -c ${shellEscape(waitScript)}`, {
       encoding: 'utf-8',
       timeout: TERMINAL_CMD_TIMEOUT
     })
   } catch (error) {
     if (error.killed) {
-      const markerCheck = execInContainer(scenario.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
+      const seqCheck = execInContainer(scenario.ttydContainerName, 'cat /tmp/ttyd-cmd-seq 2>&1 || echo "SEQ_NOT_FOUND"')
       const procCheck = execInContainer(scenario.ttydContainerName, 'ps aux 2>&1 | head -20')
       const logCheck = execInContainer(scenario.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
-      const bashrcCheck = execInContainer(scenario.ttydContainerName, 'grep PROMPT_COMMAND /home/bootstrap/.bashrc 2>&1')
+      const bashrcCheck = execInContainer(scenario.ttydContainerName, 'grep -E "PROMPT_COMMAND|ttyd-cmd-seq" /home/bootstrap/.bashrc 2>&1')
       throw new Error(
         `Timed out waiting for command "${command}" after ${TERMINAL_CMD_TIMEOUT}ms\n` +
-        `--- Marker: ${markerCheck.output.trim()}\n` +
+        `--- Seq before: ${seqBefore}\n` +
+        `--- Seq now: ${seqCheck.output.trim()}\n` +
         `--- PROMPT_COMMAND in bashrc: ${bashrcCheck.output.trim()}\n` +
         `--- Processes:\n${procCheck.output.trim()}\n` +
         `--- ttyd log:\n${logCheck.output.trim()}`
