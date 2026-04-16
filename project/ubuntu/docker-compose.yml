@@ -1,5 +1,6 @@
-# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8
+# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b
 # ↳ 698ed579: healthcheck — test container, not a long-lived service
+# ↳ 610e266e: security_opt — test container needs sudo for dev:setup-environment
 ---
 services:
   ubuntu:
@@ -13,7 +14,5 @@ services:
     command: ["bash", "-c", "while :; do sleep 10 & wait; done"]
     cap_drop:
       - NET_RAW
-    security_opt:
-      - no-new-privileges:true
     healthcheck:
       disable: true

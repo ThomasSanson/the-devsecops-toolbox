@@ -156,6 +156,9 @@ tasks:
   auth:ensure:
     desc: 🔐 Ensure GitLab authentication is configured
     silent: true
+    env:
+      PATH:
+        sh: "echo ${HOME}/.local/bin:${PATH}"
     cmds:
       - |
         set -eu

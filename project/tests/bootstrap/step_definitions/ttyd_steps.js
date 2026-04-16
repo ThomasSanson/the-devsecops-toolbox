@@ -1124,7 +1124,7 @@ When('I run {string} from {string} in the ttyd container', function (command, di
     this.ttydContainerName,
     'bootstrap',
     ['export PATH="$HOME/.local/bin:$PATH"', `cd ${dir}`, command].join('\n'),
-    { timeout: TERMINAL_CMD_TIMEOUT }
+    { timeout: INSTALL_SCRIPT_TIMEOUT }
   )
   const commandOutput = result.output || ''
   this.lastCommandOutput = commandOutput

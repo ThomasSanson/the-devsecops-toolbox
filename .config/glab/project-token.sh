@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Disable xtrace to prevent leaking tokens in CI logs.
-#set +x
+set +x
 
 TOKEN_NAME="${TASK_GLAB_PROJECT_TOKEN_NAME:-}"
 TOKEN_PROTECTED="${TASK_GLAB_PROJECT_TOKEN_PROTECTED:-true}"
