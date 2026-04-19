@@ -8,8 +8,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG BOOTSTRAP_USER=bootstrap
 
 # 1. Only essential packages (what a dev would already have)
+#    Also set a dpkg lock timeout so concurrent apt invocations wait
+#    instead of failing immediately when a hook still holds the lock.
 # hadolint ignore=DL3008
-RUN apt-get update -qq && \
+RUN echo 'DPkg::Lock::Timeout "120";' > /etc/apt/apt.conf.d/99lock-timeout && \
+    apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends sudo curl ca-certificates git jq unzip xz-utils gnupg && \
     rm -rf /var/lib/apt/lists/*
 
@@ -28,18 +31,12 @@ RUN UNAME_ARCH="$(uname -m)" && \
     chmod +x /usr/local/bin/ttyd
 
 # 4. PATH includes ~/.local/bin (where task, glab, etc. are installed)
-#    PROMPT_COMMAND increments /tmp/ttyd-cmd-seq on every top-level prompt
-#    return (including errors). Tests read the seq before typing and wait
-#    for it to strictly increase — no timestamp race, no nested-shell false
-#    positives.
-# hadolint ignore=SC2016
+#    PROMPT_COMMAND marker for ttyd command completion detection
 RUN echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" \
       >> /home/${BOOTSTRAP_USER}/.bashrc && \
     echo "export GOPATH=\"\$HOME/.local\"" \
       >> /home/${BOOTSTRAP_USER}/.bashrc && \
-    echo 'if [ -z "${_BSTRAP_TOP_PID:-}" ]; then export _BSTRAP_TOP_PID=$$; echo 0 > /tmp/ttyd-cmd-seq; fi' \
-      >> /home/${BOOTSTRAP_USER}/.bashrc && \
-    echo 'PROMPT_COMMAND='"'"'if [ "$$" = "$_BSTRAP_TOP_PID" ]; then __bstrap_seq=$(cat /tmp/ttyd-cmd-seq 2>/dev/null || echo 0); echo $((__bstrap_seq + 1)) > /tmp/ttyd-cmd-seq; fi'"'" \
+    echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
       >> /home/${BOOTSTRAP_USER}/.bashrc
 
 # 5. Workspace directory
