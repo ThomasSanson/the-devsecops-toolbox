@@ -2,6 +2,18 @@
 
 # Changelog
 
+## 22.1.7 (2026-04-17)
+
+### Fix
+
+- **deps**: update playwright monorepo
+
+## 22.1.6 (2026-04-17)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v18.11.0
+
 ## 22.1.5 (2026-04-11)
 
 ### Fix
