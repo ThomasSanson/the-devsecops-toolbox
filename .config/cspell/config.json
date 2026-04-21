@@ -64,6 +64,7 @@
     "NOPASSWD",
     "Nuxt",
     "PGPASSWORD",
+    "PIPESTATUS",
     "PYTHONPATH",
     "Parameterisation",
     "RESOURCEVERSION",
