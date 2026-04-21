@@ -115,8 +115,11 @@ tasks:
   project:test:bootstrap:
     desc: 🚀 Run bootstrap E2E tests
     summary: |
-      Run CodeceptJS bootstrap tests against a generated toolbox project in a
-      fresh Ubuntu container.
+      Run CodeceptJS bootstrap tests inside the codeceptjs container so the
+      Chromium font stack and rendering pipeline are identical on every
+      machine (local / CI). The runner drives ttyd Ubuntu containers over
+      the shared `the-devsecops-toolbox` docker network via the mounted
+      docker socket.
     cmds:
       - defer: |
           {{if and (or .EXIT_CODE (eq .TASK_DIAGNOSTIC_FORCE "true")) (ne (env "CI") "")}}
@@ -133,10 +136,28 @@ tasks:
           {{end}}
       - cmd: echo "🚀 Starting project bootstrap test phase"
         silent: true
-      - task: codeceptjs:npx
+      # Pre-step: sync the entire repo into /workspace so the runner can
+      # invoke `task copier` and `docker compose run ubuntu` against the
+      # real project layout.
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
+      - cmd: |
+          tar \
+            --exclude='.git' \
+            --exclude='.cache' \
+            --exclude='tmp' \
+            --exclude='megalinter-reports' \
+            --exclude='node_modules' \
+            -cf - . | \
+            (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
+      - task: codeceptjs:docker
         vars:
           TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-          TASK_CODECEPTJS_CONFIG: "project/tests/bootstrap/codecept.conf.js"
+          TASK_CODECEPTJS_CONFIG: project/tests/bootstrap/codecept.conf.js
+          TASK_CODECEPTJS_TESTS_PATH_HOST: tests
+          TASK_CODECEPTJS_TESTS_PATH_CONTAINER: /app/project/tests
+          TASK_CODECEPTJS_COMPOSE_COMMAND: "{{.PROJECT_DOCKER_COMPOSE}}"
       - cmd: echo "✅ Project bootstrap test phase completed successfully"
         silent: true
 

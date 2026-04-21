@@ -9,6 +9,32 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install task
 RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
+# Install uv so `task copier` (which runs `uvx copier`) works from inside
+# the dockerised test runner without depending on host Python/pip state.
+# Pre-warm Python + copier so the first scenario doesn't pay the ~30-60 s
+# cold-start cost fetching the interpreter and wheel on demand.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_CACHE_DIR=/opt/uv/cache
+RUN curl -LsSf https://astral.sh/uv/install.sh | \
+      env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh && \
+    /usr/local/bin/uv python install 3.14 && \
+    /usr/local/bin/uvx --python 3.14 --from copier==9.14.3 copier --version
+
+# Install Docker CLI + Compose plugin so the runner can orchestrate ttyd
+# containers from inside the test container via the mounted docker socket.
+# The Playwright base image is Ubuntu, so we pull from the Ubuntu channel.
+# hadolint ignore=DL3008
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+      gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+    UBUNTU_CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")" && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
+      > /etc/apt/sources.list.d/docker.list && \
+    apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends docker-ce-cli docker-compose-plugin && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/
 

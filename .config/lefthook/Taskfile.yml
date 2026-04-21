@@ -4,7 +4,6 @@ version: "3"
 vars:
   TASK_LEFTHOOK_ENABLED: '{{.TASK_LEFTHOOK_ENABLED | default "true"}}'
   TASK_LEFTHOOK_VERSION: '{{.TASK_LEFTHOOK_VERSION | default "v1.11.11"}}' # Specify Lefthook version
-  TASK_LEFTHOOK_BIN_PATH: '{{.TASK_LEFTHOOK_BIN_PATH | default "~/go/bin/lefthook"}}' # Path where go install places binaries
 
 tasks:
   lefthook:install:
@@ -12,9 +11,6 @@ tasks:
     summary: |
       ℹ️ Description:
         Installs Lefthook and configures Git hooks for the repository.
-
-      🔧 Variables:
-        - TASK_LEFTHOOK_BIN_PATH: Path to the Lefthook binary
 
       🔐 Preconditions:
         - Must be in a Git repository
@@ -29,7 +25,7 @@ tasks:
       - |
         # Check if we are in a Git repository
         if git rev-parse --is-inside-work-tree &>/dev/null; then
-          {{.TASK_LEFTHOOK_BIN_PATH}} install
+          lefthook install
         else
           # Skip if not in a Git repository
           echo "⏩ Skipping Lefthook installation - not in a Git repository"
@@ -41,17 +37,19 @@ tasks:
     desc: 📥 Install Lefthook using Go
     summary: |
       ℹ️ Description:
-        Installs Lefthook globally using Go.
+        Installs Lefthook globally using Go into ~/.local/bin (XDG user-space).
 
       🔧 Variables:
         - TASK_LEFTHOOK_VERSION: Version of Lefthook to install.
-        - TASK_LEFTHOOK_BIN_PATH: Expected path to the Lefthook binary.
 
       🔐 Preconditions:
-        - Go must be installed and configured (GOPATH/bin in PATH).
+        - Go must be installed and configured.
 
       🔄 Execution:
-        Runs 'go install' to fetch and build Lefthook.
+        Runs 'go install' with GOBIN=~/.local/bin to fetch and build Lefthook.
+    env:
+      GOBIN:
+        sh: 'echo "$HOME/.local/bin"'
     status:
       - command -v lefthook &> /dev/null
     preconditions:
@@ -61,7 +59,7 @@ tasks:
       - cmd: echo "🔄 Starting install phase"
         silent: true
       - go install github.com/evilmartians/lefthook@{{.TASK_LEFTHOOK_VERSION}}
-      - cmd: echo "✅ Lefthook {{.TASK_LEFTHOOK_VERSION}} installed successfully at {{.TASK_LEFTHOOK_BIN_PATH}}"
+      - cmd: echo "✅ Lefthook {{.TASK_LEFTHOOK_VERSION}} installed successfully at $HOME/.local/bin/lefthook"
         silent: true
       - cmd: echo "🎉 Install phase completed successfully"
         silent: true

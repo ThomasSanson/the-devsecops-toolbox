@@ -1,5 +1,11 @@
-# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8
+# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b,d6355c88-1e8d-49e9-b2f2-f8a1ca12c75b,1c1325ff-831d-43a1-973e-839ae57dfcc0
 # ↳ 698ed579: healthcheck — test runner container, not a long-lived service
+# ↳ 610e266e: security_opt — the runner must orchestrate ttyd ubuntu containers
+#   through the mounted docker socket; no-new-privileges breaks the docker CLI flow.
+# ↳ d6355c88: docker.sock mount — required by the test runner to drive ttyd
+#   and ubuntu sandbox containers from within the codeceptjs container.
+# ↳ 1c1325ff: sensitive host directory (/var/run/docker.sock) — same rationale;
+#   isolated to the test compose file, not used in production workloads.
 ---
 services:
   codeceptjs:
@@ -22,10 +28,14 @@ services:
     depends_on:
       gitlab:
         condition: service_healthy
+    # The bootstrap test suite drives fresh Ubuntu+ttyd containers through the
+    # host docker daemon. Mounting the socket lets the runner invoke
+    # `docker compose run`, `docker exec`, and `docker cp` from inside the
+    # sandboxed container without relying on the host OS Chromium/font stack.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     command: sleep infinity
     cap_drop:
       - NET_RAW
-    security_opt:
-      - no-new-privileges:true
     healthcheck:
       disable: true

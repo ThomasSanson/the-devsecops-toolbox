@@ -4,10 +4,11 @@ const { execSync } = require('child_process')
 const GITLAB_DOCKER_NETWORK_ALIAS = 'the-devsecops-toolbox'
 const GITLAB_READY_POLL_INTERVAL_SECONDS = 2
 
-function dockerHost () {
-  const dh = process.env.DOCKER_HOST || ''
-  const match = dh.match(/tcp:\/\/([^:]+)/)
-  return match ? match[1] : '127.0.0.1'
+function ttydPort () {
+  // All containers run on the shared `the-devsecops-toolbox` network;
+  // the runner reaches ttyd via the spawned container's hostname and
+  // its in-container ttyd listen port — no host port mapping required.
+  return 7681
 }
 
 function shellEscape (value) {
@@ -69,7 +70,7 @@ function parseJson (raw, context) {
 }
 
 function buildCurlCommand ({ method = 'GET', url, headers = [], dataUrlencoded = [], jsonBody }) {
-  const parts = ['cd project && docker compose exec -T gitlab curl', '-sS', '--fail', '--request', method]
+  const parts = ['cd /workspace/project && docker compose exec -T gitlab curl', '-sS', '--fail', '--request', method]
 
   headers.forEach(function (header) {
     parts.push('--header', shellEscape(header))
@@ -106,11 +107,11 @@ function collectGitlabComposeDiagnostics () {
   const checks = [
     {
       title: 'docker compose ps',
-      command: 'cd project && docker compose ps'
+      command: 'cd /workspace/project && docker compose ps'
     },
     {
       title: 'docker compose logs --tail=200 gitlab',
-      command: 'cd project && docker compose logs --tail=200 gitlab'
+      command: 'cd /workspace/project && docker compose logs --tail=200 gitlab'
     }
   ]
 
@@ -132,7 +133,7 @@ function withGitlabDiagnostics (error, context) {
 function waitForGitlabReady (baseUrl, timeoutMs) {
   const startedAt = Date.now()
   const readyUrl = `${baseUrl}/users/sign_in`
-  const probeCommand = 'cd project && docker compose exec -T gitlab curl -sf http://127.0.0.1:80/users/sign_in'
+  const probeCommand = 'cd /workspace/project && docker compose exec -T gitlab curl -sf http://127.0.0.1:80/users/sign_in'
   let lastProbeOutput = ''
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -197,13 +198,6 @@ function containerName () {
   return `ttyd-bootstrap-${crypto.randomBytes(4).toString('hex')}`
 }
 
-function randomPort () {
-  const min = 20000
-  const max = 30000
-
-  return min + Math.floor(Math.random() * (max - min))
-}
-
 function execInContainer (name, command, { user } = {}) {
   const userFlag = user ? `-u ${shellEscape(user)} ` : ''
   return runCommandWithResult(
@@ -238,24 +232,29 @@ function removeContainer (name) {
   }
 }
 
-function waitForTtyd (port, timeoutMs) {
+function waitForTtyd (container, timeoutMs) {
   const start = Date.now()
+  const url = `http://${container}:${ttydPort()}/` // DevSkim: ignore DS162092
 
   while (Date.now() - start < timeoutMs) {
     try {
-      runCommand(`curl -sf http://${dockerHost()}:${port}/ >/dev/null 2>&1`) // DevSkim: ignore DS162092
+      runCommand(`curl -sf ${shellEscape(url)} >/dev/null 2>&1`)
       return true
     } catch (_) {
       execSync('sleep 0.5')
     }
   }
 
-  throw new Error(`ttyd did not become ready on port ${port} within ${timeoutMs}ms`)
+  throw new Error(`ttyd did not become ready at ${url} within ${timeoutMs}ms`)
 }
 
 function runHostCommandInScenario (scenario, command, options = {}) {
+  // Default CWD to the in-container repo snapshot so relative paths like
+  // `.config/devsecops/install.sh` resolve to the synced project layout
+  // rather than /app, which only contains the codeceptjs test harness.
   const result = runCommandWithResult(command, {
     timeout: 300000,
+    cwd: '/workspace',
     ...options
   })
   const commandOutput = result.output || ''
@@ -268,7 +267,7 @@ function runHostCommandInScenario (scenario, command, options = {}) {
 
 module.exports = {
   GITLAB_DOCKER_NETWORK_ALIAS,
-  dockerHost,
+  ttydPort,
   shellEscape,
   stripAnsiEscapeSequences,
   runCommand,
@@ -283,7 +282,6 @@ module.exports = {
   runGitlabApiJson,
   resolveGitLabDockerNetwork,
   containerName,
-  randomPort,
   execInContainer,
   execInContainerAsUser,
   userHome,

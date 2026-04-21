@@ -2,11 +2,9 @@ const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { execSync } = require('child_process')
-
 const {
   GITLAB_DOCKER_NETWORK_ALIAS,
-  dockerHost,
+  ttydPort,
   shellEscape,
   stripAnsiEscapeSequences,
   runCommand,
@@ -18,7 +16,6 @@ const {
   runGitlabApiJson,
   resolveGitLabDockerNetwork,
   containerName,
-  randomPort,
   execInContainer,
   execInContainerAsUser,
   userHome,
@@ -31,7 +28,13 @@ const { I } = global.inject()
 const { executeCopier } = require('../../template/step_objects/commands')
 
 const CONTAINER_WORKDIR = '/workspace'
-const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..')
+// Inside the dockerised codeceptjs runner the full repo is tarred into
+// `/workspace` by `project:test:bootstrap` before codeceptjs starts. The
+// default keeps local (non-docker) runs working by falling back to a path
+// relative to __dirname.
+const REPO_ROOT = fs.existsSync('/workspace/project/docker-compose.yml')
+  ? '/workspace'
+  : path.resolve(__dirname, '..', '..', '..', '..')
 const TTYD_READY_TIMEOUT = 30000
 const TERMINAL_CMD_TIMEOUT = 300000
 const INSTALL_SCRIPT_TIMEOUT = 900000
@@ -69,12 +72,49 @@ const COMPACT_TASK_GLAB_AUTH_COMMAND = [
   'task glab:auth || true'
 ].join('; ')
 
-const COMPACT_TERMINAL_VISUAL_BASELINES = new Set([
-  'glab-auth-status-multi-host',
-  'glab-auth-status-host-scoped',
-  'glab-auth-gitlabssh-normalization',
-  'glab-auth-host-detection'
-])
+// Lines matching these patterns are filtered from the terminal capture
+// before the visual assertion. They represent install-time noise whose
+// exact content or ordering is non-deterministic across CI runs.
+const SHELL_PROMPT_RE = /bootstrap@workspace:[^\r\n]*\$\s*$/
+const PROMPT_STABILITY_MS = 2000
+const PROMPT_POLL_SECONDS = 1
+
+const TERMINAL_NOISE_PATTERNS = [
+  /^\(Reading database/,
+  /^Preparing to unpack /,
+  /^Unpacking /,
+  /^Selecting previously unselected package/,
+  /^Setting up /,
+  /^Processing triggers for /,
+  /^debconf: /,
+  /^downloading /,
+  /^Downloading \S+ \(/,
+  /^Installed \d+ packages? in /,
+  /^Resolved \d+ packages? in /,
+  /^ \+ \S+==/,
+  /^Prepared \d+ packages? in /,
+  /^Audited \d+ packages? in /,
+  /^go: downloading /,
+  /^go: finding /,
+  /^go: extracting /,
+  /^Get:\d+ /,
+  /^Fetched [\d.]+ .?B in /,
+  /^Need to get /,
+  /^After this operation, /,
+  /^\d+ upgraded, /,
+  /^update-alternatives: /,
+  /^Reading package lists/,
+  /^Building dependency tree/,
+  /^Reading state information/,
+  /^The following additional packages/,
+  /^The following NEW packages/,
+  /^\s+python3-/,
+  /^npm notice/,
+  /^added \d+ packages?, and audited /,
+  /^\d+ packages? are looking for funding/,
+  /^ {2}run `npm fund`/,
+  /^found \d+ vulnerabilities/
+]
 
 const activeContainers = []
 
@@ -161,7 +201,6 @@ async function scrollTerminalToBottom () {
 }
 
 Before(function (scenario) { // eslint-disable-line no-undef
-  this.ttydPort = null
   this.ttydContainerName = null
   this.ttydGeneratedProjectDir = null
   this.dockerContainerName = null
@@ -205,7 +244,7 @@ After(function () { // eslint-disable-line no-undef
   }
 
   if (this.gitlabStackStarted) {
-    runCommandWithResult('cd project && docker compose down', { timeout: GITLAB_STACK_TIMEOUT })
+    runCommandWithResult('cd /workspace/project && docker compose down', { timeout: GITLAB_STACK_TIMEOUT })
   }
 })
 
@@ -216,20 +255,22 @@ function setupTtydContainer (scenario, options = {}) {
   scenario.ttydGeneratedProjectDir = path.join(tempBaseDir, 'generated')
   fs.mkdirSync(scenario.ttydGeneratedProjectDir, { recursive: true })
 
-  executeCopier(scenario.ttydGeneratedProjectDir)
+  executeCopier(scenario.ttydGeneratedProjectDir, {}, { cwd: REPO_ROOT })
 
   const taskBinary = fs.realpathSync(runCommand('command -v task').trim())
-  scenario.ttydPort = randomPort()
   scenario.ttydContainerName = containerName()
 
-  // Start container from pre-built ubuntu image via docker compose
+  // Start container from pre-built ubuntu image via docker compose.
+  // No port publishing: the runner reaches ttyd through the shared
+  // `the-devsecops-toolbox` network using the container hostname.
   runCommand(
-    `cd project && docker compose run -d --name ${shellEscape(scenario.ttydContainerName)} --publish ${scenario.ttydPort}:7681 ubuntu`,
+    `cd /workspace/project && docker compose run -d --name ${shellEscape(scenario.ttydContainerName)} ubuntu`,
     { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(scenario.ttydContainerName)
 
-  // Copy task binary and generated project into the container
+  // Copy task binary (from the runner's own filesystem, /usr/local/bin/task in
+  // the codeceptjs image) and generated project into the container.
   runCommand(`docker cp ${shellEscape(taskBinary)} ${shellEscape(`${scenario.ttydContainerName}:/usr/local/bin/task`)}`)
   runCommand(`docker cp ${shellEscape(`${scenario.ttydGeneratedProjectDir}/.`)} ${shellEscape(`${scenario.ttydContainerName}:${CONTAINER_WORKDIR}`)}`)
 
@@ -262,7 +303,7 @@ function setupTtydContainer (scenario, options = {}) {
       'git add .',
       'git commit -q -m "bootstrap init"',
       `git remote add origin ${gitRemote}`
-    ].join('\n'))
+    ].join('\n'), { user: 'bootstrap' })
 
     if (gitResult.exitCode !== 0) {
       throw new Error(`Failed to set up git remote:\n${gitResult.output}`)
@@ -272,7 +313,7 @@ function setupTtydContainer (scenario, options = {}) {
   // Start ttyd as bootstrap user (already the default user in the image; .bashrc sets PROMPT_COMMAND)
   const ttydStart = execInContainer(scenario.ttydContainerName, [
     'set -eu',
-    `cd ${CONTAINER_WORKDIR} && nohup ttyd -p 7681 -W -t scrollback=5000 bash >/tmp/ttyd.log 2>&1 &`,
+    `cd ${CONTAINER_WORKDIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
   ].join('\n'))
 
@@ -280,7 +321,7 @@ function setupTtydContainer (scenario, options = {}) {
     throw new Error(`Failed to start ttyd:\n${ttydStart.output}`)
   }
 
-  waitForTtyd(scenario.ttydPort, TTYD_READY_TIMEOUT)
+  waitForTtyd(scenario.ttydContainerName, TTYD_READY_TIMEOUT)
 }
 
 Given('a generated toolbox project is mounted in a fresh Ubuntu ttyd container', function () { // eslint-disable-line no-undef
@@ -606,55 +647,50 @@ Given('the repository file {string} is copied into the ttyd container', function
 })
 
 When('I open the web terminal', async function () { // eslint-disable-line no-undef
-  I.amOnPage(`http://${dockerHost()}:${this.ttydPort}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${this.ttydContainerName}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
 })
 
+async function readLastNonEmptyRenderedRow () {
+  return I.executeScript(function () {
+    const rows = document.querySelectorAll('.xterm-rows > div')
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const text = rows[i].textContent || ''
+      if (text.replace(/\s+$/, '').length > 0) return text
+    }
+    return ''
+  })
+}
+
+async function waitForPromptReturn (scenario, command, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  let promptSeenSince = null
+  let lastLine = ''
+  while (Date.now() < deadline) {
+    lastLine = await readLastNonEmptyRenderedRow()
+    if (SHELL_PROMPT_RE.test(lastLine)) {
+      if (promptSeenSince === null) promptSeenSince = Date.now()
+      if (Date.now() - promptSeenSince >= PROMPT_STABILITY_MS) return
+    } else {
+      promptSeenSince = null
+    }
+    await I.wait(PROMPT_POLL_SECONDS)
+  }
+  const procCheck = execInContainer(scenario.ttydContainerName, 'ps -ef 2>&1 | head -30')
+  throw new Error(
+    `Timed out waiting for shell prompt after command "${command}" (${timeoutMs}ms)\n` +
+    `--- Last rendered row: ${JSON.stringify(lastLine)}\n` +
+    `--- Container processes:\n${procCheck.output.trim()}`
+  )
+}
+
 async function runTerminalCommandAndWait (scenario, command) {
-  execInContainer(scenario.ttydContainerName, 'rm -f /tmp/ttyd-cmd-done')
   I.click('.xterm-screen')
   I.type(command)
-  const commandStartedAtEpoch = Math.floor(Date.now() / 1000)
   I.pressKey('Enter')
-  await I.wait(5)
-
-  const name = shellEscape(scenario.ttydContainerName)
-  const cmd = [
-    'while :; do',
-    '  if [ -f /tmp/ttyd-cmd-done ]; then',
-    '    marker_mtime="$(stat -c %Y /tmp/ttyd-cmd-done 2>/dev/null || echo 0)"',
-    `    if [ "$marker_mtime" -ge "${commandStartedAtEpoch}" ]; then`,
-    '      break',
-    '    fi',
-    '  fi',
-    '  sleep 1',
-    'done',
-    'sleep 2'
-  ].join('\n')
-
-  try {
-    execSync(`docker exec ${name} bash -c ${shellEscape(cmd)}`, {
-      encoding: 'utf-8',
-      timeout: TERMINAL_CMD_TIMEOUT
-    })
-  } catch (error) {
-    if (error.killed) {
-      const markerCheck = execInContainer(scenario.ttydContainerName, 'ls -la /tmp/ttyd-cmd-done 2>&1 || echo "MARKER_NOT_FOUND"')
-      const procCheck = execInContainer(scenario.ttydContainerName, 'ps aux 2>&1 | head -20')
-      const logCheck = execInContainer(scenario.ttydContainerName, 'cat /tmp/ttyd.log 2>&1 | tail -10')
-      const bashrcCheck = execInContainer(scenario.ttydContainerName, 'grep PROMPT_COMMAND /home/bootstrap/.bashrc 2>&1')
-      throw new Error(
-        `Timed out waiting for command "${command}" after ${TERMINAL_CMD_TIMEOUT}ms\n` +
-        `--- Marker: ${markerCheck.output.trim()}\n` +
-        `--- PROMPT_COMMAND in bashrc: ${bashrcCheck.output.trim()}\n` +
-        `--- Processes:\n${procCheck.output.trim()}\n` +
-        `--- ttyd log:\n${logCheck.output.trim()}`
-      )
-    }
-    throw error
-  }
-
+  await I.wait(2)
+  await waitForPromptReturn(scenario, command, INSTALL_SCRIPT_TIMEOUT)
   await waitForTerminalSettle()
 }
 
@@ -718,100 +754,234 @@ Then('the terminal should contain {string}', async function (expectedText) { // 
   }
 })
 
-Then('the terminal output should visually match {string}', async function (baselineName) { // eslint-disable-line no-undef
-  const useCompactTerminalFrame = COMPACT_TERMINAL_VISUAL_BASELINES.has(baselineName)
-  await I.wait(1)
-  I.resizeWindow(1920, useCompactTerminalFrame ? 420 : 1080)
-  await I.wait(2)
-  await waitForTerminalSettle()
+const COMPACT_CAPTURE_ID = '__ttyd_compact_capture__'
 
-  const outputDir = path.resolve(__dirname, '..', '_output')
+async function buildCompactTerminalCapture (captureId, patternSources) {
+  return I.executeScript(function (args) {
+    const id = args.id
+    const sources = args.sources
+    const patterns = sources.map(function (src) { return new RegExp(src) })
+    const screen = document.querySelector('.xterm-screen')
+    if (!screen) return { kept: 0, error: 'no-xterm-screen' }
 
-  const scrollInfo = await I.executeScript(function () {
-    const vp = document.querySelector('.xterm-viewport')
-    if (!vp) return null
-    return { scrollHeight: vp.scrollHeight, clientHeight: vp.clientHeight }
-  })
+    const screenStyles = window.getComputedStyle(screen)
 
-  if (scrollInfo && scrollInfo.scrollHeight > scrollInfo.clientHeight) {
-    const pageHeight = scrollInfo.clientHeight
-    const totalHeight = scrollInfo.scrollHeight
-    const pageCount = Math.ceil(totalHeight / pageHeight)
-    const contentPages = []
-
-    for (let i = 0; i < pageCount; i++) {
-      const scrollPos = (i < pageCount - 1) ? i * pageHeight : totalHeight - pageHeight
-      await I.executeScript(function (pos) {
-        document.querySelector('.xterm-viewport').scrollTop = pos
-      }, scrollPos)
-      await I.wait(0.5)
-      I.moveCursorTo('body', 1, 1)
-      await I.wait(0.3)
-
-      const pagePath = path.resolve(outputDir, `_scroll_${baselineName}_p${i}.png`)
-      await I.usePlaywrightTo('capture scroll page', async ({ page }) => {
-        await page.screenshot({ path: pagePath })
-      })
-      contentPages.push(pagePath)
+    function resolveOpaqueBackground () {
+      const candidates = [
+        document.querySelector('.xterm-viewport'),
+        document.querySelector('.terminal'),
+        document.querySelector('.xterm'),
+        document.body,
+        document.documentElement
+      ]
+      for (let i = 0; i < candidates.length; i++) {
+        const el = candidates[i]
+        if (!el) continue
+        const bg = window.getComputedStyle(el).backgroundColor
+        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+          return bg
+        }
+      }
+      return 'rgb(0, 0, 0)'
     }
 
-    const pagesBase64 = contentPages.map(function (f) {
-      return fs.readFileSync(f).toString('base64')
-    })
-    const lastPageVisible = totalHeight - (pageCount - 1) * pageHeight
-    const stitchHeight = (contentPages.length - 1) * pageHeight + lastPageVisible
-    const fullPath = path.resolve(outputDir, `${baselineName}-full.png`)
+    const opaqueBackground = resolveOpaqueBackground()
 
-    await I.usePlaywrightTo('stitch scrolling screenshots', async ({ browser }) => {
-      const stitchPage = await browser.newPage()
-      await stitchPage.setViewportSize({ width: 1920, height: Math.min(stitchHeight, 16000) })
-      await stitchPage.setContent(
-        '<!DOCTYPE html><html><body style="margin:0;padding:0">' +
-        '<canvas id="c" width="1920" height="' + stitchHeight + '"></canvas>' +
-        '</body></html>'
-      )
+    const previous = document.getElementById(id)
+    if (previous) previous.remove()
 
-      for (let i = 0; i < pagesBase64.length; i++) {
-        const isLast = (i === pagesBase64.length - 1)
-        const yDest = i * pageHeight
-        const srcY = isLast ? (pageHeight - lastPageVisible) : 0
-        const drawH = isLast ? lastPageVisible : pageHeight
+    const rowNodes = Array.from(document.querySelectorAll('.xterm-rows > div'))
+    if (rowNodes.length === 0) return { kept: 0, error: 'no-rows' }
 
-        await stitchPage.evaluate(async (args) => {
-          return new Promise(function (resolve) {
-            const img = new window.Image()
-            img.onload = function () {
-              const ctx = document.getElementById('c').getContext('2d')
-              ctx.drawImage(img, 0, args.srcY, 1920, args.drawH, 0, args.yDest, 1920, args.drawH)
-              resolve()
-            }
-            img.src = 'data:image/png;base64,' + args.b64
-          })
-        }, { b64: pagesBase64[i], srcY, drawH, yDest })
+    const sampleStyles = window.getComputedStyle(rowNodes[0])
+    let rowHeight = parseFloat(sampleStyles.height) || 0
+    if (!rowHeight || rowHeight < 4) {
+      const sorted = rowNodes
+        .map(function (row) { return parseFloat(row.style.top || '0') || 0 })
+        .sort(function (a, b) { return a - b })
+      for (let i = 1; i < sorted.length; i++) {
+        const delta = sorted[i] - sorted[i - 1]
+        if (delta > 0) { rowHeight = delta; break }
       }
+    }
+    if (!rowHeight || rowHeight < 4) rowHeight = 17
 
-      await stitchPage.screenshot({ path: fullPath, fullPage: true })
-      await stitchPage.close()
+    const sortedRows = rowNodes
+      .map(function (row) {
+        return { row, top: parseFloat(row.style.top || '0') || 0 }
+      })
+      .sort(function (a, b) { return a.top - b.top })
+
+    // Build a shadow root to fully isolate from xterm CSS rules.
+    const host = document.createElement('div')
+    host.id = id
+    host.style.setProperty('position', 'fixed', 'important')
+    host.style.setProperty('top', '0', 'important')
+    host.style.setProperty('left', '0', 'important')
+    host.style.setProperty('z-index', '2147483647', 'important')
+    host.style.setProperty('margin', '0', 'important')
+    host.style.setProperty('padding', '0', 'important')
+    host.style.setProperty('background', opaqueBackground, 'important')
+
+    const shadow = host.attachShadow({ mode: 'open' })
+
+    const style = document.createElement('style')
+    style.textContent = [
+      ':host { display: block; margin: 0; padding: 0; }',
+      '.wrap {',
+      '  display: block;',
+      '  margin: 0;',
+      '  padding: 0;',
+      '  box-sizing: content-box;',
+      '  font-family: ' + screenStyles.fontFamily + ';',
+      '  font-size: ' + screenStyles.fontSize + ';',
+      '  font-weight: ' + screenStyles.fontWeight + ';',
+      '  letter-spacing: ' + screenStyles.letterSpacing + ';',
+      '  line-height: ' + rowHeight + 'px;',
+      '  color: ' + screenStyles.color + ';',
+      '  background: ' + opaqueBackground + ';',
+      '  white-space: pre;',
+      '}',
+      '.row {',
+      '  display: block;',
+      '  position: static;',
+      '  margin: 0;',
+      '  padding: 0;',
+      '  border: 0;',
+      '  height: ' + rowHeight + 'px;',
+      '  min-height: ' + rowHeight + 'px;',
+      '  max-height: ' + rowHeight + 'px;',
+      '  line-height: ' + rowHeight + 'px;',
+      '  overflow: hidden;',
+      '  white-space: pre;',
+      '}',
+      '.row > span { display: inline; vertical-align: baseline; }'
+    ].join('\n')
+    shadow.appendChild(style)
+
+    const wrap = document.createElement('div')
+    wrap.className = 'wrap'
+    shadow.appendChild(wrap)
+
+    let kept = 0
+    let maxChars = 0
+
+    sortedRows.forEach(function (entry) {
+      const rawText = entry.row.textContent || ''
+      const trimmed = rawText.replace(/\s+$/, '')
+      if (trimmed === '') return
+      if (patterns.some(function (re) { return re.test(trimmed) })) return
+
+      const line = document.createElement('div')
+      line.className = 'row'
+
+      // Clone child nodes but stop once we've emitted up to `trimmed.length` chars
+      // so trailing whitespace-only spans don't bloat the row width.
+      let emitted = 0
+      const limit = trimmed.length
+
+      Array.from(entry.row.childNodes).some(function (node) {
+        if (emitted >= limit) return true
+
+        if (node.nodeType === 3) {
+          const textValue = node.textContent || ''
+          const take = Math.min(textValue.length, limit - emitted)
+          if (take > 0) {
+            line.appendChild(document.createTextNode(textValue.slice(0, take)))
+            emitted += take
+          }
+          return false
+        }
+
+        if (node.nodeType !== 1) return false
+
+        const nodeText = node.textContent || ''
+        const take = Math.min(nodeText.length, limit - emitted)
+        if (take <= 0) return emitted >= limit
+
+        const sourceStyle = window.getComputedStyle(node)
+        const span = document.createElement('span')
+        span.textContent = nodeText.slice(0, take)
+        span.style.setProperty('color', sourceStyle.color, 'important')
+        span.style.setProperty('background-color', sourceStyle.backgroundColor, 'important')
+        span.style.setProperty('font-weight', sourceStyle.fontWeight, 'important')
+        span.style.setProperty('font-style', sourceStyle.fontStyle, 'important')
+        span.style.setProperty('text-decoration', sourceStyle.textDecoration, 'important')
+        line.appendChild(span)
+        emitted += take
+
+        return false
+      })
+
+      wrap.appendChild(line)
+      kept++
+
+      if (trimmed.length > maxChars) maxChars = trimmed.length
     })
 
-    contentPages.forEach(function (f) { try { fs.unlinkSync(f) } catch (e) { /* ignore */ } })
+    host.style.setProperty('height', (kept * rowHeight) + 'px', 'important')
+    wrap.style.setProperty('display', 'inline-block', 'important')
+    wrap.style.setProperty('height', (kept * rowHeight) + 'px', 'important')
 
-    await scrollTerminalToBottom()
-    await waitForTerminalSettle()
+    document.body.appendChild(host)
+
+    // Measure natural width after DOM insertion so the host bounds the content tightly.
+    const naturalWidth = wrap.getBoundingClientRect().width
+    const finalWidth = Math.ceil(naturalWidth) + 2
+    host.style.setProperty('width', finalWidth + 'px', 'important')
+
+    return { kept, width: finalWidth, rowHeight, maxChars }
+  }, { id: captureId, sources: patternSources })
+}
+
+async function removeCompactTerminalCapture (captureId) {
+  return I.executeScript(function (id) {
+    const el = document.getElementById(id)
+    if (el) el.remove()
+  }, captureId)
+}
+
+Then('the terminal output should visually match {string}', async function (baselineName) { // eslint-disable-line no-undef
+  await I.wait(1)
+  I.resizeWindow(1920, 1080)
+  await I.wait(2)
+
+  // When a scenario calls `the command output is displayed in the browser`,
+  // the page is replaced with a <pre> under <body>. Detect that mode and
+  // capture the <pre> directly — it is already deterministic.
+  const mode = await I.executeScript(function () {
+    if (document.querySelector('.xterm-screen')) return 'xterm'
+    if (document.querySelector('body > pre')) return 'pre'
+    return 'unknown'
+  })
+
+  if (mode === 'pre') {
+    await I.wait(0.3)
+    await I.captureScreenshot(baselineName, 'actual', 'body > pre')
+    I.assertVisualMatch(baselineName, { captureActual: false })
+    I.resizeWindow(1024, 768)
+    await I.wait(1)
+    return
   }
 
-  await scrollTerminalToBottom()
   await waitForTerminalSettle()
-  let finalState = await readTerminalState()
-  if (!finalState || !finalState.atBottom) {
-    await scrollTerminalToBottom()
-    await waitForTerminalSettle(3)
-    finalState = await readTerminalState()
+  await scrollTerminalToBottom()
+  await I.wait(0.5)
+
+  const info = await buildCompactTerminalCapture(
+    COMPACT_CAPTURE_ID,
+    TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source })
+  )
+  if (!info || !info.kept) {
+    await removeCompactTerminalCapture(COMPACT_CAPTURE_ID)
+    throw new Error(`Compact terminal capture produced no rows for "${baselineName}" (mode=${mode}, info=${JSON.stringify(info)})`)
   }
 
-  I.moveCursorTo('body', 1, 1)
-  I.takeScreenshot(baselineName)
-  I.assertVisualMatch(baselineName)
+  await I.wait(0.2)
+  await I.captureScreenshot(baselineName, 'actual', '#' + COMPACT_CAPTURE_ID)
+  I.assertVisualMatch(baselineName, { captureActual: false })
+
+  await removeCompactTerminalCapture(COMPACT_CAPTURE_ID)
   I.resizeWindow(1024, 768)
   await I.wait(1)
 })
@@ -823,7 +993,7 @@ Then('I take a terminal screenshot named {string}', async function (name) { // e
 
 Given('the GitLab test stack is started with docker compose', function () { // eslint-disable-line no-undef
   const result = runCommandWithResult(
-    'cd project && docker compose up -d codeceptjs --wait',
+    'cd /workspace/project && docker compose up -d codeceptjs --wait',
     { timeout: GITLAB_STACK_TIMEOUT }
   )
 
@@ -846,7 +1016,7 @@ Given('the GitLab test stack is started with docker compose', function () { // e
 Given('a fresh Ubuntu docker container is running', function () { // eslint-disable-line no-undef
   this.dockerContainerName = containerName()
   runCommand(
-    `cd project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
+    `cd /workspace/project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
     { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(this.dockerContainerName)
@@ -856,7 +1026,7 @@ Given('a fresh Ubuntu docker container is running on the GitLab test network', f
   this.dockerContainerName = containerName()
   this.gitlabDockerNetworkName = GITLAB_DOCKER_NETWORK_ALIAS
   runCommand(
-    `cd project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
+    `cd /workspace/project && docker compose run -d --name ${shellEscape(this.dockerContainerName)} ubuntu`,
     { timeout: GITLAB_STACK_TIMEOUT }
   )
   activeContainers.push(this.dockerContainerName)
@@ -1212,11 +1382,19 @@ When('the command output is displayed in the browser', async function () { // es
     }
 
     // Filter noisy, non-deterministic JSON payloads printed by `glab api`.
-    return !(
+    if (
       trimmed.startsWith('{"id":') &&
       trimmed.includes('"name_with_namespace"') &&
       trimmed.includes('"default_branch"')
-    )
+    ) {
+      return false
+    }
+
+    // Filter timing/package-counter lines (npm / uv / apt / go) that vary
+    // between runs — same patterns applied to xterm-mode captures.
+    return !TERMINAL_NOISE_PATTERNS.some(function (pattern) {
+      return pattern.test(trimmed)
+    })
   })
 
   let renderedLines = lines.slice(Math.max(0, lines.length - VISUAL_TAIL_LINE_COUNT))
