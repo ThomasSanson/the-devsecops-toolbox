@@ -57,7 +57,7 @@ function runCommandWithResult (command, options = {}) {
     os.tmpdir(),
     `cmd-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.log`
   )
-  const wrapped = `{ ${command}; } 2>&1 | tee ${shellEscape(tempFile)}; exit \${PIPESTATUS[0]}`
+  const wrapped = `{ ${command}; } | tee ${shellEscape(tempFile)}; exit \${PIPESTATUS[0]}`
   const { timeout = 120000, ...rest } = options
   const result = spawnSync('bash', ['-c', wrapped], {
     stdio: ['ignore', 'inherit', 'inherit'],
