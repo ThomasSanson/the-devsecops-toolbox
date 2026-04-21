@@ -1,5 +1,8 @@
 const crypto = require('crypto')
-const { execSync } = require('child_process')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { execSync, spawnSync } = require('child_process')
 
 const GITLAB_DOCKER_NETWORK_ALIAS = 'the-devsecops-toolbox'
 const GITLAB_READY_POLL_INTERVAL_SECONDS = 2
@@ -47,17 +50,34 @@ function runCommand (command, options = {}) {
 }
 
 function runCommandWithResult (command, options = {}) {
-  try {
-    const output = runCommand(command, options)
-    return { exitCode: 0, output: output || '' }
-  } catch (error) {
-    const stdout = error.stdout ? String(error.stdout) : ''
-    const stderr = error.stderr ? String(error.stderr) : ''
+  // Stream the command's output live to the parent's stdout while also
+  // capturing it for later assertions. Without this, long-running docker
+  // exec calls run silently for minutes and the test log shows nothing.
+  const tempFile = path.join(
+    os.tmpdir(),
+    `cmd-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.log`
+  )
+  const wrapped = `{ ${command}; } 2>&1 | tee ${shellEscape(tempFile)}; exit \${PIPESTATUS[0]}`
+  const { timeout = 120000, ...rest } = options
+  const result = spawnSync('bash', ['-c', wrapped], {
+    stdio: ['ignore', 'inherit', 'inherit'],
+    timeout,
+    ...rest
+  })
 
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: `${stdout}${stderr}`
-    }
+  let output = ''
+  try {
+    output = fs.readFileSync(tempFile, 'utf8')
+  } catch (_) {
+    // File may not exist if bash couldn't launch.
+  }
+  try {
+    fs.unlinkSync(tempFile)
+  } catch (_) { /* ignore */ }
+
+  return {
+    exitCode: typeof result.status === 'number' ? result.status : 1,
+    output
   }
 }
 
