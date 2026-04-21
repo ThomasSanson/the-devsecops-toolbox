@@ -2,6 +2,21 @@
 
 # Changelog
 
+## 22.2.0 (2026-04-21)
+
+### Feat
+
+- **dev**: add gum and glow taskfiles, update glab auth tests, set hostname
+- **setup**: add gum & glow tools with user‑space install fallback
+
+### Fix
+
+- **bootstrap**: make premium glab auth UI testable from scratch
+
+### Refactor
+
+- **ci**: add uv, Docker CLI and adjust bootstrap tests for paths
+
 ## 22.1.7 (2026-04-17)
 
 ### Fix
