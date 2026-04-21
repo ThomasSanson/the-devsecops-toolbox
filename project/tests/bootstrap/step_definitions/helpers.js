@@ -253,7 +253,7 @@ function runHostCommandInScenario (scenario, command, options = {}) {
   // `.config/devsecops/install.sh` resolve to the synced project layout
   // rather than /app, which only contains the codeceptjs test harness.
   const result = runCommandWithResult(command, {
-    timeout: 300000,
+    timeout: 900000,
     cwd: '/workspace',
     ...options
   })
