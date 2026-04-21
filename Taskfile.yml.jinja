@@ -115,9 +115,6 @@ includes:
   megalinter:
     taskfile: .config/megalinter/Taskfile.yml
     optional: true
-  nodejs:
-    taskfile: .config/nodejs/Taskfile.yml
-    optional: true
 {%- if container_runtime == 'podman' %}
   podman:
     taskfile: .config/podman/Taskfile.yml

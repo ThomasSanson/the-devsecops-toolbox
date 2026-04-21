@@ -69,14 +69,17 @@ tasks:
   install:
     desc: Install commitlint dependencies.
     internal: true
-    deps:
-      - :nodejs:install
     status:
       - test -d .config/commitlint/node_modules
     cmds:
       - cmd: echo "🔄 Installing commitlint dependencies"
         silent: true
-      - npm install --prefix .config/commitlint
+      - |
+        if ! command -v npm >/dev/null 2>&1; then
+          echo "⏭️  Skipping commitlint install: npm not yet available (deferred to user pass)"
+          exit 0
+        fi
+        npm install --prefix .config/commitlint
       - cmd: echo '🎉 Commitlint dependencies installed.'
         silent: true
 

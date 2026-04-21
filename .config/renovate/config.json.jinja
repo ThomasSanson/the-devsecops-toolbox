@@ -11,7 +11,7 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
-  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version", ".config/task/version"{% endif %}],
+  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**", ".config/node/version"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version", ".config/task/version"{% endif %}],
   "allowedCommands": [
     "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
   ],
@@ -44,8 +44,15 @@
       "automergeStrategy": "fast-forward",
       "prCreation": "immediate"
     }
-  ]{% if ci_platform.startswith('gitlab') %},
+  ],
   "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.config/node/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version"
+    }{% if ci_platform.startswith('gitlab') %},
     {
       "customType": "regex",
       "fileMatch": ["\\.config/glab/version$"],
@@ -70,6 +77,6 @@
       "depNameTemplate": "go-task/task",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$"
-    }
-  ]{% endif %}
+    }{% endif %}
+  ]
 }

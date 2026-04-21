@@ -134,13 +134,6 @@ tasks:
     cmds:
       - task: :lefthook:lefthook:install
 
-  nodejs:
-    internal: true
-    status:
-      - test "{{.TASK_NODEJS_ENABLED}}" = "false"
-    cmds:
-      - task: :nodejs:install
-
   podman:
     internal: true
     status:

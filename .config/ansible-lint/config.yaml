@@ -5,7 +5,6 @@ exclude_paths:
   - megalinter-reports/
   - .config/helm/roles
   - .config/docker-ce/roles
-  - .config/nodejs/roles
   - .config/podman/roles
 
 skip_list:

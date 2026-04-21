@@ -1,9 +1,27 @@
-#!/usr/bin/env sh
-# Install Node.js if not already present
+#!/usr/bin/env bash
+# Install Node.js via nvm at the pinned version (read from ./version file).
+#
+# nvm is intentionally user-level: it installs into $HOME/.nvm and does not
+# require sudo. If this script is invoked as root (e.g. first Docker build
+# pass), it returns early — Node is installed in the subsequent user pass.
 
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NODE_VERSION="${NODE_VERSION:-$(cat "$SCRIPT_DIR/version" 2>/dev/null)}"
+NVM_VERSION="${NVM_VERSION:-v0.40.1}"
+
 log() { printf "%s\n" "$*"; }
+
+if [ -z "$NODE_VERSION" ]; then
+  log "Error: Could not determine node version. Check .config/node/version file."
+  exit 1
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+  log "Skipping node install: running as root. nvm will be installed in the user pass."
+  exit 0
+fi
 
 retry_cmd() {
   cmd="$1"
@@ -12,7 +30,7 @@ retry_cmd() {
   attempt=1
 
   while [ "$attempt" -le "$max_attempts" ]; do
-    if sh -c "$cmd"; then
+    if bash -c "$cmd"; then
       return 0
     fi
 
@@ -28,119 +46,31 @@ retry_cmd() {
   return 1
 }
 
-install_node_from_nodesource() {
-  rm -rf /var/lib/apt/lists/*
-  if ! retry_cmd "apt-get update -qq"; then
-    return 1
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+  log "nvm not found. Installing nvm ${NVM_VERSION}..."
+  NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh"
+  if ! retry_cmd "curl -fsSL '${NVM_INSTALLER_URL}' -o /tmp/nvm-install.sh"; then
+    log "Error: Failed to download nvm installer."
+    exit 1
   fi
-
-  if ! retry_cmd "apt-get install -y -qq nodejs"; then
-    return 1
-  fi
-
-  return 0
-}
-
-install_node_from_distro_repo() {
-  log "NodeSource repository install failed after retries. Falling back to distro packages."
-  rm -f /etc/apt/sources.list.d/nodesource.list
-  rm -f /etc/apt/keyrings/nodesource.gpg
-  rm -rf /var/lib/apt/lists/*
-  if ! retry_cmd "apt-get update -qq"; then
-    return 1
-  fi
-
-  if ! retry_cmd "apt-get install -y -qq nodejs npm"; then
-    return 1
-  fi
-
-  return 0
-}
-
-if command -v node >/dev/null 2>&1; then
-  log "node already installed: $(node --version)"
-  exit 0
+  bash /tmp/nvm-install.sh >/dev/null
+  rm -f /tmp/nvm-install.sh
 fi
 
-log "node not found. Installing..."
+# shellcheck disable=SC1091
+. "$NVM_DIR/nvm.sh"
 
-# Ensure root privileges for package installation
-if [ "$(id -u)" -ne 0 ]; then
-  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
-    log "sudo unavailable or blocked. Installing node via user-space tarball..."
-    mkdir -p ~/.local/bin ~/.local/node
-    if curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz | tar -xJ -C ~/.local/node --strip-components=1; then
-      ln -sf ~/.local/node/bin/node ~/.local/bin/node
-      ln -sf ~/.local/node/bin/npm ~/.local/bin/npm
-      ln -sf ~/.local/node/bin/npx ~/.local/bin/npx
-      log "Node.js user-space installation successful."
-      exit 0
-    else
-      log "Error: Failed to download and extract Node.js tarball."
-      exit 1
-    fi
-  fi
-  log "Re-running with sudo..."
-  sudo env PATH="$PATH" sh "$0"
-  exit $?
-fi
-
-# Try to detect the package manager and install node
-if command -v apt-get >/dev/null 2>&1; then
-  # Debian/Ubuntu - Install Node.js 20.x LTS via NodeSource
-  log "Detected: Debian/Ubuntu (apt-get)"
-  export DEBIAN_FRONTEND=noninteractive
-  rm -rf /var/lib/apt/lists/*
-  retry_cmd "apt-get update -qq"
-  retry_cmd "apt-get install -y -qq ca-certificates curl"
-
-  # Add NodeSource repository for Node.js 20.x
-  mkdir -p /etc/apt/keyrings
-  retry_cmd "curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource-repo.gpg.key"
-  gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource-repo.gpg.key 2>/dev/null
-  rm -f /tmp/nodesource-repo.gpg.key
-  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list >/dev/null
-
-  if ! install_node_from_nodesource; then
-    install_node_from_distro_repo
-  fi
-elif command -v dnf >/dev/null 2>&1; then
-  # Modern Fedora/RHEL
-  log "Detected: Fedora/RHEL (dnf)"
-  dnf install -y nodejs npm
-elif command -v yum >/dev/null 2>&1; then
-  # Legacy RHEL/CentOS
-  log "Detected: RHEL/CentOS (yum)"
-  yum install -y nodejs npm
-elif command -v apk >/dev/null 2>&1; then
-  # Alpine Linux
-  log "Detected: Alpine Linux (apk)"
-  apk add --no-cache nodejs npm
-elif command -v pacman >/dev/null 2>&1; then
-  # Arch Linux
-  log "Detected: Arch Linux (pacman)"
-  pacman -Sy --noconfirm nodejs npm
-elif command -v zypper >/dev/null 2>&1; then
-  # openSUSE
-  log "Detected: openSUSE (zypper)"
-  zypper --non-interactive refresh
-  zypper --non-interactive install nodejs npm
+if nvm ls "$NODE_VERSION" >/dev/null 2>&1; then
+  log "node ${NODE_VERSION} already installed via nvm."
 else
-  log "Error: Unknown or unsupported package manager."
-  exit 1
+  log "Installing node ${NODE_VERSION} via nvm..."
+  nvm install "$NODE_VERSION"
 fi
 
-# Verify installation
-if command -v node >/dev/null 2>&1; then
-  log "node installed successfully: $(node --version)"
-else
-  log "Error: Failed to install node."
-  exit 1
-fi
+nvm alias default "$NODE_VERSION" >/dev/null
+nvm use default >/dev/null
 
-if command -v npm >/dev/null 2>&1; then
-  log "npm installed successfully: $(npm --version)"
-else
-  log "Error: Failed to install npm."
-  exit 1
-fi
+log "node installed successfully: $(node --version)"
+log "npm installed successfully: $(npm --version)"

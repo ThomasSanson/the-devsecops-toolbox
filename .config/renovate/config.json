@@ -42,6 +42,13 @@
   "customManagers": [
     {
       "customType": "regex",
+      "fileMatch": ["\\.config/node/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version"
+    },
+    {
+      "customType": "regex",
       "fileMatch": ["\\.config/glab/version$"],
       "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "gitlab-org/cli",

@@ -29,7 +29,7 @@ The repository must follow a standardised structure as outlined below. This stru
 ```
 
 - **Infrastructure-as-Code (IaC):** All infrastructure configuration files (e.g. Helm charts, Kubernetes manifests) must reside in the `iac/` directory.
-- **Configuration Files:** All technology-specific configurations must be placed under `.config/<technology>/` (e.g. `.config/nodejs/`, `.config/megalinter/`).
+- **Configuration Files:** All technology-specific configurations must be placed under `.config/<technology>/` (e.g. `.config/node/`, `.config/megalinter/`).
 - **Tests:** All test cases and scripts are to be maintained within the `tests/` directory, organised by test type (unit, integration, end-to-end).
 - **Tasks:** All DevOps tasks must be implemented in the existing `project/Taskfile.yml` file, which provides the basic structure for all phases of the DevOps loop.
 

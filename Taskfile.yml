@@ -103,9 +103,6 @@ includes:
   megalinter:
     taskfile: .config/megalinter/Taskfile.yml
     optional: true
-  nodejs:
-    taskfile: .config/nodejs/Taskfile.yml
-    optional: true
   podman:
     taskfile: .config/podman/Taskfile.yml
     optional: true
