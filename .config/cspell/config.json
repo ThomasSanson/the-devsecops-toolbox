@@ -177,6 +177,7 @@
     "mailhog",
     "megalinter",
     "microdnf",
+    "mkfifo",
     "myproject",
     "netcat",
     "nindent",
