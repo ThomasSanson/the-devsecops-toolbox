@@ -50,14 +50,30 @@ function runCommand (command, options = {}) {
 }
 
 function runCommandWithResult (command, options = {}) {
-  // Stream the command's output live to the parent's stdout while also
-  // capturing it for later assertions. Without this, long-running docker
-  // exec calls run silently for minutes and the test log shows nothing.
-  const tempFile = path.join(
-    os.tmpdir(),
-    `cmd-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.log`
-  )
-  const wrapped = `{ ${command}; } | tee ${shellEscape(tempFile)}; exit \${PIPESTATUS[0]}`
+  // Stream the command's output live to the parent while also capturing
+  // it for later assertions. stdout and stderr are captured separately so
+  // JSON-parsing callers can read clean stdout, while callers that match
+  // on error messages (docker network connect "already connected", …)
+  // still have access to stderr via the combined `output` field.
+  const stamp = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+  const stdoutFile = path.join(os.tmpdir(), `cmd-${stamp}.out`)
+  const stderrFile = path.join(os.tmpdir(), `cmd-${stamp}.err`)
+  const stdoutFifo = path.join(os.tmpdir(), `cmd-${stamp}.out.fifo`)
+  const stderrFifo = path.join(os.tmpdir(), `cmd-${stamp}.err.fifo`)
+  // Named pipes + tracked tee PIDs guarantee the capture files are fully
+  // flushed before bash exits. Process substitution `>(tee …)` races with
+  // spawnSync return: stderr can still be in-flight when Node reads the
+  // file, leaving regex checks (e.g. docker network "already connected")
+  // against an empty string.
+  const wrapped =
+    `mkfifo ${shellEscape(stdoutFifo)} ${shellEscape(stderrFifo)}; ` +
+    `tee ${shellEscape(stdoutFile)} < ${shellEscape(stdoutFifo)} & TOUT=$!; ` +
+    `tee ${shellEscape(stderrFile)} >&2 < ${shellEscape(stderrFifo)} & TERR=$!; ` +
+    `( ${command} ) > ${shellEscape(stdoutFifo)} 2> ${shellEscape(stderrFifo)}; ` +
+    'rc=$?; ' +
+    'wait $TOUT $TERR 2>/dev/null; ' +
+    `rm -f ${shellEscape(stdoutFifo)} ${shellEscape(stderrFifo)}; ` +
+    'exit $rc'
   const { timeout = 120000, ...rest } = options
   const result = spawnSync('bash', ['-c', wrapped], {
     stdio: ['ignore', 'inherit', 'inherit'],
@@ -65,19 +81,20 @@ function runCommandWithResult (command, options = {}) {
     ...rest
   })
 
-  let output = ''
-  try {
-    output = fs.readFileSync(tempFile, 'utf8')
-  } catch (_) {
-    // File may not exist if bash couldn't launch.
+  const readAndUnlink = function (file) {
+    let content = ''
+    try { content = fs.readFileSync(file, 'utf8') } catch (_) { /* ignore */ }
+    try { fs.unlinkSync(file) } catch (_) { /* ignore */ }
+    return content
   }
-  try {
-    fs.unlinkSync(tempFile)
-  } catch (_) { /* ignore */ }
+  const stdout = readAndUnlink(stdoutFile)
+  const stderr = readAndUnlink(stderrFile)
 
   return {
     exitCode: typeof result.status === 'number' ? result.status : 1,
-    output
+    stdout,
+    stderr,
+    output: `${stdout}${stderr}`
   }
 }
 
@@ -116,7 +133,7 @@ function runCurlJson (request, context) {
     throw new Error(`Failed ${context}:\n${result.output}`)
   }
 
-  return parseJson(result.output, context)
+  return parseJson(result.stdout, context)
 }
 
 function gitlabApiBaseUrl () {
