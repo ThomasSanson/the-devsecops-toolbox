@@ -2,6 +2,17 @@
 
 # Changelog
 
+## 22.2.1 (2026-04-22)
+
+### Fix
+
+- **helpers**: drop 2>&1 redirection in runCommandWithResult wrapper
+
+### Refactor
+
+- **helpers**: separate stdout/stderr capture for command runs
+- **node**: use nvm with pinned version, remove legacy nodejs setup
+
 ## 22.2.0 (2026-04-21)
 
 ### Feat
