@@ -78,6 +78,29 @@ async function revokeProjectAccessToken (projectName, tokenId, headers) {
   )
 }
 
+async function rotateProjectAccessToken (projectName, tokenId, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/access_tokens/${tokenId}/rotate`,
+    {},
+    headers
+  )
+}
+
+async function deleteProjectVariable (projectName, variableName, headers) {
+  return freshDelete(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
+    headers
+  )
+}
+
+async function createProjectVariable (projectName, payload, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables`,
+    payload,
+    headers
+  )
+}
+
 module.exports = {
   BASE_URL,
   projectPath,
@@ -88,5 +111,8 @@ module.exports = {
   updateProjectVariable,
   listProjectAccessTokens,
   createProjectAccessToken,
-  revokeProjectAccessToken
+  revokeProjectAccessToken,
+  rotateProjectAccessToken,
+  deleteProjectVariable,
+  createProjectVariable
 }

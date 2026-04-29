@@ -75,8 +75,27 @@ function runTaskInRepo (
   })
 }
 
+function runTaskInRepoCaptured (command, repoDir, glabToken, { timeout = 600000, extraEnv = {} } = {}) {
+  try {
+    const output = execSync(command, {
+      cwd: repoDir,
+      env: { ...buildGitLabTaskEnv(glabToken), ...extraEnv },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout,
+      encoding: 'utf8'
+    })
+    process.stdout.write(output)
+    return { exitCode: 0, output }
+  } catch (err) {
+    const output = `${err.stdout || ''}${err.stderr || ''}`
+    process.stdout.write(output)
+    return { exitCode: err.status || 1, output }
+  }
+}
+
 module.exports = {
   buildGitLabTaskEnv,
   bootstrapWorkspaceRepo,
-  runTaskInRepo
+  runTaskInRepo,
+  runTaskInRepoCaptured
 }

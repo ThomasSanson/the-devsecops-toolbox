@@ -49,3 +49,31 @@ Feature: GitLab Commitizen Project Access Token
     Then a Commitizen token "TASK_COMMITIZEN_TOKEN" must exist with Maintainer role for "commitizen-token-test"
     And the Commitizen token must be present in the project CI/CD variables for "commitizen-token-test"
     And only one active Commitizen token named "TASK_COMMITIZEN_TOKEN" must exist for "commitizen-token-test"
+
+  @gitlab-commitizen-token-resync-after-external-rotation
+  Scenario: Re-running devsecops:init regenerates when the token has been rotated externally on GitLab
+    Given a GitLab runs in a container configured with user "lambda"
+    And a test repository "commitizen-token-test" is created in GitLab
+    When I run the command "task devsecops:init" for project "commitizen-token-test" with local authentication
+    And the access token "TASK_COMMITIZEN_TOKEN" is rotated externally for project "commitizen-token-test"
+    And I re-run "task devsecops:init" for project "commitizen-token-test"
+    Then a Commitizen token "TASK_COMMITIZEN_TOKEN" must exist with Maintainer role for "commitizen-token-test"
+    And the Commitizen token must be present in the project CI/CD variables for "commitizen-token-test"
+    And the CI/CD variable "TASK_COMMITIZEN_TOKEN" must hold a valid token for project "commitizen-token-test"
+    And only one active Commitizen token named "TASK_COMMITIZEN_TOKEN" must exist for "commitizen-token-test"
+    When the devsecops:init output is displayed in the browser
+    Then the devsecops:init terminal output should visually match "devsecops_init_resync_commitizen"
+
+  @gitlab-commitizen-token-resync-when-variable-is-hidden
+  Scenario: Re-running devsecops:init re-syncs even when the CI/CD variable is hidden and stale
+    Given a GitLab runs in a container configured with user "lambda"
+    And a test repository "commitizen-token-test" is created in GitLab
+    When I run the command "task devsecops:init" for project "commitizen-token-test" with local authentication
+    And the active token id of "TASK_COMMITIZEN_TOKEN" is captured for project "commitizen-token-test"
+    And the CI/CD variable "TASK_COMMITIZEN_TOKEN" is replaced as a hidden masked variable for project "commitizen-token-test"
+    And I re-run "task devsecops:init" for project "commitizen-token-test"
+    Then the active token id of "TASK_COMMITIZEN_TOKEN" must differ from the captured id for project "commitizen-token-test"
+    And only one active Commitizen token named "TASK_COMMITIZEN_TOKEN" must exist for "commitizen-token-test"
+    And a Commitizen token "TASK_COMMITIZEN_TOKEN" must exist with Maintainer role for "commitizen-token-test"
+    When the devsecops:init output is displayed in the browser
+    Then the devsecops:init terminal output should visually match "devsecops_init_resync_commitizen"

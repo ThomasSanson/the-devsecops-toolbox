@@ -143,9 +143,12 @@ verify_ci_variable_token() {
   var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
   echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
 
+  # Hidden variables: GitLab does not expose their value through the API,
+  # so we cannot prove sync with the active PAT. Force re-rotation rather
+  # than silently trusting a possibly-stale value.
   hidden=$(echo "$var_json" | jq -r '.hidden // false')
   if [ "$hidden" = "true" ]; then
-    return 0
+    return 1
   fi
 
   cred=$(echo "$var_json" | jq -r '.value // empty')
@@ -157,16 +160,19 @@ verify_ci_variable_token() {
   fi
   : "${host:=gitlab.com}"
 
+  # No HTTP client available: cannot verify the token, force re-sync.
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    return 1
+  fi
+
   # Try HTTPS first (gitlab.com default), fall back to HTTP (self-hosted/local).
   # Avoids fragile protocol detection via glab config which varies across versions.
   if command -v curl >/dev/null 2>&1; then
     curl -sf --connect-timeout 5 -o /dev/null "https://${host}/api/v4/user" -H "Authorization: Bearer ${cred}" 2>/dev/null ||
       curl -sf --connect-timeout 5 -o /dev/null "http://${host}/api/v4/user" -H "Authorization: Bearer ${cred}"
-  elif command -v wget >/dev/null 2>&1; then
+  else
     wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
       wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "http://${host}/api/v4/user"
-  else
-    return 0
   fi
 }
 

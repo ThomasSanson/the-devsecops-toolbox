@@ -1,5 +1,5 @@
 /* global inject Given When Then */
-const { GitLabAccessTokenPage } = inject()
+const { I, GitLabAccessTokenPage } = inject()
 const { execSync } = require('child_process')
 const {
   BASE_URL,
@@ -10,12 +10,53 @@ const {
   updateProjectVariable,
   listProjectAccessTokens,
   createProjectAccessToken,
-  revokeProjectAccessToken
+  revokeProjectAccessToken,
+  rotateProjectAccessToken,
+  deleteProjectVariable,
+  createProjectVariable
 } = require('../helpers/gitlabApi')
 const {
   bootstrapWorkspaceRepo,
-  runTaskInRepo
+  runTaskInRepoCaptured
 } = require('../helpers/workspaceRepo')
+
+// Strip ANSI color/control sequences before rendering the captured output
+// in the browser so the visual baseline stays deterministic.
+function stripAnsi (str) {
+  return str
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+}
+
+// Lines whose content varies between runs and would defeat a pixel-perfect
+// terminal regression. Filtered out before rendering the captured output.
+// glab api JSON dump for project, the merge-request settings banner that
+// follows it, and taskfile task header lines.
+const TASK_OUTPUT_NOISE_PATTERNS = [
+  /^\{"id":\d+/,
+  /^🦊 Applying merge request settings/,
+  /^task: \[/
+]
+
+function filterTaskOutput (raw) {
+  return stripAnsi(raw)
+    .replace(/\r/g, '')
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim()
+      if (trimmed === '') return true
+      return !TASK_OUTPUT_NOISE_PATTERNS.some(re => re.test(trimmed))
+    })
+}
+
+function tailFromMarker (lines, marker, tail = 30) {
+  const markerIdx = lines.reduce((last, line, idx) => (line.includes(marker) ? idx : last), -1)
+  if (markerIdx < 0) return lines.slice(Math.max(0, lines.length - tail))
+  const end = markerIdx + 1
+  return lines.slice(Math.max(0, end - tail), end)
+}
 
 // ============================================
 // GIVEN - Setup test user and project
@@ -145,6 +186,93 @@ When('the CI\\/CD variable {string} is tampered with for project {string}', asyn
   )
 })
 
+When('the access token {string} is rotated externally for project {string}', async (tokenName, projectName) => {
+  const headers = await getRootHeaders()
+  const tokensResponse = await listProjectAccessTokens(projectName, headers)
+  const matchingToken = tokensResponse.data.find(t => t.name === tokenName && t.active && !t.revoked)
+
+  if (!matchingToken) {
+    throw new Error(`Cannot rotate: no active token named '${tokenName}' for project '${projectName}'`)
+  }
+
+  const rotateResponse = await rotateProjectAccessToken(projectName, matchingToken.id, headers)
+  if (rotateResponse.status >= 400 || !rotateResponse.data || !rotateResponse.data.token) {
+    throw new Error(
+      `Failed to rotate token '${tokenName}' (status=${rotateResponse.status}): ${JSON.stringify(rotateResponse.data)}`
+    )
+  }
+})
+
+Given('the active token id of {string} is captured for project {string}', async (tokenName, projectName) => {
+  const headers = await getRootHeaders()
+  const tokensResponse = await listProjectAccessTokens(projectName, headers)
+  const matchingToken = tokensResponse.data.find(t => t.name === tokenName && t.active && !t.revoked)
+
+  if (!matchingToken) {
+    throw new Error(`Cannot capture id: no active token named '${tokenName}' for project '${projectName}'`)
+  }
+  global.savedAccessTokenId = matchingToken.id
+})
+
+When('the CI\\/CD variable {string} is replaced as a hidden masked variable for project {string}', async (variableName, projectName) => {
+  const headers = await getRootHeaders()
+  await deleteProjectVariable(projectName, variableName, headers)
+  const createResponse = await createProjectVariable(
+    projectName,
+    {
+      key: variableName,
+      value: 'glpat-stale-hidden-value-1234567890', // gitleaks:allow
+      masked_and_hidden: true,
+      protected: true
+    },
+    headers
+  )
+  if (createResponse.status >= 400 || !createResponse.data || !createResponse.data.key) {
+    throw new Error(
+      `Failed to recreate variable '${variableName}' as hidden (status=${createResponse.status}): ${JSON.stringify(createResponse.data)}`
+    )
+  }
+})
+
+When('the devsecops:init output is displayed in the browser', async () => {
+  const raw = global.lastTaskOutput || ''
+  const lines = filterTaskOutput(raw)
+  const tail = tailFromMarker(lines, '✅ DevSecOps project initialization completed', 30)
+  const output = tail.join('\n')
+
+  await I.usePlaywrightTo('render devsecops:init output in browser', async ({ page }) => {
+    await page.setContent(
+      '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
+      '<pre id="task-output" style="color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-all">' +
+      output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+      '</pre></body></html>'
+    )
+  })
+  await I.wait(0.5)
+})
+
+Then('the devsecops:init terminal output should visually match {string}', async (baselineName) => {
+  await I.assertVisualMatch(baselineName)
+})
+
+Then('the active token id of {string} must differ from the captured id for project {string}', async (tokenName, projectName) => {
+  const headers = await getRootHeaders()
+  const tokensResponse = await listProjectAccessTokens(projectName, headers)
+  const matchingToken = tokensResponse.data.find(t => t.name === tokenName && t.active && !t.revoked)
+
+  if (!matchingToken) {
+    throw new Error(`No active token named '${tokenName}' for project '${projectName}'`)
+  }
+  if (!global.savedAccessTokenId) {
+    throw new Error('No captured token id was saved before this assertion')
+  }
+  if (matchingToken.id === global.savedAccessTokenId) {
+    throw new Error(
+      `Token id ${matchingToken.id} is unchanged — devsecops:init did not re-rotate the token despite the stale hidden variable`
+    )
+  }
+})
+
 When('I re-run {string} for project {string}', async (command, projectName) => {
   const headers = await getRootHeaders()
   const glabToken = await createLambdaPersonalAccessToken(
@@ -153,7 +281,9 @@ When('I re-run {string} for project {string}', async (command, projectName) => {
     headers
   )
 
-  runTaskInRepo(command, '/tmp/test-repo', glabToken, { timeout: 300000 })
+  const result = runTaskInRepoCaptured(command, '/tmp/test-repo', glabToken, { timeout: 300000 })
+  global.lastTaskOutput = result.output
+  global.lastTaskExitCode = result.exitCode
 
   // Retrieve the new token value for clone verification
   const varResponse = await readProjectVariable(projectName, 'TASK_RENOVATE_TOKEN', headers)
