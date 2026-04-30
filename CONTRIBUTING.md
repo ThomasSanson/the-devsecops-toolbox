@@ -256,7 +256,7 @@ This project follows **Semantic Versioning (SemVer)** principles. Version number
 If you have questions or need help contributing:
 
 1. 📖 Check the existing documentation in the `docs/` folder
-2. 💬 [Create an issue](https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/issues) describing your problem or question
+2. 💬 [Create a work item](https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/work_items) describing your problem or question
 
 ## 👊 Continuous Improvement
 
