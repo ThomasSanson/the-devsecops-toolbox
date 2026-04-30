@@ -6,6 +6,8 @@ _answers_file: .config/devsecops/.copier-answers.yml
 _skip_if_exists:
   - iac/helm/Chart.yaml
   - VERSION
+  - project/Taskfile.yml
+  - project/docker-compose.yml
 _min_copier_version: "9.3.0"
 
 # Questions — CI/CD platform

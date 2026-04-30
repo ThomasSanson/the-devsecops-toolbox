@@ -70,6 +70,20 @@ function register () {
     executeCopier(this.projectRoot, { project_enabled: true }, { force: true })
   })
 
+  When('the file {string} is customized with the marker {string}', function (filePath, marker) { // eslint-disable-line no-undef
+    const absPath = resolvePath(this, filePath)
+    assertFileExists(absPath, `Cannot customize missing file: ${absPath}`)
+    fs.appendFileSync(absPath, `\n# ${marker}\n`)
+  })
+
+  When('the project is updated keeping all answers', function () { // eslint-disable-line no-undef
+    executeCopier(this.projectRoot, {}, { force: true })
+  })
+
+  Then('the file {string} should still contain the marker {string}', function (filePath, marker) { // eslint-disable-line no-undef
+    assertFileContains(resolvePath(this, filePath), marker)
+  })
+
   When('I execute the DevSecOps task', function () { // eslint-disable-line no-undef
     executeCommand('task devsecops', { cwd: this.projectRoot })
   })

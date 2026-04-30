@@ -50,6 +50,7 @@ class GitLabUserPage {
 
   async loginAs (username, password) {
     await I.amOnPage(this.urls.login)
+    await I.waitForElement('#user_login', 60)
     await I.fillField('#user_login', username)
     await I.fillField('#user_password', password)
     await I.click('[data-testid="sign-in-button"]')
@@ -67,6 +68,7 @@ class GitLabUserPage {
       // After password update GitLab redirects to sign_in
       const newUrl = await I.grabCurrentUrl()
       if (newUrl.includes('sign_in')) {
+        await I.waitForElement('#user_login', 60)
         await I.fillField('#user_login', username)
         await I.fillField('#user_password', newPassword)
         await I.click('[data-testid="sign-in-button"]')

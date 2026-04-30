@@ -435,6 +435,9 @@ pyrightconfig.json
 .history
 .ionide
 
+### Claude Code ###
+.claude/
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,ansible,python,java,archive,node,visualstudiocode,php,helm
 
 # ----------------------------------------------------------------------

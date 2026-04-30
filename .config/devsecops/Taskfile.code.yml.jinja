@@ -39,4 +39,5 @@ tasks:
       - task: :copier:update
         vars:
           TASK_COPIER_ANSWER_FILE: ".config/devsecops/.copier-answers.yml"
+          TASK_COPIER_CLI_OPTS: "--skip-answered"
 {%- endraw %}
