@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.3.0 (2026-04-30)
+
+### Feat
+
+- **gitlab**: add token resync utilities for hidden vars and rotation
+
 ## 22.2.2 (2026-04-22)
 
 ### Fix
