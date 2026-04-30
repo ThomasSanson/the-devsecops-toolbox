@@ -108,6 +108,8 @@ code:megalinter:
 # (Optional) Aggregator waiting for all checks
 code:all:
   stage: code
+  image: alpine:latest
+  before_script: []
   needs:
     - code:commitizen-bump-dry
     - code:commitizen-check
