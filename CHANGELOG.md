@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.5.0 (2026-05-06)
+
+### Feat
+
+- **glab**: cap token expiry at 90 days and add GitLab limit test
+
 ## 22.4.0 (2026-05-05)
 
 ### Feat
