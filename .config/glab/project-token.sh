@@ -63,10 +63,10 @@ if ! [[ "$TOKEN_ACCESS_LEVEL" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-if EXPIRES_AT=$(date -v +1y +%Y-%m-%d 2>/dev/null); then
+if EXPIRES_AT=$(date -v +90d +%Y-%m-%d 2>/dev/null); then
   :
 else
-  EXPIRES_AT=$(date -d '+1 year' +%Y-%m-%d)
+  EXPIRES_AT=$(date -d '+90 days' +%Y-%m-%d)
 fi
 
 strip_glab_noise() {

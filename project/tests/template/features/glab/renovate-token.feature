@@ -53,3 +53,15 @@ Feature: Glab Renovate Token Task
     And the file ".config/glab/project-token.sh" should contain "glab api"
     And the file ".config/glab/renovate-token.sh" should contain "project-token.sh"
     And the file ".config/glab/commitizen-token.sh" should contain "project-token.sh"
+
+  @expiry-within-gitlab-limit
+  Scenario: Project token expiry stays within GitLab's max allowed lifetime
+    # GitLab.com rejects Project Access Tokens whose expiry is >= today + 365 days
+    # (HTTP 400 "Expiration date must be before <today+364>"). This test runs the
+    # real EXPIRES_AT computation from the generated script and asserts the
+    # resulting date is strictly inside GitLab's allowed window — independent
+    # of whether the script uses "+90d", "+11 months" or any other syntax.
+    Given a clean temporary directory for "glab/renovate-token" tests
+    When the copier command is executed with default settings
+    And the EXPIRES_AT block from "project-token.sh" is evaluated
+    Then the resulting expiry date is strictly before today plus 365 days
