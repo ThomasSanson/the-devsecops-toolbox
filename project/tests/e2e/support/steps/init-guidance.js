@@ -138,7 +138,7 @@ Then('the captured command should exit with code {int}', (expectedCode) => {
 Then('the captured command should exit with a non-zero code', () => {
   if (global.lastCapturedExitCode === 0) {
     throw new Error(
-      `Expected non-zero exit, got 0\n` +
+      'Expected non-zero exit, got 0\n' +
       `--- captured output ---\n${global.lastCapturedOutput}\n---`
     )
   }

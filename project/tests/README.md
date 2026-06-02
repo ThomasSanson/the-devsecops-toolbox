@@ -43,10 +43,10 @@ clone a fresh project via `support/helpers/workspaceRepo.js`.
 
 1. Pick the right group under `features/<NN>-<group>/` (or create one).
 2. Reuse existing steps from `support/steps/` when possible — see
-   `init-guidance.js` for the fresh-Ubuntu pattern, `release-toggle.js`
-   for the GitLab-linked pattern.
+    `init-guidance.js` for the fresh-Ubuntu pattern, `release-toggle.js`
+    for the GitLab-linked pattern.
 3. Default to string-presence assertions. Add a visual baseline ONLY when
-   the wording or layout itself is the contract.
+    the wording or layout itself is the contract.
 4. Run `task project:test:e2e -- --grep "@your-tag"` to validate.
 5. Run `task code` before submitting.
 
