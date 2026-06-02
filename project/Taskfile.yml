@@ -240,13 +240,24 @@ tasks:
             --exclude='node_modules' \
             -cf - . | \
             (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
-      - task: codeceptjs:docker
-        vars:
-          TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-          TASK_CODECEPTJS_CONFIG: project/tests/e2e/codecept.conf.js
-          TASK_CODECEPTJS_TESTS_PATH_HOST: tests
-          TASK_CODECEPTJS_TESTS_PATH_CONTAINER: /app/project/tests
-          TASK_CODECEPTJS_COMPOSE_COMMAND: "{{.PROJECT_DOCKER_COMPOSE}}"
+      # Inline equivalent of `codeceptjs:docker` but using `run-workers <N>` so
+      # scenarios execute in parallel. `codeceptjs:docker` hard-codes `run`
+      # (single-process) and lives under `.config/` (read-only), so the parallel
+      # variant is wired here. `--by pool` does dynamic load-balancing — ideal
+      # when scenarios have very different durations (e.g. fast pilot vs slow
+      # guidance scenarios). `--features` restricts to Gherkin .feature files.
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /app/project/tests"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /app/project/tests"
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} cp tests/. codeceptjs:/app/project/tests/"
+      - defer: |
+          echo "📥 Syncing artifacts (reports/screenshots) back to host..."
+          {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/. tests/ || true
+      - cmd: >-
+          {{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs /usr/local/bin/codeceptjs run-workers
+          {{.TASK_E2E_WORKERS | default "3"}}
+          --features --by pool
+          --config project/tests/e2e/codecept.conf.js
+          {{if .TASK_CODECEPTJS_GREP}}--grep {{.TASK_CODECEPTJS_GREP}}{{end}}
       - cmd: echo "✅ Project E2E test phase completed successfully"
         silent: true
 

@@ -58,7 +58,10 @@ exports.config = {
     features: './features/**/*.feature',
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
-      './support/steps/init-baseline.js'
+      './support/steps/init-baseline.js',
+      './support/steps/init-guidance.js',
+      './support/steps/glab-auth-ensure.js',
+      './support/steps/release-toggle.js'
     ]
   },
   plugins: {

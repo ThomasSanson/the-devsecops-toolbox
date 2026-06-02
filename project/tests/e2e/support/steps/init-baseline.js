@@ -47,7 +47,12 @@ const TASK_OUTPUT_NOISE_PATTERNS = [
   // Token creation line carries the expiration date (90 days ahead) which
   // shifts every run. The success line ("Token created and CI/CD variable
   // ... stored") that follows is deterministic and sufficient as proof.
-  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/
+  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/,
+  // Lefthook iterates a Go map when emitting the hook list, so the order
+  // (e.g. "(commit-msg, pre-commit)" vs "(pre-commit, commit-msg)") is
+  // non-deterministic. The following "Lefthook:install phase completed
+  // successfully" line is deterministic and sufficient proof.
+  /^sync hooks: /
 ]
 
 function filterTaskOutput (raw) {

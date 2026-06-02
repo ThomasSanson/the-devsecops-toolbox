@@ -1,93 +1,80 @@
 # Tests Documentation
 
-This directory contains end-to-end tests for the DevSecOps Copier template.
+End-to-end tests for the DevSecOps Toolbox.
 
-## Architecture
+## Active suite — `e2e/`
+
+`project/tests/e2e/` is the **single entry point** for the test suite. Every
+new scenario lives here.
+
+Convention: each scenario proves a real user journey, with **terminal proof**
+(string presence on captured stdout, or visual regression when wording is the
+contract) and **GitLab-side proof** when the action targets GitLab.
 
 ```text
-project/tests/
-├── README.md
-└── template/                 # Copier template tests
-    ├── codecept.conf.js      # CodeceptJS configuration
-    ├── entrypoint.js         # Test hooks (Before/After)
-    ├── features/             # Gherkin feature files
-    │   ├── ansible/
-    │   ├── commitizen/
-    │   ├── copier/
-    │   ├── dependency-check/
-    │   ├── dev/
-    │   ├── devsecops/
-    │   ├── docker/
-    │   ├── git/
-    │   ├── gitlab/
-    │   ├── gitleaks/
-    │   ├── glab/
-    │   ├── kaniko/
-    │   ├── kubectl/
-    │   ├── kubeseal/
-    │   ├── lefthook/
-    │   ├── lizard/
-    │   ├── megalinter/
-    │   ├── podman/
-    │   ├── project/
-    │   ├── renovate/
-    │   ├── sealed-secrets/
-    │   └── yamllint/
-    ├── step_objects/         # Reusable logic (helpers, assertions)
-    │   ├── assertions.js     # File/directory assertions
-    │   ├── commands.js       # Shell command execution
-    │   ├── config.js         # Test configuration
-    │   ├── content.js        # Content step definitions
-    │   ├── copier.js         # Copier execution helpers
-    │   ├── filesystem.js     # File system utilities
-    │   ├── tables.js         # Gherkin table parsing
-    │   └── testContext.js    # Test metadata tracking
-    └── steps/                # Domain-specific Gherkin steps
-        ├── ansible.js
-        ├── commitizen.js
-        ├── devsecops.js
-        ├── docker.js
-        ├── gitlab.js
-        ├── glab.js
-        ├── podman.js
-        ├── renovate.js
-        ├── system.js         # Generic infrastructure steps
-        └── taskfile.js
+project/tests/e2e/
+├── codecept.conf.js              # Single CodeceptJS config (Playwright + VisualHelper + REST)
+├── features/
+│   ├── 02-init-guidance/         # init failure / opt-out guidance
+│   ├── 03-init-effects/          # task devsecops:init + task release effects on GitLab
+│   └── 04-auth/                  # task glab:auth:ensure guidance
+├── pages/                        # GitLab Page Objects
+├── support/
+│   ├── helpers/                  # docker.js, freshUbuntu.js, gitlabApi.js, http.js, workspaceRepo.js
+│   └── steps/                    # init-baseline.js, init-guidance.js, release-toggle.js, glab-auth-ensure.js
+├── screenshots/base/             # Visual baselines (tolerance: 0)
+└── _output/                      # Generated screenshots + reports (gitignored)
 ```
 
-## Conventions
-
-### Step Objects vs Steps
-
-| Folder          | Purpose                                    | Example                                    |
-|-----------------|--------------------------------------------|--------------------------------------------|
-| `step_objects/` | Reusable logic, helpers, assertions        | `executeCopier()`, `assertFileContains()`  |
-| `steps/`        | Gherkin step definitions (Given/When/Then) | `Given('a project was generated with...')` |
-
-### Generic Steps
-
-The `steps/system.js` provides generic infrastructure steps:
-
-```gherkin
-# Format: "domain/feature"
-Given a clean temporary directory for "ansible/integration" tests
-Given a clean temporary directory for "gitlab/proxy" tests
-Given a clean temporary directory for "docker/runtime" tests
-```
-
-### Adding New Tests
-
-1. Create a feature file in `features/<domain>/<feature>.feature`
-2. Add domain-specific steps in `steps/<domain>.js` if needed
-3. Use generic steps from `system.js` for setup
-4. Run tests with `task test`
-
-## Running Tests
+### Running
 
 ```bash
-# Run all tests
-task test
-
-# Run tests with specific tag
-task test -- --grep "@ansible"
+task project:test:e2e                                  # full suite, parallel (workers=3)
+task project:test:e2e TASK_CODECEPTJS_GREP=@e2e-init-baseline   # filter by tag
+TASK_E2E_WORKERS=5 task project:test:e2e               # bump parallelism
 ```
+
+The suite executes inside the `codeceptjs` container (identical font stack
+local / CI). Scenarios that need a fresh Ubuntu spawn one through the docker
+socket via `support/helpers/freshUbuntu.js`. Scenarios that target GitLab
+clone a fresh project via `support/helpers/workspaceRepo.js`.
+
+### Adding a scenario
+
+1. Pick the right group under `features/<NN>-<group>/` (or create one).
+2. Reuse existing steps from `support/steps/` when possible — see
+   `init-guidance.js` for the fresh-Ubuntu pattern, `release-toggle.js`
+   for the GitLab-linked pattern.
+3. Default to string-presence assertions. Add a visual baseline ONLY when
+   the wording or layout itself is the contract.
+4. Run `task project:test:e2e -- --grep "@your-tag"` to validate.
+5. Run `task code` before submitting.
+
+### Conventions
+
+- Tag every scenario with `@e2e` plus a domain tag (e.g. `@e2e-release-toggle`).
+- Filter dynamic noise from terminal captures with `OUTPUT_NOISE_PATTERNS`
+  (per-step file). Date masking in `pages/GitLabAccessTokenPage.js`
+  neutralises GitLab UI dates for visual regression.
+- Visual regression uses `tolerance: 0` (pixel-perfect). Regenerate the
+  baseline only when a deliberate source change makes the previous one
+  outdated — never to silence drift.
+
+## Migration in progress
+
+The legacy folders `bootstrap/`, `gitlab/`, `template/` are kept for
+historical reference. Their corresponding Task targets (`project:test:bootstrap`,
+`project:test:gitlab`, `project:test:template`) are **no-op stubs** that exist
+solely so the CI test-coverage check keeps passing until
+`.config/gitlab/ci/devsecops/test.yml.jinja` is updated to reference
+`test:e2e`. `project:test:tdd` calls these stubs (no-op) plus the real
+`project:test:e2e`.
+
+Do NOT add new scenarios to the legacy folders.
+
+## Operational helpers
+
+| File                    | Purpose                                                                   |
+|-------------------------|---------------------------------------------------------------------------|
+| `docker-compose.yml`    | Defines the `codeceptjs` runner service used by `project:test:e2e`.       |
+| `diagnostic-complet.sh` | Captures full docker compose state on failure (run via `defer` in tasks). |
