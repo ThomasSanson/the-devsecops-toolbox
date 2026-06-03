@@ -13,4 +13,4 @@ Feature: The toolbox's commitlint + lefthook chain accepts conventional commits
     And I create an empty commit "feat: dogfood the commitlint hook" in project "e2e-commitlint-accept"
     Then the commit must be accepted by the hooks
     When the commit output is displayed in the browser
-    Then the commit output should visually match "e2e_commitlint_dogfooding_accept_terminal"
+    Then the commit output should visually match "gitlab/03-init-effects/commitlint-dogfooding-accept-terminal"

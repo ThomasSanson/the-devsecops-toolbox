@@ -16,4 +16,4 @@ Feature: task devsecops:init is idempotent
     And the CI/CD variable "TASK_COMMITIZEN_TOKEN" must not have changed for project "e2e-init-idempotency"
     And only one active token named "TASK_COMMITIZEN_TOKEN" must exist for "e2e-init-idempotency"
     When the devsecops:init output is displayed in the browser
-    Then the devsecops:init terminal output should visually match "e2e_init_idempotency_terminal"
+    Then the devsecops:init terminal output should visually match "gitlab/03-init-effects/init-idempotency-terminal"

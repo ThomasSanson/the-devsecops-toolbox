@@ -18,4 +18,4 @@ Feature: task devsecops:init re-syncs after an external token rotation
     And only one active token named "TASK_COMMITIZEN_TOKEN" must exist for "e2e-init-token-resync"
     And I can git clone the project "e2e-init-token-resync" using the "TASK_COMMITIZEN_TOKEN" token
     When the devsecops:init output is displayed in the browser
-    Then the devsecops:init terminal output should visually match "e2e_init_token_resync_terminal"
+    Then the devsecops:init terminal output should visually match "gitlab/03-init-effects/init-token-resync-terminal"

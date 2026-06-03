@@ -11,9 +11,9 @@ Feature: DevSecOps init configures a fresh GitLab project (default baseline)
     And a test repository "init-baseline" is created in GitLab
     When I run the command "task devsecops:init" for project "init-baseline" with local authentication
     And the devsecops:init output is displayed in the browser
-    Then the devsecops:init terminal output should visually match "e2e_init_baseline_terminal"
+    Then the devsecops:init terminal output should visually match "gitlab/03-init-effects/init-baseline-terminal"
     And a project access token "TASK_COMMITIZEN_TOKEN" must exist with Maintainer role for "init-baseline"
-    And the GitLab access tokens page for "init-baseline" should visually match "e2e_init_baseline_gitlab_access_tokens"
+    And the GitLab access tokens page for "init-baseline" should visually match "gitlab/03-init-effects/init-baseline-access-tokens"
     And the CI/CD variable "TASK_COMMITIZEN_TOKEN" must exist for project "init-baseline"
-    And the GitLab CI/CD variables page for "init-baseline" should visually match "e2e_init_baseline_gitlab_cicd_variables"
+    And the GitLab CI/CD variables page for "init-baseline" should visually match "gitlab/03-init-effects/init-baseline-cicd-variables"
     And the branch "main" must be protected with merge for maintainers and push for no one for "init-baseline"

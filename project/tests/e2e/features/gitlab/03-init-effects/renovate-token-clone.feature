@@ -14,4 +14,4 @@ Feature: The Renovate token created by task devsecops:init is usable for git clo
     And the CI/CD variable "TASK_RENOVATE_TOKEN" must exist for project "e2e-renovate-token-clone"
     And I can git clone the project "e2e-renovate-token-clone" using the "TASK_RENOVATE_TOKEN" token
     When the devsecops:init output is displayed in the browser
-    Then the devsecops:init terminal output should visually match "e2e_renovate_token_clone_terminal"
+    Then the devsecops:init terminal output should visually match "gitlab/03-init-effects/renovate-token-clone-terminal"

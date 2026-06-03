@@ -14,7 +14,7 @@ Feature: task release toggles the push protection window
     And the release logs should contain "Restoring branch protection (push=No one)"
     And the branch "main" must be protected with merge for maintainers and push for no one for "e2e-release-toggle"
     When the release logs are displayed in the browser
-    Then the release logs should visually match "e2e_release_toggle_success_terminal"
+    Then the release logs should visually match "gitlab/03-init-effects/release-toggle-success-terminal"
 
   @e2e-release-toggle-failure
   Scenario: task release restores branch push access to "no one" when push fails (safety net)
@@ -26,4 +26,4 @@ Feature: task release toggles the push protection window
     And the release logs should contain "Restoring branch protection (push=No one)"
     And the branch "main" must be protected with merge for maintainers and push for no one for "e2e-release-toggle-failure"
     When the release logs are displayed in the browser
-    Then the release logs should visually match "e2e_release_toggle_failure_terminal"
+    Then the release logs should visually match "gitlab/03-init-effects/release-toggle-failure-terminal"
