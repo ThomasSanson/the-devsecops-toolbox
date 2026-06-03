@@ -13,3 +13,5 @@ Feature: DevSecOps init succeeds cleanly when GitLab integration is opted-out
     And the captured output should contain "DevSecOps project initialization completed"
     And the captured output should contain 'task: Task "glab:install" is up to date'
     And the captured output should not contain "glab auth login"
+    When the captured output is displayed in the browser
+    Then the captured output should visually match "e2e_init_guidance_disabled_terminal"

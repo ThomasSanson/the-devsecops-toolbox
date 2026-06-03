@@ -13,3 +13,5 @@ Feature: DevSecOps init guides users when GitLab auth is missing
     And the captured output should contain "GitLab authentication required"
     And the captured output should contain "task glab:auth"
     And the captured output should not contain "DevSecOps project initialization completed"
+    When the captured output is displayed in the browser
+    Then the captured output should visually match "e2e_init_guidance_missing_auth_terminal"

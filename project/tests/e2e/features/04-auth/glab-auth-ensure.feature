@@ -11,6 +11,8 @@ Feature: task glab:auth:ensure guides users when glab is not ready
     When I run the command "task glab:auth:ensure" in the fresh Ubuntu environment
     Then the captured command should exit with a non-zero code
     And the captured output should contain "glab"
+    When the captured output is displayed in the browser
+    Then the captured output should visually match "e2e_glab_auth_ensure_missing_bin_terminal"
 
   @e2e-glab-auth-ensure-ci-mode
   Scenario: ensure fails in CI mode when glab is installed but not authenticated
@@ -19,3 +21,5 @@ Feature: task glab:auth:ensure guides users when glab is not ready
     Then the captured command should exit with a non-zero code
     And the captured output should contain "GitLab authentication required"
     And the captured output should contain "task glab:auth"
+    When the captured output is displayed in the browser
+    Then the captured output should visually match "e2e_glab_auth_ensure_ci_mode_terminal"

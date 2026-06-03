@@ -68,5 +68,14 @@ exports.config = {
     screenshotOnFail: { enabled: true },
     tryTo: { enabled: true }
   },
+  // Mocha-level retry: gives one second chance to scenarios that fail because
+  // of parallel apt/go install contention (the only known flake source —
+  // spawning multiple ubuntu containers simultaneously occasionally races on
+  // apt-get lock or Go module mirror rate-limiting). Deterministic visual
+  // mismatches will fail both attempts identically, so retry does not hide
+  // real regressions.
+  mocha: {
+    retries: 1
+  },
   name: 'e2e'
 }

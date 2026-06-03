@@ -1,4 +1,4 @@
-/* global When Then */
+/* global inject When Then */
 /**
  * E2E scenario: `task release` opens push access on a protected branch,
  * then restores "push=No one" — both on success AND on failure. The
@@ -114,4 +114,88 @@ Then('the release command should fail', () => {
   if (!global.releaseFailed) {
     throw new Error('Expected task release to fail, but it succeeded')
   }
+})
+
+// ============================================
+// Visual proof — rendered into a <pre> block
+// ============================================
+const { I } = inject()
+
+function stripAnsi (str) {
+  return str
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+}
+
+// `task release` emits a lot of non-deterministic content (commit SHAs, push
+// deltas, version bumps, remote progress). We filter aggressively, then
+// anchor the tail on the trap-restore line which is emitted on BOTH success
+// and failure paths.
+const RELEASE_NOISE_PATTERNS = [
+  /^task: \[/,
+  /^bump: version /, //                                        e.g. "bump: version 0.1.0 → 0.2.0"
+  /^bump: commit /, //                                         "bump: commit and tag created"
+  /^\s*[0-9a-f]{7,}\.\.[0-9a-f]{7,}\s/, //                     "abc1234..def5678  HEAD -> main"
+  /^\s*\* \[new tag\]/, //                                     " * [new tag]         0.2.0 -> 0.2.0"
+  /^To https?:\/\/[^\s]+\.git$/, //                            "To http://gitlab/lambda/...git"
+  /^remote:\s/, //                                             "remote: GitLab: ..."
+  /^Cloning into /,
+  /^(Counting|Compressing|Writing|Total|Resolving) /,
+  /^Delta compression /,
+  /^husky - /,
+  /^sync hooks: /,
+  /^\[main [0-9a-f]{7,}\]/, //                                 "[main abc1234] message"
+  /^Date: /,
+  /^Author: /,
+  /^commit [0-9a-f]{7,}/,
+  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/,
+  /Rewrite rules:/
+]
+
+const RELEASE_TAIL_MARKERS = [
+  '🔒 Restoring branch protection (push=No one)'
+]
+const RELEASE_VISUAL_TAIL_LINES = 20
+
+function filterReleaseLogs (raw) {
+  return stripAnsi(raw)
+    .replace(/\r/g, '')
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim()
+      if (trimmed === '') return true
+      return !RELEASE_NOISE_PATTERNS.some(re => re.test(trimmed))
+    })
+}
+
+function tailFromMarker (lines, markers, tail) {
+  const markerIdx = lines.reduce((last, line, idx) => {
+    return markers.some(m => line.includes(m)) ? idx : last
+  }, -1)
+  if (markerIdx < 0) return lines.slice(Math.max(0, lines.length - tail))
+  const end = markerIdx + 1
+  return lines.slice(Math.max(0, end - tail), end)
+}
+
+When('the release logs are displayed in the browser', async () => {
+  const lines = filterReleaseLogs(global.releaseLogs || '')
+  const tail = tailFromMarker(lines, RELEASE_TAIL_MARKERS, RELEASE_VISUAL_TAIL_LINES)
+  const output = tail.join('\n')
+
+  await I.usePlaywrightTo('render release logs in browser', async ({ page }) => {
+    await page.setContent(
+      '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
+      '<pre id="task-output" style="color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-all">' +
+      output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+      '</pre></body></html>'
+    )
+  })
+  await I.wait(0.5)
+})
+
+Then('the release logs should visually match {string}', async (baselineName) => {
+  await I.takeScreenshot(baselineName)
+  await I.assertVisualMatch(baselineName)
 })

@@ -13,6 +13,8 @@ Feature: task release toggles the push protection window
     Then the release logs should contain "Temporarily opening push access for Maintainers"
     And the release logs should contain "Restoring branch protection (push=No one)"
     And the branch "main" must be protected with merge for maintainers and push for no one for "e2e-release-toggle"
+    When the release logs are displayed in the browser
+    Then the release logs should visually match "e2e_release_toggle_success_terminal"
 
   @e2e-release-toggle-failure
   Scenario: task release restores branch push access to "no one" when push fails (safety net)
@@ -23,3 +25,5 @@ Feature: task release toggles the push protection window
     And the release logs should contain "Temporarily opening push access for Maintainers"
     And the release logs should contain "Restoring branch protection (push=No one)"
     And the branch "main" must be protected with merge for maintainers and push for no one for "e2e-release-toggle-failure"
+    When the release logs are displayed in the browser
+    Then the release logs should visually match "e2e_release_toggle_failure_terminal"

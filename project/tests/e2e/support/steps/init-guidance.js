@@ -21,7 +21,11 @@ const {
 } = require('../helpers/freshUbuntu')
 
 const RUN_TIMEOUT = 600000
-const VISUAL_TAIL_LINES = 30
+// Keep the visual tail short — these scenarios produce a lot of apt/Go/glab
+// install noise upstream of the deterministic ending. 10 lines capture the
+// last meaningful phase markers (Lefthook install → setup complete → init
+// completed OR error block) without remounting into upstream noise.
+const VISUAL_TAIL_LINES = 10
 
 // Scenario-local state — shared via `global` so sibling step files
 // (e.g. glab-auth-ensure.js) can reuse the When/Then steps below
@@ -43,7 +47,59 @@ const OUTPUT_NOISE_PATTERNS = [
   /^\{"id":\d+/,
   /^🦊 Applying merge request settings/,
   /^task: \[/,
-  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/
+  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/,
+  // Go module downloads during `task lefthook:install` are emitted in parallel
+  // → non-deterministic ordering. The "🎉 Lefthook:install phase completed"
+  // line that follows is deterministic and sufficient as proof.
+  /^go: /,
+  // Lefthook iterates a Go map when emitting the synced hook list, so the
+  // order ("(commit-msg, pre-commit)" vs "(pre-commit, commit-msg)") is
+  // non-deterministic. The next "🎉 Lefthook:install phase completed
+  // successfully" line is deterministic and sufficient proof.
+  /^sync hooks: /,
+  // apt-get setup output during `task dev:setup-environment` dominates the
+  // pre-init tail with non-deterministic package install lines. The
+  // deterministic phase markers (✅ Lefthook installed, 🎉 Development
+  // environment setup completed, ✅ DevSecOps project initialization
+  // completed) are sufficient proof.
+  /^Setting up /,
+  /^Unpacking /,
+  /^Preparing to unpack /,
+  /^Selecting previously /,
+  /^Processing triggers /,
+  /^\(Reading database /,
+  // Go / glab / gum / glow installation lines (versions move at each run).
+  /^go installed successfully:/,
+  /^Detected GOROOT:/,
+  /^Creating symlink:/,
+  /^Adding Go environment/,
+  /^GOROOT=/,
+  /^GOPATH=/,
+  /^Installing (glab|gum|glow) v/,
+  /^Attempting installation/,
+  /^(glab|gum|glow) installed to /,
+  /^✅ glab installed successfully/,
+  /^Installation complete!$/,
+  /^glab \d+\.\d+\.\d+ /,
+  /^update-alternatives:/
+]
+
+// Anchor the tail on a known marker so trailing setup noise cannot shift the
+// visual window between runs. Falls back to the last `tail` lines if the
+// marker is absent.
+function tailFromMarker (lines, markers, tail) {
+  const markerIdx = lines.reduce((last, line, idx) => {
+    return markers.some(m => line.includes(m)) ? idx : last
+  }, -1)
+  if (markerIdx < 0) return lines.slice(Math.max(0, lines.length - tail))
+  const end = markerIdx + 1
+  return lines.slice(Math.max(0, end - tail), end)
+}
+
+const TAIL_MARKERS = [
+  '✅ DevSecOps project initialization completed', // disabled-success
+  'then rerun  task devsecops:init', //              missing-auth + glab-auth-ensure (both scenarios)
+  'install     glab' //                              glab-auth-ensure-missing-bin gum box footer
 ]
 
 function filterOutput (raw) {
@@ -146,7 +202,7 @@ Then('the captured command should exit with a non-zero code', () => {
 
 When('the captured output is displayed in the browser', async () => {
   const lines = filterOutput(global.lastCapturedOutput)
-  const tail = lines.slice(Math.max(0, lines.length - VISUAL_TAIL_LINES))
+  const tail = tailFromMarker(lines, TAIL_MARKERS, VISUAL_TAIL_LINES)
   const output = tail.join('\n')
 
   await I.usePlaywrightTo('render captured output in browser', async ({ page }) => {
