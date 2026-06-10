@@ -76,20 +76,6 @@ class GitLabUserPage {
       }
     }
   }
-
-  verifyHomepage () {
-    I.waitForElement('body', 30)
-    I.dontSeeInCurrentUrl('/sign_in')
-  }
-
-  verifyVisualRegression () {
-    I.waitForElement('body', 30)
-
-    I.moveCursorTo('body', 1, 1)
-
-    I.takeScreenshot('gitlab_lambda_homepage')
-    I.assertVisualMatch('gitlab_lambda_homepage')
-  }
 }
 
 module.exports = GitLabUserPage
