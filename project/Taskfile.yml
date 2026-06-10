@@ -86,121 +86,14 @@ tasks:
     desc: 🚀 Run project-specific TDD test tasks
     summary: |
       Run tests in TDD mode.
-      This task deploys necessary services and runs CodeceptJS tests.
+      This task deploys necessary services and runs the unified E2E suite.
     cmds:
       - cmd: echo "🚀 Starting project TDD test phase"
         silent: true
       - task: deploy
-      # NOTE: template/bootstrap/gitlab are kept here so the CI test-coverage
-      # check (which scans this block) still finds their CI jobs in
-      # .config/gitlab/ci/devsecops/test.yml. Their `cmds` are no-op stubs
-      # (see definitions below). The real suite runs via `task project:test:e2e`
-      # directly until the CI test-coverage check is updated.
-      - task: project:test:template
-      - task: project:test:bootstrap
-      - task: project:test:gitlab
-      # - task: project:test:e2e   # run manually until CI has a test:e2e job
+      - task: project:test:e2e
       - cmd: echo "✅ Project TDD test phase completed successfully"
         silent: true
-
-  project:test:template:
-    desc: ⏸️ DISABLED — migrated to project:test:e2e
-    summary: |
-      Migrated to project:test:e2e. Kept as a no-op stub so the CI
-      test-coverage check (which scans project:test:tdd) keeps passing
-      until .config/gitlab/ci/devsecops/test.yml is updated.
-    cmds:
-      - cmd: echo "⏸️  project:test:template disabled — run task project:test:e2e instead"
-        silent: true
-      # Original implementation, kept for migration reference:
-      # - cmd: echo "🚀 Starting project template test phase"
-      #   silent: true
-      # - task: codeceptjs:npx
-      #   vars:
-      #     TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-      #     TASK_CODECEPTJS_CONFIG: "project/tests/template/codecept.conf.js"
-      # - cmd: echo "✅ Project template test phase completed successfully"
-      #   silent: true
-
-  project:test:bootstrap:
-    desc: ⏸️ DISABLED — migrated to project:test:e2e
-    summary: |
-      Migrated to project:test:e2e. Kept as a no-op stub so the CI
-      test-coverage check (which scans project:test:tdd) keeps passing
-      until .config/gitlab/ci/devsecops/test.yml is updated.
-    cmds:
-      - cmd: echo "⏸️  project:test:bootstrap disabled — run task project:test:e2e instead"
-        silent: true
-      # Original implementation, kept for migration reference:
-      # - defer: |
-      #     {{if and (or .EXIT_CODE (eq .TASK_DIAGNOSTIC_FORCE "true")) (ne (env "CI") "")}}
-      #       echo ""
-      #       echo "🔍 =============================================="
-      #       echo "🔍 DIAGNOSTIC COMPLET (defer)"
-      #       {{if .EXIT_CODE}}
-      #         echo "🔍 Exécuté suite à une erreur (exit code: {{.EXIT_CODE}})"
-      #       {{else}}
-      #         echo "🔍 Exécuté manuellement (TASK_DIAGNOSTIC_FORCE=true)"
-      #       {{end}}
-      #       echo "🔍 =============================================="
-      #       ./project/tests/diagnostic-complet.sh || true
-      #     {{end}}
-      # - cmd: echo "🚀 Starting project bootstrap test phase"
-      #   silent: true
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
-      # - cmd: |
-      #     tar \
-      #       --exclude='.git' \
-      #       --exclude='.cache' \
-      #       --exclude='tmp' \
-      #       --exclude='megalinter-reports' \
-      #       --exclude='node_modules' \
-      #       -cf - . | \
-      #       (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
-      # - task: codeceptjs:docker
-      #   vars:
-      #     TASK_CODECEPTJS_GREP: "{{.TASK_CODECEPTJS_GREP}}"
-      #     TASK_CODECEPTJS_CONFIG: project/tests/bootstrap/codecept.conf.js
-      #     TASK_CODECEPTJS_TESTS_PATH_HOST: tests
-      #     TASK_CODECEPTJS_TESTS_PATH_CONTAINER: /app/project/tests
-      #     TASK_CODECEPTJS_COMPOSE_COMMAND: "{{.PROJECT_DOCKER_COMPOSE}}"
-      # - cmd: echo "✅ Project bootstrap test phase completed successfully"
-      #   silent: true
-
-  project:test:gitlab:
-    desc: ⏸️ DISABLED — migrated to project:test:e2e
-    summary: |
-      Migrated to project:test:e2e. Kept as a no-op stub so the CI
-      test-coverage check (which scans project:test:tdd) keeps passing
-      until .config/gitlab/ci/devsecops/test.yml is updated.
-    cmds:
-      - cmd: echo "⏸️  project:test:gitlab disabled — run task project:test:e2e instead"
-        silent: true
-      # Original implementation, kept for migration reference:
-      # - cmd: echo "🚀 Starting project GitLab test phase"
-      #   silent: true
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
-      # - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
-      # - cmd: |
-      #     tar \
-      #       --exclude='.git' \
-      #       --exclude='.cache' \
-      #       --exclude='tmp' \
-      #       --exclude='megalinter-reports' \
-      #       --exclude='node_modules' \
-      #       -cf - . | \
-      #       (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
-      # - task: codeceptjs:docker
-      #   vars:
-      #     TASK_CODECEPTJS_CONFIG: project/tests/gitlab/codecept.conf.js
-      #     TASK_CODECEPTJS_TESTS_PATH_HOST: tests
-      #     TASK_CODECEPTJS_TESTS_PATH_CONTAINER: /app/project/tests
-      #     TASK_CODECEPTJS_COMPOSE_COMMAND: "{{.PROJECT_DOCKER_COMPOSE}}"
-      # - cmd: echo "✅ Project GitLab test phase completed successfully"
-      #   silent: true
 
   project:test:e2e:
     desc: 🚀 Run unified E2E test suite
@@ -238,6 +131,8 @@ tasks:
             --exclude='tmp' \
             --exclude='megalinter-reports' \
             --exclude='node_modules' \
+            --exclude='project/tests/e2e/_output' \
+            --exclude='project/tests/e2e/screenshots/diff' \
             -cf - . | \
             (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
       # Inline equivalent of `codeceptjs:docker` but using `run-workers <N>` so
@@ -249,15 +144,24 @@ tasks:
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /app/project/tests"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /app/project/tests"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} cp tests/. codeceptjs:/app/project/tests/"
+      # Each cp runs in a subshell: PROJECT_DOCKER_COMPOSE starts with
+      # `cd project &&`, which would break on the second invocation if the
+      # first one had already changed the script's working directory.
       - defer: |
           echo "📥 Syncing artifacts (reports/screenshots) back to host..."
-          {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/. tests/ || true
+          ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/_output tests/e2e/ ) \
+            || echo "⚠️  WARNING: artifact sync failed — visual diffs and logs were NOT copied back to the host"
+          ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/screenshots tests/e2e/ ) \
+            || echo "⚠️  WARNING: baseline sync failed — container-side screenshots were NOT copied back to the host"
       - cmd: >-
-          {{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs /usr/local/bin/codeceptjs run-workers
+          {{.PROJECT_DOCKER_COMPOSE}} exec -T
+          {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}codeceptjs
+          /usr/local/bin/codeceptjs run-workers
           {{.TASK_E2E_WORKERS | default "3"}}
           --features --by pool
           --config project/tests/e2e/codecept.conf.js
-          {{if .TASK_CODECEPTJS_GREP}}--grep {{.TASK_CODECEPTJS_GREP}}{{end}}
+          {{if .TASK_CODECEPTJS_GREP}}--grep '{{.TASK_CODECEPTJS_GREP}}'{{end}}
+          {{.CLI_ARGS}}
       - cmd: echo "✅ Project E2E test phase completed successfully"
         silent: true
 
