@@ -31,8 +31,8 @@ task release      # Bump version, push tags
 # Testing
 task test -- --grep "@my-tag"             # Run tests filtered by tag
 task test:tdd                             # TDD mode (no rebuild)
-task project:test:application             # Application tests only
-task project:test:application -- --grep "@tag" --steps  # Filtered + verbose
+task project:test:e2e                     # E2E suite only (no guards)
+task project:test:e2e -- --grep "@tag"    # E2E suite filtered by tag
 
 # Operations
 task project:deploy:light                 # Light deploy (no rebuild)
@@ -75,22 +75,29 @@ cd project && ...
 └── project/          # Project-specific code
     ├── Taskfile.yml  # Add new tasks HERE
     └── tests/
-        └── template/ # E2E tests that verify the Copier template output
+        └── e2e/      # Unified E2E suite (single entry point — see tests/README.md)
             ├── codecept.conf.js
-            ├── features/       # Gherkin by domain (ansible/, docker/, gitlab/, …)
-            ├── step_objects/   # Reusable helpers (copier.js, assertions.js, …)
-            └── steps/          # Domain-specific Gherkin step definitions
+            ├── features/gitlab/   # 01-developer-journey, 02-init-guidance, 03-init-effects, 04-auth
+            ├── pages/             # GitLab Page Objects (masking for visual determinism)
+            ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
+            └── screenshots/base/  # Visual baselines (tolerance: 0)
 ```
 
 ### How Tests Work
 
-The tests in `project/tests/template/` are **E2E tests for the Copier template itself**. Each test:
-1. Generates a project from the Copier template with specific answers
-2. Asserts that the generated files have the expected content/structure
+The tests in `project/tests/e2e/` are **E2E tests for the developer journey on
+the Copier template**: clone a blank project from the in-repo test GitLab, run
+the working-branch installer, answer the Copier questions, then verify the
+init-framework-devsecops merge request and the resulting GitLab configuration.
+Every deterministic stage is proven by a pixel baseline (tolerance: 0),
+terminal-side and GitLab-side; volatile content falls back to log/REST asserts.
 
-Tests use [CodeceptJS](https://codecept.io) with Gherkin BDD. Features are organized by domain under `features/<domain>/`.
-
-The `step_objects/` layer contains reusable helpers; `steps/` contains Gherkin step definitions. Generic infrastructure steps (directory setup, etc.) are in `steps/system.js`.
+Tests use [CodeceptJS](https://codecept.io) with Gherkin BDD, executed inside
+the `codeceptjs` container via `task project:test:e2e`. See
+`project/tests/README.md` for capture styles, baseline regeneration and
+conventions. The former legacy suites `tests/{template,bootstrap,gitlab}/`
+were deleted after their coverage was ported into `e2e/` (recoverable from
+git history).
 
 ### Environment Layering
 
