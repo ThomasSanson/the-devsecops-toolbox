@@ -1,5 +1,6 @@
 /* global inject */
 const { I } = inject()
+const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
 class GitLabAccessTokenPage {
   async navigateToAccessTokenSettings (projectPath) {
@@ -36,11 +37,19 @@ class GitLabAccessTokenPage {
           if (DATE_PATTERNS.some(re => re.test(text))) el.textContent = PLACEHOLDER
         }
       })
+
+      // Hide the top app bar: its user shortcuts (To-Do / Merge requests /
+      // Issues) carry GLOBAL counters that vary across runs (e.g. the journey's
+      // open MRs). visibility:hidden keeps the layout intact.
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        const n = document.querySelector(sel)
+        if (n) n.style.visibility = 'hidden'
+      })
+      document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
     })
     await I.moveCursorTo('body', 1, 1)
 
-    await I.takeScreenshot(screenshotName)
-    await I.assertVisualMatch(screenshotName)
+    await assertPageVisualMatch(I, screenshotName)
   }
 
   async navigateToCiCdSettings (projectPath) {
@@ -65,10 +74,16 @@ class GitLabAccessTokenPage {
   async verifyVisualRegressionCiCd (screenshotName) {
     await I.scrollTo('[data-testid="ci-variable-table"]')
     await I.wait(1)
+    await I.executeScript(() => {
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        const n = document.querySelector(sel)
+        if (n) n.style.visibility = 'hidden'
+      })
+      document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+    })
     await I.moveCursorTo('body', 1, 1)
 
-    await I.takeScreenshot(screenshotName)
-    await I.assertVisualMatch(screenshotName)
+    await assertPageVisualMatch(I, screenshotName)
   }
 }
 
