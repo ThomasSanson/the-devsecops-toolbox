@@ -12,8 +12,9 @@ This workflow guides you through the safe removal of a feature from the template
 
 Identify all files related to the feature:
 
-- **Tests:** `project/tests/template/features/{domain}/{feature}.feature`
-- **Step Definitions:** `project/tests/template/steps/{domain}.js` (Note: multiple features might share one domain file)
+- **Tests:** `project/tests/e2e/features/{domain}/{feature}.feature`
+- **Step Definitions:** `project/tests/e2e/support/steps/*.js` (Note: multiple features might share one steps file)
+- **Visual baselines:** `project/tests/e2e/screenshots/base/` (remove the ones owned by the feature)
 - **Templates:** `.config/{domain}/`
 - **Configuration:** `copier.yml`
 
@@ -22,21 +23,23 @@ Identify all files related to the feature:
 Delete the feature file:
 
 ```bash
-rm project/tests/template/features/{domain}/{feature}.feature
+rm project/tests/e2e/features/{domain}/{feature}.feature
 ```
 
 If the domain folder is now empty, remove it:
 
 ```bash
-rmdir project/tests/template/features/{domain}/
+rmdir project/tests/e2e/features/{domain}/
 ```
+
+Remove the feature's visual baselines (and only those).
 
 ### 3. Clean up Step Definitions
 
-If the domain steps file `project/tests/template/steps/{domain}.js` is no longer used by any other feature:
+If a steps file under `project/tests/e2e/support/steps/` is no longer used by any other feature:
 
-1. Remove it: `rm project/tests/template/steps/{domain}.js`
-2. Remove the entry from `project/tests/template/codecept.conf.js`.
+1. Remove it: `rm project/tests/e2e/support/steps/{name}.js`
+2. Remove the entry from `project/tests/e2e/codecept.conf.js`.
 
 ### 4. Remove Template Files
 
