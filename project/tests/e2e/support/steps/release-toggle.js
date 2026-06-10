@@ -27,7 +27,7 @@ async function runInitAndRelease (projectName, { expectFailure }) {
   const repoDir = `/tmp/${projectName}-repo`
 
   const rootHeaders = await getRootHeaders()
-  const glabToken = await createLambdaPersonalAccessToken(
+  const { token: glabToken } = await createLambdaPersonalAccessToken(
     `glab-cli-token-for-${projectName}`,
     ['api', 'write_repository'],
     rootHeaders
@@ -196,6 +196,6 @@ When('the release logs are displayed in the browser', async () => {
 })
 
 Then('the release logs should visually match {string}', async (baselineName) => {
-  await I.takeScreenshot(baselineName)
-  await I.assertVisualMatch(baselineName)
+  const { assertPageVisualMatch } = require('../helpers/pageVisual')
+  await assertPageVisualMatch(I, baselineName)
 })
