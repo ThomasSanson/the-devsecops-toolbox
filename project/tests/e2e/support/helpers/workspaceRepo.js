@@ -6,7 +6,12 @@ function buildGitLabTaskEnv (glabToken) {
     PATH: `${process.env.PATH}:${process.env.HOME}/.local/bin`,
     GITLAB_HOST: 'gitlab',
     GITLAB_TOKEN: glabToken,
-    GLAB_TEST_TOKEN: glabToken
+    GLAB_TEST_TOKEN: glabToken,
+    // These scenarios assert the GitLab CONFIG effects of init (tokens, CI/CD
+    // vars, branch protection), not the MR delivery. Run init in direct mode so
+    // it does not open the init-framework-devsecops MR (that flow is covered by
+    // the dedicated @e2e-init-framework-mr feature).
+    TASK_DEVSECOPS_INIT_DIRECT: 'true'
   }
 }
 
