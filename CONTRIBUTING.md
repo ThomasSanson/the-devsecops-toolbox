@@ -175,7 +175,7 @@ Before contributing, familiarize yourself with the project structure:
   - `guidelines/` : DevSecOps guidelines and best practices
 - `project/` : Project-specific customization
   - `Taskfile.yml` : Project tasks (prefixed `project:*`)
-  - `tests/template/` : Template tests (CodeceptJS + Gherkin)
+  - `tests/e2e/` : Unified E2E suite (CodeceptJS + Gherkin + visual regression)
 
 ### DevSecOps Pipeline Structure
 
@@ -226,19 +226,22 @@ This project follows Test-Driven Development (TDD) principles, as outlined in th
 
 For writing tests, we use CodeceptJS with Gherkin (BDD) and Playwright.
 
-The test directory structure follows DDD organization:
+The test directory structure groups scenarios by domain:
 
 ```text
-project/tests/template/
-├── codecept.conf.js      # CodeceptJS configuration
-├── entrypoint.js         # Test hooks (Before/After)
+project/tests/e2e/
+├── codecept.conf.js      # CodeceptJS configuration (Playwright + VisualHelper + REST)
 ├── features/             # Gherkin feature files by domain
-│   ├── ansible/
-│   ├── devsecops/
-│   ├── docker/
-│   └── ...
-├── step_objects/          # Reusable logic (assertions, helpers)
-└── steps/                 # Domain-specific Gherkin steps
+│   ├── gitlab/           # 01-developer-journey, 02-init-guidance, 03-init-effects, 04-auth
+│   ├── template/         # Copier rendering matrix + copier update
+│   ├── security/         # gitleaks secret scanning
+│   └── installer/        # prerequisite auto-install paths
+├── pages/                # GitLab Page Objects (masking for visual determinism)
+├── support/
+│   ├── helpers/          # docker, gitlabApi, copierRender, textRender, …
+│   ├── steps/            # Gherkin step definitions
+│   └── terminal/         # live xterm/ttyd capture engine
+└── screenshots/base/     # Visual baselines (tolerance: 0)
 ```
 
 When developing new features or fixing bugs, always follow the TDD cycle:
