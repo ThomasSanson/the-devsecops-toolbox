@@ -31,6 +31,61 @@ async function getLambdaUserId (headers) {
   return usersResponse.data[0].id
 }
 
+async function createProject (payload, headers) {
+  return freshPost(`${BASE_URL}/api/v4/projects`, payload, headers)
+}
+
+async function listProjectBranches (projectName, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/branches`,
+    headers
+  )
+}
+
+async function listProjectMergeRequests (projectName, headers, query = '') {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/merge_requests${query}`,
+    headers
+  )
+}
+
+async function getMergeRequest (projectName, iid, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/merge_requests/${iid}`,
+    headers
+  )
+}
+
+async function mergeMergeRequest (projectName, iid, headers) {
+  return freshPut(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/merge_requests/${iid}/merge`,
+    {},
+    headers
+  )
+}
+
+async function updateProjectSettings (projectName, payload, headers) {
+  return freshPut(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}`,
+    payload,
+    headers
+  )
+}
+
+async function listRepositoryTree (projectName, headers, query = '') {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/tree${query}`,
+    headers
+  )
+}
+
+async function deleteProject (projectName, headers) {
+  return freshDelete(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}`,
+    headers
+  )
+}
+
 async function createLambdaPersonalAccessToken (tokenName, scopes = ['api', 'write_repository'], headers) {
   const userId = await getLambdaUserId(headers)
   const tokenResponse = await freshPost(
@@ -38,20 +93,19 @@ async function createLambdaPersonalAccessToken (tokenName, scopes = ['api', 'wri
     { name: tokenName, scopes },
     headers
   )
-  return tokenResponse.data.token
+  // Both the secret and the id are returned so the caller can revoke the PAT
+  // in teardown — otherwise per-scenario tokens accumulate forever on the
+  // persistent test GitLab volume.
+  return { token: tokenResponse.data.token, id: tokenResponse.data.id }
+}
+
+async function revokePersonalAccessToken (tokenId, headers) {
+  return freshDelete(`${BASE_URL}/api/v4/personal_access_tokens/${tokenId}`, headers)
 }
 
 async function readProjectVariable (projectName, variableName, headers) {
   return freshGet(
     `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
-    headers
-  )
-}
-
-async function updateProjectVariable (projectName, variableName, payload, headers) {
-  return freshPut(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
-    payload,
     headers
   )
 }
@@ -78,25 +132,18 @@ async function revokeProjectAccessToken (projectName, tokenId, headers) {
   )
 }
 
+async function updateProjectVariable (projectName, variableName, payload, headers) {
+  return freshPut(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
+    payload,
+    headers
+  )
+}
+
 async function rotateProjectAccessToken (projectName, tokenId, headers) {
   return freshPost(
     `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/access_tokens/${tokenId}/rotate`,
     {},
-    headers
-  )
-}
-
-async function deleteProjectVariable (projectName, variableName, headers) {
-  return freshDelete(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
-    headers
-  )
-}
-
-async function createProjectVariable (projectName, payload, headers) {
-  return freshPost(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables`,
-    payload,
     headers
   )
 }
@@ -106,13 +153,20 @@ module.exports = {
   projectPath,
   encodedProjectPath,
   getRootHeaders,
+  createProject,
+  deleteProject,
+  listProjectBranches,
+  listProjectMergeRequests,
+  getMergeRequest,
+  mergeMergeRequest,
+  updateProjectSettings,
+  listRepositoryTree,
   createLambdaPersonalAccessToken,
+  revokePersonalAccessToken,
   readProjectVariable,
   updateProjectVariable,
   listProjectAccessTokens,
   createProjectAccessToken,
   revokeProjectAccessToken,
-  rotateProjectAccessToken,
-  deleteProjectVariable,
-  createProjectVariable
+  rotateProjectAccessToken
 }
