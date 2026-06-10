@@ -35,13 +35,12 @@ task project:monitor:{service}                   # Logs specific service
 task project:monitor:all                         # Logs all services
 
 # Testing
-task test                                        # Run all tests
-task test:tdd                                    # TDD mode (watch)
-task project:test:application                    # All application tests
-task project:test:application -- --grep "@tag"   # Filter by tag
-task project:test:application -- --steps         # Show step definitions
-task project:test:application -- --verbose       # Verbose output
-task project:test:application -- --grep "@tag" --steps  # Combined options
+task test                                        # Run all tests (guards + e2e)
+task test:tdd                                    # TDD mode (no rebuild)
+task project:test:e2e                            # E2E suite only
+task project:test:e2e -- --grep "@tag"           # Filter by tag
+task project:test:e2e -- --grep "@tag" --steps   # Filtered + verbose
+TASK_E2E_WORKERS=5 task project:test:e2e         # Bump parallelism
 
 # ❌ FORBIDDEN
 docker compose up -d
