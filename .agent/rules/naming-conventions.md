@@ -26,7 +26,7 @@ description: Naming conventions for Taskfile tasks and environment variables
 | `plan`     | Planning, migrations check           | `project:plan:db:migrations`                                |
 | `code`     | Linters, formatters, static analysis | `project:code:eleventy:lint`                                |
 | `build`    | Install deps, compile, package       | `project:build:eleventy`                                    |
-| `test`     | Unit, integration, E2E tests         | `project:test:application`, `project:test:tdd`              |
+| `test`     | Unit, integration, E2E tests         | `project:test:e2e`, `project:test:tdd`                      |
 | `release`  | Tag, version, changelog              | `project:release:bump`                                      |
 | `deploy`   | Deploy to env, local dev server      | `project:deploy:eleventy`, `project:deploy:scalingo`        |
 | `operate`  | Env vars, backups, scaling, SSH      | `project:operate:scalingo:env`                              |
