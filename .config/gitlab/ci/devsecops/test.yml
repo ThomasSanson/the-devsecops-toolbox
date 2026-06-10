@@ -1,6 +1,21 @@
 ---
-.test-rules: &test_rules
+# The Taskfile is the single orchestrator: `task test` runs the coverage guards
+# (check:build-coverage, check:test-coverage) and then the full project suite
+# (project:test -> tdd -> deploy + project:test:e2e). CI therefore owns no
+# per-suite job — it just triggers the umbrella, exactly like the generated
+# projects' pipeline (test.yml.jinja).
+test:
+  stage: test
+  needs: [] # Allows parallel execution
+  extends: .default-tags
   retry: 1
+  # Explicit ceiling: one attempt = image pulls + GitLab CE boot (~5-10 min)
+  # + the full e2e suite (~6-10 min with 3 workers). With retry:1 the job can
+  # run twice, so keep the per-attempt timeout tight enough that a hung run
+  # fails fast instead of burning the runner for the project default (60 min).
+  timeout: 45m
+  script:
+    - task test
   artifacts:
     when: on_failure
     paths:
@@ -19,52 +34,3 @@
       when: never
     # Run in all other cases (MRs, feature branches, etc.)
     - when: always
-
-test:build-coverage:
-  stage: test
-  needs: []
-  extends: .default-tags
-  script:
-    - task devsecops:test:check:build-coverage
-  <<: *test_rules
-
-test:check-test-coverage:
-  stage: test
-  needs: []
-  extends: .default-tags
-  script:
-    - task devsecops:test:check:test-coverage
-  <<: *test_rules
-
-test:template:
-  stage: test
-  needs: []
-  extends: .default-tags
-  parallel:
-    matrix:
-      - SHARD: ["1/5", "2/5", "3/5", "4/5", "5/5"]
-  script:
-    - task project:test:template -- --shard $SHARD
-  <<: *test_rules
-
-test:bootstrap:
-  stage: test
-  needs: []
-  extends: .default-tags
-  parallel:
-    matrix:
-      - SHARD: ["1/7", "2/7", "3/7", "4/7", "5/7", "6/7", "7/7"]
-  script:
-    - task project:test:clean
-    - task project:test:bootstrap -- --shard $SHARD
-  <<: *test_rules
-
-test:gitlab:
-  stage: test
-  needs: []
-  extends: .default-tags
-  script:
-    - task project:test:clean
-    - task deploy
-    - task project:test:gitlab
-  <<: *test_rules
