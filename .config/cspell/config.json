@@ -25,6 +25,13 @@
   "language": "en",
   "version": "0.2",
   "words": [
+    "baselined",
+    "prereqs",
+    "screenshotted",
+    "selfhosted",
+    "timeago",
+    "topbar",
+    "uvx",
     "BUILDKIT",
     "CERTDIR",
     "CODECEPTJS",
