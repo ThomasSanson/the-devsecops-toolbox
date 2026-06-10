@@ -27,6 +27,11 @@
 #   - In devsecops:test default: lines matching "- task: check:*"
 #     are validation checks requiring CI coverage (prefixed devsecops:test:)
 #   - CI jobs must contain "task <full-task-name>" in their script block
+#   - UMBRELLA DELEGATION: a CI job may instead delegate to an umbrella task
+#     that transitively runs the suites. "task test" / "task devsecops:test"
+#     cover every required task (guards + project suites); "task project:test"
+#     covers the project:test:* suites only. When such a job is present the
+#     tasks it chains are considered covered without a dedicated CI job.
 #
 # EXIT CODES:
 #   0  All test tasks have an associated CI job
@@ -171,6 +176,18 @@ echo ""
 
 echo -e "${BLUE}🔍 Verifying test coverage...${NC}\n"
 
+# Umbrella delegation (Option B): the toolbox CI may trigger a single umbrella
+# task instead of one job per suite. `test` / `devsecops:test` run the guards
+# AND the project suites; `project:test` runs the project suites only.
+has_full_umbrella=false
+has_project_umbrella=false
+for ci_task in "${ci_tasks[@]}"; do
+  case "$ci_task" in
+  test | devsecops:test) has_full_umbrella=true ;;
+  project:test) has_project_umbrella=true ;;
+  esac
+done
+
 for task in "${test_tasks[@]}"; do
   ((total_tasks++)) || true
 
@@ -181,6 +198,15 @@ for task in "${test_tasks[@]}"; do
       break
     fi
   done
+
+  # Fall back to umbrella delegation when no dedicated job matched.
+  if ! $task_found; then
+    if $has_full_umbrella; then
+      task_found=true
+    elif $has_project_umbrella && [[ "$task" == project:test:* ]]; then
+      task_found=true
+    fi
+  fi
 
   if $task_found; then
     echo -e "${GREEN}✓${NC} $task"
