@@ -17,8 +17,8 @@ This workflow guides you through adding new functionality to an **existing** tem
 ### 1. Review Existing Feature
 
 Analyze the current implementation by reading files in:
-- **Feature file:** `project/tests/template/features/{domain}/{feature}.feature`
-- **Steps:** `project/tests/template/steps/{domain}.js`
+- **Feature file:** `project/tests/e2e/features/{domain}/{feature}.feature`
+- **Steps:** `project/tests/e2e/support/steps/*.js`
 - **Templates:** `.config/{domain}/`
 - **Config:** `copier.yml`
 
@@ -27,13 +27,15 @@ Analyze the current implementation by reading files in:
 Update the existing feature file or add a new one in the same domain.
 
 **Instruction:**
-Follow the existing Gherkin style in the feature file. Use the `@new-functionality` tag for development if needed.
+Follow the existing Gherkin style in the feature file. Tag new scenarios with
+`@e2e` plus a unique `@e2e-{feature}` tag. Ask before modifying existing
+scenarios or baselines.
 
 ### 3. Run Tests (Should Fail)
 
 ```bash
 // turbo
-task test -- --grep "@{domain}"
+task test -- --grep "@e2e-{feature}"
 ```
 
 ### 4. Implement Changes
@@ -49,7 +51,7 @@ Use the codebase as the source of truth for syntax and logic patterns.
 
 ```bash
 // turbo
-task test -- --grep "@{domain}"
+task test -- --grep "@e2e-{feature}"
 ```
 
 ### 6. Global Verification
@@ -65,5 +67,6 @@ task code
 
 - [ ] New tests added for new functionality
 - [ ] Implementation follows existing patterns in the codebase
+- [ ] New visual baselines inspected by a human
 - [ ] All tests pass (`task test`)
 - [ ] All linters pass (`task code`)
