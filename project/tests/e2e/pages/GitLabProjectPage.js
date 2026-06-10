@@ -18,19 +18,41 @@ class GitLabProjectPage {
     const headers = { Authorization: `Bearer ${accessToken}` }
 
     const encodedPath = encodeURIComponent(projectPath)
-    const response = await I.sendGetRequest(
+    // GitLab 18 deletes projects in two steps: DELETE marks the project for
+    // deletion and immediately renames its path to <name>-deletion_scheduled-<id>,
+    // freeing the original path — but it keeps a redirect from the old path, so
+    // a GET on the original path can still return 200 with the RENAMED project.
+    // "The path is free" therefore means: 404, or a (redirect-followed) payload
+    // whose path_with_namespace is no longer the requested path.
+    const pathIsFree = (response) =>
+      response.status !== 200 ||
+      !response.data ||
+      !response.data.id ||
+      response.data.path_with_namespace !== projectPath
+
+    const existing = await I.sendGetRequest(
       `${baseUrl}/api/v4/projects/${encodedPath}`,
       headers
     )
+    if (pathIsFree(existing)) return
 
-    if (response.status === 200 && response.data && response.data.id) {
-      await I.sendDeleteRequest(
-        `${baseUrl}/api/v4/projects/${response.data.id}`,
+    await I.sendDeleteRequest(
+      `${baseUrl}/api/v4/projects/${existing.data.id}`,
+      headers
+    )
+    // The rename is quick but asynchronous: poll until the path frees so an
+    // immediate re-create (mocha retry, rapid TDD rerun) cannot hit
+    // "name has already been taken".
+    const deadline = Date.now() + 60000
+    while (Date.now() < deadline) {
+      const probe = await I.sendGetRequest(
+        `${baseUrl}/api/v4/projects/${encodedPath}`,
         headers
       )
-      // Wait for deletion to propagate
+      if (pathIsFree(probe)) return
       await I.wait(2)
     }
+    throw new Error(`Project "${projectPath}" still occupied its path 60s after deletion was requested`)
   }
 
   async createBlankPublicProject (projectName) {
@@ -55,21 +77,6 @@ class GitLabProjectPage {
 
     await I.click('Create project')
     await I.wait(3)
-  }
-
-  async verifyProjectCreated (projectName) {
-    await I.waitForText(projectName, 30, '[data-testid="project-name-content"]')
-    await I.dontSeeInCurrentUrl('/projects/new')
-  }
-
-  async verifyVisualRegression (projectName) {
-    await I.waitForElement('body', 30)
-
-    await I.moveCursorTo('body', 1, 1)
-
-    const screenshotName = `gitlab_project_${projectName}`
-    await I.takeScreenshot(screenshotName)
-    await I.assertVisualMatch(screenshotName)
   }
 }
 
