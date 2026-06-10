@@ -32,16 +32,10 @@ task test -- --grep "@my-tag"
 task project:test:tdd
 ```
 
-### Application tests only
+### Run a single suite
 
 ```bash
-task project:test:application
-```
-
-### Infrastructure tests
-
-```bash
-task project:test:{infra-name}
+task project:test:{suite}    # e.g. project:test:e2e (toolbox), project:test:application (your app tests)
 ```
 
 ## Test data management
