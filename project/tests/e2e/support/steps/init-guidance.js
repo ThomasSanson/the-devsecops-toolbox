@@ -14,6 +14,8 @@
  */
 
 const { I } = inject()
+const fs = require('fs')
+const path = require('path')
 const {
   setupFreshUbuntuEnvironment,
   runInFreshUbuntu,
@@ -99,7 +101,11 @@ function tailFromMarker (lines, markers, tail) {
 const TAIL_MARKERS = [
   '✅ DevSecOps project initialization completed', // disabled-success
   'then rerun  task devsecops:init', //              missing-auth + glab-auth-ensure (both scenarios)
-  'install     glab' //                              glab-auth-ensure-missing-bin gum box footer
+  'install     glab', //                             glab-auth-ensure-missing-bin gum box footer
+  // Last remediation line of the gum/glow fast-fail and align-your-remote
+  // guidance blocks. Existing scenarios are unaffected: their last matching
+  // line ('then rerun  task devsecops:init') also contains this substring.
+  '  task devsecops:init'
 ]
 
 function filterOutput (raw) {
@@ -156,6 +162,11 @@ When('I run the command {string} in the fresh Ubuntu environment', (command) => 
   const result = runInFreshUbuntu(global.freshUbuntuContainer, command, { timeout: RUN_TIMEOUT })
   global.lastCapturedOutput = result.output
   global.lastCapturedExitCode = result.exitCode
+  // Full output as a debug artifact — CodeceptJS truncates assertion errors,
+  // which makes long init runs undiagnosable from the report alone.
+  const artifact = path.join(__dirname, '..', '..', '_output', 'captured', `${global.freshUbuntuContainer}.log`)
+  fs.mkdirSync(path.dirname(artifact), { recursive: true })
+  fs.writeFileSync(artifact, result.output)
 })
 
 // ============================================
@@ -217,6 +228,6 @@ When('the captured output is displayed in the browser', async () => {
 })
 
 Then('the captured output should visually match {string}', async (baselineName) => {
-  await I.takeScreenshot(baselineName)
-  await I.assertVisualMatch(baselineName)
+  const { assertPageVisualMatch } = require('../helpers/pageVisual')
+  await assertPageVisualMatch(I, baselineName)
 })
