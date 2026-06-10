@@ -26,6 +26,7 @@ const {
   runTaskInRepoCaptured
 } = require('../helpers/workspaceRepo')
 const { freshGet, freshPost } = require('../helpers/http')
+const { assertPageVisualMatch } = require('../helpers/pageVisual')
 
 // All scenarios that drive `task devsecops:init` on a fresh GitLab project
 // share this convention: the working repo lives at /tmp/<projectName>-repo.
@@ -64,6 +65,9 @@ const TASK_OUTPUT_NOISE_PATTERNS = [
 function filterTaskOutput (raw) {
   return stripAnsi(raw)
     .replace(/\r/g, '')
+    // The duplicate-purge healing line carries the revoked token's numeric id,
+    // which differs on every run — mask it so the verdict stays pixel-stable.
+    .replace(/Revoked duplicate token #\d+/g, 'Revoked duplicate token #<id>')
     .split('\n')
     .filter(line => {
       const trimmed = line.trim()
@@ -129,7 +133,7 @@ When('I run the command {string} for project {string} with local authentication'
   }
 
   const rootHeaders = await getRootHeaders()
-  const glabToken = await createLambdaPersonalAccessToken(
+  const { token: glabToken } = await createLambdaPersonalAccessToken(
     `glab-cli-token-for-${projectName}`,
     ['api', 'write_repository'],
     rootHeaders
@@ -351,8 +355,7 @@ When('the commit output is displayed in the browser', async () => {
 })
 
 Then('the commit output should visually match {string}', async (baselineName) => {
-  await I.takeScreenshot(baselineName)
-  await I.assertVisualMatch(baselineName)
+  await assertPageVisualMatch(I, baselineName)
 })
 
 Then('I can git clone the project {string} using the {string} token', async (projectName, variableName) => {
@@ -397,12 +400,7 @@ When('the devsecops:init output is displayed in the browser', async () => {
 })
 
 Then('the devsecops:init terminal output should visually match {string}', async (baselineName) => {
-  // Force a fresh actual capture. Without this, the visual helper reuses any
-  // stale `_output/<name>.png` left by a previous run (because captureActual
-  // defaults to 'missing'), which silently breaks comparisons after a filter
-  // change in the rendered output.
-  await I.takeScreenshot(baselineName)
-  await I.assertVisualMatch(baselineName)
+  await assertPageVisualMatch(I, baselineName)
 })
 
 // ============================================
