@@ -85,10 +85,12 @@ tasks:
     cmds:
       - cmd: echo "⚙️ Configuring GitLab project..."
         silent: true
+      - task: :glab:bootstrap-main
       - task: :glab:merge-settings
       - task: :glab:renovate-token
       - task: :glab:commitizen-token
       - task: :glab:protected-branch
+      - task: :glab:init-merge-request
       - cmd: echo "✅ GitLab project configured"
         silent: true
 {%- endraw %}
