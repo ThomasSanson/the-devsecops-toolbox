@@ -66,11 +66,12 @@
 ├── docs/                      # Documentation
 ├── project/                   # Project-specific customization
 │   ├── Taskfile.yml          # Project tasks (prefixed `project:*`)
-│   └── tests/template/       # Template tests (CodeceptJS + Gherkin)
+│   └── tests/e2e/            # Unified E2E suite (CodeceptJS + Gherkin)
 │       ├── codecept.conf.js  # CodeceptJS configuration
 │       ├── features/         # Gherkin feature files by domain
-│       ├── step_objects/     # Reusable logic (assertions, helpers)
-│       └── steps/            # Domain-specific Gherkin steps
+│       ├── pages/            # GitLab Page Objects
+│       ├── support/          # helpers/, steps/, terminal/
+│       └── screenshots/base/ # Visual baselines (tolerance: 0)
 ├── Taskfile.yml              # Root orchestration
 └── Taskfile.yml.jinja        # Jinja template for Taskfile
 ```
@@ -189,46 +190,48 @@ task copier:update             # Update from template
 
 ### E2E Tests (CodeceptJS + Gherkin)
 
-**Configuration**: `project/tests/template/codecept.conf.js`
+**Configuration**: `project/tests/e2e/codecept.conf.js`
 
-**Features Location**: `project/tests/template/features/`
+**Features Location**: `project/tests/e2e/features/`
 
-Features are organized by domain (DDD):
-`ansible/`, `commitizen/`, `devsecops/`, `docker/`, `gitlab/`, `gitleaks/`, `glab/`, `renovate/`, etc.
+Features are organized by domain:
+`gitlab/` (01-developer-journey, 02-init-guidance, 03-init-effects, 04-auth),
+`template/` (Copier rendering matrix + update), `security/` (gitleaks),
+`installer/` (prerequisite paths).
 
-**Step Definitions**: `project/tests/template/steps/`
+**Step Definitions**: `project/tests/e2e/support/steps/`
 
-| File           | Purpose                       |
-|----------------|-------------------------------|
-| `ansible.js`   | Ansible integration steps     |
-| `devsecops.js` | DevSecOps scaffolding steps   |
-| `docker.js`    | Docker/Podman runtime steps   |
-| `gitlab.js`    | GitLab CI configuration steps |
-| `system.js`    | Generic infrastructure steps  |
-| `taskfile.js`  | Taskfile documentation steps  |
+| File                   | Purpose                                     |
+|------------------------|---------------------------------------------|
+| `journey.js`           | Developer-journey steps (terminal + GitLab) |
+| `init-baseline.js`     | devsecops:init effect steps                 |
+| `init-guidance.js`     | init failure / opt-out guidance steps       |
+| `release-toggle.js`    | task release protection-window steps        |
+| `glab-auth-ensure.js`  | glab auth guidance steps                    |
+| `template-matrix.js`   | Copier rendering matrix + update steps      |
+| `gitleaks.js`          | Secret-scanning steps                       |
+| `installer-prereqs.js` | Bare-machine prerequisite steps             |
 
-**Step Objects**: `project/tests/template/step_objects/`
+**Helpers**: `project/tests/e2e/support/helpers/`
 
-| File            | Purpose                            |
-|-----------------|------------------------------------|
-| `copier.js`     | Copier execution helpers           |
-| `content.js`    | Content assertion step definitions |
-| `assertions.js` | File/directory assertions          |
-| `commands.js`   | Shell command execution            |
+| File              | Purpose                                         |
+|-------------------|-------------------------------------------------|
+| `copierRender.js` | Copier render/update helpers                    |
+| `gitlabApi.js`    | GitLab REST helpers                             |
+| `docker.js`       | Container orchestration helpers                 |
+| `textRender.js`   | Text-to-pixel proof helper                      |
+| `pageVisual.js`   | Page visual assert + baseline regeneration mode |
 
 ### Test Execution
 ```bash
-# TDD mode (default task)
-task
-
-# Full test suite
+# Full test suite (coverage guards + e2e)
 task test
 
-# Copier-specific tests
-task project:test:copier
+# E2E suite only
+task project:test:e2e
 
 # With grep filter
-task codeceptjs:npx TASK_CODECEPTJS_GREP="@copier"
+task project:test:e2e -- --grep "@e2e-template-matrix"
 ```
 
 ---
