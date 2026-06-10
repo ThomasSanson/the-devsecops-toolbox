@@ -4,52 +4,52 @@ description: Implement a new template feature using TDD with Gherkin tests
 
 # Create Feature Workflow
 
-This workflow guides you through implementing a new template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
+This workflow guides you through implementing a new template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests in the unified e2e suite.
 
 ## Prerequisites
 
 - Understand the feature requirements
-- Identify the domain and feature name for DDD organization
+- Identify the domain and feature name (existing domains: `gitlab/`, `template/`, `security/`, `installer/`)
 - Have a clear picture of the expected Copier question(s) and template changes
 
 ## Test Architecture
 
 Search for existing tests and steps to understand the project structure:
-- **Feature files:** `project/tests/template/features/{domain}/{feature}.feature`
-- **Step definitions:** `project/tests/template/steps/{domain}.js`
-- **Step objects:** `project/tests/template/step_objects/*.js` (Reusable logic pointers)
+- **Feature files:** `project/tests/e2e/features/{domain}/{feature}.feature`
+- **Step definitions:** `project/tests/e2e/support/steps/*.js`
+- **Helpers:** `project/tests/e2e/support/helpers/*.js` (copierRender, textRender, gitlabApi, docker, …)
+- **Visual baselines:** `project/tests/e2e/screenshots/base/` (tolerance: 0)
 
 ## Workflow Steps
 
 ### 1. Define the Feature (Gherkin)
 
-Create a new feature file in `project/tests/template/features/{domain}/{feature}.feature`.
+Create a new feature file in `project/tests/e2e/features/{domain}/{feature}.feature`.
 
 **Instruction:**
-Read an existing feature file in `project/tests/template/features/` to understand the mandatory tags and step patterns.
+Read an existing feature file to understand the mandatory tags and step patterns.
+For Copier rendering assertions, start from `features/template/matrix.feature`
+(steps: `Given a project rendered from the working-branch template with answers "key=value"`).
 
 **Mandatory Rules:**
 - NO Background block.
-- Use: `Given a clean temporary directory for "{domain}/{feature}" tests`.
-- Use descriptive tags: `@copier`, `@scaffolding`, `@{domain}`, `@{feature}`.
+- Tag every scenario with `@e2e` plus unique domain/feature tags: `@e2e-{feature}`.
+- Add a pixel baseline for every stage whose rendering is deterministic
+  (`the rendered configuration layout should visually match "..."`); fall back
+  to content/log/REST assertions only for genuinely volatile content.
 
 ### 2. Add Step Definitions
 
-Create or update the domain-specific steps file: `project/tests/template/steps/{domain}.js`.
+Reuse the steps in `project/tests/e2e/support/steps/template-matrix.js` when possible.
+If new steps are needed, create or extend a steps file under `project/tests/e2e/support/steps/`.
 
-**Instruction:**
-Analyze existing files in `project/tests/template/steps/*.js` to see how to:
-- Require step objects (assertions, commands, content, etc.).
-- Use `Given()`, `When()`, `Then()` with parameterized strings.
-- Export and call the `register()` function.
-
-**IMPORTANT:** If creating a new file, add it to the `gherkin: { steps: [...] }` section in `project/tests/template/codecept.conf.js`.
+**IMPORTANT:** If creating a new file, add it to the `gherkin: { steps: [...] }` section in `project/tests/e2e/codecept.conf.js`.
 
 ### 3. Run Tests (Should Fail)
 
 ```bash
 // turbo
-task test -- --grep "@{feature}"
+task test -- --grep "@e2e-{feature}"
 ```
 
 ### 4. Implement Copier Configuration
@@ -70,7 +70,7 @@ Explore `.config/` to see how Jinja conditions (`{% if %}`) and template naming 
 
 ```bash
 // turbo
-task test -- --grep "@{feature}"
+task test -- --grep "@e2e-{feature}"
 ```
 
 ### 7. Global Verification
@@ -85,9 +85,10 @@ task code
 ## Constraints Checklist
 
 - [ ] TDD: Tests written before implementation
-- [ ] DDD: Files in correct domain/feature folders
+- [ ] Files in the correct domain folder under `features/`
 - [ ] No Background block in feature files
+- [ ] Scenarios tagged `@e2e` + unique `@e2e-{feature}` tag
 - [ ] Steps are parameterized and reusable
-- [ ] Domain steps file added to `codecept.conf.js`
-- [ ] `register()` called and exported in step file
+- [ ] New steps file (if any) added to `codecept.conf.js`
+- [ ] New visual baselines inspected by a human
 - [ ] All linters pass (`task code`)
