@@ -4,6 +4,10 @@ version: "3"
 vars:
   TASK_GLAB_ENABLED: '{{.TASK_GLAB_ENABLED | default "true"}}'
   TASK_GLAB_CONFIG_DIR: '{{.TASK_GLAB_CONFIG_DIR | default ".config/glab"}}'
+  # init delivers the framework via an init-framework-devsecops merge request by
+  # default; set TASK_DEVSECOPS_INIT_DIRECT=true to apply directly instead.
+  TASK_DEVSECOPS_INIT_DIRECT: '{{.TASK_DEVSECOPS_INIT_DIRECT | default "false"}}'
+  TASK_DEVSECOPS_INIT_BRANCH: '{{.TASK_DEVSECOPS_INIT_BRANCH | default "init-framework-devsecops"}}'
 
 tasks:
   default:
@@ -203,6 +207,19 @@ tasks:
         if [ -z "$host" ]; then
           host="$(detect_gitlab_host_from_remotes || true)"
         fi
+
+        # Remotes exist but none is a GitLab host (e.g. cloned from another
+        # forge): authenticating cannot help — the remote itself must be
+        # aligned first. Only fires when there ARE remotes to align, so
+        # remote-less repos keep the generic auth flow below.
+        if [ -z "$host" ] && [ -n "$(git remote 2>/dev/null || true)" ]; then
+          echo "❌ No GitLab repository remote was detected."
+          echo ""
+          echo "Align your repository remote, then rerun:"
+          echo "  git remote set-url origin https://gitlab.com/<namespace>/<project>.git"
+          echo "  task devsecops:init"
+          exit 1
+        fi
         host="${host:-gitlab.example.com}"
 
         # 2. Check if gitlab CLI is available at all
@@ -380,7 +397,7 @@ tasks:
           elif [ -n "${CI_COMMIT_REF_NAME:-}" ]; then
             CURRENT_BRANCH="$CI_COMMIT_REF_NAME"
           elif git rev-parse --is-inside-work-tree &>/dev/null; then
-            CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+            CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || git symbolic-ref --short HEAD 2>/dev/null || echo main)"
           else
             CURRENT_BRANCH="main"
           fi
@@ -714,6 +731,58 @@ tasks:
           bash {{.TASK_GLAB_CONFIG_DIR}}/protected-branch.sh
         silent: true
 
+  bootstrap-main:
+    desc: 🌱 Ensure the default branch exists with an initial commit
+    summary: |
+      ℹ️ Description:
+        Bootstraps the default branch with a minimal README + an initial
+        conventional commit and pushes it, when the repository has no commits
+        yet. The default branch stays clean — the framework is delivered via the
+        init-framework-devsecops merge request afterwards.
+
+        Idempotent: a no-op when the repository already has commits.
+    vars:
+      TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
+    preconditions:
+      - sh: git remote get-url origin >/dev/null 2>&1
+        msg: "❌ No 'origin' remote configured. Add a GitLab remote, then re-run."
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          TASK_GIT_DEFAULT_BRANCH="{{.TASK_GIT_DEFAULT_BRANCH}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/bootstrap-main.sh
+        silent: true
+
+  init-merge-request:
+    desc: 🔀 Open the init-framework-devsecops merge request
+    summary: |
+      ℹ️ Description:
+        Branches init-framework-devsecops from the default branch, commits the
+        scaffolded framework, pushes, and opens a merge request (left open for
+        review). This is the default init delivery; skipped when
+        TASK_DEVSECOPS_INIT_DIRECT=true.
+
+        Idempotent: re-uses the branch and does not open a duplicate MR.
+    vars:
+      TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
+      TASK_DEVSECOPS_INIT_BRANCH: '{{.TASK_DEVSECOPS_INIT_BRANCH | default "init-framework-devsecops"}}'
+    preconditions:
+      - sh: command -v glab >/dev/null 2>&1
+        msg: "❌ glab is not installed. Run 'task glab:install' first."
+      - sh: git remote get-url origin >/dev/null 2>&1
+        msg: "❌ No 'origin' remote configured. Add a GitLab remote, then re-run."
+    status:
+      # Skip when GitLab is disabled OR direct mode is requested. Taskfile
+      # `status` is AND across entries, so the OR must be a single command.
+      - test "{{.TASK_GLAB_ENABLED}}" = "false" || test "{{.TASK_DEVSECOPS_INIT_DIRECT}}" = "true"
+    cmds:
+      - cmd: |
+          TASK_GIT_DEFAULT_BRANCH="{{.TASK_GIT_DEFAULT_BRANCH}}" \
+          TASK_DEVSECOPS_INIT_BRANCH="{{.TASK_DEVSECOPS_INIT_BRANCH}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/init-merge-request.sh
+        silent: true
+
   release:lock-default-branch:
     desc: 🔒 Lock default branch push access to No one for release safety
     summary: |
@@ -750,7 +819,7 @@ tasks:
             echo "${TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}"
           elif git rev-parse --is-inside-work-tree &>/dev/null; then
             git config --global --add safe.directory "${PWD}"
-            git rev-parse --abbrev-ref HEAD
+            git rev-parse --abbrev-ref HEAD 2>/dev/null || git symbolic-ref --short HEAD 2>/dev/null || echo main
           else
             echo "main"
           fi
