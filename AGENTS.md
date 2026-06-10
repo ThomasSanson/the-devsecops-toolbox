@@ -74,8 +74,8 @@ task monitor                 # Monitoring tasks
 task test                              # Full test suite (deploy + test)
 task test -- --grep "@my-tag"          # Run tests filtered by tag
 task test:tdd                          # TDD mode (no rebuild)
-task project:test:application          # Application tests only
-task project:test:application -- --grep "@tag" --steps  # Filtered + verbose
+task project:test:e2e                  # E2E suite only (no guards)
+task project:test:e2e -- --grep "@tag" --steps  # Filtered + verbose
 ```
 
 ### Operations Commands
