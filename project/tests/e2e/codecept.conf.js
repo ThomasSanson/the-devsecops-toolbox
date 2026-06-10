@@ -2,12 +2,19 @@
  * CodeceptJS Configuration — unified E2E suite
  *
  * Single entry point that replaces the former bootstrap/, gitlab/ and template/
- * suites. Each scenario must follow the convention:
+ * suites. Scenarios prove their effects with pixel baselines wherever the
+ * content is deterministic, through one of two capture styles:
  *
- *   Given <realistic environment: ttyd container, GitLab linkage if needed>
- *   When  <user types a command in the terminal>
- *   Then  <terminal output visually matches a baseline>      (xterm shadowDOM capture)
- *   And   <GitLab instance reflects the effect of the command> (UI screenshot or REST assertion)
+ *   1. Live-terminal capture (journey scenarios): the user's real ttyd/xterm
+ *      session is screenshotted via support/terminal/capture.js, optionally
+ *      anchored from a marker row to skip non-deterministic scrollback.
+ *   2. Filtered <pre> render (init-effects/guidance/release scenarios): the
+ *      captured command output is noise-filtered, rendered in the browser as
+ *      a <pre> block and screenshotted.
+ *
+ * GitLab-side effects are proven by page screenshots (masked: dates, avatars,
+ * top bar, per-run project names) plus REST assertions where content is
+ * volatile (token values, MR diffs).
  *
  * Visual regression is pixel-perfect (tolerance: 0). Chromium flags pin font and
  * color rendering so baselines are reproducible across local and CI runners.
@@ -17,10 +24,12 @@ exports.config = {
   output: './_output',
   include: {
     I: '../../../.config/codeceptjs/steps_file.js',
-    GitLabLoginPage: './pages/GitLabLoginPage.js',
     GitLabUserPage: './pages/GitLabUserPage.js',
     GitLabProjectPage: './pages/GitLabProjectPage.js',
-    GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js'
+    GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js',
+    GitLabMergeRequestPage: './pages/GitLabMergeRequestPage.js',
+    GitLabRepositoryPage: './pages/GitLabRepositoryPage.js',
+    GitLabSettingsPage: './pages/GitLabSettingsPage.js'
   },
   helpers: {
     Playwright: {
@@ -61,7 +70,13 @@ exports.config = {
       './support/steps/init-baseline.js',
       './support/steps/init-guidance.js',
       './support/steps/glab-auth-ensure.js',
-      './support/steps/release-toggle.js'
+      './support/steps/release-toggle.js',
+      './support/steps/journey.js',
+      './support/steps/template-matrix.js',
+      './support/steps/gitleaks.js',
+      './support/steps/installer-prereqs.js',
+      './support/steps/guidance-variants.js',
+      './support/steps/init-token-lifecycle.js'
     ]
   },
   plugins: {
