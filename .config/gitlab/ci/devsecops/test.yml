@@ -14,6 +14,11 @@ test:
   # 4-vCPU SaaS runner (a 45m cap killed an otherwise progressing run).
   # retry:1 still bounds the worst case to two attempts.
   timeout: 90m
+  variables:
+    # 2 workers in CI (3 locally): the 4-vCPU SaaS runner also hosts the
+    # GitLab CE instance, Chromium and the scenario containers; at 3 workers
+    # the contention starves GitLab CE into 500s and setup timeouts.
+    TASK_E2E_WORKERS: "2"
   script:
     - task test
   artifacts:

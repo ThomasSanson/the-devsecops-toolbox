@@ -9,43 +9,53 @@ class GitLabUserPage {
   }
 
   async ensureUserViaApi (baseUrl, rootUser, rootPassword, userData) {
-    const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-      grant_type: 'password',
-      username: rootUser,
-      password: rootPassword
-    })
-    const accessToken = tokenResponse.data.access_token
-    const headers = { Authorization: `Bearer ${accessToken}` }
+    // The test GitLab transiently answers 5xx under CI load (4-vCPU runner
+    // shared with Chromium workers and scenario containers), so the whole
+    // ensure flow retries: each attempt re-checks existence first, which also
+    // makes a created-despite-500 first attempt converge.
+    let lastError = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
+          grant_type: 'password',
+          username: rootUser,
+          password: rootPassword
+        })
+        const accessToken = tokenResponse.data.access_token
+        const headers = { Authorization: `Bearer ${accessToken}` }
 
-    // Check if user already exists
-    const existingUsers = await I.sendGetRequest(
-      `${baseUrl}/api/v4/users?username=${userData.username}`,
-      headers
-    )
+        const existingUsers = await I.sendGetRequest(
+          `${baseUrl}/api/v4/users?username=${userData.username}`,
+          headers
+        )
+        if (existingUsers.data && existingUsers.data.length > 0) {
+          return
+        }
 
-    if (existingUsers.data && existingUsers.data.length > 0) {
-      // User already exists — skip creation
-      return
+        const response = await I.sendPostRequest(
+          `${baseUrl}/api/v4/users`,
+          {
+            email: userData.email,
+            username: userData.username,
+            name: userData.name,
+            password: userData.password,
+            skip_confirmation: true,
+            force_random_password: false,
+            reset_password: false
+          },
+          headers
+        )
+        if (response.status === 201) {
+          return
+        }
+        lastError = new Error(`Failed to create user: ${response.status} ${JSON.stringify(response.data)}`)
+        if (response.status < 500) throw lastError
+      } catch (error) {
+        lastError = error
+      }
+      await I.wait(10)
     }
-
-    // Create user
-    const response = await I.sendPostRequest(
-      `${baseUrl}/api/v4/users`,
-      {
-        email: userData.email,
-        username: userData.username,
-        name: userData.name,
-        password: userData.password,
-        skip_confirmation: true,
-        force_random_password: false,
-        reset_password: false
-      },
-      headers
-    )
-
-    if (response.status !== 201) {
-      throw new Error(`Failed to create user: ${response.status} ${JSON.stringify(response.data)}`)
-    }
+    throw lastError
   }
 
   async loginAs (username, password) {
