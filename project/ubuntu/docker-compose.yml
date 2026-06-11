@@ -7,6 +7,10 @@ services:
     build:
       context: ../..
       dockerfile: project/ubuntu/Dockerfile
+      # Inline-cache image seeded in the project registry (see the codeceptjs
+      # service): a cache hit skips the GitHub ttyd download entirely.
+      cache_from:
+        - registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/cache/ubuntu:cache
     profiles: ["test"]
     networks:
       - the-devsecops-toolbox

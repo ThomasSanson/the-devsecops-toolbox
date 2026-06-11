@@ -13,6 +13,12 @@ services:
     build:
       context: ../..
       dockerfile: .config/codeceptjs/Dockerfile
+      # Inline-cache image seeded in the project registry: GitLab-internal
+      # pulls are the only egress that never flakes on shared runners, so a
+      # cache hit skips the taskfile.dev/astral.sh downloads entirely.
+      # Missing cache image = warning only, the build proceeds uncached.
+      cache_from:
+        - registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/cache/codeceptjs:cache
     profiles: ["test"]
     working_dir: /app
     environment:
