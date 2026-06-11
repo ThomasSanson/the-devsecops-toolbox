@@ -124,10 +124,16 @@ tasks:
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
+      # .claude and .env are LOCAL-ONLY (agent tooling / personal overrides,
+      # both gitignored): shipping them into /workspace makes Copier renders
+      # differ between local and CI (the matrix `ls` baselines would embed
+      # them) and could leak personal secrets into test containers.
       - cmd: |
           tar \
             --exclude='.git' \
             --exclude='.cache' \
+            --exclude='.claude' \
+            --exclude='.env' \
             --exclude='tmp' \
             --exclude='megalinter-reports' \
             --exclude='node_modules' \
