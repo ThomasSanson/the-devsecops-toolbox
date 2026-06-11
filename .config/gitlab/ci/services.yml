@@ -2,3 +2,13 @@
 services:
   # kics-scan ignore-line
   - name: docker:29-dind # The rule [ce76b7d0-9e77-464d-b86f-c5c48e03e22d,698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b] are ignored here because it causes false positives specifically related to the Docker-in-Docker service.
+    # --mtu=1460: gitlab.com SaaS runners are GCP VMs whose network MTU is
+    # 1460, but the dind daemon creates its bridge with the Docker default of
+    # 1500. Full-size packets from build/run containers are then silently
+    # dropped (path-MTU discovery is blackholed), so downloads from hosts that
+    # do not clamp their MSS stall until curl dies with exit 28 — while small
+    # or MSS-clamped exchanges (apt, registry.gitlab.com) keep working. This
+    # killed every docker-build step fetching taskfile.dev/GitHub from the
+    # shared runners, deterministically. 1460 also stays harmless on
+    # self-hosted runners whose host MTU is 1500.
+    command: ["--mtu=1460"]

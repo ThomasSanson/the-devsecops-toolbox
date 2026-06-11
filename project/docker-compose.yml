@@ -8,3 +8,10 @@ include:
 
 networks:
   the-devsecops-toolbox:
+    driver_opts:
+      # Match the smallest underlying MTU (1460 on gitlab.com SaaS runners,
+      # GCP). Compose-created bridges otherwise default to 1500 inside dind,
+      # silently dropping full-size packets from the test containers (the
+      # gum/glab/go downloads inside scenario containers stalled on this).
+      # Harmless on hosts whose MTU is already 1500.
+      com.docker.network.driver.mtu: 1460
