@@ -9,11 +9,11 @@ test:
   needs: [] # Allows parallel execution
   extends: .default-tags
   retry: 1
-  # Explicit ceiling: one attempt = image pulls + GitLab CE boot (~5-10 min)
-  # + the full e2e suite (~6-10 min with 3 workers). With retry:1 the job can
-  # run twice, so keep the per-attempt timeout tight enough that a hung run
-  # fails fast instead of burning the runner for the project default (60 min).
-  timeout: 45m
+  # Explicit ceiling, sized from a measured CI run: image builds + GitLab CE
+  # boot + the full e2e suite with in-scenario retries needed >45m on the
+  # 4-vCPU SaaS runner (a 45m cap killed an otherwise progressing run).
+  # retry:1 still bounds the worst case to two attempts.
+  timeout: 90m
   script:
     - task test
   artifacts:
