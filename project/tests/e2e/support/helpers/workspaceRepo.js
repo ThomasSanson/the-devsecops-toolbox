@@ -40,7 +40,12 @@ function bootstrapWorkspaceRepo (projectName, repoDir, glabToken, { runInit = fa
     git config user.email "lambda@test.local"
     git config user.name "Lambda"
 
-    task dev:setup-environment
+    # flock: dev:setup-environment mutates the runner's SHARED toolchain
+    # (apt, nvm/node, uv pythons, go bins). Two workers running it
+    # concurrently race (apt lock exit 100, tar collisions in ~/.nvm) —
+    # serializing makes the first worker install and later ones fly through
+    # the idempotent "already installed" checks.
+    flock /tmp/e2e-dev-setup.lock task dev:setup-environment
 
     rm -rf ~/.config/glab-cli || true
     glab auth login \\

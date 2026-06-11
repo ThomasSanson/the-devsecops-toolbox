@@ -35,8 +35,15 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
       > /etc/apt/sources.list.d/docker.list && \
     apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends docker-ce-cli docker-compose-plugin && \
+    apt-get install -y -qq --no-install-recommends \
+      docker-ce-cli docker-compose-plugin \
+      ca-certificates curl git golang-go jq pipx python3 unzip wget xz-utils && \
     rm -rf /var/lib/apt/lists/*
+# The extra packages are the union of everything the .config/*/install.sh
+# scripts may apt-install: dev:setup-environment runs INSIDE this runner for
+# the init-effects scenarios, and when two workers hit a missing apt package
+# simultaneously they race on the apt lock (exit 100, observed with unzip
+# then xz-utils). Baking them all removes every scenario-time apt call.
 
 # Pre-install a pinned renovate so the e2e template suite can run the real
 # renovate-config-validator OFFLINE: `npx -p renovate` re-resolves "latest"

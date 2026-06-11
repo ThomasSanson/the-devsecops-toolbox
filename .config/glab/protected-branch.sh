@@ -98,20 +98,32 @@ verify_protected_branch_state() {
   return $errors
 }
 
+protect_branch_once() {
+  # Reset-then-protect inside the retry so a half-applied previous attempt is
+  # purged before re-creating. stderr is kept in RESPONSE: under pipefail a
+  # transient GitLab 5xx used to abort the script silently (the API error
+  # went to /dev/null), which is exactly how this step died under CI load.
+  glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH}" >/dev/null 2>&1 || true
+  RESPONSE=$(glab api --method POST \
+    "projects/${PROJECT_PATH_ENCODED}/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=0" \
+    2>&1 | strip_glab_noise) || return 1
+  echo "$RESPONSE" | jq -e '.name' >/dev/null 2>&1
+}
+
 echo "🔒 Protected Branch Configuration"
 check_permissions
 
-echo "   🔄 Resetting protection on branch '${BRANCH}'..."
-glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/protected_branches/${BRANCH}" >/dev/null 2>&1 || true
-
 echo "   🔒 Protecting branch '${BRANCH}' (merge=Maintainers, push=No one)..."
-RESPONSE=$(glab api --method POST \
-  "projects/${PROJECT_PATH_ENCODED}/protected_branches?name=${BRANCH}&merge_access_level=40&push_access_level=0" \
-  2>/dev/null | strip_glab_noise)
-if ! echo "$RESPONSE" | jq -e '.name' >/dev/null 2>&1; then
-  echo "   ❌ Failed to protect branch: $RESPONSE"
-  exit 1
-fi
+attempts=0
+until protect_branch_once; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 3 ]; then
+    echo "   ❌ Failed to protect branch after ${attempts} attempts: ${RESPONSE:-no response}"
+    exit 1
+  fi
+  echo "   ⚠️  Protect attempt ${attempts} failed (transient GitLab error), retrying in 5s..."
+  sleep 5
+done
 
 if verify_protected_branch_state; then
   echo "✅ Done! Protected branch '${BRANCH}' is configured."
