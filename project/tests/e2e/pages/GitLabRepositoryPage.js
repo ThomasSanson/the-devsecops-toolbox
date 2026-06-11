@@ -44,6 +44,14 @@ class GitLabRepositoryPage {
         if (node) node.style.display = 'none'
       })
 
+      // Repository language bar: segment widths derive from per-language byte
+      // counts, so ANY content change shifts a segment boundary by a pixel
+      // (caught at tolerance:0 between the local working tree and the CI
+      // checkout).
+      document.querySelectorAll('[class*="repository-language"], [data-testid="repository-language-bar"]').forEach(el => {
+        el.style.display = 'none'
+      })
+
       document.querySelectorAll('time, .js-timeago').forEach(el => { el.textContent = PLACEHOLDER })
       document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
       // Letter-avatars are CSS-coloured divs whose background is derived from the
