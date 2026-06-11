@@ -199,16 +199,22 @@ Then('the rendered toolbox package rule should not enable automerge', () => {
 // ============================================
 
 When('I run the renovate config validation in the rendered project', () => {
-  // task renovate:validate → npx --yes -p renovate renovate-config-validator.
-  // The first invocation downloads the renovate package into the runner's npx
-  // cache (a couple of minutes cold); later invocations are cached.
+  // The runner image bakes a pinned renovate (see .config/codeceptjs/
+  // Dockerfile), so the REAL validator runs offline. The template's own
+  // `task renovate:validate` wiring (npx) stays covered by the toolbox's
+  // code:renovate-validate CI job; going through npx here re-resolves
+  // "latest" from the registry on every call, which flakes on throttled
+  // shared-runner egress.
   try {
-    const output = execSync('task renovate:validate 2>&1', {
-      cwd: rendered,
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 600000
-    })
+    const output = execSync(
+      'LOG_LEVEL=info renovate-config-validator ".config/renovate/config.json" 2>&1',
+      {
+        cwd: rendered,
+        encoding: 'utf8',
+        stdio: 'pipe',
+        timeout: 300000
+      }
+    )
     renovateResult = { exitCode: 0, output }
   } catch (error) {
     renovateResult = {

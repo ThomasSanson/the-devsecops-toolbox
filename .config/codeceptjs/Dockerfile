@@ -35,6 +35,12 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y -qq --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
+# Pre-install a pinned renovate so the e2e template suite can run the real
+# renovate-config-validator OFFLINE: `npx -p renovate` re-resolves "latest"
+# against the npm registry on every call, which flakes/hangs on throttled
+# shared-runner egress (same class as the go-task/uv pre-warm above).
+RUN npm install -g renovate@43.220.0
+
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/
 
