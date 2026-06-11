@@ -7,7 +7,10 @@ WORKDIR /app
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install task
-RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+# Curl retry/backoff/timeout flags throughout: shared-runner egress to
+# Cloudflare-fronted hosts intermittently stalls; an unbounded curl then dies
+# with exit 28 and kills the image build (observed in CI).
+RUN sh -c "$(curl --location --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
 # Install uv so `task copier` (which runs `uvx copier`) works from inside
 # the dockerised test runner without depending on host Python/pip state.
@@ -15,7 +18,7 @@ RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/loc
 # cold-start cost fetching the interpreter and wheel on demand.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_CACHE_DIR=/opt/uv/cache
-RUN curl -LsSf https://astral.sh/uv/install.sh | \
+RUN curl -LsSf --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 https://astral.sh/uv/install.sh | \
       env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh && \
     /usr/local/bin/uv python install 3.14 && \
     /usr/local/bin/uvx --python 3.14 --from copier==9.14.3 copier --version
@@ -25,7 +28,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | \
 # The Playwright base image is Ubuntu, so we pull from the Ubuntu channel.
 # hadolint ignore=DL3008
 RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+    curl -fsSL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 https://download.docker.com/linux/ubuntu/gpg | \
       gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
     UBUNTU_CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")" && \

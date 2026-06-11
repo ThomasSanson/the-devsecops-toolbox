@@ -24,8 +24,11 @@ RUN useradd -m -s /bin/bash ${BOOTSTRAP_USER} && \
 
 # 3. ttyd (web terminal for visual regression tests)
 ARG TTYD_VERSION=1.7.7
+# Curl retry/backoff/timeout: shared-runner egress to GitHub releases
+# intermittently stalls; an unbounded curl then dies with exit 28 and kills
+# the image build (observed in CI).
 RUN UNAME_ARCH="$(uname -m)" && \
-    curl -fsSL \
+    curl -fsSL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 \
       "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${UNAME_ARCH}" \
       -o /usr/local/bin/ttyd && \
     chmod +x /usr/local/bin/ttyd
