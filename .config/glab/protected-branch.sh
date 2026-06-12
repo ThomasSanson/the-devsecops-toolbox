@@ -113,6 +113,9 @@ protect_branch_once() {
 echo "🔒 Protected Branch Configuration"
 check_permissions
 
+# This line is part of the step's rendered CONTRACT: the init terminal
+# baselines (init-baseline, token-lifecycle, …) assert it pixel by pixel.
+echo "   🔄 Resetting protection on branch '${BRANCH}'..."
 echo "   🔒 Protecting branch '${BRANCH}' (merge=Maintainers, push=No one)..."
 attempts=0
 until protect_branch_once; do
