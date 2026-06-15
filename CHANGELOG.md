@@ -2,6 +2,49 @@
 
 # Changelog
 
+## 22.6.0 (2026-06-15)
+
+### Feat
+
+- **gitlabApi**: add project helpers and improve token handling
+- **taskfile**: add init options, bootstrap task, and remote checks
+- **check-test-coverage**: support umbrella delegation for CI test tasks
+- **devsecops**: add bootstrap‑main and init‑merge‑request tasks
+- **e2e**: add terminal capture helper for deterministic screenshots
+- **e2e**: add template-matrix step definitions for copier update tests
+- **e2e**: add comprehensive developer journey test steps
+- **e2e**: add shared text-to-pixel rendering helper for visual assertions
+- **e2e**: add pageVisual helper for visual match assertions
+- **e2e**: add GitLabRepositoryPage for repository visual regression
+- **e2e**: add GitLabMergeRequestPage for visual regression
+- **e2e**: add matrix feature file to test non‑default Copier answers
+- **e2e**: add token lifecycle feature tests for init command
+- **e2e**: add init-framework-mr feature file for developer journey
+- **e2e**: add parallel runner, init guidance & auth tests, update docs
+- **e2e**: replace individual test tasks with unified project:test:e2e suite
+
+### Fix
+
+- **glab**: restore the protect-reset line in the init output contract
+- **test**: eliminate the shared-toolchain race between e2e workers
+- **ci**: stabilize the suite under SaaS-runner load and fix lint regressions
+- **ci**: align dind and compose network MTU on 1360 per GitLab KB
+- **ci**: set dind and compose network MTU to 1460 for SaaS runners
+- **build**: harden toolchain downloads with curl retry and timeouts
+- **devsecops**: use GIT_CONFIG env vars for safe.directory, not global
+- **devsecops**: stop adding global safe.directory, use env vars instead
+- **devsecops**: add fallback for branch detection to prevent errors
+- **taskfile**: add robust fallback for CURRENT_BRANCH detection in CI
+- **commitizen**: add fallback for git branch name to prevent errors
+
+### Refactor
+
+- **e2e**: destructure token and use shared visual match helper
+- **docker**: remove unused GitLab helper functions and constants
+- **tests**: drop unused homepage and visual regression methods
+- **GitLabProjectPage**: add path‑free check with polling after delete
+- delete legacy test/template files and rename port constant
+
 ## 22.5.0 (2026-05-06)
 
 ### Feat
