@@ -14,10 +14,16 @@ Feature: Developer journey — the working-branch installer scaffolds via Copier
     When I type the toolbox installer command in the terminal
     Then the developer terminal should visually match "gitlab/01-developer-journey/install-command-terminal"
 
-    # Stage 2b — toolchain installed, scaffolding from the WORKING-BRANCH template.
-    # The toolchain version/download lines are non-deterministic (verified on the
-    # log below); this captures the deterministic setup/scaffold milestone block.
-    When I launch the installer and wait for the prompt "Template source: /tmp/toolbox-template"
+    # Stage 2b — the FIRST decision (gum/glow layer): install everything?
+    When I launch the installer and wait for the prompt "Install the complete DevSecOps framework?"
+    Then the terminal from "Install the complete DevSecOps framework?" should visually match "gitlab/01-developer-journey/install-scope-terminal"
+
+    # Stage 2c — accepting installs the complete framework; scaffolding from the
+    # WORKING-BRANCH template. The toolchain version/download lines are
+    # non-deterministic (verified on the log below); this captures the
+    # deterministic setup/scaffold milestone block.
+    When I choose to install the complete framework
+    And I wait for the prompt "Template source: /tmp/toolbox-template"
     Then the milestone block from "Setting up project" for 3 lines should visually match "gitlab/01-developer-journey/scaffold-step-terminal"
 
     # Stage 3 — the Copier questionnaire, one visual baseline per question

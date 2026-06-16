@@ -23,6 +23,13 @@ TASK_VERSION="3.49.1"
 GIT_MIN_VERSION="2.34.0"
 PYTHON_VERSION="3.14"
 COPIER_VERSION="copier==9.13.1"
+GUM_VERSION="0.17.0"
+GLOW_VERSION="2.1.1"
+
+# Selectable components offered when NOT installing the complete framework.
+# This list is designed to grow (plan/code phases, etc.); today it holds a
+# single entry. Keep "Agent mode" as the stable match prefix.
+AGENT_COMPONENT_LABEL="Agent mode — AI agent guardrails (.agent/, CLAUDE.md, AGENTS.md)"
 DEFAULT_TEMPLATE_URL="https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
 TEMPLATE_URL="${DEVSECOPS_TEMPLATE_URL:-$DEFAULT_TEMPLATE_URL}"
 TEMPLATE_VCS_REF="${DEVSECOPS_TEMPLATE_VCS_REF:-}"
@@ -59,6 +66,20 @@ resolve_interactive_input() {
 }
 
 INTERACTIVE_INPUT="$(resolve_interactive_input)"
+
+# True when an interactive terminal is reachable (stdin is a TTY, or /dev/tty
+# can be opened — e.g. the documented `curl … | bash` path). Used to gate the
+# interactive scope selection: non-interactive runs (CI, piped without a tty)
+# keep the default behavior and install the complete framework.
+has_interactive_tty() {
+  if [ -t 0 ]; then
+    return 0
+  fi
+  if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
 
 normalize_version() {
   version="$1"
@@ -282,6 +303,69 @@ install_uv() {
 }
 
 # ---------------------------------------------------------------------------
+# Install the premium interactive UI layer (gum + glow), used to ask which
+# parts of the framework to install. Best-effort: when the download is not
+# possible (no network, unsupported arch), the scope selection degrades to a
+# plain yes/no prompt instead of failing the whole installer.
+# ---------------------------------------------------------------------------
+install_charm_tool() {
+  tool="$1"
+  version="$2"
+
+  if command_exists "$tool"; then
+    log_ok "${tool} is already installed."
+    return 0
+  fi
+
+  charm_arch=""
+  case "$(uname -m)" in
+  x86_64) charm_arch="Linux_x86_64" ;;
+  aarch64 | arm64) charm_arch="Linux_arm64" ;;
+  armv7l | armhf) charm_arch="Linux_armv6" ;;
+  i386 | i686) charm_arch="Linux_i386" ;;
+  *)
+    log_info "Unsupported architecture for ${tool}: $(uname -m)."
+    return 1
+    ;;
+  esac
+
+  log_action "Installing ${tool} v${version}..."
+  install_dir="${HOME}/.local/bin"
+  ensure_path "${install_dir}"
+  mkdir -p "${install_dir}"
+
+  tmp_dir="$(mktemp -d)"
+  download_url="https://github.com/charmbracelet/${tool}/releases/download/v${version}/${tool}_${version}_${charm_arch}.tar.gz"
+  if ! curl -fsSL "${download_url}" -o "${tmp_dir}/${tool}.tar.gz"; then
+    log_info "Failed to download ${tool} from ${download_url}."
+    rm -rf "${tmp_dir}"
+    return 1
+  fi
+
+  tar -xzf "${tmp_dir}/${tool}.tar.gz" -C "${tmp_dir}"
+  if [ -f "${tmp_dir}/${tool}_${version}_${charm_arch}/${tool}" ]; then
+    mv "${tmp_dir}/${tool}_${version}_${charm_arch}/${tool}" "${install_dir}/${tool}"
+  else
+    find "${tmp_dir}" -type f -name "${tool}" -exec mv {} "${install_dir}/${tool}" \;
+  fi
+  chmod +x "${install_dir}/${tool}"
+  rm -rf "${tmp_dir}"
+
+  if command_exists "$tool"; then
+    log_ok "${tool} v${version} installed."
+    return 0
+  fi
+
+  log_info "${tool} installation did not complete."
+  return 1
+}
+
+install_ui_tools() {
+  install_charm_tool gum "$GUM_VERSION" || true
+  install_charm_tool glow "$GLOW_VERSION" || true
+}
+
+# ---------------------------------------------------------------------------
 # Scaffold project with Copier (only when Taskfile.yml is absent)
 # ---------------------------------------------------------------------------
 scaffold_project() {
@@ -309,6 +393,120 @@ scaffold_project() {
     log_error "Copier scaffolding failed — Taskfile.yml not found."
     exit 1
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Installation scope — ask what to install before scaffolding.
+#   everything : the complete framework (Copier questionnaire + init)
+#   agent      : only the AI agent context (.agent/, CLAUDE.md, AGENTS.md)
+#   none       : nothing selected
+# Driven by the premium gum/glow UI layer when available, with a plain
+# yes/no fallback so the installer still works without it.
+# ---------------------------------------------------------------------------
+select_install_scope() {
+  INSTALL_SCOPE="everything"
+
+  # No interactive terminal (CI, piped without a tty): keep the default and
+  # install the complete framework, exactly as before this prompt existed.
+  if ! has_interactive_tty; then
+    return 0
+  fi
+
+  if command_exists gum; then
+    select_install_scope_gum
+  else
+    select_install_scope_plain
+  fi
+}
+
+select_install_scope_gum() {
+  if command_exists glow; then
+    scope_card="$(mktemp)"
+    {
+      echo "# 📦 DevSecOps Toolbox"
+      echo ""
+      echo "Choose what to install:"
+      echo ""
+      echo "- **Complete framework** — the full DevSecOps pipeline (CI/CD, security scanning, tasks)"
+      echo "- **Pick components** — choose individual parts (today: the AI agent guardrails)"
+    } >"$scope_card"
+    echo
+    glow -s dark -w 76 "$scope_card"
+    rm -f "$scope_card"
+    echo
+  fi
+
+  if gum confirm "Install the complete DevSecOps framework?" \
+    --affirmative "Install everything" \
+    --negative "Choose components"; then
+    INSTALL_SCOPE="everything"
+    return 0
+  fi
+
+  # Component selection — a multi-select checklist. Only one component today
+  # (the AI agent guardrails), designed to grow (plan/code phases, etc.).
+  # Space toggles items, enter confirms; selecting nothing installs nothing.
+  selected_components="$(gum choose --no-limit --no-show-help \
+    --header "Select components to install (space to toggle, enter to confirm):" \
+    "$AGENT_COMPONENT_LABEL")" || selected_components=""
+
+  INSTALL_SCOPE="none"
+  case "$selected_components" in
+  *"Agent mode"*) INSTALL_SCOPE="agent" ;;
+  esac
+}
+
+select_install_scope_plain() {
+  if prompt_yes_no_default_yes "Install the complete DevSecOps framework? [Y/n]: "; then
+    INSTALL_SCOPE="everything"
+    return 0
+  fi
+  if prompt_yes_no_default_yes "Install the AI agent guardrails (.agent/, CLAUDE.md, AGENTS.md)? [Y/n]: "; then
+    INSTALL_SCOPE="agent"
+    return 0
+  fi
+  INSTALL_SCOPE="none"
+}
+
+# ---------------------------------------------------------------------------
+# Agent mode — render ONLY the AI agent context into the project.
+# Copier always writes its answers file and the full tree, so we render to a
+# scratch directory with defaults and copy out only .agent/, CLAUDE.md and
+# AGENTS.md. The result is a working tree carrying nothing but the agent
+# context (no Taskfile, no .config, no Copier bookkeeping).
+# ---------------------------------------------------------------------------
+scaffold_agent_only() {
+  echo ""
+  echo "📋 Installing agent mode..."
+  log_action "Rendering the AI agent context (.agent/, CLAUDE.md, AGENTS.md)..."
+
+  render_dir="$(mktemp -d)"
+  render_log="$(mktemp)"
+  if [ -n "${TEMPLATE_VCS_REF}" ]; then
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet --vcs-ref \"${TEMPLATE_VCS_REF}\" >\"${render_log}\" 2>&1"
+  else
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet >\"${render_log}\" 2>&1"
+  fi
+  run_with_interactive_input "$copier_command" || true
+
+  agent_installed=0
+  for item in .agent AGENTS.md CLAUDE.md; do
+    if [ -e "${render_dir}/${item}" ]; then
+      cp -a "${render_dir}/${item}" "./${item}"
+      agent_installed=1
+    fi
+  done
+  rm -rf "${render_dir}"
+
+  if [ "$agent_installed" -ne 1 ] || [ ! -d ".agent" ]; then
+    log_error "Agent mode installation failed — the AI agent context was not found in the template."
+    sed 's/^/    /' "${render_log}" 2>/dev/null | tail -n 20
+    rm -f "${render_log}"
+    exit 1
+  fi
+  rm -f "${render_log}"
+
+  log_ok "Agent mode installed."
 }
 
 # ---------------------------------------------------------------------------
@@ -347,6 +545,29 @@ main() {
   ensure_git
   install_task
   install_uv
+  install_ui_tools
+
+  echo ""
+  select_install_scope
+
+  if [ "${INSTALL_SCOPE}" = "none" ]; then
+    echo ""
+    log_info "Nothing selected — no files were installed."
+    log_info "Re-run the installer to choose what to install."
+    echo ""
+    return 0
+  fi
+
+  if [ "${INSTALL_SCOPE}" = "agent" ]; then
+    scaffold_agent_only
+
+    echo ""
+    log_ok "Installation complete!"
+    log_info "Installed the AI agent context only: .agent/, CLAUDE.md, AGENTS.md."
+    log_info "See AGENTS.md to get started."
+    echo ""
+    return 0
+  fi
 
   echo ""
   echo "📋 Setting up project..."

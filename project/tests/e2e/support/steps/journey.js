@@ -170,6 +170,13 @@ When('I display the cloned project state in the terminal', async () => {
   await typeCommandAndWait(I, 'clear; git status')
 })
 
+When('I display the project tree in the terminal', async () => {
+  // Full depth (the rendered .agent/ tree bottoms out at skills/<name>/SKILL.md)
+  // so every guardrail file is visible — rules/, workflows/ AND each skill's
+  // SKILL.md — not just the skill folder names. Excludes the .git plumbing.
+  await typeCommandAndWait(I, "clear; tree -a -I '.git'")
+})
+
 When('I type the toolbox installer command in the terminal', async () => {
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
@@ -278,6 +285,11 @@ Then('the install log should report at least {int} created files', (min) => {
 // Init-framework-devsecops MR flow (stage 4)
 // ============================================
 
+// The first decision the installer asks (gum/glow layer), before any Copier
+// question. The full-framework journey accepts it (default affirmative).
+const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
+const AGENT_DONE_MARKER = 'Installed the AI agent context only'
+
 const COPIER_PROMPTS = [
   'Do you need Ansible?',
   'Which CI/CD platform are you using?',
@@ -329,6 +341,12 @@ When('I run the working-branch installer to completion', async () => {
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
+  // First decision (gum/glow layer): accept the complete-framework install
+  // (gum confirm binds 'y' to the affirmative), so the journey proceeds to the
+  // Copier questionnaire.
+  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  I.pressKey('y')
   // Accept every Copier question with its default.
   for (const prompt of COPIER_PROMPTS) {
     await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
@@ -348,6 +366,71 @@ When('I run the working-branch installer to completion', async () => {
   }
   if (!done) {
     throw new Error("Installer did not finish (no \"Run 'task' to see available commands\" in the log within 600s)")
+  }
+})
+
+// ============================================
+// Selective install — gum/glow scope selection (agent mode)
+// ============================================
+
+// Accept the first gum confirm (install everything). gum confirm binds 'y' to
+// the affirmative action, so the journey proceeds to the Copier questionnaire.
+When('I choose to install the complete framework', async () => {
+  await waitForTerminalSettle(I)
+  I.pressKey('y')
+})
+
+// Decline the first gum confirm: gum confirm binds 'n' to the negative action,
+// which opens the component selection — a multi-select checklist (one component
+// today, designed to grow).
+When('I decline installing the complete framework', async () => {
+  await waitForTerminalSettle(I)
+  I.pressKey('n')
+})
+
+// In the gum multi-select checklist, toggle the agent component with the space
+// bar, confirm with enter, then poll the persistent log until the installer
+// reports the agent context was installed.
+When('I select the agent component and wait for the installer to finish', async () => {
+  await waitForTerminalSettle(I)
+  I.pressKey('Space')
+  await waitForTerminalSettle(I)
+  I.pressKey('Enter')
+  const deadline = Date.now() + 300000
+  let done = false
+  while (Date.now() < deadline) {
+    const res = execInContainerAsUser(
+      global.journeyContainer, 'bootstrap',
+      `grep -c ${shellEscape(AGENT_DONE_MARKER)} ${INSTALL_LOG} 2>/dev/null || true`
+    )
+    if (parseInt((res.output || '0').trim(), 10) > 0) { done = true; break }
+    await I.wait(3)
+  }
+  if (!done) {
+    throw new Error(`Installer did not report "${AGENT_DONE_MARKER}" in the log within 300s`)
+  }
+})
+
+// The whole point of agent mode: the working tree carries ONLY the AI agent
+// context (.agent/, CLAUDE.md, AGENTS.md) — none of the framework, and no
+// Copier bookkeeping (.config/.copier-answers.yml).
+Then('the project working tree should contain only the AI agent context files', () => {
+  const res = execInContainerAsUser(
+    global.journeyContainer, 'bootstrap',
+    `cd ${PROJECT_DIR} && ls -A1 | grep -v '^.git$' | sort`
+  )
+  const entries = stripAnsiEscapeSequences(res.output || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+  const expected = ['.agent', 'AGENTS.md', 'CLAUDE.md']
+  const matches = entries.length === expected.length &&
+    expected.every((name, i) => entries[i] === name)
+  if (!matches) {
+    throw new Error(
+      `Expected the working tree to contain exactly ${JSON.stringify(expected)} (plus .git), ` +
+      `found ${JSON.stringify(entries)}`
+    )
   }
 })
 

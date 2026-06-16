@@ -13,7 +13,7 @@ ARG BOOTSTRAP_USER=bootstrap
 # hadolint ignore=DL3008
 RUN echo 'DPkg::Lock::Timeout "120";' > /etc/apt/apt.conf.d/99lock-timeout && \
     apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends sudo curl ca-certificates git jq unzip xz-utils gnupg && \
+    apt-get install -y -qq --no-install-recommends sudo curl ca-certificates git jq unzip xz-utils gnupg tree && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Bootstrap user with passwordless sudo
