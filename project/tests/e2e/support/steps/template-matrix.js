@@ -128,6 +128,198 @@ Then('the rendered path {string} should exist', (relative) => {
   }
 })
 
+// Centralization invariant (visual): .config tooling is owned by THIS framework
+// repo. Generated/downstream projects must NOT receive per-tool Renovate MRs —
+// only the framework-evolution MR (the copier manager on .copier-answers.yml,
+// which runs `task copier:update`). The pixel baseline shows the actual rendered
+// downstream renovate config: a customManagers list bumping .config/<tool>/version
+// would be plainly visible (and regress the baseline).
+Then('the rendered renovate config should visually match {string}', async (baselineName) => {
+  // columns:2 so the whole rendered config fits the viewport — a full-page
+  // screenshot only captures what's above the fold, and a re-added per-tool
+  // customManager (top-level, after packageRules) would otherwise hide below it.
+  await assertTextVisualMatch(I, baselineName, readRendered('.config/renovate/config.json').trimEnd(), { columns: 2 })
+})
+
+// Behavioural proof from the DOWNSTREAM (templatized) side: run the framework's
+// own `task renovate:dry-run` INSIDE a freshly generated project. The framework owns
+// .config, so a generated project's renovate must IGNORE .config/<tool> pins yet track
+// its OWN project/** deps. Two focused tests prove each half, both via the real task
+// and its verbatim output (durationMs masked, like the validator baseline's render dir).
+let lastExtract = null
+let configDowngradeDiff = null
+let projectDependency = null
+let frameworkDir = null
+const frameworkDirs = []
+const EXTRACT_CMD = 'task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract'
+
+After(() => {
+  for (const dir of frameworkDirs.splice(0)) {
+    try { fs.rmSync(dir, { recursive: true, force: true }) } catch (_) {}
+  }
+})
+
+// Isolated git global config in `dir`: safe.directory (copied files may carry the host
+// uid) + identity, without touching the shared ~/.gitconfig (no lock race).
+function isolatedGitEnv (dir) {
+  const gitConfig = path.join(dir, '.gitconfig.e2e')
+  fs.writeFileSync(gitConfig, '[safe]\n\tdirectory = *\n[user]\n\temail = e2e@test.local\n\tname = e2e\n[init]\n\tdefaultBranch = main\n')
+  return { ...process.env, GIT_CONFIG_GLOBAL: gitConfig }
+}
+
+// A throwaway full checkout of the framework (the real repo minus heavy/irrelevant trees)
+// so renovate can run against it without touching /workspace.
+function frameworkCheckout () {
+  const dir = fs.mkdtempSync('/tmp/renovate-framework-')
+  frameworkDirs.push(dir)
+  execSync(
+    'tar -C /workspace --exclude=.git --exclude=node_modules --exclude=.cache --exclude=tmp ' +
+    '--exclude=megalinter-reports --exclude="project/tests/e2e/screenshots" ' +
+    `--exclude="project/tests/e2e/_output" -cf - . | tar -C ${dir} -xf -`
+  )
+  return dir
+}
+
+// Run the framework's REAL entrypoint exactly as a developer does — `task
+// renovate:dry-run` — in `dir`, capturing its COMPLETE output verbatim. FORCE_COLOR keeps
+// the real terminal colours; we mask only the volatile durationMs and strip ANSI just for
+// the (colour-agnostic) packageFiles assertion.
+function runRenovateExtract (dir, gitEnv) {
+  let raw
+  try {
+    raw = execSync(`FORCE_COLOR=1 ${EXTRACT_CMD} 2>&1`, {
+      cwd: dir, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 300000, maxBuffer: 256 * 1024 * 1024
+    })
+  } catch (e) {
+    raw = (e.stdout || '') + (e.stderr || '')
+  }
+  const clean = stripAnsiEscapeSequences(raw)
+  return {
+    output: raw.replace(/("durationMs":\s*)\d+/g, '$1<ms>').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').trim(),
+    packageFiles: [...new Set([...clean.matchAll(/"packageFile":\s*"([^"]+)"/g)].map(m => m[1]))].sort()
+  }
+}
+
+// Renovate's own "Dependency extraction complete" summary block. The framework's full
+// extract log is ~700 lines (it re-prints the resolved config + every packageFile), so we
+// show that genuine block — fileCount/managers + githubDeps — not the whole dump.
+function extractionSummary (output) {
+  const lines = output.split('\n')
+  const start = lines.findIndex(l => l.includes('Dependency extraction complete'))
+  const end = lines.findIndex((l, i) => i > start && l.includes('Extracted dependencies'))
+  return start < 0 || end < 0 ? output : lines.slice(start, end).join('\n')
+}
+
+// Downgrade EVERY framework-owned version pin under .config in `dir` to a stale value —
+// every `.config/<tool>/version`, the copier requirement, and the install.sh pins.
+function downgradeConfigVersions (dir) {
+  const versionFiles = execSync('find .config -type f -name version', { cwd: dir, encoding: 'utf8' }).split('\n').filter(Boolean)
+  for (const vf of versionFiles) fs.writeFileSync(path.join(dir, vf), '0.0.1\n')
+  const req = path.join(dir, '.config/copier/requirements.txt')
+  if (fs.existsSync(req)) fs.writeFileSync(req, fs.readFileSync(req, 'utf8').replace(/copier==[0-9][0-9.]*/, 'copier==0.0.1'))
+  const installSh = path.join(dir, '.config/devsecops/install.sh')
+  if (fs.existsSync(installSh)) fs.writeFileSync(installSh, fs.readFileSync(installSh, 'utf8').replace(/(_VERSION="(?:copier==)?)[0-9][0-9.]*(")/g, '$10.0.1$2'))
+}
+
+// The downgrade as a real, readable git diff: colours kept (color.ui=always), -U0, and
+// git's internal plumbing lines (`diff --git …`, `index …`) dropped so every OLD → 0.0.1
+// is visible without per-file boilerplate. Not invented prose — the real diff lines.
+function captureConfigDiff (dir, gitEnv) {
+  return execSync('git -c color.ui=always diff -U0', { cwd: dir, env: gitEnv, encoding: 'utf8' })
+    .split('\n')
+    .filter(line => {
+      const plain = stripAnsiEscapeSequences(line)
+      return !plain.startsWith('diff --git ') && !plain.startsWith('index ')
+    })
+    .map(l => l.replace(/[ \t]+$/, '')).join('\n').trim()
+}
+
+// Commit a pristine tree, downgrade every .config pin, capture the diff, commit, run
+// renovate. Shared by the downstream (ignores .config) and framework (tracks it) tests.
+function downgradeConfigAndExtract (dir) {
+  const gitEnv = isolatedGitEnv(dir)
+  execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
+  downgradeConfigVersions(dir)
+  configDowngradeDiff = captureConfigDiff(dir, gitEnv)
+  execSync('git add -A && git commit -qm "downgrade every .config version"', { cwd: dir, env: gitEnv })
+  lastExtract = runRenovateExtract(dir, gitEnv)
+}
+
+When('I downgrade every framework-owned .config version and run renovate in the rendered project', () => {
+  // Generated project: project/ left empty, so the only thing renovate COULD report is a
+  // .config pin — a clean "nothing found" proves .config is out of scope downstream.
+  downgradeConfigAndExtract(rendered)
+})
+
+Given('a throwaway checkout of the framework', () => {
+  frameworkDir = frameworkCheckout()
+})
+
+When('I downgrade every framework-owned .config version and run renovate in the framework checkout', () => {
+  // SAME downgrade, but in a framework checkout — here renovate MUST detect the .config
+  // pins (the framework owns .config and tracks its tool versions). The mirror image.
+  downgradeConfigAndExtract(frameworkDir)
+})
+
+When('I add an outdated dependency inside the project tree and run renovate in the rendered project', () => {
+  const gitEnv = isolatedGitEnv(rendered)
+  // The generated project's OWN dependency: an outdated base image in a project/
+  // Dockerfile. project/** is in scope, so renovate must detect it (and in a networked
+  // run would propose the bump). .config is left untouched — this half is about project/.
+  fs.writeFileSync(renderedPath('project/Dockerfile'), 'FROM node:18.0.0\n')
+  projectDependency = execSync('cat project/Dockerfile', { cwd: rendered, encoding: 'utf8' }).replace(/\s+$/, '')
+  execSync('git init -q && git add -A && git commit -qm "add outdated project dependency"', { cwd: rendered, env: gitEnv })
+  lastExtract = runRenovateExtract(rendered, gitEnv)
+})
+
+Then('the .config version downgrade should visually match {string}', async (baselineName) => {
+  // SETUP proof (an image is worth a thousand words): the real git diff showing every
+  // framework-owned pin moved to a stale 0.0.1 — so the "nothing found" below is
+  // unambiguous, not an artefact of forgetting to downgrade.
+  await assertTextVisualMatch(I, baselineName, `$ git diff\n${configDowngradeDiff}`, { columns: 2 })
+})
+
+Then('renovate should detect no framework-owned .config update, matching {string}', async (baselineName) => {
+  // Invariant (the visual is the proof, not the test): with every .config pin regressed,
+  // renovate must report NO dependency whose package file is a framework-owned .config
+  // pin. If it does, the downstream config wrongly re-tracks a framework-owned tool.
+  const frameworkOwned = lastExtract.packageFiles
+    .filter(f => f.startsWith('.config/') && f !== '.config/devsecops/.copier-answers.yml')
+  if (frameworkOwned.length) {
+    throw new Error(`Downstream Renovate scanned framework-owned .config files: ${frameworkOwned.join(', ')}`)
+  }
+  await assertTextVisualMatch(I, baselineName, `$ ${EXTRACT_CMD}\n${lastExtract.output}`)
+})
+
+Then('the added project dependency should visually match {string}', async (baselineName) => {
+  // SETUP proof: the project/ Dockerfile we created, with its outdated pinned image.
+  await assertTextVisualMatch(I, baselineName, `$ cat project/Dockerfile\n${projectDependency}`)
+})
+
+Then('renovate should detect the project dependency, matching {string}', async (baselineName) => {
+  // Invariant: renovate must report the project's own dependency (project/Dockerfile),
+  // proving project/** is exactly what a generated project's renovate tracks.
+  if (!lastExtract.packageFiles.includes('project/Dockerfile')) {
+    throw new Error(`Downstream Renovate did not detect the project/ dependency; scanned: ${lastExtract.packageFiles.join(', ') || 'nothing'}`)
+  }
+  await assertTextVisualMatch(I, baselineName, `$ ${EXTRACT_CMD}\n${lastExtract.output}`)
+})
+
+Then('renovate should detect the framework-owned .config updates, matching {string}', async (baselineName) => {
+  // Positive MIRROR of downstream-config-ignored: the SAME .config downgrade, run in a
+  // framework checkout, MUST be detected — renovate reports framework-owned .config pins.
+  // If it found none, the framework would silently stop tracking its own tool versions.
+  const configDetected = lastExtract.packageFiles
+    .filter(f => f.startsWith('.config/') && f !== '.config/devsecops/.copier-answers.yml')
+  if (!configDetected.length) {
+    throw new Error(`Framework Renovate detected no .config update; scanned: ${lastExtract.packageFiles.join(', ') || 'nothing'}`)
+  }
+  // The framework extract log is ~700 lines, so show Renovate's own "Dependency extraction
+  // complete" summary (fileCount > 0, the regex/pip managers + githubDeps) — the mirror of
+  // the downstream "fileCount 0".
+  await assertTextVisualMatch(I, baselineName, `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
+})
+
 Then('the rendered path {string} should not exist', (relative) => {
   if (fs.existsSync(renderedPath(relative))) {
     throw new Error(`Expected rendered path "${relative}" to NOT exist in ${rendered}`)
