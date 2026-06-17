@@ -41,8 +41,15 @@ tasks:
           # Safer shell behaviour
           set -eu
 
-          # Start building the command early
-          CMD="npx --yes -p renovate renovate"
+          # Prefer an already-installed renovate (pinned, offline, deterministic
+          # and fast); fall back to npx only when it is not on PATH. npx re-resolves
+          # "latest" from the registry on every call, which is slow and flakes on
+          # throttled egress.
+          if command -v renovate >/dev/null 2>&1; then
+            CMD="renovate"
+          else
+            CMD="npx --yes -p renovate renovate"
+          fi
 
           # Append dry-run argument directly
           case "{{.TASK_RENOVATE_DRY_RUN}}" in
@@ -92,16 +99,17 @@ tasks:
       - cmd: "{{.TASK_RENOVATE_CMD}}"
 
   check:
-    desc: ✅ Verify prerequisites for npx usage
+    desc: ✅ Verify Renovate is runnable (installed binary or npx)
     summary: |
       ℹ️ Description:
-        Verifies that Node.js/npm is installed for npx usage.
+        Verifies Renovate can run: either an installed `renovate` binary
+        (preferred) or Node.js/npm so it can be fetched via npx.
 
       🔐 Preconditions:
-        - npx command must be available in PATH
+        - `renovate` on PATH, or `npx` available
     preconditions:
-      - sh: command -v npx >/dev/null 2>&1
-        msg: "❌ Missing prerequisite: please install Node.js/npm to use npx."
+      - sh: command -v renovate >/dev/null 2>&1 || command -v npx >/dev/null 2>&1
+        msg: "❌ Missing prerequisite: install renovate, or Node.js/npm for npx."
 
   validate:
     desc: 🔍 Validate the Renovate configuration file
