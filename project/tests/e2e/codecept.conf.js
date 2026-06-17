@@ -76,7 +76,9 @@ exports.config = {
       './support/steps/gitleaks.js',
       './support/steps/installer-prereqs.js',
       './support/steps/guidance-variants.js',
-      './support/steps/init-token-lifecycle.js'
+      './support/steps/init-token-lifecycle.js',
+      './support/steps/version-pins.js',
+      './support/steps/renovate-detection.js'
     ]
   },
   plugins: {
