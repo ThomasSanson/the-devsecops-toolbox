@@ -1,3 +1,15 @@
+{#-
+  This is the DOWNSTREAM (generated-project) Renovate config, deliberately
+  LIGHTER than the framework repo's own .config/renovate/config.json.
+
+  This repo is a Copier TEMPLATE and the single source of truth for everything
+  under .config/: it (and only it) bumps task, copier, gum, glow, ... So a
+  generated project must NOT re-track those — it only watches the framework
+  evolution (.copier-answers.yml -> `task copier:update`) plus its own project/**
+  dependencies. Adding per-tool customManagers / .config/<tool> includePaths here
+  would make every generated project open duplicate per-tool MRs (snowball).
+  Proven by features/template/renovate.feature (@e2e-template-renovate-downstream).
+-#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
@@ -11,7 +23,7 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
-  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**", ".config/node/version"{% if ci_platform.startswith('gitlab') %}, ".config/glab/version", ".config/jq/version", ".config/task/version"{% endif %}],
+  "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"],
   "allowedCommands": [
     "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
   ],
@@ -44,39 +56,5 @@
       "automergeStrategy": "fast-forward",
       "prCreation": "immediate"
     }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "fileMatch": ["\\.config/node/version$"],
-      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "node",
-      "datasourceTemplate": "node-version"
-    }{% if ci_platform.startswith('gitlab') %},
-    {
-      "customType": "regex",
-      "fileMatch": ["\\.config/glab/version$"],
-      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "gitlab-org/cli",
-      "datasourceTemplate": "gitlab-releases",
-      "registryUrlTemplate": "https://gitlab.com",
-      "extractVersionTemplate": "^v(?<version>.*)$"
-    },
-    {
-      "customType": "regex",
-      "fileMatch": ["\\.config/jq/version$"],
-      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "jqlang/jq",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^jq-(?<version>.*)$"
-    },
-    {
-      "customType": "regex",
-      "fileMatch": ["\\.config/task/version$"],
-      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "go-task/task",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.*)$"
-    }{% endif %}
   ]
 }
