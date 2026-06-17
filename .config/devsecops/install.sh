@@ -17,13 +17,20 @@
 set -eu
 
 # ---------------------------------------------------------------------------
-# Pinned versions — update these when upgrading the toolchain
+# Pinned versions — update these when upgrading the toolchain.
+# The `# renovate:` annotations let Renovate bump these bootstrap pins in
+# lockstep with the canonical .config/<tool>/version files (same datasource),
+# so install.sh can never drift from the framework. See .config/renovate/.
 # ---------------------------------------------------------------------------
+# renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.*)$
 TASK_VERSION="3.49.1"
 GIT_MIN_VERSION="2.34.0"
 PYTHON_VERSION="3.14"
-COPIER_VERSION="copier==9.13.1"
+# renovate: datasource=pypi depName=copier
+COPIER_VERSION="copier==9.14.3"
+# renovate: datasource=github-releases depName=charmbracelet/gum extractVersion=^v(?<version>.*)$
 GUM_VERSION="0.17.0"
+# renovate: datasource=github-releases depName=charmbracelet/glow extractVersion=^v(?<version>.*)$
 GLOW_VERSION="2.1.1"
 
 # Selectable components offered when NOT installing the complete framework.
