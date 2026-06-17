@@ -30,6 +30,16 @@
 - **Tech stack**: Copier (Python) + Taskfile (Go Task) + Docker + CodeceptJS/Playwright (E2E) + Gherkin (BDD)
 - **Architecture**: Microservices — each service is a subfolder in `project/`
 - **License**: EUPL-1.2
+- **This repo is the TEMPLATE / source of truth for `.config/`**: it owns and
+  upgrades every tool under `.config/` (task, copier, gum, glow, …). Its own
+  Renovate config (`.config/renovate/config.json`) tracks those tools at both
+  endpoints (the `.config/<tool>/version` files AND the `install.sh` bootstrap
+  pins, kept in lockstep). Projects generated FROM this template inherit a
+  deliberately LIGHTER Renovate (`config.json.jinja`) that does NOT track
+  `.config/` — it only watches the framework-evolution MR (`.copier-answers.yml`
+  → `task copier:update`) plus its own `project/**` deps. So tool upgrades flow
+  framework → generated projects via one Copier MR, never per-tool MRs in every
+  downstream repo. Enforced by `features/template/renovate*.feature`.
 
 ### Key Directory Structure
 
