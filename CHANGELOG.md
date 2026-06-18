@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 22.7.0 (2026-06-18)
+
+### Feat
+
+- **e2e**: add renovate config validation and visual tests
+- **textRender**: render ANSI colors in e2e test output
+- **e2e**: add Renovate centralization scenarios to template tests
+- **install**: add UI for selective component install (agent mode)
+
 ## 22.6.0 (2026-06-15)
 
 ### Feat
