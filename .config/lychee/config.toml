@@ -16,3 +16,8 @@ exclude = [
 exclude_path = [
   '(^|/)package-lock\.json$'
 ]
+
+# 429 = the link exists but the host is rate-limiting our checker (e.g. copier.readthedocs.io,
+# pipx.pypa.io throttle lychee on CI) — that is not a broken link, so accept it. Real breakage
+# (404/410/5xx) still fails. The 2xx range MUST be kept: `accept` replaces lychee's default.
+accept = ["200..=299", "429"]
