@@ -371,27 +371,40 @@ function ensureGitRepo (dir) {
 // exits non-zero when any linter fails — the cspell verdict is still in its
 // output, which is all this test reads. A per-run container name isolates workers.
 function runMegalinterCspell (dir) {
-  const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
-  let raw
-  try {
-    raw = execSync(`FORCE_COLOR=1 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
-      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 900000, maxBuffer: 256 * 1024 * 1024
-    })
-  } catch (e) {
-    raw = (e.stdout || '') + (e.stderr || '')
+  // MegaLinter runs as a heavy (~multi-GB) docker image. In CI's EPHEMERAL dind the
+  // image is re-pulled per scenario (≈17×/job) and a pull occasionally stalls/fails,
+  // leaving the run dead mid "Pull complete …" with NO [cspell] verdict — proven by
+  // the surfaced tail on CI job 15048336134 (migration died at the image pull, 199s;
+  // survival, image warm, completed at 322s). Local never sees this: the host socket
+  // is mounted so the image is already cached. Retry once — the second attempt finds
+  // the image warm from the first — then fail loudly with MegaLinter's own tail.
+  let raw = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
+    try {
+      raw = execSync(`FORCE_COLOR=1 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
+        cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 900000, maxBuffer: 256 * 1024 * 1024
+      })
+    } catch (e) {
+      raw = (e.stdout || '') + (e.stderr || '')
+    }
+    if (/with \[cspell\]/.test(stripAnsiEscapeSequences(raw))) break
   }
   const plainRaw = stripAnsiEscapeSequences(raw)
-  // No "[cspell]" verdict line means MegaLinter never actually ran cspell — it found
-  // 0 files, or a docker/volume failure under CI's dind daemon aborted the run (local
-  // mounts the host socket, CI talks to docker:dind over TCP, so the megalinter
-  // container's `-v /var/run/docker.sock` is a stale empty dir). That is an
-  // ENVIRONMENT failure, NOT "the project word was unrecognised". Returning empty here
-  // makes the downstream contrast guard throw a LYING "Expected only X flagged"; fail
-  // loudly with MegaLinter's own tail so CI shows the real cause (kept-files count,
-  // docker error, missing config).
+  // Still no "[cspell]" verdict after the retry: MegaLinter never ran cspell (0 files,
+  // or the image pull kept stalling under dind). That is an ENVIRONMENT failure, NOT
+  // "the project word was unrecognised" — returning empty here would make the contrast
+  // guard throw a LYING "Expected only X flagged". Fail loudly with MegaLinter's own
+  // tail so CI shows the real cause (pull stall, kept-files count, missing config).
   if (!/with \[cspell\]/.test(plainRaw)) {
-    const tail = plainRaw.split('\n').filter(l => l.trim()).slice(-40).join('\n')
-    throw new Error(`MegaLinter produced no [cspell] verdict in ${dir} — it never ran cspell (0 files, or a docker/volume failure under dind). MegaLinter tail:\n${tail}`)
+    const lines = plainRaw.split('\n').filter(l => l.trim())
+    // Surface what MegaLinter actually DID after the (successful) image pull: its
+    // file-listing / linter summary (so we can tell "0 files" from a crash from a
+    // config error), then a wide tail. The earlier 40-line tail stopped at the docker
+    // pull (>40 layer lines) and hid the real cause.
+    const signals = lines.filter(l => /linted|files?\b|kept|\[spell\]|cspell|error|cannot connect|no such|fatal:|workspace|config/i.test(l)).slice(-50)
+    const tail = lines.slice(-60)
+    throw new Error(`MegaLinter produced no [cspell] verdict in ${dir} after 2 attempts — it ran but never emitted the cspell summary (0 files? crash? config not found?).\n--- MegaLinter signals ---\n${signals.join('\n')}\n--- MegaLinter tail ---\n${tail.join('\n')}`)
   }
   return raw.split('\n')
     .filter(line => /with \[cspell\]|Unknown word/.test(stripAnsiEscapeSequences(line)))
