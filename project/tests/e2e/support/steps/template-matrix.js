@@ -16,6 +16,7 @@ const { execSync } = require('child_process')
 const {
   renderProject,
   prepareVersionedTemplate,
+  prepareCspellMigrationTemplate,
   renderProjectFromTemplate,
   updateProject,
   removeRendered
@@ -111,11 +112,11 @@ Given('the project file {string} is customized with the marker {string}', (relat
 // ============================================
 
 When('the project is updated to template release {string}', (vcsRef) => {
-  updateProject(rendered, vcsRef)
+  updateOutput = updateProject(rendered, vcsRef)
 })
 
 When('the project is updated to template release {string} with answers {string}', (vcsRef, answersSpec) => {
-  updateProject(rendered, vcsRef, parseAnswers(answersSpec))
+  updateOutput = updateProject(rendered, vcsRef, parseAnswers(answersSpec))
 })
 
 // ============================================
@@ -331,6 +332,203 @@ Then('the rendered file {string} should contain {string}', (relative, expected) 
   if (!content.includes(expected)) {
     throw new Error(`Expected rendered "${relative}" to contain "${expected}"`)
   }
+})
+
+// ============================================
+// cspell override seam (issue #162) — a generated project's own vocabulary
+// lives in a skip-if-exists override (.config/cspell/config.project.json) that
+// copier update never clobbers; the framework base imports it so the two word
+// lists merge. Proven by running the project's REAL linter exactly as a developer
+// does — `cd <project> && task megalinter` (unmodified) — and keeping MegaLinter's
+// own coloured cspell verdict (green = recognised, red = unknown word).
+// ============================================
+
+const CSPELL_OVERRIDE = '.config/cspell/config.project.json'
+const CSPELL_SAMPLE = 'cspell-sample.md'
+let spellOutput = null
+let updateOutput = null
+let megalinterSeq = 0
+
+// The .config/cspell directory contents, one filename per line (sorted), as `ls`
+// would print them — the visual proof that the folder went from one file to the
+// split three-file layout across the update.
+function lsCspell () {
+  return fs.readdirSync(renderedPath('.config/cspell')).sort().join('\n')
+}
+
+// MegaLinter lists the files to analyse via git, so the project must be a repo
+// (the sample itself need not be committed — MegaLinter scans the whole tree).
+function ensureGitRepo (dir) {
+  if (fs.existsSync(path.join(dir, '.git'))) return
+  execSync('git init -q && git config user.email e2e@test.local && git config user.name e2e && git add -A && git commit -q --no-verify -m "test: pristine render"', { cwd: dir })
+}
+
+// Run the project's REAL linter from inside `dir` — `task megalinter`, the exact
+// command a developer types from their project root — and keep MegaLinter's own
+// coloured cspell verdict: the "[cspell]" summary line (green ✅ / red ❌) plus any
+// "Unknown word" finding. MegaLinter runs every linter; we keep only the cspell
+// lines and mask the elapsed time it prints (the sole volatile bit). MegaLinter
+// exits non-zero when any linter fails — the cspell verdict is still in its
+// output, which is all this test reads. A per-run container name isolates workers.
+function runMegalinterCspell (dir) {
+  const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
+  let raw
+  try {
+    raw = execSync(`FORCE_COLOR=1 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
+      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 900000, maxBuffer: 256 * 1024 * 1024
+    })
+  } catch (e) {
+    raw = (e.stdout || '') + (e.stderr || '')
+  }
+  return raw.split('\n')
+    .filter(line => /with \[cspell\]|Unknown word/.test(stripAnsiEscapeSequences(line)))
+    .map(line => line.replace(/ - \([0-9.]+m?s\)/, '').replace(/[ \t]+$/, ''))
+    .join('\n')
+    .trim()
+}
+
+// The sample carries the project's OWN word AND an unregistered control word, so
+// the cspell run is a CONTRAST: the project word must be recognised (absent from
+// the errors) while the control is flagged. A bare green "successfully" would not
+// prove the project word specifically was the thing recognised.
+// cspell:ignore Zzunknownword
+const CSPELL_CONTROL = 'Zzunknownword'
+let cspellProjectWord = null
+
+function writeCspellSample (dir, word) {
+  cspellProjectWord = word
+  fs.writeFileSync(path.join(dir, CSPELL_SAMPLE), `${word}\n${CSPELL_CONTROL}\n`)
+}
+
+Given('the generated project carries a file with the unknown word {string}', (word) => {
+  writeCspellSample(rendered, word)
+  ensureGitRepo(rendered)
+})
+
+// Setup proof ("une image vaut mille mots"): the actual file MegaLinter is about
+// to spell-check, so the red verdict below is unambiguous — like renovate's
+// `$ cat project/Dockerfile` before its detection baseline.
+Then('the file under spell-check should visually match {string}', async (baselineName) => {
+  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${readRendered(CSPELL_SAMPLE).trimEnd()}`)
+})
+
+When('MegaLinter runs on the generated project', () => {
+  spellOutput = runMegalinterCspell(rendered)
+})
+
+// Setup proof for the survival half: the project-owned override AFTER copier
+// update — its own word is still there, so the green verdict below means "the
+// surviving word is recognised", not "the override was reset to empty".
+Then("the project's surviving cspell override should visually match {string}", async (baselineName) => {
+  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_OVERRIDE}\n${readRendered(CSPELL_OVERRIDE).trimEnd()}`)
+})
+
+// Upgrade path (#162) — auto-migration: a project that kept its words in the OLD
+// single-file config.json (the only place before the seam existed) gets them MOVED
+// to its own config.project.json on update, while config.json becomes the
+// framework image (word-free). Proven as a journey (AVANT/PENDANT/APRÈS): the
+// folder before, the CLI announcing the migration, the folder after, then the
+// project's real linter staying green.
+
+Given('a versioned template upgrading cspell from old single-file to split', () => {
+  template = prepareCspellMigrationTemplate()
+  cleanupDirs.push(template)
+})
+
+Given('a project generated at the old version with its own word {string} in config.json', (word) => {
+  rendered = renderProjectFromTemplate(template, '22.7.0')
+  cleanupDirs.push(rendered)
+  const file = renderedPath('.config/cspell/config.json')
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'))
+  cfg.words = [...new Set([...(cfg.words || []), word])]
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n')
+  writeCspellSample(rendered, word)
+  execSync('git add -A && git commit --quiet --no-verify -m "test: project word in legacy config.json"', { cwd: rendered })
+})
+
+// AVANT — the folder before the update: a single config.json, framework-owned,
+// holding the framework base words AND the project's own word crammed in among
+// them (the only place the old single-file design offered). One file, mixed words.
+Then('the cspell folder before the update should visually match {string}', async (baselineName) => {
+  const words = JSON.parse(readRendered('.config/cspell/config.json')).words
+  const sample = JSON.stringify(words.slice(0, 6))
+  const own = JSON.stringify(words.slice(-1))
+  await assertTextVisualMatch(I, baselineName,
+    `$ ls .config/cspell/\n${lsCspell()}\n\n` +
+    `$ jq -c '.words[0:6]' .config/cspell/config.json    # framework base words (a sample of many)\n${sample}\n\n` +
+    `$ jq -c '.words[-1:]' .config/cspell/config.json    # ...and the project's own word, crammed into the framework file\n${own}`)
+})
+
+// PENDANT — the CLI announcing the migration: copier update runs the cspell
+// migration, whose two actions (capture the inline words before the refresh, move
+// them after) each print a one-line announcement. Filtering to those lines proves
+// the actions fired and shows the developer what happened, as `task copier:update`.
+Then('the cspell migration announcement should visually match {string}', async (baselineName) => {
+  // Keep the migration's own printed announcements, not copier's echo of the
+  // command that produces them (that echoed source contains "[cspell migration]"
+  // mid-line too) — so match only lines that START with the marker.
+  const announce = updateOutput.split('\n')
+    .filter(l => /^\[cspell migration\]/.test(stripAnsiEscapeSequences(l).trimStart()))
+    .map(l => l.replace(/[ \t]+$/, ''))
+    .join('\n')
+    .trim()
+  if (!announce) {
+    throw new Error(`copier update did not surface the cspell migration announcement:\n${updateOutput}`)
+  }
+  await assertTextVisualMatch(I, baselineName, `$ task copier:update\n${announce}`)
+})
+
+// APRÈS — the folder after the update: the single file became three. config.base.json
+// carries the (refreshed) framework vocabulary, config.project.json now holds the
+// project's own word — MOVED there intact — and config.json is word-free, the pure
+// framework image. The before/after folder listings tell the whole transformation.
+Then('the cspell folder after the update should visually match {string}', async (baselineName) => {
+  const baseSample = JSON.stringify(JSON.parse(readRendered('.config/cspell/config.base.json')).words.slice(0, 6))
+  const project = readRendered('.config/cspell/config.project.json').trimEnd()
+  const cfgWords = JSON.stringify(JSON.parse(readRendered('.config/cspell/config.json')).words)
+  await assertTextVisualMatch(I, baselineName,
+    `$ ls .config/cspell/\n${lsCspell()}\n\n` +
+    `$ jq -c '.words[0:6]' .config/cspell/config.base.json    # framework base — refreshed each update (a sample)\n${baseSample}\n\n` +
+    `$ cat .config/cspell/config.project.json    # the project's word, moved here intact\n${project}\n\n` +
+    `$ jq -c .words .config/cspell/config.json    # config.json is the framework image — word-free\n${cfgWords}`)
+})
+
+Given('the project registers its own word {string} in its cspell override', (word) => {
+  const file = renderedPath(CSPELL_OVERRIDE)
+  if (!fs.existsSync(file)) {
+    throw new Error(`Project override "${CSPELL_OVERRIDE}" is missing from the generated project — the framework must ship it as a skip-if-exists seam`)
+  }
+  const override = JSON.parse(fs.readFileSync(file, 'utf8'))
+  override.words = [...new Set([...(override.words || []), word])]
+  fs.writeFileSync(file, JSON.stringify(override, null, 2) + '\n')
+  writeCspellSample(rendered, word)
+  execSync('git add -A && git commit --quiet --no-verify -m "test: register project cspell word"', { cwd: rendered })
+})
+
+When('MegaLinter runs on the updated project', () => {
+  spellOutput = runMegalinterCspell(rendered)
+})
+
+Then('MegaLinter\'s cspell should flag it, matching {string}', async (baselineName) => {
+  // Teeth: MegaLinter's cspell must actually report the unknown word — else the
+  // survival proof below (no spelling error) would be meaningless.
+  if (!/Unknown word/.test(stripAnsiEscapeSequences(spellOutput))) {
+    throw new Error(`Expected MegaLinter's cspell to flag an unknown word, got:\n${spellOutput}`)
+  }
+  await assertTextVisualMatch(I, baselineName, spellOutput)
+})
+
+Then('cspell should recognise the project word and flag only the control, matching {string}', async (baselineName) => {
+  // Contrast: the unregistered control MUST be flagged AND the project's own word
+  // must NOT be — proving the project word is genuinely recognised, not that
+  // cspell ignores everything. The baseline shows the input file and that verdict
+  // together, so the recognition reads at a glance.
+  const plain = stripAnsiEscapeSequences(spellOutput)
+  if (!plain.includes(`Unknown word (${CSPELL_CONTROL})`) || plain.includes(`Unknown word (${cspellProjectWord})`)) {
+    throw new Error(`Expected only "${CSPELL_CONTROL}" flagged and "${cspellProjectWord}" recognised, got:\n${spellOutput}`)
+  }
+  const sample = readRendered(CSPELL_SAMPLE).trimEnd()
+  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${sample}\n\n${spellOutput}`)
 })
 
 Then('the rendered root Taskfile should reference {string}', (taskfileRef) => {

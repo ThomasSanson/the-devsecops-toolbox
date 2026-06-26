@@ -4,11 +4,35 @@
 # Template configuration
 _answers_file: .config/devsecops/.copier-answers.yml
 _skip_if_exists:
+  - .config/cspell/config.project.json
   - iac/helm/Chart.yaml
   - VERSION
   - project/Taskfile.yml
   - project/docker-compose.yml
 _min_copier_version: "9.3.0"
+
+# cspell vocabulary migration (issue #162): when a project crosses into the
+# version that split the cspell config, move any words it kept inline in the
+# (now framework-owned) config.json into its project-owned config.project.json,
+# so config.json stays the framework image and the words survive. before:
+# capture inline words before the refresh empties config.json; after: drop the
+# framework base words, leaving only the project's own. Idempotent afterwards.
+_migrations:
+  - version: "22.7.1"
+    before:
+      # Inlined (not the script): in the BEFORE phase the project still holds the
+      # old version, which does not ship migrate-words.py yet. Capture config.json's
+      # inline words into config.project.json before the refresh empties config.json.
+      - >-
+        python3 -c 'import json, pathlib;
+        cfg = pathlib.Path(".config/cspell/config.json");
+        legacy = json.loads(cfg.read_text()).get("words") or [];
+        ov = pathlib.Path(".config/cspell/config.project.json");
+        cur = (json.loads(ov.read_text()).get("words") or []) if ov.exists() else [];
+        ov.write_text(json.dumps({"version": "0.2", "words": sorted(set(cur + legacy))}, indent=2) + chr(10)) if legacy else None;
+        print("[cspell migration] capturing project words before the framework refresh") if legacy else None'
+    after:
+      - "python3 .config/cspell/migrate-words.py dedup"
 
 # Questions — CI/CD platform
 ci_platform:

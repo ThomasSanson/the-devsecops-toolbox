@@ -42,6 +42,11 @@ An image is worth a thousand words: show the precondition you established (the f
 created, the `git diff` of what you changed) AND THEN the result. A test that only captures
 the final state cannot prove its own setup.
 
+**Count the baselines: a result-only scenario is a half-job.** Every scenario that
+screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`,
+`$ git diff`) so a human reading the images understands the journey without guessing. Rule of
+thumb: a scenario with exactly one `assertTextVisualMatch` almost always forgot its setup.
+
 ### A discriminating proof needs BOTH halves
 
 To prove "X is handled but Y is not", show BOTH — a positive case and a negative case (a
