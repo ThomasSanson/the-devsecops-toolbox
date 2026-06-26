@@ -380,6 +380,19 @@ function runMegalinterCspell (dir) {
   } catch (e) {
     raw = (e.stdout || '') + (e.stderr || '')
   }
+  const plainRaw = stripAnsiEscapeSequences(raw)
+  // No "[cspell]" verdict line means MegaLinter never actually ran cspell — it found
+  // 0 files, or a docker/volume failure under CI's dind daemon aborted the run (local
+  // mounts the host socket, CI talks to docker:dind over TCP, so the megalinter
+  // container's `-v /var/run/docker.sock` is a stale empty dir). That is an
+  // ENVIRONMENT failure, NOT "the project word was unrecognised". Returning empty here
+  // makes the downstream contrast guard throw a LYING "Expected only X flagged"; fail
+  // loudly with MegaLinter's own tail so CI shows the real cause (kept-files count,
+  // docker error, missing config).
+  if (!/with \[cspell\]/.test(plainRaw)) {
+    const tail = plainRaw.split('\n').filter(l => l.trim()).slice(-40).join('\n')
+    throw new Error(`MegaLinter produced no [cspell] verdict in ${dir} — it never ran cspell (0 files, or a docker/volume failure under dind). MegaLinter tail:\n${tail}`)
+  }
   return raw.split('\n')
     .filter(line => /with \[cspell\]|Unknown word/.test(stripAnsiEscapeSequences(line)))
     .map(line => line.replace(/ - \([0-9.]+m?s\)/, '').replace(/[ \t]+$/, ''))
