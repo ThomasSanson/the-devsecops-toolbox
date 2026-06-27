@@ -505,6 +505,18 @@ scaffold_agent_only() {
   done
   rm -rf "${render_dir}"
 
+  # Normalise permissions to be umask-independent. Copier renders under the
+  # container umask and `cp -a` preserves it: CI runners use umask 000, which
+  # leaves the copied .agent/ dirs world-writable (0777). That is a security
+  # smell AND a visual drift — `tree` colours world-writable dirs green-on-green
+  # instead of the plain blue a 0755 dir gets, so the agent-mode tree baseline
+  # (captured under a 022 umask) fails on CI. Force 0755 dirs / 0644 files.
+  if [ -d .agent ]; then
+    find .agent -type d -exec chmod 755 {} + 2>/dev/null || true
+    find .agent -type f -exec chmod 644 {} + 2>/dev/null || true
+  fi
+  chmod 644 AGENTS.md CLAUDE.md 2>/dev/null || true
+
   if [ "$agent_installed" -ne 1 ] || [ ! -d ".agent" ]; then
     log_error "Agent mode installation failed — the AI agent context was not found in the template."
     sed 's/^/    /' "${render_log}" 2>/dev/null | tail -n 20
