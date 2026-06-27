@@ -128,11 +128,15 @@ tasks:
       # both gitignored): shipping them into /workspace makes Copier renders
       # differ between local and CI (the matrix `ls` baselines would embed
       # them) and could leak personal secrets into test containers.
+      # .impeccable (editor plugin) and .ruff_cache (recreated every time ruff
+      # lints migrate-words.py) are gitignored dev artifacts for the same reason.
       - cmd: |
           tar \
             --exclude='.git' \
             --exclude='.cache' \
             --exclude='.claude' \
+            --exclude='.impeccable' \
+            --exclude='.ruff_cache' \
             --exclude='.env' \
             --exclude='tmp' \
             --exclude='megalinter-reports' \
