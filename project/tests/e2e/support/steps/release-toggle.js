@@ -182,7 +182,10 @@ function tailFromMarker (lines, markers, tail) {
 When('the release logs are displayed in the browser', async () => {
   const lines = filterReleaseLogs(global.releaseLogs || '')
   const tail = tailFromMarker(lines, RELEASE_TAIL_MARKERS, RELEASE_VISUAL_TAIL_LINES)
-  const output = tail.join('\n')
+  // Normalise volatile 3-part versions (the release bump "22.7.0 → 22.8.0", the
+  // "tag to create" line, the pinned commitizen version) to a placeholder so the
+  // baseline stays stable across every release instead of drifting on each bump.
+  const output = tail.join('\n').replace(/\d+\.\d+\.\d+/g, 'x.y.z')
 
   await I.usePlaywrightTo('render release logs in browser', async ({ page }) => {
     await page.setContent(
