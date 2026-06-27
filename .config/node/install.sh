@@ -66,6 +66,16 @@ fi
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
+# nvm aborts (exit 11) while npm carries a `prefix`/`globalconfig` setting —
+# and it checks the moment nvm.sh is sourced (the auto-`use default` on load),
+# before any explicit nvm command runs. A system Node or a reused CI container
+# leaves `prefix=` in ~/.npmrc (a later `npm i -g` re-writes it between runs),
+# so strip those lines BEFORE sourcing nvm.sh below. sed is always present;
+# npm may not yet be on PATH.
+if [ -f "$HOME/.npmrc" ]; then
+  sed -i '/^prefix[[:space:]]*=/d; /^globalconfig[[:space:]]*=/d' "$HOME/.npmrc" 2>/dev/null || true
+fi
+
 if [ ! -s "$NVM_DIR/nvm.sh" ]; then
   log "nvm not found. Installing nvm ${NVM_VERSION}..."
   NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh"
