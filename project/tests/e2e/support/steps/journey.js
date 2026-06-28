@@ -1,4 +1,5 @@
 /* global inject Before After Given When Then */
+// cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
 /**
  * E2E developer-journey scenarios.
  *
