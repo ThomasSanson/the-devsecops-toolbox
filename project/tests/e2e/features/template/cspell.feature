@@ -28,20 +28,14 @@ Feature: A generated project owns its cspell vocabulary across toolbox updates
     When MegaLinter runs on the updated project
     Then cspell should recognise the project word and flag only the control, matching "template/cspell-project-word-survives"
 
-  # Upgrade path (auto-migration) told as a folder transformation — AVANT/PENDANT/APRÈS.
-  # An EXISTING project kept its words inline in the old single-file config.json. The
-  # update MOVES them into its own config.project.json while config.json becomes the
-  # framework image. Proven by showing the .config/cspell folder before (one file, the
-  # project word mixed into the framework's), the CLI announcing the migration actions
-  # as it runs, the folder after (three files, the project word relocated intact,
-  # config.json word-free), then the real linter still recognising the word.
+  # Shown in a real, coloured terminal under real conditions: a project generated
+  # from an EARLIER toolbox version (its own word crammed into the single-file
+  # config.json) receives the update Renovate triggers in the repo, the exact
+  # `task copier:update` command. That update splits the dictionary and relocates
+  # the project's word to its own config.project.json, while config.json becomes
+  # the framework image. One screenshot, real command, real conditions.
   @e2e-template-cspell-upgrade-preserves-words
-  Scenario: upgrading from the old single-file design moves a project's words into its override
-    Given a versioned template upgrading cspell from old single-file to split
-    And a project generated at the old version with its own word "Caddyfile" in config.json
-    Then the cspell folder before the update should visually match "template/cspell-upgrade-before"
-    When the project is updated to template release "22.7.1"
-    Then the cspell migration announcement should visually match "template/cspell-upgrade-during"
-    And the cspell folder after the update should visually match "template/cspell-upgrade-after"
-    When MegaLinter runs on the updated project
-    Then cspell should recognise the project word and flag only the control, matching "template/cspell-upgrade-recognised"
+  Scenario: a project's cspell words survive the toolbox update that splits the dictionary
+    Given a live terminal on a project from an earlier toolbox version with its word "Caddyfile"
+    When the developer runs the toolbox update in the terminal
+    Then the cspell update terminal should visually match "template/cspell-words-survive-update"

@@ -85,7 +85,7 @@ function prepareCspellMigrationTemplate () {
   const realOverride = fs.readFileSync(`${TEMPLATE_SRC}/.config/cspell/config.project.json`, 'utf8')
   const realMig = fs.readFileSync(`${TEMPLATE_SRC}/.config/cspell/migrate-words.py`, 'utf8')
   const realCopier = fs.readFileSync(`${TEMPLATE_SRC}/copier.yml`, 'utf8')
-  // 22.7.0 — the OLD single-file design: the base vocabulary lives inline in
+  // 22.0.0 — the OLD single-file design: the base vocabulary lives inline in
   // config.json (which imports neither config.base.json nor config.project.json),
   // and none of the split files / migration exist. A project then has nowhere but
   // config.json to add its own words — exactly the situation #162's migration fixes.
@@ -99,8 +99,8 @@ function prepareCspellMigrationTemplate () {
     .replace('  - .config/cspell/config.project.json\n', ''))
   run('git init --quiet --initial-branch=main', tpl)
   run('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
-  run('git add -A && git commit --quiet --no-verify -m "chore: release 22.7.0 (old single-file cspell)"', tpl)
-  run('git tag 22.7.0', tpl)
+  run('git add -A && git commit --quiet --no-verify -m "chore: release 22.0.0 (old single-file cspell)"', tpl)
+  run('git tag 22.0.0', tpl)
   // 22.7.1 — the current split + migration, restored from the working tree.
   fs.writeFileSync(`${dir}/config.json`, realCfg)
   fs.writeFileSync(`${dir}/config.base.json`, realBase)

@@ -50,6 +50,7 @@ const {
   INSTALL_LOG,
   WRAPPER_PATH,
   setupClonedProjectTerminal,
+  setupCspellUpdateTerminal,
   prepareWorkingBranchInstaller,
   authenticateGlab,
   teardownJourneyTerminal
@@ -175,6 +176,40 @@ When('I display the project tree in the terminal', async () => {
   // so every guardrail file is visible — rules/, workflows/ AND each skill's
   // SKILL.md — not just the skill folder names. Excludes the .git plumbing.
   await typeCommandAndWait(I, "clear; tree -a -I '.git'")
+})
+
+// cspell vocabulary survives a toolbox update — the real Renovate-driven flow in
+// a live, coloured terminal. A project generated from an EARLIER toolbox version
+// (single-file config.json, the project's word crammed in) receives the update
+// Renovate triggers (`task copier:update`), which splits the dictionary and moves
+// the project's word into its own file. Real command, real conditions.
+Given('a live terminal on a project from an earlier toolbox version with its word {string}', async (word) => {
+  global.journeyContainer = setupCspellUpdateTerminal(word)
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.waitForElement('.xterm-screen', 10)
+  I.wait(3)
+})
+
+When('the developer runs the toolbox update in the terminal', async () => {
+  // Real commands, each labelled by a trailing `# comment` (no extra echo lines).
+  // The toolbox version comes from copier's own `_commit` in the answers file, so
+  // the screenshot proves we go from 22.0.0 to 22.7.1 around the real update. `ls -1`
+  // lists one file per line (humans read top-to-bottom); `jq` colours the words.
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, '# a generated project keeps its own cspell words across a toolbox update')
+  await typeCommandAndWait(I, 'grep _commit .config/devsecops/.copier-answers.yml   # toolbox version BEFORE')
+  await typeCommandAndWait(I, 'ls -1 .config/cspell/   # one framework-owned file')
+  await typeCommandAndWait(I, "jq '.words[-4:]' .config/cspell/config.json   # the project word (Caddyfile), crammed in among the framework's")
+  await typeCommandAndWait(I, "task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref 22.7.1'", 240000)
+  await typeCommandAndWait(I, 'grep _commit .config/devsecops/.copier-answers.yml   # toolbox version AFTER')
+  await typeCommandAndWait(I, 'ls -1 .config/cspell/   # three files now')
+  await typeCommandAndWait(I, "jq '.words[-4:]' .config/cspell/config.base.json   # the framework words: KEPT, in the framework's own file")
+  await typeCommandAndWait(I, 'jq . .config/cspell/config.project.json   # the project word: MOVED to its own file')
+  await typeCommandAndWait(I, "jq '.words' .config/cspell/config.json   # config.json: just the structural image now, word-free")
+})
+
+Then('the cspell update terminal should visually match {string}', async (baselineName) => {
+  await assertTerminalVisualMatch(I, baselineName, { fromMarker: 'keeps its own cspell words across a toolbox update' })
 })
 
 When('I type the toolbox installer command in the terminal', async () => {

@@ -1,4 +1,5 @@
 {
+  "//": "Structural cspell entry — DO NOT EDIT by hand. The framework vocabulary lives in config.base.json (refreshed on every toolbox update); add YOUR project's own words to config.project.json (kept across updates). This file only wires the dictionaries and imports the two word lists.",
   "dictionaries": ["companies", "en-gb", "fr-fr", "python", "software-terms"],
   "ignorePaths": [
     "**/.claude/**",

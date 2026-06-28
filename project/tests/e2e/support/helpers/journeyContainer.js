@@ -162,6 +162,75 @@ function authenticateGlab (name, token) {
   }
 }
 
+const CSPELL_TEMPLATE_DIR = '/tmp/toolbox-template'
+
+/**
+ * Live terminal for the cspell-vocabulary-survives-update scenario: a generated
+ * project that PREDATES the cspell split (rendered at the old release, with its
+ * own word inline in the single-file config.json), served in a real ttyd shell.
+ * The scenario then runs the EXACT command Renovate triggers in a real repo —
+ * `task copier:update` — live, with colours, so the migration is shown happening
+ * under real conditions, not reconstructed. Reuses the journey terminal engine.
+ */
+function setupCspellUpdateTerminal (projectWord) {
+  // eslint-disable-next-line global-require
+  const { prepareCspellMigrationTemplate } = require('./copierRender')
+  const template = prepareCspellMigrationTemplate()
+  const name = containerName()
+
+  runCommand(
+    `cd ${CONTAINER_WORKDIR}/project && docker compose run -d --name ${shellEscape(name)} ubuntu`,
+    { timeout: SETUP_TIMEOUT }
+  )
+  runCommand(
+    `docker cp ${shellEscape(template)} ${shellEscape(`${name}:${CSPELL_TEMPLATE_DIR}`)}`,
+    { timeout: SETUP_TIMEOUT }
+  )
+
+  const setup = execInContainerAsUser(name, 'bootstrap', [
+    'set -e',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'mkdir -p "$HOME/.local/bin"',
+    // uv (Python/Copier launcher) and go-task: the toolbox runs Copier via Taskfile,
+    // so `task copier:update` is the REAL update command — task must be present.
+    'curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1',
+    'sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin" >/dev/null 2>&1',
+    'git config --global user.email "lambda@test.local"',
+    'git config --global user.name "Lambda"',
+    'git config --global init.defaultBranch main',
+    // the template was docker-cp'd in, so its checkout belongs to another uid; mark
+    // it safe so Copier can read its tags and honour --vcs-ref (else it falls back
+    // to the working tree, i.e. the NEW layout, and the "before" would be wrong).
+    "git config --global --add safe.directory '*'",
+    // render the project at the OLD release (single-file cspell) from the versioned
+    // template, exactly where a real repo would sit before a toolbox update.
+    `uvx --python 3.14 --from copier==9.14.3 copier copy ${CSPELL_TEMPLATE_DIR} ${PROJECT_DIR} --vcs-ref 22.0.0 --defaults --trust --skip-tasks --quiet`,
+    `cd ${PROJECT_DIR}`,
+    `tmp=$(mktemp) && jq --arg w ${shellEscape(projectWord)} '.words = ((.words // []) + [$w])' .config/cspell/config.json > "$tmp" && mv "$tmp" .config/cspell/config.json`,
+    'git init -q && git add -A && git commit -q --no-verify -m "chore: project generated from an earlier toolbox version"'
+  ].join('\n'), { timeout: SETUP_TIMEOUT })
+  if (setup.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to set up the cspell-update terminal:\n${setup.output}`)
+  }
+
+  // TASK_COPIER_ANSWER_FILE is what `task copier:update` resolves the answers from;
+  // Renovate's command relies on it being in the repo's environment, so export it
+  // into the terminal session (the typed command then matches Renovate's exactly).
+  const ttydStart = execInContainerAsUser(name, 'bootstrap', [
+    'export TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml',
+    `cd ${PROJECT_DIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
+    'sleep 1'
+  ].join('\n'))
+  if (ttydStart.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to start ttyd in the cspell-update terminal:\n${ttydStart.output}`)
+  }
+
+  waitForTtyd(name, TTYD_READY_TIMEOUT)
+  return name
+}
+
 function teardownJourneyTerminal (name) {
   if (!name) return
   removeContainer(name)
@@ -175,6 +244,7 @@ module.exports = {
   INSTALL_LOG,
   WRAPPER_PATH,
   setupClonedProjectTerminal,
+  setupCspellUpdateTerminal,
   prepareWorkingBranchInstaller,
   authenticateGlab,
   teardownJourneyTerminal
