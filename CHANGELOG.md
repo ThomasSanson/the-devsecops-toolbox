@@ -2,6 +2,19 @@
 
 # Changelog
 
+## 22.8.0 (2026-06-28)
+
+### Feat
+
+- **cspell**: split config, add migration script, docs and e2e tests
+
+### Fix
+
+- **cspell**: ignore Caddyfile named in the e2e journey step comment
+- **install**: pin agent-mode context permissions to 0755/0644
+- **node**: strip a stale npm prefix before nvm activation
+- **e2e**: exclude .impeccable and .ruff_cache from the render tar
+
 ## 22.7.0 (2026-06-18)
 
 ### Feat
