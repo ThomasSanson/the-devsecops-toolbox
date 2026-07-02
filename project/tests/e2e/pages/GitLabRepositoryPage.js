@@ -12,6 +12,14 @@ const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
  */
 class GitLabRepositoryPage {
   async _captureMasked (projectName, screenshotName) {
+    await this.maskVolatile(projectName)
+    await assertPageVisualMatch(I, screenshotName)
+  }
+
+  // Neutralise the dynamic content only (no assert) — reused by the agent-mode
+  // storyboard, which grabs a masked PNG of the page as one panel of a larger
+  // stitched image instead of asserting the page on its own.
+  async maskVolatile (projectName) {
     await I.waitForElement('body', 30)
     await I.wait(2)
     await I.executeScript((args) => {
@@ -80,7 +88,6 @@ class GitLabRepositoryPage {
     }, { projectName })
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
-    await assertPageVisualMatch(I, screenshotName)
   }
 
   async verifyEmptyProjectVisual (projectPath, projectName, screenshotName) {

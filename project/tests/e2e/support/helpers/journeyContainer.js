@@ -231,6 +231,30 @@ function setupCspellUpdateTerminal (projectWord) {
   return name
 }
 
+/**
+ * Pre-install the bootstrap toolchain (task, uv, gum, glow) so that when the
+ * installer runs on-camera its toolchain step is a handful of "already
+ * installed" lines (dropped from the capture as non-deterministic noise) rather
+ * than a wall of download output — which lets the agent-mode screenshot start at
+ * the blank-repo "before" line and still tell the whole before/during/after story
+ * deterministically. Reuses install.sh's OWN installers (strip its `main`
+ * invocation, source the rest, call the toolchain functions) so there is no
+ * duplicated download logic and no version drift. Requires the installer to be
+ * staged first (prepareWorkingBranchInstaller).
+ */
+function preinstallToolchain (name) {
+  const result = execInContainerAsUser(name, 'bootstrap', [
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'mkdir -p "$HOME/.local/bin"',
+    `grep -v '^main "' ${INSTALLER_PATH} > /tmp/toolchain-lib.sh`,
+    'sh -c ". /tmp/toolchain-lib.sh; install_task; install_uv; install_ui_tools"'
+  ].join('\n'), { timeout: SETUP_TIMEOUT })
+  if (result.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to pre-install the toolchain in journey container:\n${result.output}`)
+  }
+}
+
 function teardownJourneyTerminal (name) {
   if (!name) return
   removeContainer(name)
@@ -246,6 +270,7 @@ module.exports = {
   setupClonedProjectTerminal,
   setupCspellUpdateTerminal,
   prepareWorkingBranchInstaller,
+  preinstallToolchain,
   authenticateGlab,
   teardownJourneyTerminal
 }

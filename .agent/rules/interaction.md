@@ -17,3 +17,15 @@ alwaysApply: true
 
 - ✅ **Professional and Direct**: Be concise, avoid unnecessary verbiage.
 - ✅ **Proactive Help**: If an error is detected, propose a concrete immediate correction.
+
+## Explaining — simple form, and the WHY above all
+
+Unless explicitly told otherwise, every explanation (a code comment, a doc line, an
+answer, a commit body) follows two rules:
+
+- ✅ **Simple enough for a bright 12-year-old** — short sentences, one idea at a time,
+  every technical term earned or defined. But you are talking to adults: simplify the
+  FORM, never the substance — never infantilize or patronize the reader.
+- ✅ **The WHY over the WHAT**: state the reason the thing exists, the problem it
+  prevents, what would break without it. A comment that paraphrases the code is noise;
+  a comment that explains the intent is documentation.

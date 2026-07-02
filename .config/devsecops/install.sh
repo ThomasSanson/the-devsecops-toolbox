@@ -450,11 +450,18 @@ select_install_scope_gum() {
     return 0
   fi
 
-  # Component selection — a multi-select checklist. Only one component today
-  # (the AI agent guardrails), designed to grow (plan/code phases, etc.).
-  # Space toggles items, enter confirms; selecting nothing installs nothing.
-  selected_components="$(gum choose --no-limit --no-show-help \
-    --header "Select components to install (space to toggle, enter to confirm):" \
+  # Component selection. One component today (the AI agent guardrails); it is
+  # presented as a single-select list, so the developer SEES the choice and just
+  # presses Enter to take the highlighted item.
+  #
+  # Single-select (gum's default --limit 1) is deliberate, not a --no-limit
+  # multi-select: a multi-select springs a trap on a lone item — it is NOT
+  # selected until the user presses Space, so a natural Enter picks NOTHING, gum
+  # returns empty, INSTALL_SCOPE stays "none", and the installer exits "Nothing
+  # selected" having installed no files. When a second component is added, revisit
+  # this as a --no-limit multi-select with a default item already selected.
+  selected_components="$(gum choose --no-show-help \
+    --header "Select the component to install (↑/↓ to choose, enter to confirm):" \
     "$AGENT_COMPONENT_LABEL")" || selected_components=""
 
   INSTALL_SCOPE="none"

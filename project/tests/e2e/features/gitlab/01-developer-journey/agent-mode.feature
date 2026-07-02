@@ -1,48 +1,47 @@
 @e2e @e2e-journey @e2e-journey-agent-mode
-Feature: Developer journey — selective install via a component checklist
+Feature: Developer journey — selective install (agent mode)
   As a developer adopting the DevSecOps Toolbox
-  I want the installer to first ask whether to install everything, and offer a
-  checklist of components when I decline
+  I want the installer to first ask whether to install everything, and to offer
+  a component checklist when I decline
   So that I can pick only what I need — today, the AI agent guardrails
   (.agent/, CLAUDE.md, AGENTS.md) — without the rest of the framework
 
   # The selection is driven by the premium gum/glow UI layer (the same layer as
-  # glab:auth:ensure). Declining the complete install opens a MULTI-SELECT
-  # checklist (space to toggle, enter to confirm) — a single component today,
-  # designed to grow (plan/code phases, etc.). The distinctive screens of this
-  # flow are proven by real terminal baselines (tolerance:0); the shared prelude
-  # (typed command, scope prompt) is already covered by the installer.feature
-  # journey, so it is not re-captured here. The final working tree is asserted to
-  # carry ONLY the agent context.
+  # glab:auth:ensure). Declining the complete install opens a component list the
+  # developer picks from. With one component on offer it is a single-select list,
+  # so a developer who just presses Enter takes the highlighted component — never
+  # the empty-handed "Nothing selected" trap a bare multi-select would spring on a
+  # lone item the user never toggled.
+  #
+  # ONE storyboard image, the whole real journey in order, exactly as a developer
+  # sees it — three numbered panels joined by arrows: (1) the fresh project on
+  # GitLab, nothing but its README; (2) the terminal — clone state, the installer's
+  # choice prompt, the live "Agent mode" checklist, the install, the local result
+  # and the push to main (agent mode goes straight to main, no MR); (3) the same
+  # GitLab project now carrying the guardrails on main. Every panel is a genuine
+  # capture taken at its instant (gum menus erase themselves on answer, and the
+  # GitLab panels live on another page), assembled at the end; the toolchain check
+  # is pre-installed off-camera and dropped as noise. The local AND the remote
+  # outcomes are then asserted programmatically.
   @e2e-journey-agent-mode-only
-  Scenario: Declining the full framework opens a component checklist and installs only the agent guardrails
+  Scenario: Declining the full framework installs only the AI agent guardrails
     Given a GitLab runs in a container configured with user "lambda"
-    And a fresh Ubuntu web terminal cloned from a freshly created blank GitLab project
+    And a fresh Ubuntu web terminal cloned from a GitLab project that already has a main branch
     And the working-branch installer is staged in the terminal
+    And the toolchain is already installed
 
-    When I type the toolbox installer command in the terminal
-    And I launch the installer and wait for the prompt "Install the complete DevSecOps framework?"
-    And I decline installing the complete framework
+    When the developer installs agent mode step by step in the terminal
 
-    # The component checklist — a multi-select list (one component for now,
-    # designed to grow). This is the distinctive screen of the selective flow.
-    And I wait for the prompt "Select components to install"
-    Then the terminal from "Select components to install" should visually match "gitlab/01-developer-journey/agent-mode-selection-terminal"
+    # The working tree carries ONLY the AI agent context — asserted first so a
+    # regression (the "Nothing selected" trap) fails loud and fast.
+    Then the project working tree should contain only the AI agent context files
 
-    # Checking the agent component renders only the AI agent guardrails
-    When I select the agent component and wait for the installer to finish
-    Then the terminal from "Installing agent mode" should visually match "gitlab/01-developer-journey/agent-mode-complete-terminal"
+    # ONE screenshot stitched from the real per-step frames: cloned repo -> choice
+    # prompt -> live checklist -> install + result -> push to the remote main.
+    And the agent-mode journey should visually match "gitlab/01-developer-journey/agent-mode-only-terminal"
 
-    # Final proof on the REAL cloned repo — git status shows the working tree
-    # carries ONLY the AI agent context (.agent/, CLAUDE.md, AGENTS.md).
-    # Symmetric with the blank-repo baseline that opened the journey.
-    When I display the cloned project state in the terminal
-    Then the developer terminal should visually match "gitlab/01-developer-journey/agent-mode-repository-terminal"
-
-    # The actual content — a tree expands the .agent/ guardrails (rules/,
-    # skills/, workflows/ and their files) alongside CLAUDE.md and AGENTS.md.
-    When I display the project tree in the terminal
-    Then the developer terminal should visually match "gitlab/01-developer-journey/agent-mode-tree-terminal"
-
-    # Same fact asserted programmatically (.agent/, CLAUDE.md, AGENTS.md only)
-    And the project working tree should contain only the AI agent context files
+    # The GitLab hook: the guardrails reached the REMOTE main branch — proven
+    # server-side via the API, not just in the local working tree.
+    And the branch "main" must contain the file ".agent" for the journey project
+    And the branch "main" must contain the file "AGENTS.md" for the journey project
+    And the branch "main" must contain the file "CLAUDE.md" for the journey project

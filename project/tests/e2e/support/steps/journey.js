@@ -53,6 +53,7 @@ const {
   setupClonedProjectTerminal,
   setupCspellUpdateTerminal,
   prepareWorkingBranchInstaller,
+  preinstallToolchain,
   authenticateGlab,
   teardownJourneyTerminal
 } = require('../helpers/journeyContainer')
@@ -61,6 +62,9 @@ const {
   waitForTerminalText,
   waitForTerminalSettle,
   assertTerminalVisualMatch,
+  captureTerminalFrame,
+  capturePageFrame,
+  assertStoryboardVisualMatch,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
 
@@ -150,6 +154,14 @@ Given('a fresh Ubuntu web terminal cloned from a freshly created blank GitLab pr
 
 Given('the working-branch installer is staged in the terminal', () => {
   prepareWorkingBranchInstaller(global.journeyContainer)
+})
+
+// Pre-install the bootstrap toolchain off-camera so the installer's own toolchain
+// step collapses to a few "already installed" lines (dropped as capture noise),
+// keeping the agent-mode session compact enough to frame the whole before/during/
+// after story in one deterministic screenshot.
+Given('the toolchain is already installed', () => {
+  preinstallToolchain(global.journeyContainer)
 })
 
 Given('the working-branch installer is staged in direct mode in the terminal', () => {
@@ -325,6 +337,9 @@ Then('the install log should report at least {int} created files', (min) => {
 // question. The full-framework journey accepts it (default affirmative).
 const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
 const AGENT_DONE_MARKER = 'Installed the AI agent context only'
+// install.sh prints this when the scope resolves to "none" — the exact symptom
+// of the multi-select trap (declined the framework, the lone item never toggled).
+const NOTHING_MARKER = 'Nothing selected'
 
 const COPIER_PROMPTS = [
   'Do you need Ansible?',
@@ -416,40 +431,110 @@ When('I choose to install the complete framework', async () => {
   I.pressKey('y')
 })
 
-// Decline the first gum confirm: gum confirm binds 'n' to the negative action,
-// which opens the component selection — a multi-select checklist (one component
-// today, designed to grow).
-When('I decline installing the complete framework', async () => {
-  await waitForTerminalSettle(I)
-  I.pressKey('n')
-})
+// Drive the WHOLE agent-mode journey and capture each real moment as a PNG
+// frame for the single storyboard image — exactly what a developer sees:
+//   Panel 1 (GitLab)   — the fresh project, nothing but its README
+//   Panel 2 (terminal) — clone state -> choice prompt -> live "Agent mode"
+//                        checklist -> install -> local result -> push to main
+//   Panel 3 (GitLab)   — the guardrails sitting on the remote main
+// The gum menus erase themselves on answer, and the GitLab panels live on a
+// DIFFERENT page than the terminal — so each moment is captured to a PNG at its
+// instant and the storyboard is assembled at the end (see capture.js).
+When('the developer installs agent mode step by step in the terminal', async () => {
+  const gitlabPath = `/${projectPath(global.journeyProjectName)}`
 
-// In the gum multi-select checklist, toggle the agent component with the space
-// bar, confirm with enter, then poll the persistent log until the installer
-// reports the agent context was installed.
-When('I select the agent component and wait for the installer to finish', async () => {
-  await waitForTerminalSettle(I)
-  I.pressKey('Space')
-  await waitForTerminalSettle(I)
+  // Panel 1 — GitLab BEFORE: the fresh project, README only. The project is
+  // public, so the anonymous view is stable; volatile content is masked. A
+  // shorter viewport keeps the panel focused on the file tree (the masked
+  // header is hidden, so the content starts at the top).
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(gitlabPath)
+  await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  const gitlabBefore = await capturePageFrame(I, 'agent-mode-gitlab-before')
+  I.resizeWindow(1024, 768)
+
+  // Back to the live terminal — a NEW shell session (navigation dropped the
+  // old one); the cloned repo state lives on disk, not in the session.
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.waitForElement('.xterm-screen', 10)
+  I.wait(3)
+
+  // Terminal frame 1 — the freshly cloned project, clean on main.
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'ls -A1')
+  await typeCommandAndWait(I, 'git status')
+  const t1 = await captureTerminalFrame(I, 'terminal-1-clone')
+
+  // Terminal frame 2 — run the installer; the choice prompt.
+  I.click('.xterm-screen')
+  I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
-  const deadline = Date.now() + 300000
-  let done = false
-  while (Date.now() < deadline) {
-    const res = execInContainerAsUser(
+  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  const t2 = await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: 'DevSecOps Toolbox Installer' })
+
+  // Terminal frame 3 — decline the full framework -> the component checklist, live.
+  I.pressKey('n')
+  await waitForTerminalText(I, 'Select the component to install', COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  const t3 = await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' })
+
+  // Terminal frame 4 — take the highlighted component (Enter) -> install -> the result.
+  I.pressKey('Enter')
+  const readLog = () => stripAnsiEscapeSequences(
+    execInContainerAsUser(
       global.journeyContainer, 'bootstrap',
-      `grep -c ${shellEscape(AGENT_DONE_MARKER)} ${INSTALL_LOG} 2>/dev/null || true`
-    )
-    if (parseInt((res.output || '0').trim(), 10) > 0) { done = true; break }
-    await I.wait(3)
+      `cat ${INSTALL_LOG} 2>/dev/null || true`
+    ).output || ''
+  )
+  const deadline = Date.now() + 240000
+  while (Date.now() < deadline) {
+    const log = readLog()
+    if (log.includes(AGENT_DONE_MARKER) || log.includes(NOTHING_MARKER)) break
+    await I.wait(2)
   }
-  if (!done) {
-    throw new Error(`Installer did not report "${AGENT_DONE_MARKER}" in the log within 300s`)
-  }
+  await waitForTerminalSettle(I)
+  await typeCommandAndWait(I, 'ls -A1')
+  const t4 = await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' })
+
+  // Terminal frame 5 — the GitLab hook: agent mode goes straight to main (no MR),
+  // so push the guardrails to the remote and show them landing there. Off-camera,
+  // point origin at a token-free URL backed by a credential store so the push
+  // never renders the PAT; on-camera, commit + push -q + list the REMOTE main.
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  execInContainerAsUser(global.journeyContainer, 'bootstrap', [
+    `cd ${PROJECT_DIR}`,
+    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`,
+    'git config --global credential.helper store',
+    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`,
+    'chmod 600 "$HOME/.git-credentials"'
+  ].join('\n'))
+  await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
+  await typeCommandAndWait(I, 'git push -q origin main')
+  await typeCommandAndWait(I, 'git ls-tree origin/main --name-only   # now on the remote main')
+  const t5 = await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' })
+
+  // Panel 3 — GitLab AFTER: the same project page now carries the guardrails.
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(gitlabPath)
+  await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  const gitlabAfter = await capturePageFrame(I, 'agent-mode-gitlab-after')
+  I.resizeWindow(1024, 768)
+
+  global.agentModeStoryboard = [
+    { title: 'On GitLab — a fresh project, nothing but its README', images: [gitlabBefore] },
+    { title: 'In the terminal — decline the full framework, pick agent mode, push to main', images: [t1, t2, t3, t4, t5] },
+    { title: 'On GitLab — the AI agent guardrails are on main', images: [gitlabAfter] }
+  ]
 })
 
-// The whole point of agent mode: the working tree carries ONLY the AI agent
-// context (.agent/, CLAUDE.md, AGENTS.md) — none of the framework, and no
-// Copier bookkeeping (.config/.copier-answers.yml).
+Then('the agent-mode journey should visually match {string}', async (baselineName) => {
+  await assertStoryboardVisualMatch(I, baselineName, global.agentModeStoryboard)
+})
+
+// The whole point of agent mode: the installer ADDS only the AI agent context
+// (.agent/, CLAUDE.md, AGENTS.md) — none of the framework, no Copier bookkeeping
+// — while leaving the repo's own files (the README it was cloned with) intact.
 Then('the project working tree should contain only the AI agent context files', () => {
   const res = execInContainerAsUser(
     global.journeyContainer, 'bootstrap',
@@ -459,7 +544,8 @@ Then('the project working tree should contain only the AI agent context files', 
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean)
-  const expected = ['.agent', 'AGENTS.md', 'CLAUDE.md']
+    .sort()
+  const expected = ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'].sort()
   const matches = entries.length === expected.length &&
     expected.every((name, i) => entries[i] === name)
   if (!matches) {

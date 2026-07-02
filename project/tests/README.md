@@ -30,7 +30,7 @@ project/tests/e2e/
 └── _output/                      # Generated screenshots + reports (gitignored)
 ```
 
-### Two visual-proof styles
+### Three visual-proof styles
 
 1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm
     session is captured via `support/terminal/capture.js`
@@ -39,6 +39,43 @@ project/tests/e2e/
 2. **Filtered `<pre>` render** (init-effects/guidance/release scenarios): the
     captured command output is noise-filtered, rendered as a `<pre>` block in
     the browser and screenshotted.
+3. **Storyboard capture** (agent-mode): ONE image assembled from real
+    per-moment PNG frames, for journeys a single capture physically cannot
+    hold — see below.
+
+### Storyboard captures — the default for whole-journey proofs
+
+Use a storyboard when one image must tell a journey that a single capture
+cannot: moments that never coexist on screen (interactive gum menus erase
+themselves the instant you answer) or panels living on different pages
+(GitLab web + the live terminal). Reference scenario:
+`features/gitlab/01-developer-journey/agent-mode.feature` and its baseline
+`screenshots/base/gitlab/01-developer-journey/agent-mode-only-terminal.png`.
+
+Mechanism (`support/terminal/capture.js`): `captureTerminalFrame` /
+`capturePageFrame` write each real moment to `_output/storyboard-frames/`
+AS IT HAPPENS, then `assertStoryboardVisualMatch` stitches the panels —
+numbered title bars, arrows between steps, terminal frames left-aligned —
+into a single image asserted at `tolerance: 0`.
+
+Rules — the panels ARE the proof:
+
+- Every pixel inside a panel is a REAL capture taken at its instant; only
+  the storyboard chrome (titles, arrows) is drawn around them. Never compose,
+  fake or retouch panel content.
+- Tell the whole story, in the order a human doing the journey by hand would
+  screenshot it: the state BEFORE (e.g. the fresh GitLab project), the acting
+  (the terminal session, its live menus included), the state AFTER (the
+  remote proof — e.g. the pushed files visible on GitLab main).
+- Keep every panel deterministic: mask GitLab pages
+  (`GitLabRepositoryPage.maskVolatile`), pre-install the toolchain off-camera
+  (`preinstallToolchain`) so its volatile output stays out of frame, and let
+  `TERMINAL_NOISE_PATTERNS` drop what remains. Never a secret on screen
+  (quiet pushes, token-free remote URL backed by a credential store).
+- Pair the image with programmatic asserts of the same facts (working tree,
+  REST on the remote branch) so a regression fails loud even without eyes.
+- Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow, and
+  the resulting PNG must be inspected by a human like any other baseline.
 
 ### Running
 

@@ -1,4 +1,4 @@
----
+{% raw %}---
 trigger: always_on
 description: Test integrity — never cheat; a visual-regression baseline must be REAL captured output (via task), prove its setup, and cover both halves
 ---
@@ -56,18 +56,20 @@ proof, not the test.
 
 ### Whole-journey scenarios — the storyboard is the reference pattern
 
-The normative reference is the agent-mode scenario:
-`project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature` and its single
-baseline `screenshots/base/gitlab/01-developer-journey/agent-mode-only-terminal.png`.
-Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow it
-meticulously — full recipe in `project/tests/README.md` (§ Storyboard captures).
+Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow the
+storyboard pattern meticulously: ONE image assembled from real per-moment PNG frames
+tells the whole journey — a reviewer grasps it at a glance, which scattered per-step
+screenshots can never guarantee. The project's FIRST storyboard scenario and its single
+baseline become the local normative reference; every later journey follows them.
 
-- ✅ ONE storyboard image tells the whole journey: BEFORE (the state on GitLab) → the
-  acting (the live terminal, its ephemeral menus captured at their instant) → AFTER
-  (the remote proof back on GitLab) — numbered panels joined by arrows.
-- ✅ REUSE the engine: `captureTerminalFrame` / `capturePageFrame` /
-  `assertStoryboardVisualMatch` (`project/tests/e2e/support/terminal/capture.js`) and
-  `GitLabRepositoryPage.maskVolatile` — never reinvent a capture mechanism.
+- ✅ ONE storyboard image tells the whole journey: BEFORE (the state on the remote
+  system) → the acting (the live session, its ephemeral screens captured at their
+  instant — interactive menus never coexist with the result, so snapshot each moment
+  as it happens and stitch at the end) → AFTER (the remote proof) — numbered panels
+  joined by arrows.
+- ✅ REUSE the engine: implement the frame-capture + assembly helpers ONCE in the
+  project's test harness (under `project/tests/`) and reuse them for every journey —
+  never reinvent a capture mechanism per scenario.
 - ✅ Twin every visual fact with a programmatic assert of the same fact (working tree,
   REST on the remote branch) so a regression fails loud even without eyes.
 - ❌ NEVER degrade a storyboard into scattered per-step baselines, and NEVER compose or
@@ -90,10 +92,4 @@ meticulously — full recipe in `project/tests/README.md` (§ Storyboard capture
   raise tolerance, lower threshold, or skip the assertion.
 - Legitimate evolution (e.g. a version bump) → regenerate the baseline in the SAME
   environment, and only after you understand exactly why it changed.
-
-### Reference — the framework's own e2e suite (mirror this pattern in your tests)
-
-- **Page Objects:** `project/tests/e2e/pages/`
-- **Shared helpers (text/page render, masking):** `project/tests/e2e/support/helpers/`
-- **Base screenshots:** `project/tests/e2e/screenshots/base/`
-- **Conventions & how-to:** `project/tests/README.md`
+{% endraw %}

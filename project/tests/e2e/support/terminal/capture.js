@@ -70,7 +70,19 @@ const TERMINAL_NOISE_PATTERNS = [
   /^added \d+ packages?, and audited /,
   /^\d+ packages? are looking for funding/,
   /^ {2}run `npm fund`/,
-  /^found \d+ vulnerabilities/
+  /^found \d+ vulnerabilities/,
+  // The installer's toolchain check ("📦 Installing toolchain" + the per-tool
+  // "✅ <tool> ... installed" lines) carries volatile versions (git, uv) and is
+  // not part of any story a baseline tells — every installer baseline already
+  // anchors past it. Dropping it lets the agent-mode capture start from the
+  // blank-repo "before" line yet stay deterministic. Scoped to the four bootstrap
+  // tools so it never touches "✅ Agent mode installed" / "✅ Installation complete".
+  /^\s*📦 Installing toolchain/,
+  /^\s*✅ (git|task|uv|gum|glow)\b.*installed/,
+  // Server-side messages git relays during a push (GitLab's merge-request hint,
+  // object/progress counts) — volatile and not part of the story. The push
+  // itself runs with -q; this drops whatever the remote still prints.
+  /^remote:/
 ]
 
 async function readTerminalState (I) {
@@ -496,6 +508,174 @@ async function assertTerminalVisualMatch (I, baselineName, opts = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Storyboard capture — ONE image assembled from real per-moment frames.
+// Two facts force the frame-by-frame approach: interactive gum menus erase
+// themselves the instant you answer (the live menu and the later result never
+// coexist on screen), and the GitLab panels live on a DIFFERENT page than the
+// terminal (navigating destroys any in-page overlay). So each real moment is
+// captured to a PNG file as it happens, and a final assembler stitches the
+// panels — numbered title bars and arrows between steps, like a film
+// storyboard — into a single image asserted at tolerance:0. Every pixel inside
+// the panels is a genuine capture; only the storyboard chrome (titles, arrows)
+// is drawn around them.
+// ---------------------------------------------------------------------------
+const STORYBOARD_ID = '__storyboard_capture__'
+const FRAMES_DIR = 'storyboard-frames'
+
+function frameOutputPath (frameName) {
+  return path.join(E2E_DIR, '_output', FRAMES_DIR, frameName + '.png')
+}
+
+// Snapshot the current terminal moment (compact capture, marker-anchored) into
+// the frames dir and return the PNG's absolute path.
+async function captureTerminalFrame (I, frameName, opts = {}) {
+  await waitForTerminalSettle(I)
+  await scrollTerminalToBottom(I)
+  await I.wait(0.3)
+  const info = await buildCompactTerminalCapture(
+    I,
+    COMPACT_CAPTURE_ID,
+    TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source }),
+    opts.fromMarker || null,
+    opts.maxRows || 0
+  )
+  if (!info || !info.kept) {
+    throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)
+  }
+  fs.mkdirSync(path.join(E2E_DIR, '_output', FRAMES_DIR), { recursive: true })
+  await I.captureScreenshot(`${FRAMES_DIR}/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
+  await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
+  return frameOutputPath(frameName)
+}
+
+// Full-page snapshot of the CURRENT page (mask its volatile content first —
+// e.g. GitLabRepositoryPage.maskVolatile) into the frames dir.
+async function capturePageFrame (I, frameName) {
+  fs.mkdirSync(path.join(E2E_DIR, '_output', FRAMES_DIR), { recursive: true })
+  await I.takeScreenshot(`${FRAMES_DIR}/${frameName}`)
+  return frameOutputPath(frameName)
+}
+
+// Stitch the panels into the single storyboard image and assert it against the
+// baseline (tolerance:0). panels: [{ title, images: [absolute png path, ...] }].
+// Mirrors assertTerminalVisualMatch's update-baseline logic.
+async function assertStoryboardVisualMatch (I, baselineName, panels) {
+  if (!panels || !panels.length) {
+    throw new Error(`No storyboard panels to assert for "${baselineName}"`)
+  }
+  const payload = panels.map(function (p) {
+    return {
+      title: p.title,
+      images: p.images.map(function (f) {
+        return 'data:image/png;base64,' + fs.readFileSync(f).toString('base64')
+      })
+    }
+  })
+
+  const size = await I.executeScript(function (args) {
+    const prev = document.getElementById(args.id)
+    if (prev) prev.remove()
+    window.scrollTo(0, 0)
+
+    const board = document.createElement('div')
+    board.id = args.id
+    board.style.setProperty('position', 'absolute', 'important')
+    board.style.setProperty('top', '0', 'important')
+    board.style.setProperty('left', '0', 'important')
+    board.style.setProperty('z-index', '2147483647', 'important')
+    board.style.setProperty('margin', '0', 'important')
+    board.style.setProperty('padding', '26px', 'important')
+    board.style.setProperty('box-sizing', 'border-box', 'important')
+    board.style.setProperty('background', '#141419', 'important')
+    board.style.setProperty('font-family', 'monospace', 'important')
+    board.style.setProperty('pointer-events', 'none', 'important')
+
+    const imgs = []
+    args.panels.forEach(function (panel, index) {
+      if (index > 0) {
+        const arrow = document.createElement('div')
+        arrow.style.textAlign = 'center'
+        arrow.style.padding = '14px 0'
+        arrow.innerHTML = '<svg width="26" height="32" viewBox="0 0 26 32">' +
+          '<path d="M13 2 v18 M4 14 l9 14 9-14" stroke="#7aa2f7" stroke-width="3" fill="none"/></svg>'
+        board.appendChild(arrow)
+      }
+
+      const title = document.createElement('div')
+      title.textContent = (index + 1) + ' · ' + panel.title
+      title.style.background = '#23242c'
+      title.style.color = '#e8e8ec'
+      title.style.fontSize = '15px'
+      title.style.fontWeight = '600'
+      title.style.lineHeight = '1'
+      title.style.padding = '12px 15px'
+      title.style.borderRadius = '6px'
+      title.style.marginBottom = '12px'
+      board.appendChild(title)
+
+      const stack = document.createElement('div')
+      stack.style.display = 'flex'
+      stack.style.flexDirection = 'column'
+      stack.style.gap = '10px'
+      // Left-aligned: terminal frames have different natural widths, and a
+      // shared left margin reads as one continuous session (centred zigzags).
+      stack.style.alignItems = 'flex-start'
+      panel.images.forEach(function (src) {
+        const img = document.createElement('img')
+        img.src = src
+        img.style.display = 'block'
+        img.style.maxWidth = 'none'
+        imgs.push(img)
+        stack.appendChild(img)
+      })
+      board.appendChild(stack)
+    })
+    document.body.appendChild(board)
+
+    // Wait for the data-URL images to decode so natural sizes drive the layout.
+    return Promise.all(imgs.map(function (im) { return im.decode() })).then(function () {
+      let widest = 0
+      imgs.forEach(function (im) { if (im.naturalWidth > widest) widest = im.naturalWidth })
+      board.style.setProperty('width', (widest + 52) + 'px', 'important')
+      const rect = board.getBoundingClientRect()
+      return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
+    })
+  }, { id: STORYBOARD_ID, panels: payload })
+
+  // Pin a window large enough to hold the whole board so the element screenshot
+  // is never clipped, then restore afterwards.
+  I.resizeWindow(Math.max(1280, size.w + 40), size.h + 80)
+  await I.wait(1)
+
+  await I.captureScreenshot(baselineName, 'actual', '#' + STORYBOARD_ID)
+
+  if (process.env.TASK_E2E_UPDATE_BASELINES && process.env.CI) {
+    throw new Error('TASK_E2E_UPDATE_BASELINES is forbidden in CI — baselines must be regenerated and inspected locally')
+  }
+  try {
+    if (process.env.TASK_E2E_UPDATE_BASELINES) {
+      // eslint-disable-next-line no-undef
+      const matches = await tryTo(() => I.assertVisualMatch(baselineName, { captureActual: false }))
+      if (!matches) {
+        const actualPath = path.join(E2E_DIR, '_output', baselineName + '.png')
+        const baselinePath = path.join(E2E_DIR, 'screenshots', 'base', baselineName + '.png')
+        fs.mkdirSync(path.dirname(baselinePath), { recursive: true })
+        fs.copyFileSync(actualPath, baselinePath)
+      }
+    } else {
+      await I.assertVisualMatch(baselineName, { captureActual: false })
+    }
+  } finally {
+    await I.executeScript(function (id) {
+      const el = document.getElementById(id)
+      if (el) el.remove()
+    }, STORYBOARD_ID)
+    I.resizeWindow(1024, 768)
+    await I.wait(1)
+  }
+}
+
 module.exports = {
   TERMINAL_NOISE_PATTERNS,
   SHELL_PROMPT_RE,
@@ -510,5 +690,8 @@ module.exports = {
   waitForTerminalText,
   buildCompactTerminalCapture,
   removeCompactTerminalCapture,
-  assertTerminalVisualMatch
+  assertTerminalVisualMatch,
+  captureTerminalFrame,
+  capturePageFrame,
+  assertStoryboardVisualMatch
 }

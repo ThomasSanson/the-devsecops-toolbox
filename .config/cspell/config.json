@@ -13,6 +13,7 @@
     "**/project/**/secrets.yaml",
     "**/venv/**",
     "**/vscode-extension/**",
+    "**/CHANGELOG.md",
     "megalinter-reports",
     "package-lock.json",
     "tmp/tests/copier/generated-project/.config/devsecops/.copier-answers.yml"
