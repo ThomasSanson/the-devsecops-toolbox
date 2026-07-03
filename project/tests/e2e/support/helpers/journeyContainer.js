@@ -58,6 +58,12 @@ function setupClonedProjectTerminal (projectName, cloneToken) {
     'git config --global user.name "Lambda"',
     'git config --global init.defaultBranch main',
     `git clone ${shellEscape(cloneUrl)} ${PROJECT_DIR}`,
+    // CI runners exec under umask 000, so the clone leaves .git world-writable
+    // (0777) and `ls` colours it green-on-green instead of the plain blue a
+    // 0755 dir gets — a permission drift, not a rendering one, that breaks the
+    // storyboard baseline between local and CI. Same class of fix as the
+    // agent-mode 0755 pin in install.sh.
+    `chmod 755 ${PROJECT_DIR}/.git`,
     `git config --global --add safe.directory ${PROJECT_DIR}`
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (clone.exitCode !== 0) {
