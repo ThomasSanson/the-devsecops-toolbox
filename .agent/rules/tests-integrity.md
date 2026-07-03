@@ -65,6 +65,9 @@ meticulously — full recipe in `project/tests/README.md` (§ Storyboard capture
 - ✅ ONE storyboard image tells the whole journey: BEFORE (the state on GitLab) → the
   acting (the live terminal, its ephemeral menus captured at their instant) → AFTER
   (the remote proof back on GitLab) — numbered panels joined by arrows.
+- ✅ ONE Gherkin line = ONE panel: register the journey's When steps through
+  `storyboardWhen` (journey.js), whose pattern string is BOTH the scenario line and the
+  panel's title — the feature and the image cannot drift apart, by construction.
 - ✅ REUSE the engine: `captureTerminalFrame` / `capturePageFrame` /
   `assertStoryboardVisualMatch` (`project/tests/e2e/support/terminal/capture.js`) and
   `GitLabRepositoryPage.maskVolatile` — never reinvent a capture mechanism.

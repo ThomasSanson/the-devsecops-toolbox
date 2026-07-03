@@ -58,6 +58,13 @@ AS IT HAPPENS, then `assertStoryboardVisualMatch` stitches the panels —
 numbered title bars, arrows between steps, terminal frames left-aligned —
 into a single image asserted at `tolerance: 0`.
 
+Gherkin alignment (`storyboardWhen` in `support/steps/journey.js`): register
+each journey When step through `storyboardWhen(pattern, fn)` — the pattern
+string is BOTH the scenario line and the panel's title, so one Gherkin line
+reads as one titled panel and the feature and the image cannot drift apart,
+by construction. Frames captured during the step land in its panel via
+`addStoryboardFrame`.
+
 Rules — the panels ARE the proof:
 
 - Every pixel inside a panel is a REAL capture taken at its instant; only

@@ -14,15 +14,13 @@ Feature: Developer journey — selective install (agent mode)
   # lone item the user never toggled.
   #
   # ONE storyboard image, the whole real journey in order, exactly as a developer
-  # sees it — three numbered panels joined by arrows: (1) the fresh project on
-  # GitLab, nothing but its README; (2) the terminal — clone state, the installer's
-  # choice prompt, the live "Agent mode" checklist, the install, the local result
-  # and the push to main (agent mode goes straight to main, no MR); (3) the same
-  # GitLab project now carrying the guardrails on main. Every panel is a genuine
-  # capture taken at its instant (gum menus erase themselves on answer, and the
-  # GitLab panels live on another page), assembled at the end; the toolchain check
-  # is pre-installed off-camera and dropped as noise. The local AND the remote
-  # outcomes are then asserted programmatically.
+  # sees it. Each When line below IS one numbered panel of the storyboard — the
+  # panel's title is the line's own text (wired automatically by storyboardWhen),
+  # so the scenario and the image can never drift apart; arrows join the panels.
+  # Every panel is a genuine capture taken at its instant (gum menus erase
+  # themselves on answer, and the GitLab panels live on another page), assembled
+  # at the end; the toolchain check is pre-installed off-camera and dropped as
+  # noise. The local AND the remote outcomes are then asserted programmatically.
   @e2e-journey-agent-mode-only
   Scenario: Declining the full framework installs only the AI agent guardrails
     Given a GitLab runs in a container configured with user "lambda"
@@ -30,14 +28,19 @@ Feature: Developer journey — selective install (agent mode)
     And the working-branch installer is staged in the terminal
     And the toolchain is already installed
 
-    When the developer installs agent mode step by step in the terminal
+    When the developer opens the fresh project on GitLab
+    And the developer checks out the cloned project in the terminal
+    And the developer launches the installer and chooses to pick components
+    And the developer takes the agent component from the checklist
+    And the installer delivers only the AI agent guardrails
+    And the developer pushes the guardrails to main
+    And the developer reviews the guardrails on GitLab main
 
     # The working tree carries ONLY the AI agent context — asserted first so a
     # regression (the "Nothing selected" trap) fails loud and fast.
     Then the project working tree should contain only the AI agent context files
 
-    # ONE screenshot stitched from the real per-step frames: cloned repo -> choice
-    # prompt -> live checklist -> install + result -> push to the remote main.
+    # ONE storyboard: each When line above becomes its titled, numbered panel.
     And the agent-mode journey should visually match "gitlab/01-developer-journey/agent-mode-only-terminal"
 
     # The GitLab hook: the guardrails reached the REMOTE main branch — proven
