@@ -180,14 +180,28 @@ async function assertOrUpdateBaseline (I, baselineName) {
 
 // Attach the frame to the current card and assert it against its own
 // baseline immediately (tolerance: 0, update-mode aware): a visual
-// regression fails on the exact sentence whose image drifted.
+// regression fails on the exact sentence whose image drifted, and the error
+// message carries everything a human needs to act on it.
 async function addStoryboardFrame (I, png) {
   frame(png)
   const name = `${baseDir()}/${path.basename(png, '.png')}`
   const actualPath = path.join(e2eDir(), '_output', `${name}.png`)
   fs.mkdirSync(path.dirname(actualPath), { recursive: true })
   fs.copyFileSync(png, actualPath)
-  await assertOrUpdateBaseline(I, name)
+  try {
+    await assertOrUpdateBaseline(I, name)
+  } catch (err) {
+    if (err && typeof err.message === 'string') {
+      err.message +=
+        `\n  storyboard frame   : ${name}.png` +
+        `\n  pixel diff         : screenshots/diff/${path.dirname(name)}/Diff_${path.basename(name)}.png` +
+        `\n  failure storyboard : _output/${board && board.baseDir ? board.baseDir : '<scenario>'}.svg` +
+        (board && board.rerun
+          ? `\n  deliberate change? regenerate locally, then inspect: TASK_E2E_UPDATE_BASELINES=1 ${board.rerun}`
+          : '')
+    }
+    throw err
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +251,7 @@ const THEME = {
   given: '#9ece6a',
   when: '#7aa2f7',
   then: '#bb9af7',
+  fail: '#f7768e',
   sans: 'ui-sans-serif, system-ui, sans-serif',
   mono: "ui-monospace, 'JetBrains Mono', 'Fira Code', monospace"
 }
@@ -257,7 +272,10 @@ const GRID = {
 /**
  * Write the storyboard SVG. options.imageDir substitutes every frame with the
  * same-named PNG inside that directory — used to build the COMMITTED SVG from
- * the reviewed baselines instead of the run's actuals.
+ * the reviewed baselines instead of the run's actuals. options.failure (built
+ * by the plugin on a failed test) marks the drifted card in red, embeds its
+ * pixel-diff image as an extra card, and lists the sentences the journey
+ * never reached — one downloadable artifact tells the whole debugging story.
  */
 function render (outFile, options = {}) {
   if (!board || !board.panels.length) {
@@ -265,18 +283,23 @@ function render (outFile, options = {}) {
   }
   const t = THEME
   const g = GRID
+  const failure = options.failure || null
   const resolveImage = (file) =>
     options.imageDir ? path.join(options.imageDir, path.basename(file)) : file
 
   // One card per frame; a multi-frame panel repeats its number and title so
-  // every card still reads as its Gherkin line.
+  // every card still reads as its Gherkin line. The card whose pixels drifted
+  // is flagged (red chrome) — the full-width comparison band above the grid
+  // carries its expected / diff / actual triptych.
+  const failName = failure && failure.frame && failure.frame.name
   const cards = board.panels.flatMap((p, pi) =>
     p.images.map((img, fi) => ({
       n: pi + 1,
       title: p.title,
       note: img.note !== undefined ? img.note : (fi === 0 ? p.note : ''),
       copy: img.copy !== undefined ? img.copy : (fi === 0 ? p.copy : ''),
-      file: resolveImage(img.file)
+      file: resolveImage(img.file),
+      failed: failName === path.basename(img.file)
     }))
   )
 
@@ -315,6 +338,91 @@ function render (outFile, options = {}) {
     return lines.length
   }
 
+  // Draw an image letterboxed inside a box (scaled to fit, centred on the
+  // slot colour), with an optional native <title> tooltip.
+  const drawImage = (file, x, y, boxW, boxH, tooltip) => {
+    const { w, h } = pngSize(file)
+    const data = fs.readFileSync(file).toString('base64')
+    const scale = Math.min(boxW / w, boxH / h)
+    const dw = w * scale
+    const dh = h * scale
+    parts.push(`<rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" fill="${t.slot}"/>`)
+    parts.push(
+      `<image x="${(x + (boxW - dw) / 2).toFixed(1)}" y="${(y + (boxH - dh) / 2).toFixed(1)}"` +
+      ` width="${dw.toFixed(1)}" height="${dh.toFixed(1)}" href="data:image/png;base64,${data}">` +
+      (tooltip ? `<title>${esc(tooltip)}</title>` : '') + '</image>'
+    )
+  }
+
+  // Full-width failure band, rendered IN PLACE of the drifted card (which is
+  // always the last one — the assert throws there and stops the run): the
+  // expected / diff / actual triptych read left→right (what it should be,
+  // exactly which pixels changed, what this run produced), each image over
+  // its full, copyable file path — zero ambiguity, all in one artifact.
+  // Wrap a filesystem path onto up to `maxLines` lines, breaking on '/' (kept
+  // attached to its segment) so no line overflows its slot. Path segments have
+  // no spaces, so tspans concatenate back to the exact path on copy.
+  const pathLines = (str, slotW, maxLines = 2) => {
+    const perLine = Math.max(8, Math.floor(slotW / 6.6))
+    const segs = String(str).split('/').map((s, i, a) => i < a.length - 1 ? s + '/' : s)
+    const lines = []
+    let line = ''
+    for (const seg of segs) {
+      if ((line + seg).length > perLine && line) { lines.push(line); line = seg } else { line += seg }
+    }
+    if (line) lines.push(line)
+    return lines.slice(0, maxLines)
+  }
+  const bandPathH = 32
+  const failBandHeight = () => 46 + 12 + 22 + 300 + bandPathH + 16
+  const drawFailureBand = (frame, top) => {
+    const bandW = width - 2 * g.pagePad
+    const slotH = 300
+    const headerH = 46
+    const bandH = failBandHeight()
+    parts.push(`<rect x="${g.pagePad}" y="${top}" width="${bandW}" height="${bandH}" rx="12" fill="${t.card}" stroke="${t.fail}" stroke-width="3"/>`)
+
+    // Red header: which step and sentence regressed.
+    parts.push(`<rect x="${g.pagePad}" y="${top}" width="${bandW}" height="${headerH}" rx="12" fill="${t.fail}"/>`)
+    parts.push(`<rect x="${g.pagePad}" y="${top + headerH - 12}" width="${bandW}" height="12" fill="${t.fail}"/>`)
+    text(`✖ Visual regression — step ${frame.step}: ${frame.keyword ? frame.keyword + ' ' : ''}${frame.sentence}`,
+      g.pagePad + 18, top + 30, { size: 16, fill: '#ffffff', weight: '700' })
+    text(frame.name, width - g.pagePad - 18, top + 30, { size: 12.5, fill: '#ffffff', font: t.mono, anchor: 'end' })
+
+    const p = frame.paths || {}
+    const gap = 16
+    const slotW = (bandW - 2 * gap) / 3
+    const cols = [
+      { file: frame.baseline, label: 'Expected (baseline)', pathText: p.expected },
+      { file: frame.diff, label: 'Diff — changed pixels', pathText: p.diff },
+      { file: frame.actual, label: 'Actual (this run)', pathText: p.actual }
+    ]
+    cols.forEach((col, ci) => {
+      const x = g.pagePad + ci * (slotW + gap)
+      const ly = top + headerH + 12 + 15
+      text(col.label, x + 2, ly, { size: 13, fill: ci === 1 ? t.fail : t.dim, weight: '600' })
+      if (col.file && fs.existsSync(col.file)) {
+        drawImage(col.file, x, ly + 8, slotW, slotH, col.pathText)
+      } else {
+        parts.push(`<rect x="${x}" y="${ly + 8}" width="${slotW}" height="${slotH}" fill="${t.slot}"/>`)
+        text('(not generated)', x + slotW / 2, ly + 8 + slotH / 2, { size: 13, fill: t.dim, anchor: 'middle' })
+      }
+      // Full, one-click-copyable path to the file — open it or hand it to a
+      // command without retyping. Wrapped on '/' so it never overflows.
+      if (col.pathText) {
+        const pl = pathLines(col.pathText, slotW)
+        const tspans = pl.map((line, li) =>
+          `<tspan x="${x + 2}" dy="${li === 0 ? 0 : 13}">${esc(line)}</tspan>`
+        ).join('')
+        parts.push(
+          `<text x="${x + 2}" y="${ly + 8 + slotH + 14}" font-family="${t.mono}" font-size="11" fill="${t.accent}"` +
+          ` class="copy" xml:space="preserve">${tspans}</text>`
+        )
+      }
+    })
+    return bandH
+  }
+
   // Uniform card height: the tallest text block sets it for every card.
   const layoutOf = (card) => {
     const line = lineOf(card.title)
@@ -324,7 +432,7 @@ function render (outFile, options = {}) {
     const copy = card.copy ? wrap(card.copy, textW, 7.6) : []
     return { keyword, group: line ? line.group : '', title, note, copy, h: 16 + title.length * 21 + note.length * 18 + (copy.length ? 6 + copy.length * 18 : 0) + 16 }
   }
-  const textH = Math.max(...cards.map(c => layoutOf(c).h))
+  const textH = cards.length ? Math.max(...cards.map(c => layoutOf(c).h)) : 0
   const cardH = g.imgH + textH
   const rows = Math.ceil(cards.length / g.cols)
 
@@ -344,31 +452,23 @@ function render (outFile, options = {}) {
   }
   y += 28
 
-  // --- Cards ---
+  // --- Cards (every captured frame, the drifted one red-outlined) ---
   cards.forEach((card, i) => {
     const cx = g.pagePad + (i % g.cols) * (g.cardW + g.gap)
     const cy = y + Math.floor(i / g.cols) * (cardH + g.gap)
-    const { w, h } = pngSize(card.file)
-    const data = fs.readFileSync(card.file).toString('base64')
-    const scale = Math.min(g.cardW / w, g.imgH / h)
-    const dw = w * scale
-    const dh = h * scale
-
     parts.push(`<clipPath id="card${i}"><rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12"/></clipPath>`)
-    parts.push(`<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12" fill="${t.card}"/>`)
+    parts.push(
+      `<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12" fill="${t.card}"` +
+      (card.failed ? ` stroke="${t.fail}" stroke-width="3"` : '') + '/>'
+    )
     parts.push(`<g clip-path="url(#card${i})">`)
-    parts.push(`<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${g.imgH}" fill="${t.slot}"/>`)
     // The native <title> tooltip names the frame's baseline PNG: hover a
     // card, know exactly which baseline to inspect or regenerate.
-    parts.push(
-      `<image x="${(cx + (g.cardW - dw) / 2).toFixed(1)}" y="${(cy + (g.imgH - dh) / 2).toFixed(1)}"` +
-      ` width="${dw.toFixed(1)}" height="${dh.toFixed(1)}" href="data:image/png;base64,${data}">` +
-      `<title>${esc(path.basename(card.file))}</title></image>`
-    )
+    drawImage(card.file, cx, cy, g.cardW, g.imgH, path.basename(card.file))
     parts.push('</g>')
 
     // Number badge on the card chrome, never inside the captured pixels.
-    parts.push(`<circle cx="${cx + 30}" cy="${cy + 30}" r="16" fill="${t.badge}"/>`)
+    parts.push(`<circle cx="${cx + 30}" cy="${cy + 30}" r="16" fill="${card.failed ? t.fail : t.badge}"/>`)
     text(String(card.n), cx + 30, cy + 35, { size: 15, fill: '#ffffff', weight: '700', anchor: 'middle' })
 
     const layout = layoutOf(card)
@@ -398,11 +498,45 @@ function render (outFile, options = {}) {
     }
   })
 
-  y += rows * (cardH + g.gap) - g.gap
+  if (rows > 0) y += rows * (cardH + g.gap) - g.gap
+
+  // Right below the drifted card (kept intact above, red-outlined, with its
+  // number and sentence): its expected / diff / actual triptych, full width —
+  // the card tells WHICH step, the band tells exactly what moved.
+  if (failure && failure.frame) {
+    if (rows > 0) y += g.gap
+    y += drawFailureBand(failure.frame, y)
+  }
+
+  // On failure, list the sentences the journey never reached: the reader sees
+  // where the run stopped RELATIVE to the full plan, not just what it did.
+  if (failure && failure.notReached && failure.notReached.length) {
+    y += 34
+    for (const line of failure.notReached) {
+      text('○', g.pagePad + 4, y, { size: 13, fill: t.dim, weight: '600' })
+      text(`${line.keyword} ${line.text} — not reached`, g.pagePad + 26, y, { size: 13.5, fill: t.dim })
+      y += 20
+    }
+  }
+
   y += 30
-  text(
-    `Storyboard e2e · ${board.panels.length} steps · ${cards.length} frames · every frame is its own pixel baseline (tolerance: 0)`,
-    g.pagePad, y, { size: 12, fill: t.dim }
+  const provenCount = board.panels.filter(p => p.images.length).length
+  if (failure) {
+    text(
+      `FAILED — ${provenCount} of ${(board.lines || []).length || board.panels.length} sentences proven · the red band shows where it broke (expected / diff / actual)`,
+      g.pagePad, y, { size: 12.5, fill: t.fail, weight: '600' }
+    )
+  } else {
+    text(
+      `Storyboard e2e · ${board.panels.length} steps · ${cards.length} frames · every frame is its own pixel baseline (tolerance: 0)`,
+      g.pagePad, y, { size: 12, fill: t.dim }
+    )
+  }
+  // Colour legend for readers who do not live in Gherkin.
+  parts.push(
+    `<text x="${width - g.pagePad}" y="${y}" font-family="${t.sans}" font-size="12" fill="${t.dim}" text-anchor="end">` +
+    `<tspan fill="${t.given}">●</tspan> Given — stage   <tspan fill="${t.when}">●</tspan> When — actions   ` +
+    `<tspan fill="${t.then}">●</tspan> Then — proofs</text>`
   )
 
   const height = y + g.pagePad
@@ -459,7 +593,44 @@ module.exports = function storyboardPlugin () {
   const finish = (passed) => {
     if (!board || !board.panels.length || !board.baseDir || !global.codecept_dir) return
     try {
-      render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`))
+      let failure = null
+      if (!passed) {
+        // The VisualHelper writes screenshots/diff/<dir>/Diff_<frame>.png on a
+        // pixel mismatch: its presence is the factual marker of WHICH frame
+        // drifted. Build the expected/diff/actual triptych for that frame, and
+        // from the parsed scenario lines list what the run never reached.
+        let frame = null
+        for (let pi = 0; pi < board.panels.length && !frame; pi++) {
+          for (const img of board.panels[pi].images) {
+            const name = path.basename(img.file)
+            const diffPath = path.join(global.codecept_dir, 'screenshots', 'diff', board.baseDir, `Diff_${name}`)
+            if (!fs.existsSync(diffPath)) continue
+            const line = (board.lines || []).find(l => l.text === board.panels[pi].title)
+            const baseline = path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir, name)
+            const actual = path.join(global.codecept_dir, '_output', board.baseDir, name)
+            const rel = (abs) => path.relative(process.cwd(), abs)
+            frame = {
+              name,
+              step: pi + 1,
+              sentence: board.panels[pi].title,
+              keyword: line ? line.keyword : '',
+              baseline,
+              actual,
+              diff: diffPath,
+              // Full repo-relative paths, shown under each image and copyable.
+              paths: { expected: rel(baseline), diff: rel(diffPath), actual: rel(actual) }
+            }
+            break
+          }
+        }
+        failure = {
+          frame,
+          notReached: (board.lines || []).filter(line =>
+            !board.panels.some(p => p.title === line.text && p.images.length)
+          )
+        }
+      }
+      render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`), { failure })
       if (passed && process.env.TASK_E2E_UPDATE_BASELINES) {
         render(path.join(global.codecept_dir, 'storyboards', `${board.baseDir}.svg`), {
           imageDir: path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir)

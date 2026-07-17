@@ -118,6 +118,27 @@ Rules — the panels ARE the proof:
   the committed SVG is rebuilt from those reviewed baselines (never from
   unreviewed actuals).
 
+### Your first storyboard — 4 steps
+
+1. Write the scenario with a unique tag; EVERY sentence will be one card.
+2. Register each sentence in a step file through
+   `storyboardStep(Given|When|Then, sentence, { note, copy }, fn)` and close
+   each step with
+   `await addStoryboardFrame(I, await capturePageFrame(I, 'frame-name'))`
+   (all from `.config/codeceptjs/storyboard.js`; a commented skeleton ships
+   in `.config/codeceptjs/step_definitions/steps.js`).
+3. Run `TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e -- --grep "@your-tag"`
+   — it creates the per-frame baselines AND the committed SVG under
+   `storyboards/`.
+4. Inspect every generated baseline and the storyboard like any reviewed
+   artifact, then commit them.
+
+On failure, the partial board in `_output/` shows — in place of the drifted
+step, after the cards that passed — a full-width expected/diff/actual band
+(the changed pixels highlighted, the full file path under each image) and
+lists the sentences the run never reached: one downloadable artifact, zero
+ambiguity.
+
 ### Running
 
 ```bash

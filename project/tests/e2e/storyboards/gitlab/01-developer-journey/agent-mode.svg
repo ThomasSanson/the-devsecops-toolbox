@@ -112,4 +112,5 @@
 <text x="50" y="2976" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">of the same tree.</text>
 <text x="50" y="3000" font-family="ui-monospace, 'JetBrains Mono', 'Fira Code', monospace" font-size="12.5" fill="#7aa2f7" class="copy" xml:space="preserve"><tspan x="50" dy="0">http://gitlab/&lt;lambda-user&gt;/&lt;project&gt;/-/tree/main/.agent</tspan></text>
 <text x="32" y="3049" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#98a0b3">Storyboard e2e · 9 steps · 9 frames · every frame is its own pixel baseline (tolerance: 0)</text>
+<text x="1456" y="3049" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#98a0b3" text-anchor="end"><tspan fill="#9ece6a">●</tspan> Given — stage   <tspan fill="#7aa2f7">●</tspan> When — actions   <tspan fill="#bb9af7">●</tspan> Then — proofs</text>
 </svg>
