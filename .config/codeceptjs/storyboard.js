@@ -40,8 +40,18 @@ function begin (meta) {
     scenario: meta.scenario || '',
     file: meta.file || '',
     rerun: meta.rerun || '',
+    baseDir: meta.baseDir || '',
     panels: []
   }
+}
+
+// Where this scenario's frames live, relative to _output/ and to
+// screenshots/base/ — derived by the plugin from the feature file path
+// (features/<dir>/<name>.feature -> <dir>/<name>), so the baseline layout
+// always mirrors the feature tree with zero configuration.
+function baseDir () {
+  if (!board || !board.baseDir) throw new Error('storyboard.baseDir() called before the plugin saw the scenario')
+  return board.baseDir
 }
 
 function panel (title, opts = {}) {
@@ -258,7 +268,12 @@ function render (outFile, options = {}) {
 
 // ---------------------------------------------------------------------------
 // CodeceptJS plugin — fills the header from the Gherkin metadata of every
-// scenario before it runs (and drops stale panels from a previous test).
+// scenario before it runs (and drops stale panels from a previous test),
+// then renders the SVG when the test ends: to _output on every outcome (a
+// failing run's partial board shows exactly how far the journey got), and —
+// only on a PASSED run in baseline-update mode — the committed copy next to
+// the frame baselines, rebuilt FROM those reviewed baselines so it never
+// embeds unreviewed pixels.
 // codeceptjs 3.7.8 sets test.title / test.tags / test.file / test.parent.title
 // (feature name) in lib/mocha/gherkin.js; titles carry the tags appended.
 // ---------------------------------------------------------------------------
@@ -268,20 +283,43 @@ module.exports = function storyboardPlugin () {
     const tags = test.tags || []
     const tag = tags.length ? tags[tags.length - 1] : ''
     let file = ''
+    let base = ''
     if (test.file && global.codecept_dir) {
       // Repo-relative display path, independent of where the suite is mounted.
       file = path.join('project/tests/e2e', path.relative(global.codecept_dir, test.file))
+      const fromFeatures = path.relative(path.join(global.codecept_dir, 'features'), test.file)
+      if (!fromFeatures.startsWith('..')) base = fromFeatures.replace(/\.feature$/, '')
     }
     begin({
       feature: stripTags(test.parent && test.parent.title),
       scenario: stripTags(test.title),
       file,
+      baseDir: base,
       rerun: tag ? `task test -- --grep "${tag}"` : ''
     })
   })
+
+  const finish = (passed) => {
+    if (!board || !board.panels.length || !board.baseDir || !global.codecept_dir) return
+    try {
+      render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`))
+      if (passed && process.env.TASK_E2E_UPDATE_BASELINES) {
+        const baseRoot = path.join(global.codecept_dir, 'screenshots', 'base')
+        render(path.join(baseRoot, `${board.baseDir}.svg`), {
+          imageDir: path.join(baseRoot, board.baseDir)
+        })
+      }
+    } catch (err) {
+      // Rendering must never mask the test outcome.
+      console.error(`storyboard: SVG rendering failed: ${err.message}`)
+    }
+  }
+  event.dispatcher.on(event.test.passed, () => finish(true))
+  event.dispatcher.on(event.test.failed, () => finish(false))
 }
 
 module.exports.begin = begin
+module.exports.baseDir = baseDir
 module.exports.panel = panel
 module.exports.frame = frame
 module.exports.annotate = annotate

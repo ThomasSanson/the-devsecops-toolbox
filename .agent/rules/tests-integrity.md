@@ -58,7 +58,7 @@ proof, not the test.
 
 The normative reference is the agent-mode scenario:
 `project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and its per-frame
+storyboard `screenshots/base/gitlab/01-developer-journey/agent-mode.svg` and its per-frame
 baselines under `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
 Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow it
 meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
@@ -68,12 +68,14 @@ meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
   (the remote proof back on GitLab) — a two-column grid of uniform numbered cards,
   and every title, note and reproduce command around the frames is selectable,
   copyable text (including the header's re-run command for exactly this scenario).
-- ✅ ONE Gherkin line = ONE panel: register the journey's When steps through
-  `storyboardWhen` (journey.js), whose pattern string is BOTH the scenario line and the
-  panel's title — the feature and the storyboard cannot drift apart, by construction.
-- ✅ ONE frame = ONE baseline: every frame is asserted against its own pixel baseline
-  (tolerance: 0), so a regression pinpoints the exact sentence and image that changed;
-  the SVG itself is the human artifact, never the regression target.
+- ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence of the scenario —
+  the Given included — is registered through `storyboardStep` (journey.js), whose
+  pattern string is BOTH the scenario line and the card's title, and closes on a real
+  capture asserted INSIDE the step (tolerance: 0) — a visual regression fails on the
+  exact sentence whose image drifted, and the feature and the storyboard cannot drift
+  apart, by construction. A sentence without a visual proof does not belong in a
+  storyboard scenario; the SVG itself is the human artifact, never the regression
+  target (the plugin renders it when the test ends).
 - ✅ REUSE the engine: `captureTerminalFrame` / `capturePageFrame` /
   `assertOrUpdateBaseline` (`project/tests/e2e/support/terminal/capture.js`), the
   `storyboard` module (`.config/codeceptjs/storyboard.js`) and

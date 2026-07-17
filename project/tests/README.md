@@ -50,9 +50,15 @@ cannot: moments that never coexist on screen (interactive gum menus erase
 themselves the instant you answer) or panels living on different pages
 (GitLab web + the live terminal). Reference scenario:
 `features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and its
-per-frame baselines under
+storyboard `screenshots/base/gitlab/01-developer-journey/agent-mode.svg` and
+its per-frame baselines under
 `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
+
+The storyboard contract: **ONE sentence = ONE card = ONE pixel baseline.**
+Every sentence of the scenario — the Given included — goes through
+`storyboardStep` and closes on a real capture; the Then sentences pair their
+card with a programmatic assert of the same fact. A sentence without a
+visual proof does not belong in a storyboard scenario.
 
 Why SVG: everything drawn AROUND the frames — feature/scenario titles, the
 command that re-runs exactly this scenario, the feature-file path, per-panel
@@ -61,25 +67,28 @@ can copy, which a PNG can never offer. The frames stay untouched bitmaps.
 
 Mechanism: `captureTerminalFrame` / `capturePageFrame`
 (`support/terminal/capture.js`) write each real moment to
-`_output/storyboard-frames/` AS IT HAPPENS. The `storyboard` module
-(`.config/codeceptjs/storyboard.js`, registered as a CodeceptJS plugin) fills
-the header automatically from the Gherkin metadata (feature title, scenario
-title, feature file, the scenario's LAST tag as the re-run command), collects
-panels, and renders the SVG — a two-column grid of uniform cards, one card
-per frame, each with its number badge, its Gherkin sentence, an optional
-note and the copyable reproduce command/URL (`storyboard.frame(png, opts)`
-overrides the panel texts for extra frames of the same panel).
-The final Then asserts every frame against its OWN baseline at
-`tolerance: 0` (`assertOrUpdateBaseline`), so a regression pinpoints the
-exact sentence and image that changed.
+`_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame`
+(journey.js) asserts each frame against its OWN baseline at `tolerance: 0`
+(`assertOrUpdateBaseline`) INSIDE the step — a visual regression fails on
+the exact sentence whose image drifted. The `storyboard` module
+(`.config/codeceptjs/storyboard.js`, registered as a CodeceptJS plugin)
+fills the header automatically from the Gherkin metadata (feature title,
+scenario title, feature file, the scenario's LAST tag as the re-run
+command, the baseline directory mirrored from the feature path), collects
+the cards, and renders the SVG when the test ends — a two-column grid of
+uniform cards, each with its number badge, its Gherkin sentence, an
+optional note and the copyable reproduce command/URL. A failing run still
+gets its partial board in `_output/` (it shows how far the journey got);
+the committed copy is rebuilt only on a PASSED baseline-update run, from
+the reviewed baselines.
 
-Gherkin alignment (`storyboardWhen` in `support/steps/journey.js`): register
-each journey When step through `storyboardWhen(pattern, opts, fn)` — the
-pattern string is BOTH the scenario line and the panel's title, so one
-Gherkin line reads as one titled panel and the feature and the storyboard
-cannot drift apart, by construction. `opts` may carry a human `note` and the
-copyable `copy` command/URL that reproduces the step; frames captured during
-the step land in its panel via `storyboard.frame(png)`.
+Gherkin alignment (`storyboardStep` in `support/steps/journey.js`): register
+EVERY sentence through `storyboardStep(Given|When|Then, pattern, opts, fn)`
+— the pattern string is BOTH the scenario line and the card's title, so one
+sentence reads as one titled card and the feature and the storyboard cannot
+drift apart, by construction. `opts` carries the human `note` and the
+copyable `copy` command/URL that reproduces the step; the frame captured
+during the step lands in its card via `addStoryboardFrame(png)`.
 
 Rules — the panels ARE the proof:
 
