@@ -83,7 +83,13 @@ exports.config = {
   },
   plugins: {
     screenshotOnFail: { enabled: true },
-    tryTo: { enabled: true }
+    tryTo: { enabled: true },
+    // Fills the storyboard header (feature/scenario titles, feature file,
+    // re-run command) from each scenario's Gherkin metadata — see the module.
+    storyboard: {
+      require: '../../../.config/codeceptjs/storyboard.js',
+      enabled: true
+    }
   },
   // Mocha-level retry: gives one second chance to scenarios that fail because
   // of parallel apt/go install contention (the only known flake source —

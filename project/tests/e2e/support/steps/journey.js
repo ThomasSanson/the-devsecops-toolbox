@@ -61,12 +61,13 @@ const {
   typeCommandAndWait,
   waitForTerminalText,
   waitForTerminalSettle,
+  assertOrUpdateBaseline,
   assertTerminalVisualMatch,
   captureTerminalFrame,
   capturePageFrame,
-  assertStoryboardVisualMatch,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
+const storyboard = require('../../../../../.config/codeceptjs/storyboard')
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
 
@@ -76,7 +77,6 @@ Before(() => {
   global.journeyLambdaToken = null
   global.journeyLambdaTokenId = null
   global.journeyMergeRequestIid = null
-  global.agentModeStoryboard = null
 })
 
 After(async () => {
@@ -437,51 +437,56 @@ When('I choose to install the complete framework', async () => {
 // storyboardWhen registers the step AND opens a panel whose title IS the
 // step's own Gherkin text: the same string declares the scenario line and
 // captions the image, so the feature and the storyboard can never drift
-// apart. Each panel holds the real frames captured during its step; the
-// assembler numbers the panels and joins them with arrows (see capture.js).
+// apart. Each panel holds the real frames captured during its step, plus an
+// optional human note and the copyable command/URL that reproduces the step.
+// The storyboard module (.config/codeceptjs/storyboard.js, registered as a
+// plugin) fills the header from the Gherkin metadata and renders the SVG.
 // ============================================
 
-function storyboardWhen (pattern, fn) {
+function storyboardWhen (pattern, opts, fn) {
   When(pattern, async (...args) => {
-    global.agentModeStoryboard = global.agentModeStoryboard || []
-    global.agentModeStoryboard.push({ title: pattern, images: [] })
+    storyboard.panel(pattern, opts)
     await fn(...args)
   })
-}
-
-function addStoryboardFrame (png) {
-  const panels = global.agentModeStoryboard
-  panels[panels.length - 1].images.push(png)
 }
 
 // The fresh project on GitLab, README only. Public project -> stable anonymous
 // view; volatile content is masked. The shorter viewport keeps the panel
 // focused on the file tree (the masked header is hidden).
-storyboardWhen('the developer opens the fresh project on GitLab', async () => {
+storyboardWhen('the developer opens the fresh project on GitLab', {
+  note: 'The blank project as cloned: a README and nothing else. Volatile content (dates, avatars, project name) is masked for determinism.',
+  copy: 'http://gitlab/<lambda-user>/<project>'
+}, async () => {
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-before'))
+  storyboard.frame(await capturePageFrame(I, 'agent-mode-gitlab-before'))
   I.resizeWindow(1024, 768)
 })
 
 // Back to the live terminal — a NEW shell session (the GitLab capture navigated
 // away); the cloned repo state lives on disk, not in the session.
-storyboardWhen('the developer checks out the cloned project in the terminal', async () => {
+storyboardWhen('the developer checks out the cloned project in the terminal', {
+  note: 'A fresh shell in the web terminal: the clone carries only the README, git is clean.',
+  copy: 'ls -A1 && git status'
+}, async () => {
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'ls -A1')
   await typeCommandAndWait(I, 'git status')
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-1-clone'))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-1-clone'))
 })
 
 // The frame is anchored on the TYPED COMMAND (the story must show what was
 // executed), and ArrowRight moves the gum focus onto "Choose components"
 // BEFORE the capture, so the image shows the choice the developer actually
 // makes — not the default-highlighted "Install everything".
-storyboardWhen('the developer launches the installer and chooses to pick components', async () => {
+storyboardWhen('the developer launches the installer and chooses to pick components', {
+  note: 'The installer opens the gum scope prompt; focus is moved onto "Choose components" before answering.',
+  copy: `bash ${WRAPPER_PATH}`
+}, async () => {
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
@@ -489,17 +494,19 @@ storyboardWhen('the developer launches the installer and chooses to pick compone
   await waitForTerminalSettle(I)
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
 })
 
 // Submit the focused "Choose components" -> the live checklist, captured while
 // it is on screen (it erases itself on answer), then take the highlighted
 // component with the natural Enter.
-storyboardWhen('the developer takes the agent component from the checklist', async () => {
+storyboardWhen('the developer takes the agent component from the checklist', {
+  note: 'Single-select list: Enter takes the highlighted agent component — no empty-handed multi-select trap.'
+}, async () => {
   I.pressKey('Enter')
   await waitForTerminalText(I, 'Select the component to install', COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' }))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' }))
   I.pressKey('Enter')
 })
 
@@ -507,7 +514,9 @@ storyboardWhen('the developer takes the agent component from the checklist', asy
 // build — the working-tree Then is the loud signal), then the local result:
 // full-depth tree (no -L) because the guardrails bottom out at
 // skills/<name>/SKILL.md and a shallower listing would hide those files.
-storyboardWhen('the installer delivers only the AI agent guardrails', async () => {
+storyboardWhen('the installer delivers only the AI agent guardrails', {
+  note: 'The installer confirms what it delivered: the AI agent context only.'
+}, async () => {
   const readLog = () => stripAnsiEscapeSequences(
     execInContainerAsUser(
       global.journeyContainer, 'bootstrap',
@@ -524,16 +533,22 @@ storyboardWhen('the installer delivers only the AI agent guardrails', async () =
   // Two frames: the installer's own delivery lines first (the ~50-row tree
   // would scroll them out of the viewport before a single capture), then the
   // resulting working tree.
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' }))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' }))
   await typeCommandAndWait(I, 'ls -A1')
   await typeCommandAndWait(I, "tree -a -I '.git'")
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-4b-delivered', { fromMarker: 'ls -A1' }))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-4b-delivered', { fromMarker: 'ls -A1' }), {
+    note: 'The resulting working tree: .agent/, CLAUDE.md, AGENTS.md — none of the framework.',
+    copy: "ls -A1 && tree -a -I '.git'"
+  })
 })
 
 // The GitLab hook: agent mode goes straight to main (no MR). Off-camera, point
 // origin at a token-free URL backed by a credential store so the push never
 // renders the PAT; on-camera, commit + push -q + list the REMOTE main.
-storyboardWhen('the developer pushes the guardrails to main', async () => {
+storyboardWhen('the developer pushes the guardrails to main', {
+  note: 'Agent mode goes straight to main (no MR); the remote tree lists the guardrails.',
+  copy: 'git add -A && git commit -q -m "chore: install the AI agent guardrails" && git push -q origin main'
+}, async () => {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   execInContainerAsUser(global.journeyContainer, 'bootstrap', [
     `cd ${PROJECT_DIR}`,
@@ -545,25 +560,60 @@ storyboardWhen('the developer pushes the guardrails to main', async () => {
   await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
   await typeCommandAndWait(I, 'git push -q origin main')
   await typeCommandAndWait(I, 'git ls-tree origin/main --name-only   # now on the remote main')
-  addStoryboardFrame(await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' }))
+  storyboard.frame(await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' }))
 })
 
 // The same project page now carries the guardrails, then the .agent tree
 // itself (the repo root alone would hide what agent mode actually shipped).
-storyboardWhen('the developer reviews the guardrails on GitLab main', async () => {
+storyboardWhen('the developer reviews the guardrails on GitLab main', {
+  note: 'The same project page now carries the guardrails on main, committed as "chore: install the AI agent guardrails".',
+  copy: 'http://gitlab/<lambda-user>/<project>'
+}, async () => {
   const gitlabPath = `/${projectPath(global.journeyProjectName)}`
   I.resizeWindow(1024, 640)
   await I.amOnPage(gitlabPath)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-after'))
+  storyboard.frame(await capturePageFrame(I, 'agent-mode-gitlab-after'))
   await I.amOnPage(`${gitlabPath}/-/tree/main/.agent`)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-after-agent-tree'))
+  storyboard.frame(await capturePageFrame(I, 'agent-mode-gitlab-after-agent-tree'), {
+    note: 'The .agent tree itself: rules, skills and workflows agent mode shipped.',
+    copy: 'http://gitlab/<lambda-user>/<project>/-/tree/main/.agent'
+  })
   I.resizeWindow(1024, 768)
 })
 
-Then('the agent-mode journey should visually match {string}', async (baselineName) => {
-  await assertStoryboardVisualMatch(I, baselineName, global.agentModeStoryboard)
+// Per-frame visual regression + the storyboard SVG artifact.
+// Every frame captured by the panels above is asserted against its OWN
+// baseline under screenshots/base/<baseDir>/ (tolerance:0). The SVG — real
+// selectable text around the untouched frames — is rendered to _output on
+// every run (even a failing one: it shows what actually happened), and in
+// baseline-update mode the committed copy — <baseDir>.svg NEXT TO its frame
+// baselines, inside screenshots/ so the container-to-host artifact sync
+// carries it — is rebuilt from the reviewed baselines so it never embeds
+// unreviewed pixels.
+Then('every step of the journey should visually match its baseline frame in {string}', async (baseDir) => {
+  const panels = storyboard.panels()
+  if (!panels.length) throw new Error('No storyboard panels were captured before the visual assert')
+
+  storyboard.render(path.join(E2E_OUTPUT, `${baseDir}.svg`))
+
+  for (const panel of panels) {
+    for (const image of panel.images) {
+      const name = `${baseDir}/${path.basename(image.file, '.png')}`
+      const actualPath = path.join(E2E_OUTPUT, `${name}.png`)
+      fs.mkdirSync(path.dirname(actualPath), { recursive: true })
+      fs.copyFileSync(image.file, actualPath)
+      await assertOrUpdateBaseline(I, name)
+    }
+  }
+
+  if (process.env.TASK_E2E_UPDATE_BASELINES) {
+    const baseRoot = path.resolve(E2E_OUTPUT, '..', 'screenshots', 'base')
+    storyboard.render(path.join(baseRoot, `${baseDir}.svg`), {
+      imageDir: path.join(baseRoot, baseDir)
+    })
+  }
 })
 
 // The whole point of agent mode: the installer ADDS only the AI agent context

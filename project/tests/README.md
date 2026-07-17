@@ -39,37 +39,53 @@ project/tests/e2e/
 2. **Filtered `<pre>` render** (init-effects/guidance/release scenarios): the
     captured command output is noise-filtered, rendered as a `<pre>` block in
     the browser and screenshotted.
-3. **Storyboard capture** (agent-mode): ONE image assembled from real
-    per-moment PNG frames, for journeys a single capture physically cannot
-    hold — see below.
+3. **Storyboard** (agent-mode): ONE SVG assembled from real per-moment PNG
+    frames — each frame its own pixel baseline — for journeys a single
+    capture physically cannot hold; see below.
 
-### Storyboard captures — the default for whole-journey proofs
+### Storyboards — the default for whole-journey proofs
 
-Use a storyboard when one image must tell a journey that a single capture
+Use a storyboard when one artifact must tell a journey that a single capture
 cannot: moments that never coexist on screen (interactive gum menus erase
 themselves the instant you answer) or panels living on different pages
 (GitLab web + the live terminal). Reference scenario:
-`features/gitlab/01-developer-journey/agent-mode.feature` and its baseline
-`screenshots/base/gitlab/01-developer-journey/agent-mode-only-terminal.png`.
+`features/gitlab/01-developer-journey/agent-mode.feature`, its committed
+storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and its
+per-frame baselines under
+`screenshots/base/gitlab/01-developer-journey/agent-mode/`.
 
-Mechanism (`support/terminal/capture.js`): `captureTerminalFrame` /
-`capturePageFrame` write each real moment to `_output/storyboard-frames/`
-AS IT HAPPENS, then `assertStoryboardVisualMatch` stitches the panels —
-numbered title bars, arrows between steps, terminal frames left-aligned —
-into a single image asserted at `tolerance: 0`.
+Why SVG: everything drawn AROUND the frames — feature/scenario titles, the
+command that re-runs exactly this scenario, the feature-file path, per-panel
+captions, notes and reproduce commands — is real selectable text a reader
+can copy, which a PNG can never offer. The frames stay untouched bitmaps.
+
+Mechanism: `captureTerminalFrame` / `capturePageFrame`
+(`support/terminal/capture.js`) write each real moment to
+`_output/storyboard-frames/` AS IT HAPPENS. The `storyboard` module
+(`.config/codeceptjs/storyboard.js`, registered as a CodeceptJS plugin) fills
+the header automatically from the Gherkin metadata (feature title, scenario
+title, feature file, the scenario's LAST tag as the re-run command), collects
+panels, and renders the SVG — a two-column grid of uniform cards, one card
+per frame, each with its number badge, its Gherkin sentence, an optional
+note and the copyable reproduce command/URL (`storyboard.frame(png, opts)`
+overrides the panel texts for extra frames of the same panel).
+The final Then asserts every frame against its OWN baseline at
+`tolerance: 0` (`assertOrUpdateBaseline`), so a regression pinpoints the
+exact sentence and image that changed.
 
 Gherkin alignment (`storyboardWhen` in `support/steps/journey.js`): register
-each journey When step through `storyboardWhen(pattern, fn)` — the pattern
-string is BOTH the scenario line and the panel's title, so one Gherkin line
-reads as one titled panel and the feature and the image cannot drift apart,
-by construction. Frames captured during the step land in its panel via
-`addStoryboardFrame`.
+each journey When step through `storyboardWhen(pattern, opts, fn)` — the
+pattern string is BOTH the scenario line and the panel's title, so one
+Gherkin line reads as one titled panel and the feature and the storyboard
+cannot drift apart, by construction. `opts` may carry a human `note` and the
+copyable `copy` command/URL that reproduces the step; frames captured during
+the step land in its panel via `storyboard.frame(png)`.
 
 Rules — the panels ARE the proof:
 
 - Every pixel inside a panel is a REAL capture taken at its instant; only
-  the storyboard chrome (titles, arrows) is drawn around them. Never compose,
-  fake or retouch panel content.
+  the storyboard chrome (cards, titles, badges, captions) is drawn around
+  them. Never compose, fake or retouch panel content.
 - Tell the whole story, in the order a human doing the journey by hand would
   screenshot it: the state BEFORE (e.g. the fresh GitLab project), the acting
   (the terminal session, its live menus included), the state AFTER (the
@@ -79,10 +95,13 @@ Rules — the panels ARE the proof:
   (`preinstallToolchain`) so its volatile output stays out of frame, and let
   `TERMINAL_NOISE_PATTERNS` drop what remains. Never a secret on screen
   (quiet pushes, token-free remote URL backed by a credential store).
-- Pair the image with programmatic asserts of the same facts (working tree,
-  REST on the remote branch) so a regression fails loud even without eyes.
-- Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow, and
-  the resulting PNG must be inspected by a human like any other baseline.
+- Pair the storyboard with programmatic asserts of the same facts (working
+  tree, REST on the remote branch) so a regression fails loud even without
+  eyes.
+- Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow; every
+  regenerated frame must be inspected by a human like any other baseline, and
+  the committed SVG is rebuilt from those reviewed baselines (never from
+  unreviewed actuals).
 
 ### Running
 

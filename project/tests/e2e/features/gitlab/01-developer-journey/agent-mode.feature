@@ -13,14 +13,17 @@ Feature: Developer journey — selective install (agent mode)
   # the empty-handed "Nothing selected" trap a bare multi-select would spring on a
   # lone item the user never toggled.
   #
-  # ONE storyboard image, the whole real journey in order, exactly as a developer
-  # sees it. Each When line below IS one numbered panel of the storyboard — the
-  # panel's title is the line's own text (wired automatically by storyboardWhen),
-  # so the scenario and the image can never drift apart; arrows join the panels.
-  # Every panel is a genuine capture taken at its instant (gum menus erase
-  # themselves on answer, and the GitLab panels live on another page), assembled
-  # at the end; the toolchain check is pre-installed off-camera and dropped as
-  # noise. The local AND the remote outcomes are then asserted programmatically.
+  # ONE storyboard SVG, the whole real journey in order, exactly as a developer
+  # sees it: a two-column grid of uniform numbered cards. Each When line below
+  # IS one numbered panel of the storyboard — the panel's title is the line's
+  # own text (wired automatically by storyboardWhen), so the scenario and the
+  # image can never drift apart, and every title, note and reproduce command
+  # around the frames is selectable text (SVG) a reader can copy — including
+  # the command that replays this very scenario, printed in the header. Every frame is a genuine capture taken at
+  # its instant (gum menus erase themselves on answer, and the GitLab panels
+  # live on another page) and is asserted against its OWN pixel baseline; the
+  # toolchain check is pre-installed off-camera and dropped as noise. The local
+  # AND the remote outcomes are then asserted programmatically.
   @e2e-journey-agent-mode-only
   Scenario: Declining the full framework installs only the AI agent guardrails
     Given a GitLab runs in a container configured with user "lambda"
@@ -40,8 +43,9 @@ Feature: Developer journey — selective install (agent mode)
     # regression (the "Nothing selected" trap) fails loud and fast.
     Then the project working tree should contain only the AI agent context files
 
-    # ONE storyboard: each When line above becomes its titled, numbered panel.
-    And the agent-mode journey should visually match "gitlab/01-developer-journey/agent-mode-only-terminal"
+    # ONE storyboard (SVG in storyboards/, frames baselined per step under
+    # this directory): each When line above is its titled, numbered panel.
+    And every step of the journey should visually match its baseline frame in "gitlab/01-developer-journey/agent-mode"
 
     # The GitLab hook: the guardrails reached the REMOTE main branch — proven
     # server-side via the API, not just in the local working tree.

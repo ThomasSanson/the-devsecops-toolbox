@@ -57,25 +57,32 @@ proof, not the test.
 ### Whole-journey scenarios — the storyboard is the reference pattern
 
 The normative reference is the agent-mode scenario:
-`project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature` and its single
-baseline `screenshots/base/gitlab/01-developer-journey/agent-mode-only-terminal.png`.
+`project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature`, its committed
+storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and its per-frame
+baselines under `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
 Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow it
-meticulously — full recipe in `project/tests/README.md` (§ Storyboard captures).
+meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
 
-- ✅ ONE storyboard image tells the whole journey: BEFORE (the state on GitLab) → the
+- ✅ ONE storyboard SVG tells the whole journey: BEFORE (the state on GitLab) → the
   acting (the live terminal, its ephemeral menus captured at their instant) → AFTER
-  (the remote proof back on GitLab) — numbered panels joined by arrows.
+  (the remote proof back on GitLab) — a two-column grid of uniform numbered cards,
+  and every title, note and reproduce command around the frames is selectable,
+  copyable text (including the header's re-run command for exactly this scenario).
 - ✅ ONE Gherkin line = ONE panel: register the journey's When steps through
   `storyboardWhen` (journey.js), whose pattern string is BOTH the scenario line and the
-  panel's title — the feature and the image cannot drift apart, by construction.
+  panel's title — the feature and the storyboard cannot drift apart, by construction.
+- ✅ ONE frame = ONE baseline: every frame is asserted against its own pixel baseline
+  (tolerance: 0), so a regression pinpoints the exact sentence and image that changed;
+  the SVG itself is the human artifact, never the regression target.
 - ✅ REUSE the engine: `captureTerminalFrame` / `capturePageFrame` /
-  `assertStoryboardVisualMatch` (`project/tests/e2e/support/terminal/capture.js`) and
+  `assertOrUpdateBaseline` (`project/tests/e2e/support/terminal/capture.js`), the
+  `storyboard` module (`.config/codeceptjs/storyboard.js`) and
   `GitLabRepositoryPage.maskVolatile` — never reinvent a capture mechanism.
 - ✅ Twin every visual fact with a programmatic assert of the same fact (working tree,
   REST on the remote branch) so a regression fails loud even without eyes.
-- ❌ NEVER degrade a storyboard into scattered per-step baselines, and NEVER compose or
-  retouch panel content — every pixel inside a panel is a real capture taken at its
-  instant.
+- ❌ NEVER scatter journey baselines outside their storyboard (a frame without its panel
+  tells no story), and NEVER compose or retouch panel content — every pixel inside a
+  panel is a real capture taken at its instant.
 
 ### Mechanics
 
