@@ -368,11 +368,11 @@ function render (outFile, options = {}) {
   // no spaces, so tspans concatenate back to the exact path on copy.
   const pathLines = (str, slotW, maxLines = 2) => {
     const perLine = Math.max(8, Math.floor(slotW / 6.6))
-    const segs = String(str).split('/').map((s, i, a) => i < a.length - 1 ? s + '/' : s)
+    const segments = String(str).split('/').map((s, i, a) => i < a.length - 1 ? s + '/' : s)
     const lines = []
     let line = ''
-    for (const seg of segs) {
-      if ((line + seg).length > perLine && line) { lines.push(line); line = seg } else { line += seg }
+    for (const segment of segments) {
+      if ((line + segment).length > perLine && line) { lines.push(line); line = segment } else { line += segment }
     }
     if (line) lines.push(line)
     return lines.slice(0, maxLines)
@@ -441,20 +441,53 @@ function render (outFile, options = {}) {
   const rows = Math.ceil(cards.length / g.cols)
 
   // --- Header: feature left, scenario under it, file top-right, rerun bar ---
-  text(board.feature, g.pagePad, 54, { size: 28, weight: '700' })
-  text('Scenario: ' + board.scenario, g.pagePad, 82, { size: 15, fill: t.dim })
-  if (board.file) {
-    text(board.file, width - g.pagePad, 44, { size: 12, fill: t.dim, font: t.mono, anchor: 'end' })
-    text('e2e storyboard · baseline', width - g.pagePad, 62, { size: 12, fill: t.dim, anchor: 'end' })
+  const drawHeader = () => {
+    text(board.feature, g.pagePad, 54, { size: 28, weight: '700' })
+    text('Scenario: ' + board.scenario, g.pagePad, 82, { size: 15, fill: t.dim })
+    if (board.file) {
+      text(board.file, width - g.pagePad, 44, { size: 12, fill: t.dim, font: t.mono, anchor: 'end' })
+      text('e2e storyboard · baseline', width - g.pagePad, 62, { size: 12, fill: t.dim, anchor: 'end' })
+    }
+    let hy = 104
+    if (board.rerun) {
+      parts.push(`<rect x="${g.pagePad}" y="${hy}" width="${width - 2 * g.pagePad}" height="36" rx="8" fill="${t.codeBg}"/>`)
+      text('replay this scenario', g.pagePad + 16, hy + 23, { size: 12.5, fill: t.dim })
+      copyText(board.rerun, g.pagePad + 170, hy + 23, { size: 13 })
+      hy += 36
+    }
+    return hy + 28
   }
-  let y = 104
-  if (board.rerun) {
-    parts.push(`<rect x="${g.pagePad}" y="${y}" width="${width - 2 * g.pagePad}" height="36" rx="8" fill="${t.codeBg}"/>`)
-    text('replay this scenario', g.pagePad + 16, y + 23, { size: 12.5, fill: t.dim })
-    copyText(board.rerun, g.pagePad + 170, y + 23, { size: 13 })
-    y += 36
+
+  // --- Footer: failure band (in place of the drifted card), the sentences
+  // never reached, the verdict line and the colour legend. ---
+  const drawFooter = (fy) => {
+    if (failure && failure.frame) {
+      if (rows > 0) fy += g.gap
+      fy += drawFailureBand(failure.frame, fy)
+    }
+    if (failure && failure.notReached && failure.notReached.length) {
+      fy += 34
+      for (const line of failure.notReached) {
+        text('○', g.pagePad + 4, fy, { size: 13, fill: t.dim, weight: '600' })
+        text(`${line.keyword} ${line.text} — not reached`, g.pagePad + 26, fy, { size: 13.5, fill: t.dim })
+        fy += 20
+      }
+    }
+    fy += 30
+    const proven = board.panels.filter(p => p.images.length).length
+    const verdict = failure
+      ? `FAILED — ${proven} of ${(board.lines || []).length || board.panels.length} sentences proven · the red band shows where it broke (expected / diff / actual)`
+      : `Storyboard e2e · ${board.panels.length} steps · ${cards.length} frames · every frame is its own pixel baseline (tolerance: 0)`
+    text(verdict, g.pagePad, fy, { size: failure ? 12.5 : 12, fill: failure ? t.fail : t.dim, weight: failure ? '600' : 'normal' })
+    parts.push(
+      `<text x="${width - g.pagePad}" y="${fy}" font-family="${t.sans}" font-size="12" fill="${t.dim}" text-anchor="end">` +
+      `<tspan fill="${t.given}">●</tspan> Given — stage   <tspan fill="${t.when}">●</tspan> When — actions   ` +
+      `<tspan fill="${t.then}">●</tspan> Then — proofs</text>`
+    )
+    return fy
   }
-  y += 28
+
+  let y = drawHeader()
 
   // --- Cards (every captured frame, the drifted one red-outlined) ---
   cards.forEach((card, i) => {
@@ -503,45 +536,7 @@ function render (outFile, options = {}) {
   })
 
   if (rows > 0) y += rows * (cardH + g.gap) - g.gap
-
-  // Right below the drifted card (kept intact above, red-outlined, with its
-  // number and sentence): its expected / diff / actual triptych, full width —
-  // the card tells WHICH step, the band tells exactly what moved.
-  if (failure && failure.frame) {
-    if (rows > 0) y += g.gap
-    y += drawFailureBand(failure.frame, y)
-  }
-
-  // On failure, list the sentences the journey never reached: the reader sees
-  // where the run stopped RELATIVE to the full plan, not just what it did.
-  if (failure && failure.notReached && failure.notReached.length) {
-    y += 34
-    for (const line of failure.notReached) {
-      text('○', g.pagePad + 4, y, { size: 13, fill: t.dim, weight: '600' })
-      text(`${line.keyword} ${line.text} — not reached`, g.pagePad + 26, y, { size: 13.5, fill: t.dim })
-      y += 20
-    }
-  }
-
-  y += 30
-  const provenCount = board.panels.filter(p => p.images.length).length
-  if (failure) {
-    text(
-      `FAILED — ${provenCount} of ${(board.lines || []).length || board.panels.length} sentences proven · the red band shows where it broke (expected / diff / actual)`,
-      g.pagePad, y, { size: 12.5, fill: t.fail, weight: '600' }
-    )
-  } else {
-    text(
-      `Storyboard e2e · ${board.panels.length} steps · ${cards.length} frames · every frame is its own pixel baseline (tolerance: 0)`,
-      g.pagePad, y, { size: 12, fill: t.dim }
-    )
-  }
-  // Colour legend for readers who do not live in Gherkin.
-  parts.push(
-    `<text x="${width - g.pagePad}" y="${y}" font-family="${t.sans}" font-size="12" fill="${t.dim}" text-anchor="end">` +
-    `<tspan fill="${t.given}">●</tspan> Given — stage   <tspan fill="${t.when}">●</tspan> When — actions   ` +
-    `<tspan fill="${t.then}">●</tspan> Then — proofs</text>`
-  )
+  y = drawFooter(y)
 
   const height = y + g.pagePad
   const svg =
@@ -557,6 +552,58 @@ function render (outFile, options = {}) {
   fs.mkdirSync(path.dirname(outFile), { recursive: true })
   fs.writeFileSync(outFile, svg)
   return outFile
+}
+
+// Build the failure descriptor for a failed test: the drifted frame (marked
+// exactly by addStoryboardFrame via board.visualFailure) with its
+// expected/diff/actual paths, plus the sentences never reached. Returns null
+// when nothing was marked.
+function buildFailure (board) {
+  const dir = global.codecept_dir
+  const marked = board.panels.find(p => p.images.some(img => path.basename(img.file) === board.visualFailure))
+  const notReached = (board.lines || []).filter(line =>
+    !board.panels.some(p => p.title === line.text && p.images.length)
+  )
+  if (!board.visualFailure || !marked) return { frame: null, notReached }
+
+  const name = board.visualFailure
+  const diffPath = path.join(dir, 'screenshots', 'diff', board.baseDir, `Diff_${name}`)
+  const hasDiff = fs.existsSync(diffPath)
+  const baseline = path.join(dir, 'screenshots', 'base', board.baseDir, name)
+  const actual = path.join(dir, '_output', board.baseDir, name)
+  const line = (board.lines || []).find(l => l.text === marked.title)
+  const rel = (abs) => path.relative(process.cwd(), abs)
+  return {
+    frame: {
+      name,
+      step: board.panels.indexOf(marked) + 1,
+      sentence: marked.title,
+      keyword: line ? line.keyword : '',
+      baseline,
+      actual,
+      diff: hasDiff ? diffPath : null,
+      paths: {
+        expected: rel(baseline),
+        diff: hasDiff ? rel(diffPath) : '(no pixel diff — see the error message, e.g. image dimensions differ)',
+        actual: rel(actual)
+      }
+    },
+    notReached
+  }
+}
+
+// One unmissable block in the runner output: WHERE to look. The path is
+// repo-relative — valid on the host once the artifact sync (end of the run)
+// has copied _output back.
+function logVisualRegression (frame, outputSvg) {
+  console.error(
+    '\n════════════════════════════════════════════════════════════════\n' +
+    `✖ VISUAL REGRESSION — step ${frame.step}: ${frame.keyword} ${frame.sentence}\n` +
+    '  The failure storyboard sums it all up (expected / diff / actual):\n' +
+    `  🎬 open in a browser:  ${path.relative(process.cwd(), outputSvg)}\n` +
+    '  (file available on the host after the artifact sync at the end of the run)\n' +
+    '════════════════════════════════════════════════════════════════\n'
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -597,60 +644,12 @@ module.exports = function storyboardPlugin () {
   const finish = (passed) => {
     if (!board || !board.panels.length || !board.baseDir || !global.codecept_dir) return
     try {
-      let failure = null
-      if (!passed) {
-        // The frame that failed its visual assert was marked by
-        // addStoryboardFrame (board.visualFailure) — exact, never a
-        // heuristic. The VisualHelper's Diff_<frame>.png completes the
-        // triptych when it exists; on a diff-less failure (e.g. "Image
-        // dimensions do not match") the middle slot reads "(not generated)".
-        let frame = null
-        for (let pi = 0; pi < board.panels.length && board.visualFailure && !frame; pi++) {
-          for (const img of board.panels[pi].images) {
-            const name = path.basename(img.file)
-            if (name !== board.visualFailure) continue
-            const diffPath = path.join(global.codecept_dir, 'screenshots', 'diff', board.baseDir, `Diff_${name}`)
-            const hasDiff = fs.existsSync(diffPath)
-            const line = (board.lines || []).find(l => l.text === board.panels[pi].title)
-            const baseline = path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir, name)
-            const actual = path.join(global.codecept_dir, '_output', board.baseDir, name)
-            const rel = (abs) => path.relative(process.cwd(), abs)
-            frame = {
-              name,
-              step: pi + 1,
-              sentence: board.panels[pi].title,
-              keyword: line ? line.keyword : '',
-              baseline,
-              actual,
-              diff: hasDiff ? diffPath : null,
-              // Full repo-relative paths, shown under each image and copyable.
-              paths: { expected: rel(baseline), diff: hasDiff ? rel(diffPath) : '(no pixel diff — see the error message, e.g. image dimensions differ)', actual: rel(actual) }
-            }
-            break
-          }
-        }
-        failure = {
-          frame,
-          notReached: (board.lines || []).filter(line =>
-            !board.panels.some(p => p.title === line.text && p.images.length)
-          )
-        }
-      }
+      // The drifted frame was marked exactly by addStoryboardFrame; on a
+      // diff-less failure (e.g. "Image dimensions do not match") the band's
+      // middle slot reads "(not generated)".
+      const failure = passed ? null : buildFailure(board)
       const outputSvg = render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`), { failure })
-      if (failure && failure.frame) {
-        // One unmissable block in the runner output: WHERE to look. The path
-        // is repo-relative — valid on the host once the artifact sync (end of
-        // the task run) has copied _output back.
-        const rel = path.relative(process.cwd(), outputSvg)
-        console.error(
-          '\n════════════════════════════════════════════════════════════════\n' +
-          `✖ VISUAL REGRESSION — step ${failure.frame.step}: ${failure.frame.keyword} ${failure.frame.sentence}\n` +
-          '  The failure storyboard sums it all up (expected / diff / actual):\n' +
-          `  🎬 open in a browser:  ${rel}\n` +
-          '  (file available on the host after the artifact sync at the end of the run)\n' +
-          '════════════════════════════════════════════════════════════════\n'
-        )
-      }
+      if (failure && failure.frame) logVisualRegression(failure.frame, outputSvg)
       if (passed && process.env.TASK_E2E_UPDATE_BASELINES) {
         render(path.join(global.codecept_dir, 'storyboards', `${board.baseDir}.svg`), {
           imageDir: path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir)
