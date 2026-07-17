@@ -191,6 +191,10 @@ async function addStoryboardFrame (I, png) {
   try {
     await assertOrUpdateBaseline(I, name)
   } catch (err) {
+    // Exact marker of WHICH frame failed its visual assert — the failure band
+    // trusts this, never a heuristic (a diff PNG may not even exist, e.g. on
+    // an "Image dimensions do not match" error).
+    if (board) board.visualFailure = path.basename(png)
     if (err && typeof err.message === 'string') {
       err.message +=
         `\n  storyboard frame   : ${name}.png` +
@@ -595,16 +599,18 @@ module.exports = function storyboardPlugin () {
     try {
       let failure = null
       if (!passed) {
-        // The VisualHelper writes screenshots/diff/<dir>/Diff_<frame>.png on a
-        // pixel mismatch: its presence is the factual marker of WHICH frame
-        // drifted. Build the expected/diff/actual triptych for that frame, and
-        // from the parsed scenario lines list what the run never reached.
+        // The frame that failed its visual assert was marked by
+        // addStoryboardFrame (board.visualFailure) — exact, never a
+        // heuristic. The VisualHelper's Diff_<frame>.png completes the
+        // triptych when it exists; on a diff-less failure (e.g. "Image
+        // dimensions do not match") the middle slot reads "(not generated)".
         let frame = null
-        for (let pi = 0; pi < board.panels.length && !frame; pi++) {
+        for (let pi = 0; pi < board.panels.length && board.visualFailure && !frame; pi++) {
           for (const img of board.panels[pi].images) {
             const name = path.basename(img.file)
+            if (name !== board.visualFailure) continue
             const diffPath = path.join(global.codecept_dir, 'screenshots', 'diff', board.baseDir, `Diff_${name}`)
-            if (!fs.existsSync(diffPath)) continue
+            const hasDiff = fs.existsSync(diffPath)
             const line = (board.lines || []).find(l => l.text === board.panels[pi].title)
             const baseline = path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir, name)
             const actual = path.join(global.codecept_dir, '_output', board.baseDir, name)
@@ -616,9 +622,9 @@ module.exports = function storyboardPlugin () {
               keyword: line ? line.keyword : '',
               baseline,
               actual,
-              diff: diffPath,
+              diff: hasDiff ? diffPath : null,
               // Full repo-relative paths, shown under each image and copyable.
-              paths: { expected: rel(baseline), diff: rel(diffPath), actual: rel(actual) }
+              paths: { expected: rel(baseline), diff: hasDiff ? rel(diffPath) : '(no pixel diff — see the error message, e.g. image dimensions differ)', actual: rel(actual) }
             }
             break
           }
@@ -630,7 +636,21 @@ module.exports = function storyboardPlugin () {
           )
         }
       }
-      render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`), { failure })
+      const outputSvg = render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`), { failure })
+      if (failure && failure.frame) {
+        // One unmissable block in the runner output: WHERE to look. The path
+        // is repo-relative — valid on the host once the artifact sync (end of
+        // the task run) has copied _output back.
+        const rel = path.relative(process.cwd(), outputSvg)
+        console.error(
+          '\n════════════════════════════════════════════════════════════════\n' +
+          `✖ VISUAL REGRESSION — step ${failure.frame.step}: ${failure.frame.keyword} ${failure.frame.sentence}\n` +
+          '  The failure storyboard sums it all up (expected / diff / actual):\n' +
+          `  🎬 open in a browser:  ${rel}\n` +
+          '  (file available on the host after the artifact sync at the end of the run)\n' +
+          '════════════════════════════════════════════════════════════════\n'
+        )
+      }
       if (passed && process.env.TASK_E2E_UPDATE_BASELINES) {
         render(path.join(global.codecept_dir, 'storyboards', `${board.baseDir}.svg`), {
           imageDir: path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir)

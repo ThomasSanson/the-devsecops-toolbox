@@ -165,6 +165,18 @@ tasks:
             || echo "⚠️  WARNING: baseline sync failed — container-side screenshots were NOT copied back to the host"
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/storyboards tests/e2e/ ) \
             || echo "⚠️  WARNING: storyboard sync failed — regenerated storyboard SVGs were NOT copied back to the host"
+          # Failure storyboards carry a "Visual regression" band (green boards
+          # never do): point the developer at them, LAST thing in the log.
+          FAILED_BOARDS=$(grep -rl "Visual regression" project/tests/e2e/_output --include='*.svg' 2>/dev/null || true)
+          if [ -n "$FAILED_BOARDS" ]; then
+            echo ""
+            echo "════════════════════════════════════════════════════════════════"
+            echo "🎬 ✖ Visual regression — open the failure storyboard in a browser:"
+            for f in $FAILED_BOARDS; do echo "     $f"; done
+            echo "   It sums everything up: expected / diff (changed pixels) / actual,"
+            echo "   the exact sentence that broke, and the file paths to inspect."
+            echo "════════════════════════════════════════════════════════════════"
+          fi
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
           {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}codeceptjs

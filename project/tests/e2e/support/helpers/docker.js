@@ -62,10 +62,22 @@ function runCommandWithResult (command, options = {}) {
   // spawnSync return: stderr can still be in-flight when Node reads the
   // file, leaving regex checks (e.g. docker network "already connected")
   // against an empty string.
+  // The live stream is TTY-SCRUBBED before reaching the parent terminal:
+  // relayed content can embed a `script` typescript (install.log) whose gum
+  // sequences QUERY the terminal (OSC 10/11 colour probes — the terminal
+  // answers into the user's input buffer as "rgb:…;1R" garbage) or clear it
+  // (CSI erase/alternate-screen). Keep text and SGR colours (final "m"),
+  // strip every other escape sequence. Capture files stay raw.
+  const ttyScrub =
+    "perl -pe '$|=1; " +
+    's/\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\\\\\)?//g; ' + // OSC (colour/title queries)
+    's/\\x1b\\[[0-9;?]*[a-ln-zA-Z]//g; ' + // CSI except SGR "m" (clear, moves, modes, DSR)
+    's/\\x1b[78HM=>]//g; ' + // save/restore cursor, keypad modes
+    "s/\\x1b[()][0-9A-B]//g'" // charset selection
   const wrapped =
     `mkfifo ${shellEscape(stdoutFifo)} ${shellEscape(stderrFifo)}; ` +
-    `tee ${shellEscape(stdoutFile)} < ${shellEscape(stdoutFifo)} & TOUT=$!; ` +
-    `tee ${shellEscape(stderrFile)} >&2 < ${shellEscape(stderrFifo)} & TERR=$!; ` +
+    `tee ${shellEscape(stdoutFile)} < ${shellEscape(stdoutFifo)} | ${ttyScrub} & TOUT=$!; ` +
+    `{ tee ${shellEscape(stderrFile)} < ${shellEscape(stderrFifo)} | ${ttyScrub}; } >&2 & TERR=$!; ` +
     `( ${command} ) > ${shellEscape(stdoutFifo)} 2> ${shellEscape(stderrFifo)}; ` +
     'rc=$?; ' +
     'wait $TOUT $TERR 2>/dev/null; ' +
