@@ -57,28 +57,36 @@ proof, not the test.
 ### Whole-journey scenarios — the storyboard is the reference pattern
 
 Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow the
-storyboard pattern meticulously: ONE image assembled from real per-moment PNG frames
-tells the whole journey — a reviewer grasps it at a glance, which scattered per-step
-screenshots can never guarantee. The project's FIRST storyboard scenario and its single
-baseline become the local normative reference; every later journey follows them.
+storyboard pattern meticulously: ONE SVG assembled from real per-moment PNG frames
+tells the whole journey — a reviewer grasps it at a glance, and every title, note
+and reproduce command around the frames is selectable, copyable text (including the
+header's re-run command for exactly this scenario). The whole API ships with the
+framework in `.config/codeceptjs/storyboard.js` (plugin + step helpers + SVG
+renderer) — use it as-is, never reinvent it.
 
-- ✅ ONE storyboard image tells the whole journey: BEFORE (the state on the remote
-  system) → the acting (the live session, its ephemeral screens captured at their
-  instant — interactive menus never coexist with the result, so snapshot each moment
-  as it happens and stitch at the end) → AFTER (the remote proof) — numbered panels
-  joined by arrows.
-- ✅ ONE Gherkin line = ONE panel: wire the journey's When steps so the step's own
-  pattern string is BOTH the scenario line and the panel's title (a small
-  `storyboardWhen` wrapper around the step registration) — the feature and the image
-  cannot drift apart, by construction.
-- ✅ REUSE the engine: implement the frame-capture + assembly helpers ONCE in the
-  project's test harness (under `project/tests/`) and reuse them for every journey —
-  never reinvent a capture mechanism per scenario.
+- ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence of the scenario —
+  the Given included — is registered through `storyboardStep(Given|When|Then,
+  pattern, opts, fn)` from `.config/codeceptjs/storyboard.js`, whose pattern string
+  is BOTH the scenario line and the card's title, and closes on a real capture
+  asserted INSIDE the step via `addStoryboardFrame(I, png)` (tolerance: 0) — a
+  visual regression fails on the exact sentence whose image drifted, and the feature
+  and the storyboard cannot drift apart, by construction. A sentence without a
+  visual proof does not belong in a storyboard scenario.
+- ✅ Tell the whole journey: BEFORE (the state on the remote system) → the acting
+  (the live session, its ephemeral screens captured at their instant — interactive
+  menus never coexist with the result, so snapshot each moment as it happens with
+  `capturePageFrame(I, name)`) → AFTER (the remote proof).
+- ✅ Register the `storyboard` plugin in codecept.conf.js (see
+  codecept.conf.sample.js): it fills the SVG header from the Gherkin metadata and
+  renders the board when the test ends — `_output/<feature-dir>/<scenario>.svg` on
+  every outcome, and the committed copy under `storyboards/` (mirroring the
+  feature tree) only on a PASSED `TASK_E2E_UPDATE_BASELINES=1` run, rebuilt from
+  the reviewed baselines.
 - ✅ Twin every visual fact with a programmatic assert of the same fact (working tree,
   REST on the remote branch) so a regression fails loud even without eyes.
-- ❌ NEVER degrade a storyboard into scattered per-step baselines, and NEVER compose or
-  retouch panel content — every pixel inside a panel is a real capture taken at its
-  instant.
+- ❌ NEVER scatter journey baselines outside their storyboard (a frame without its
+  card tells no story), and NEVER compose or retouch card content — every pixel
+  inside a card is a real capture taken at its instant.
 
 ### Mechanics
 

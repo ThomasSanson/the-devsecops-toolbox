@@ -27,6 +27,7 @@ project/tests/e2e/
 │   ├── steps/                    # journey.js, init-baseline.js, init-guidance.js, release-toggle.js, glab-auth-ensure.js
 │   └── terminal/                 # capture.js — live xterm/ttyd compact capture + visual assert
 ├── screenshots/base/             # Visual baselines (tolerance: 0)
+├── storyboards/                  # Committed storyboard SVGs (one per journey scenario)
 └── _output/                      # Generated screenshots + reports (gitignored)
 ```
 
@@ -50,9 +51,12 @@ cannot: moments that never coexist on screen (interactive gum menus erase
 themselves the instant you answer) or panels living on different pages
 (GitLab web + the live terminal). Reference scenario:
 `features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `screenshots/base/gitlab/01-developer-journey/agent-mode.svg` and
+storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and
 its per-frame baselines under
 `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
+Open the SVG locally in a browser: the chrome around the frames is real
+selectable text (one click selects a whole command in Chromium/Safari);
+GitLab's blob preview shows it as a static image only.
 
 The storyboard contract: **ONE sentence = ONE card = ONE pixel baseline.**
 Every sentence of the scenario — the Given included — goes through
@@ -65,30 +69,32 @@ command that re-runs exactly this scenario, the feature-file path, per-panel
 captions, notes and reproduce commands — is real selectable text a reader
 can copy, which a PNG can never offer. The frames stay untouched bitmaps.
 
-Mechanism: `captureTerminalFrame` / `capturePageFrame`
-(`support/terminal/capture.js`) write each real moment to
-`_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame`
-(journey.js) asserts each frame against its OWN baseline at `tolerance: 0`
+Mechanism — the whole step-side API ships with the template in
+`.config/codeceptjs/storyboard.js` (a generated project uses it as-is):
+`capturePageFrame(I, name)` (any page) and `captureTerminalFrame`
+(`support/terminal/capture.js`, xterm-specific) write each real moment to
+`_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame(I, png)`
+asserts each frame against its OWN baseline at `tolerance: 0`
 (`assertOrUpdateBaseline`) INSIDE the step — a visual regression fails on
-the exact sentence whose image drifted. The `storyboard` module
-(`.config/codeceptjs/storyboard.js`, registered as a CodeceptJS plugin)
-fills the header automatically from the Gherkin metadata (feature title,
-scenario title, feature file, the scenario's LAST tag as the re-run
-command, the baseline directory mirrored from the feature path), collects
-the cards, and renders the SVG when the test ends — a two-column grid of
-uniform cards, each with its number badge, its Gherkin sentence, an
-optional note and the copyable reproduce command/URL. A failing run still
-gets its partial board in `_output/` (it shows how far the journey got);
-the committed copy is rebuilt only on a PASSED baseline-update run, from
-the reviewed baselines.
+the exact sentence whose image drifted. The same module, registered as a
+CodeceptJS plugin, fills the header automatically from the Gherkin metadata
+(feature title, scenario title, feature file, the scenario's LAST tag as
+the re-run command, the baseline directory mirrored from the feature path)
+and renders the SVG when the test ends — a two-column grid of uniform
+cards, each with its number badge, its Gherkin sentence (verbatim keyword
+coloured: Given green, When blue, Then purple), an optional note and the
+one-click-copyable reproduce command/URL. A failing run still gets its
+partial board in `_output/` (it shows how far the journey got); the
+committed copy under `storyboards/` is rebuilt only on a PASSED
+baseline-update run, from the reviewed baselines.
 
-Gherkin alignment (`storyboardStep` in `support/steps/journey.js`): register
-EVERY sentence through `storyboardStep(Given|When|Then, pattern, opts, fn)`
-— the pattern string is BOTH the scenario line and the card's title, so one
-sentence reads as one titled card and the feature and the storyboard cannot
-drift apart, by construction. `opts` carries the human `note` and the
-copyable `copy` command/URL that reproduces the step; the frame captured
-during the step lands in its card via `addStoryboardFrame(png)`.
+Gherkin alignment: register EVERY sentence through
+`storyboardStep(Given|When|Then, pattern, opts, fn)` — the pattern string
+is BOTH the scenario line and the card's title, so one sentence reads as
+one titled card and the feature and the storyboard cannot drift apart, by
+construction. `opts` carries the human `note` and the copyable `copy`
+command/URL that reproduces the step; the frame captured during the step
+lands in its card via `addStoryboardFrame(I, png)`.
 
 Rules — the panels ARE the proof:
 

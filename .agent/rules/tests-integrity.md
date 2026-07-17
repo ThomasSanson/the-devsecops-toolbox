@@ -58,8 +58,8 @@ proof, not the test.
 
 The normative reference is the agent-mode scenario:
 `project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `screenshots/base/gitlab/01-developer-journey/agent-mode.svg` and its per-frame
-baselines under `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
+storyboard `project/tests/e2e/storyboards/gitlab/01-developer-journey/agent-mode.svg` and
+its per-frame baselines under `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
 Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow it
 meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
 
@@ -69,7 +69,8 @@ meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
   and every title, note and reproduce command around the frames is selectable,
   copyable text (including the header's re-run command for exactly this scenario).
 - ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence of the scenario —
-  the Given included — is registered through `storyboardStep` (journey.js), whose
+  the Given included — is registered through `storyboardStep` (shipped by
+  `.config/codeceptjs/storyboard.js`), whose
   pattern string is BOTH the scenario line and the card's title, and closes on a real
   capture asserted INSIDE the step (tolerance: 0) — a visual regression fails on the
   exact sentence whose image drifted, and the feature and the storyboard cannot drift

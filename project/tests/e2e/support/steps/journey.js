@@ -61,13 +61,17 @@ const {
   typeCommandAndWait,
   waitForTerminalText,
   waitForTerminalSettle,
-  assertOrUpdateBaseline,
   assertTerminalVisualMatch,
   captureTerminalFrame,
-  capturePageFrame,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
-const storyboard = require('../../../../../.config/codeceptjs/storyboard')
+// The storyboard API ships with the template (.config/codeceptjs/) so
+// generated projects use the exact same step-side helpers.
+const {
+  storyboardStep,
+  addStoryboardFrame,
+  capturePageFrame
+} = require('../../../../../.config/codeceptjs/storyboard')
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
 
@@ -436,35 +440,16 @@ When('I choose to install the complete framework', async () => {
 
 // ============================================
 // Agent-mode storyboard — ONE sentence = ONE card = ONE pixel baseline.
-// storyboardStep registers the step AND opens a panel whose title IS the
-// step's own Gherkin text: the same string declares the scenario line and
-// captions the image, so the feature and the storyboard can never drift
-// apart. EVERY sentence of the scenario goes through it — the Given closes
-// the off-camera stage with its visual proof, each Then pairs its card with
-// a programmatic assert of the same fact — and each frame is asserted
-// against its own baseline INSIDE the step, so a visual regression fails on
-// the exact sentence whose image drifted. The storyboard module
-// (.config/codeceptjs/storyboard.js, registered as a plugin) fills the
-// header from the Gherkin metadata and renders the SVG when the test ends.
+// storyboardStep (shipped by .config/codeceptjs/storyboard.js) registers the
+// step AND opens a card whose title IS the step's own Gherkin text: the same
+// string declares the scenario line and captions the image, so the feature
+// and the storyboard can never drift apart. EVERY sentence of the scenario
+// goes through it — the Given closes the off-camera stage with its visual
+// proof, each Then pairs its card with a programmatic assert of the same
+// fact — and addStoryboardFrame asserts each frame against its own baseline
+// INSIDE the step, so a visual regression fails on the exact sentence whose
+// image drifted. The plugin renders the SVG when the test ends.
 // ============================================
-
-function storyboardStep (register, pattern, opts, fn) {
-  register(pattern, async (...args) => {
-    storyboard.panel(pattern, opts)
-    await fn(...args)
-  })
-}
-
-// Attach the frame to the current card and assert it against its own
-// baseline immediately (tolerance: 0, update-mode aware).
-async function addStoryboardFrame (png) {
-  storyboard.frame(png)
-  const name = `${storyboard.baseDir()}/${path.basename(png, '.png')}`
-  const actualPath = path.join(E2E_OUTPUT, `${name}.png`)
-  fs.mkdirSync(path.dirname(actualPath), { recursive: true })
-  fs.copyFileSync(png, actualPath)
-  await assertOrUpdateBaseline(I, name)
-}
 
 // The fresh project on GitLab, README only. Public project -> stable anonymous
 // view; volatile content is masked. The shorter viewport keeps the panel
@@ -495,7 +480,7 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-before'))
+  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-before'))
   I.resizeWindow(1024, 768)
 })
 
@@ -511,7 +496,7 @@ storyboardStep(When, 'the developer checks out the cloned project in the termina
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'ls -A1')
   await typeCommandAndWait(I, 'git status')
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-1-clone'))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-1-clone'))
 })
 
 // The frame is anchored on the TYPED COMMAND (the story must show what was
@@ -529,7 +514,7 @@ storyboardStep(When, 'the developer launches the installer and chooses to pick c
   await waitForTerminalSettle(I)
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
 })
 
 // Submit the focused "Choose components" -> the live checklist, captured while
@@ -541,7 +526,7 @@ storyboardStep(When, 'the developer takes the agent component from the checklist
   I.pressKey('Enter')
   await waitForTerminalText(I, 'Select the component to install', COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' }))
   I.pressKey('Enter')
 })
 
@@ -568,7 +553,7 @@ storyboardStep(When, 'the installer delivers only the AI agent guardrails', {
   // Two frames: the installer's own delivery lines first (the ~50-row tree
   // would scroll them out of the viewport before a single capture), then the
   // resulting working tree.
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' }))
 })
 
 // The card shows the full-depth tree (the guardrails bottom out at
@@ -581,7 +566,7 @@ storyboardStep(Then, 'the working tree carries only the AI agent context files',
 }, async () => {
   await typeCommandAndWait(I, 'ls -A1')
   await typeCommandAndWait(I, "tree -a -I '.git'")
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-4b-delivered', { fromMarker: 'ls -A1' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4b-delivered', { fromMarker: 'ls -A1' }))
   const res = execInContainerAsUser(
     global.journeyContainer, 'bootstrap',
     `cd ${PROJECT_DIR} && ls -A1 | grep -v '^.git$' | sort`
@@ -620,7 +605,7 @@ storyboardStep(When, 'the developer pushes the guardrails to main', {
   await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
   await typeCommandAndWait(I, 'git push -q origin main')
   await typeCommandAndWait(I, 'git ls-tree origin/main --name-only   # now on the remote main')
-  await addStoryboardFrame(await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' }))
 })
 
 // The same project page now carries the guardrails, then the .agent tree
@@ -634,7 +619,7 @@ storyboardStep(Then, "the guardrails are live on the project's main page", {
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-after'))
+  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-after'))
   I.resizeWindow(1024, 768)
   for (const file of ['.agent', 'AGENTS.md', 'CLAUDE.md']) {
     await assertBranchContainsFile('main', file)
@@ -648,7 +633,7 @@ storyboardStep(Then, 'the shipped .agent tree is browsable on GitLab main', {
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/tree/main/.agent`)
   await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(await capturePageFrame(I, 'agent-mode-gitlab-after-agent-tree'))
+  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-after-agent-tree'))
   I.resizeWindow(1024, 768)
   const headers = await getRootHeaders()
   const res = await listRepositoryTree(

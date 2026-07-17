@@ -19,15 +19,20 @@ exports.config = {
           '--ignore-certificate-errors',
           '--font-render-hinting=none',
           '--disable-font-subpixel-positioning',
-          '--disable-lcd-text'
+          '--disable-lcd-text',
+          '--force-device-scale-factor=1',
+          '--force-color-profile=srgb',
+          '--use-angle=swiftshader-webgl'
         ]
       }
     },
-    ResembleHelper: {
-      require: 'codeceptjs-resemblehelper',
-      screenshotFolder: './_output/',
-      baseFolder: './screenshots/base/',
-      diffFolder: './screenshots/diff/'
+    VisualHelper: {
+      require: '@digital-commons-official/codeceptjs-visual-helper',
+      baselineDir: './screenshots/base/',
+      diffDir: './screenshots/diff/',
+      actualDir: './_output/',
+      tolerance: 0,
+      threshold: 0.1
     }
   },
   hooks: [],
@@ -42,6 +47,13 @@ exports.config = {
     screenshotOnFail: { enabled: true },
     retryFailedStep: { enabled: true },
     tryTo: { enabled: true },
+    // ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline: fills
+    // the storyboard header from each scenario's metadata and renders the SVG
+    // when the test ends — see .config/codeceptjs/storyboard.js.
+    storyboard: {
+      require: '../../../.config/codeceptjs/storyboard.js',
+      enabled: true
+    },
     pageInfo: {
       enabled: true,
       browserLogs: ["verbose", "debug", "info", "log", "warning", "error"]

@@ -163,6 +163,8 @@ tasks:
             || echo "⚠️  WARNING: artifact sync failed — visual diffs and logs were NOT copied back to the host"
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/screenshots tests/e2e/ ) \
             || echo "⚠️  WARNING: baseline sync failed — container-side screenshots were NOT copied back to the host"
+          ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/storyboards tests/e2e/ ) \
+            || echo "⚠️  WARNING: storyboard sync failed — regenerated storyboard SVGs were NOT copied back to the host"
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
           {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}codeceptjs

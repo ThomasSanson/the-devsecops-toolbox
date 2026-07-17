@@ -16,10 +16,9 @@
 
 const fs = require('fs')
 const path = require('path')
-
-// Resolve baseline/actual dirs relative to the e2e config dir (support/terminal
-// -> e2e), independent of the codeceptjs working directory.
-const E2E_DIR = path.resolve(__dirname, '..', '..')
+// Baseline assert + frame paths live in the shipped storyboard module
+// (.config/codeceptjs/storyboard.js) so generated projects get them too.
+const { assertOrUpdateBaseline, frameOutputPath } = require('../../../../../.config/codeceptjs/storyboard')
 
 const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
 const TERMINAL_SETTLE_POLL_SECONDS = 0.25
@@ -444,36 +443,6 @@ async function removeCompactTerminalCapture (I, captureId) {
 }
 
 /**
- * Assert `_output/<baselineName>.png` against its committed baseline, or — in
- * baseline-update mode (TASK_E2E_UPDATE_BASELINES=1) — assert first and only
- * when the assert FAILS persist the freshly captured actual as the baseline:
- * green baselines stay byte-identical, so a regeneration run produces no
- * churn. Each baseline produced this way MUST be inspected by a human, which
- * is why the mode is refused in CI — there it would silently swallow every
- * visual regression.
- */
-async function assertOrUpdateBaseline (I, baselineName) {
-  if (process.env.TASK_E2E_UPDATE_BASELINES && process.env.CI) {
-    throw new Error('TASK_E2E_UPDATE_BASELINES is forbidden in CI — baselines must be regenerated and inspected locally')
-  }
-  if (process.env.TASK_E2E_UPDATE_BASELINES) {
-    // tryTo: the recorder marks the test failed on a plain try/catch around
-    // an actor call; the global tryTo (enabled plugin) is the supported way
-    // to probe an assert.
-    // eslint-disable-next-line no-undef
-    const matches = await tryTo(() => I.assertVisualMatch(baselineName, { captureActual: false }))
-    if (!matches) {
-      const actualPath = path.join(E2E_DIR, '_output', baselineName + '.png')
-      const baselinePath = path.join(E2E_DIR, 'screenshots', 'base', baselineName + '.png')
-      fs.mkdirSync(path.dirname(baselinePath), { recursive: true })
-      fs.copyFileSync(actualPath, baselinePath)
-    }
-    return
-  }
-  await I.assertVisualMatch(baselineName, { captureActual: false })
-}
-
-/**
  * Settle the live terminal, rebuild the deterministic compact capture and
  * assert it visually matches the baseline (tolerance:0). The window is pinned
  * to 1920x1080 during capture then restored.
@@ -525,14 +494,9 @@ async function assertTerminalVisualMatch (I, baselineName, opts = {}) {
 // commands and captions drawn around the untouched frames — is assembled by
 // .config/codeceptjs/storyboard.js as the human-readable artifact.
 // ---------------------------------------------------------------------------
-const FRAMES_DIR = 'storyboard-frames'
-
-function frameOutputPath (frameName) {
-  return path.join(E2E_DIR, '_output', FRAMES_DIR, frameName + '.png')
-}
-
 // Snapshot the current terminal moment (compact capture, marker-anchored) into
-// the frames dir and return the PNG's absolute path.
+// the frames dir and return the PNG's absolute path. (Page frames come from
+// storyboard.capturePageFrame — this one needs the xterm compact engine.)
 async function captureTerminalFrame (I, frameName, opts = {}) {
   await waitForTerminalSettle(I)
   await scrollTerminalToBottom(I)
@@ -547,17 +511,9 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
   if (!info || !info.kept) {
     throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)
   }
-  fs.mkdirSync(path.join(E2E_DIR, '_output', FRAMES_DIR), { recursive: true })
-  await I.captureScreenshot(`${FRAMES_DIR}/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
+  fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
+  await I.captureScreenshot(`storyboard-frames/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
   await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
-  return frameOutputPath(frameName)
-}
-
-// Full-page snapshot of the CURRENT page (mask its volatile content first —
-// e.g. GitLabRepositoryPage.maskVolatile) into the frames dir.
-async function capturePageFrame (I, frameName) {
-  fs.mkdirSync(path.join(E2E_DIR, '_output', FRAMES_DIR), { recursive: true })
-  await I.takeScreenshot(`${FRAMES_DIR}/${frameName}`)
   return frameOutputPath(frameName)
 }
 
@@ -575,8 +531,6 @@ module.exports = {
   waitForTerminalText,
   buildCompactTerminalCapture,
   removeCompactTerminalCapture,
-  assertOrUpdateBaseline,
   assertTerminalVisualMatch,
-  captureTerminalFrame,
-  capturePageFrame
+  captureTerminalFrame
 }

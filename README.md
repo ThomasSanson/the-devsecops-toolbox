@@ -80,6 +80,13 @@ The DevSecOps Toolbox is a comprehensive toolset designed to streamline and enfo
 └── Taskfile.yml     # Task runner configuration
 ```
 
+Each e2e journey scenario is documented by a **storyboard**: one SVG in
+[`project/tests/e2e/storyboards/`](project/tests/e2e/storyboards/) telling the
+whole journey card by card — one Gherkin sentence = one card = one pixel
+baseline. Open it locally in a browser (the surrounding text, including the
+command that replays the scenario, is selectable); see
+[`project/tests/README.md`](project/tests/README.md) for the full recipe.
+
 ### Pipeline Stages
 
 The Toolbox implements a complete DevSecOps lifecycle through distinct stages:
