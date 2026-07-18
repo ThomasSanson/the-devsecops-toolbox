@@ -20,6 +20,7 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting test phase"
         silent: true
+      - task: check:include-coverage
       - task: check:build-coverage
       - task: check:test-coverage
       - task: :project:test
@@ -298,6 +299,27 @@ tasks:
       - task: side-effect
       - task: verify
       - cmd: echo "🎉 Resilience validation phase completed successfully"
+        silent: true
+
+  check:include-coverage:
+    desc: |
+      ℹ️ Description:
+        Verifies that every `taskfile:` include path declared in the root
+        Taskfile.yml (and its Taskfile.yml.jinja twin) resolves to a file
+        that exists on disk.
+
+        Optional includes (`optional: true`) fail silently at runtime, so a
+        wrong extension (e.g. `.yaml` instead of `.yml`) makes the whole task
+        namespace vanish with no error. This guard makes that mistake loud.
+
+      📊 Exit codes:
+        - 0: Every include path resolves to an existing file
+        - 1: At least one include path is missing
+    cmds:
+      - cmd: echo "🔄 Starting include coverage check"
+        silent: true
+      - bash .config/devsecops/scripts/check-include-coverage.sh
+      - cmd: echo "🎉 Include coverage check completed successfully"
         silent: true
 
   check:build-coverage:

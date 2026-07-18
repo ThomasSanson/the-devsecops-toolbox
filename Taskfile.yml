@@ -92,7 +92,7 @@ includes:
     taskfile: .config/kubectl/Taskfile.yml
     optional: true
   kubeseal:
-    taskfile: .config/kubeseal/Taskfile.yaml
+    taskfile: .config/kubeseal/Taskfile.yml
     optional: true
   lefthook:
     taskfile: .config/lefthook/Taskfile.yml
@@ -110,7 +110,7 @@ includes:
     taskfile: .config/renovate/Taskfile.yml
     optional: true
   sealed-secrets:
-    taskfile: .config/sealed-secrets/Taskfile.yaml
+    taskfile: .config/sealed-secrets/Taskfile.yml
     optional: true
   yamllint:
     taskfile: .config/yamllint/Taskfile.yml
