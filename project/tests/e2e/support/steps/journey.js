@@ -173,7 +173,7 @@ When('I display the project tree in the terminal', async () => {
 })
 
 // ============================================
-// Toolbox-update storyboard — @e2e-toolbox-update-journey.
+// Toolbox-update storyboard — @toolbox-update (chapter 1).
 // The real Renovate-driven upgrade in a live, coloured ttyd terminal: a project
 // generated from an EARLIER toolbox version (single-file config.json, the
 // developer's word crammed in) runs the exact command Renovate triggers
@@ -221,7 +221,7 @@ async function updateCard (command, marker, frameName, timeoutMs) {
 }
 
 storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", {
-  note: `Off-camera: a project rendered from the toolbox at release ${OLD_TOOLBOX_VERSION} (the design before the cspell dictionary was split), served in a real ttyd shell. Copier stamps the release in its own \`_commit\`, so \`grep\` proves the BEFORE version.`,
+  note: `A project made with an older toolbox (release ${OLD_TOOLBOX_VERSION}), from before the spelling dictionary was split. The line on screen shows which toolbox version it came from.`,
   copy: 'grep _commit .config/devsecops/.copier-answers.yml'
 }, async () => {
   global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
@@ -236,7 +236,7 @@ storyboardStep(Given, "a developer's project was generated from an earlier toolb
 })
 
 storyboardStep(Given, 'its spelling dictionary is a single framework-owned file', {
-  note: 'At this old release the cspell dictionary is a single file — config.json — with no split and nowhere but that shared file for a project to add its own words.',
+  note: 'At this old release the whole spelling dictionary is one file, config.json — the only place a project can add its own words.',
   copy: 'ls -1 .config/cspell/'
 }, async () => {
   await updateCard('ls -1 .config/cspell/   # one framework-owned file', 'one framework-owned file', 'before-one-file')
@@ -244,7 +244,7 @@ storyboardStep(Given, 'its spelling dictionary is a single framework-owned file'
 })
 
 storyboardStep(Given, 'the developer has added their own word inside that shared file', {
-  note: `The developer's own dictionary word (${CSPELL_PROJECT_WORD}) is crammed into config.json, in among the framework's base words — the only place the old design offers.`,
+  note: `The developer's own word (${CSPELL_PROJECT_WORD}) sits inside config.json, mixed in with the framework's own words.`,
   copy: "jq '.words[-4:]' .config/cspell/config.json"
 }, async () => {
   await updateCard(
@@ -255,7 +255,7 @@ storyboardStep(Given, 'the developer has added their own word inside that shared
 })
 
 storyboardStep(When, 'the developer runs the toolbox update in the terminal', {
-  note: `The exact command Renovate runs automatically — \`task copier:update\` to release ${NEW_TOOLBOX_VERSION} — run live here. The framework refreshes config.json and the cspell migration relocates the project's word.`,
+  note: `The exact command Renovate runs on its own to move to release ${NEW_TOOLBOX_VERSION}. It refreshes the dictionary and moves the developer's word to its own file.`,
   copy: `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`
 }, async () => {
   await updateCard(
@@ -265,7 +265,7 @@ storyboardStep(When, 'the developer runs the toolbox update in the terminal', {
 })
 
 storyboardStep(Then, 'the project now tracks the new toolbox release', {
-  note: `Copier's \`_commit\` moved to ${NEW_TOOLBOX_VERSION}: the project is now on the new release. Twinned with a read of the answers file.`,
+  note: `The project is now on release ${NEW_TOOLBOX_VERSION} — the version line has moved forward.`,
   copy: 'grep _commit .config/devsecops/.copier-answers.yml'
 }, async () => {
   await updateCard(
@@ -276,7 +276,7 @@ storyboardStep(Then, 'the project now tracks the new toolbox release', {
 })
 
 storyboardStep(Then, 'its dictionary has been split into three files', {
-  note: 'The single dictionary is now three files: config.json (structural), config.base.json (framework words) and config.project.json (the project override). Twinned with a directory listing.',
+  note: 'The one dictionary is now three files: config.json, config.base.json (framework words) and config.project.json (project words).',
   copy: 'ls -1 .config/cspell/'
 }, async () => {
   await updateCard('ls -1 .config/cspell/   # three files now', 'three files now', 'after-three-files')
@@ -285,7 +285,7 @@ storyboardStep(Then, 'its dictionary has been split into three files', {
 })
 
 storyboardStep(Then, 'the framework keeps its own words in its own file', {
-  note: "The framework's base vocabulary is preserved, now in config.base.json — the developer's word is NOT here. Twinned with a read of the base words.",
+  note: "The framework's own words now live in config.base.json — the developer's word is not among them.",
   copy: "jq '.words[-4:]' .config/cspell/config.base.json"
 }, async () => {
   await updateCard(
@@ -296,18 +296,18 @@ storyboardStep(Then, 'the framework keeps its own words in its own file', {
 })
 
 storyboardStep(Then, "the developer's own word has moved to a project-owned file", {
-  note: `The migration moved ${CSPELL_PROJECT_WORD} into config.project.json, the copier skip-if-exists override an update never overwrites. Twinned with a read of the override.`,
+  note: `The developer's word (${CSPELL_PROJECT_WORD}) has moved to config.project.json, the file a toolbox update never overwrites.`,
   copy: 'jq . .config/cspell/config.project.json'
 }, async () => {
   await updateCard(
-    `jq . .config/cspell/config.project.json   # the developer word: MOVED to its own file`,
+    'jq . .config/cspell/config.project.json   # the developer word: MOVED to its own file',
     'MOVED to its own file', 'after-project-word'
   )
   twinContains('jq -r .words .config/cspell/config.project.json', CSPELL_PROJECT_WORD)
 })
 
 storyboardStep(Then, 'the shared file itself is now empty — it only imports the other two', {
-  note: 'config.json now carries no words at all — it only imports config.base.json and config.project.json. Twinned with a read of its (empty) word list.',
+  note: 'config.json now holds no words of its own; it only pulls in the other two files.',
   copy: "jq '.words' .config/cspell/config.json"
 }, async () => {
   await updateCard(
@@ -319,7 +319,7 @@ storyboardStep(Then, 'the shared file itself is now empty — it only imports th
 
 // The installer WHEN bindings (type command / launch / accept-default-and-wait
 // per prompt / wait-for-completion) were removed with the storyboard migration:
-// the questionnaire is now driven by the @e2e-journey-installer-full storyboard
+// the questionnaire is now driven by the @install-complete storyboard
 // steps below, which capture each Copier question as its own card. The poll for
 // install.sh's completion marker lives in waitForInstallerComplete().
 
@@ -568,7 +568,7 @@ storyboardStep(When, 'the installer installs only the AI agent files', {
 // an ls in the container — the installer ADDED only the AI agent context
 // while leaving the repo's own README intact.
 storyboardStep(Then, 'the project folder now holds only the AI agent files', {
-  note: 'The project folder now: .agent/, CLAUDE.md, AGENTS.md — and none of the rest of the framework. The test also lists the folder to be sure.',
+  note: 'The project folder now: .agent/, CLAUDE.md, AGENTS.md — and none of the rest of the framework.',
   copy: "ls -A1 && tree -a -I '.git'"
 }, async () => {
   await typeCommandAndWait(I, 'ls -A1')
@@ -620,7 +620,7 @@ storyboardStep(When, 'the developer pushes the AI agent files to main', {
 // The remote proof, visual AND programmatic: the project page carries the
 // guardrails on main, and the REST tree of the branch confirms each file.
 storyboardStep(Then, "the AI agent files are live on the project's main page", {
-  note: 'The same project page now shows the AI agent files on main, saved as the commit "chore: install the AI agent guardrails". The test also checks the branch through the API.',
+  note: 'The same project page now shows the AI agent files on main, in the commit "chore: install the AI agent guardrails".',
   copy: 'http://gitlab/<lambda-user>/<project>'
 }, async () => {
   I.resizeWindow(1024, 640)
@@ -634,7 +634,7 @@ storyboardStep(Then, "the AI agent files are live on the project's main page", {
 })
 
 storyboardStep(Then, 'the .agent folder can now be opened on GitLab', {
-  note: 'Inside the .agent folder: the rules, skills and workflows agent mode installed. The test also checks the same folder through the API.',
+  note: 'Inside the .agent folder: the rules, skills and workflows agent mode installed.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/tree/main/.agent'
 }, async () => {
   I.resizeWindow(1024, 640)
@@ -909,8 +909,8 @@ storyboardStep(When, 'the installer sets up the framework and says the setup is 
   assertInstallLog('Bootstrapping main', 'init-framework-devsecops', 'Opened merge request', 'Installation complete!')
 })
 
-storyboardStep(Then, 'init has opened a merge request into main for review', {
-  note: 'The merge request init opened from init-framework-devsecops into main, ready for review instead of forced in. The test also checks through the API that it is open and has changed files.',
+storyboardStep(Then, 'a merge request into main is now waiting for review on GitLab', {
+  note: 'The merge request from init-framework-devsecops into main, open and ready for review. The framework never lands on main without this step.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
 }, async () => {
   await findOpenMr('init-framework-devsecops', 'main')
@@ -918,8 +918,8 @@ storyboardStep(Then, 'init has opened a merge request into main for review', {
   await assertMrChangedFiles()
 })
 
-storyboardStep(Then, 'main now sits next to the init-framework-devsecops branch', {
-  note: 'The branches page: init made main and put init-framework-devsecops next to it. The test also checks both branches through the API.',
+storyboardStep(Then, 'GitLab now lists main and the new init-framework-devsecops branch', {
+  note: "GitLab's branches page: main, with the framework branch beside it.",
   copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
 }, async () => {
   await pageFrame(async () => {
@@ -930,8 +930,8 @@ storyboardStep(Then, 'main now sits next to the init-framework-devsecops branch'
   await assertBranchExists('init-framework-devsecops')
 })
 
-storyboardStep(Then, 'init now lets main accept only fast-forward merges', {
-  note: 'The merge settings init applied: main only accepts fast-forward merges (the branch must be up to date, so history stays in a straight line). The test also checks through the API that the merge method is "ff".',
+storyboardStep(Then, 'GitLab now lets main accept only fast-forward merges', {
+  note: 'Main only accepts fast-forward merges: a branch must be up to date before it merges, so history stays a straight line.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/merge_requests'
 }, async () => {
   // First login-gated page: authenticate as lambda off-camera, then the
@@ -944,8 +944,8 @@ storyboardStep(Then, 'init now lets main accept only fast-forward merges', {
   await assertMergeMethodFf()
 })
 
-storyboardStep(Then, 'init has blocked direct pushes to main', {
-  note: 'The protected-branches settings init applied: maintainers may merge, no one may push straight to main. The test also checks this through the API.',
+storyboardStep(Then, 'GitLab now refuses pushes straight to main', {
+  note: 'On the protected-branches page: maintainers may merge, but no one may push straight to main. Every change has to go through a review.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/repository'
 }, async () => {
   await pageFrame(
@@ -955,8 +955,8 @@ storyboardStep(Then, 'init has blocked direct pushes to main', {
   await assertMainProtected('main')
 })
 
-storyboardStep(Then, 'init has created the automation access token', {
-  note: 'The access-tokens page: init created TASK_COMMITIZEN_TOKEN with the Maintainer role — the login the release automation uses. The test also checks this token through the API.',
+storyboardStep(Then, 'GitLab now holds an automation token for the project', {
+  note: 'On the access-tokens page: TASK_COMMITIZEN_TOKEN, with the Maintainer role. This is the login the release automation uses.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   await pageFrame(
@@ -966,8 +966,8 @@ storyboardStep(Then, 'init has created the automation access token', {
   await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
 })
 
-storyboardStep(Then, 'init has saved the token as a CI/CD variable', {
-  note: 'The CI/CD variables page: init saved TASK_COMMITIZEN_TOKEN as a project variable so the pipeline can read it. The test also checks this variable through the API.',
+storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', {
+  note: 'On the CI/CD variables page: the same token, saved as TASK_COMMITIZEN_TOKEN so the pipeline can read it.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
 }, async () => {
   await pageFrame(
@@ -993,29 +993,29 @@ storyboardStep(Given, 'a developer has cloned a project that already has a main 
 })
 
 storyboardStep(When, 'the installer finishes setup on the project that already had main', {
-  note: 'The installer finishes on the existing main; the finished screen still names the init-framework-devsecops merge request — the page where changes get reviewed before joining main. The test also checks the install log.'
+  note: 'The installer finishes on the existing main; the finished screen still names the init-framework-devsecops merge request.'
 }, async () => {
   await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-existing-main', { fromMarker: 'Installation complete!' }))
   assertInstallLog('init-framework-devsecops', 'Installation complete!')
 })
 
-storyboardStep(Then, 'init has opened the merge request into the main that already existed', {
-  note: 'The merge request init opened from init-framework-devsecops into the main that was already there. The test also checks through the API that it is open.',
+storyboardStep(Then, 'a merge request into the existing main is now open on GitLab', {
+  note: 'The merge request from init-framework-devsecops into the main that was already there — a review, not a forced push.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
 }, async () => {
   await findOpenMr('init-framework-devsecops', 'main')
-  await mrHeaderFrame('gitlab-merge-request')
+  await mrHeaderFrame('mr-header-existing-main')
 })
 
 storyboardStep(Then, 'GitLab lists main next to the init-framework-devsecops branch', {
-  note: 'The branches page: the main that was already there, and the framework branch init made from it. The test also checks both branches through the API.',
+  note: 'The branches page: the main that was already there, and the framework branch made from it.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
 }, async () => {
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-branches')
+  }, 'branches-existing-main')
   await assertBranchExists('main')
   await assertBranchExists('init-framework-devsecops')
 })
@@ -1037,29 +1037,29 @@ storyboardStep(Given, 'a developer is working on an experiment branch instead of
 })
 
 storyboardStep(When, 'the installer finishes setup while on the experiment branch', {
-  note: 'The installer finishes while the developer is still on spike/poc; the finished screen still names the merge request — the page where changes get reviewed before joining main. The test also checks the install log.'
+  note: 'The installer finishes while the developer is still on spike/poc; the finished screen still names the merge request.'
 }, async () => {
   await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-spike', { fromMarker: 'Installation complete!' }))
   assertInstallLog('init-framework-devsecops', 'Installation complete!')
 })
 
-storyboardStep(Then, 'init started the framework branch from main, not from the experiment branch', {
-  note: 'The merge request aims at main, and its branch started from main, never from spike/poc. The test also checks through the API that it is open into main.',
+storyboardStep(Then, 'the new merge request targets main, not the experiment branch', {
+  note: 'The merge request aims at main; its branch grew from main, never from the throwaway spike/poc branch.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
 }, async () => {
   await findOpenMr('init-framework-devsecops', 'main')
-  await mrHeaderFrame('gitlab-merge-request')
+  await mrHeaderFrame('mr-header-spike')
 })
 
 storyboardStep(Then, 'GitLab shows only main and the framework branch, never the local experiment branch', {
-  note: 'The branches page holds main and init-framework-devsecops only; the local spike/poc was never pushed. The test also checks all three through the API.',
+  note: 'The branches page holds main and init-framework-devsecops only; the local spike/poc was never pushed.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
 }, async () => {
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-branches')
+  }, 'branches-spike')
   await assertBranchExists('main')
   await assertBranchExists('init-framework-devsecops')
   await assertBranchAbsent('spike/poc')
@@ -1081,28 +1081,28 @@ storyboardStep(Given, 'a developer has set the installer to deliver straight to 
 })
 
 storyboardStep(When, 'the installer finishes setup in direct-delivery mode', {
-  note: 'The installer finishes in direct-delivery mode; it names no merge request — the changes go straight to main with no review step. The test also checks the finished line in the install log.'
+  note: 'The installer finishes in direct-delivery mode; it names no merge request, because the changes go straight to main.'
 }, async () => {
   await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-direct', { fromMarker: 'Installation complete!' }))
   assertInstallLog('Installation complete!')
 })
 
-storyboardStep(Then, 'init has sent the starter README to main with no merge request', {
-  note: 'The branches page shows main alone: no init-framework-devsecops branch, and no merge request was opened. The test also checks all three through the API.',
+storyboardStep(Then, 'GitLab shows main alone, with no review branch and no merge request', {
+  note: 'The branches page shows main by itself: no framework branch and no merge request, because you asked for direct delivery.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
 }, async () => {
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-branches')
+  }, 'branches-direct')
   await assertBranchExists('main')
   await assertBranchAbsent('init-framework-devsecops')
   await assertNoOpenMr()
 })
 
 storyboardStep(Then, "the project's main holds only the starter README", {
-  note: 'The project home page: main holds just the starter README; the framework stays in the local copy on disk. The test also checks through the API that main exists.',
+  note: 'The project home page: main holds just the starter README; the framework stays in the local copy on disk.',
   copy: 'http://gitlab/<lambda-user>/<project>'
 }, async () => {
   await pageFrame(async () => {
@@ -1113,7 +1113,7 @@ storyboardStep(Then, "the project's main holds only the starter README", {
 })
 
 // ============================================
-// Installer questionnaire storyboard — @e2e-journey-installer-full.
+// Installer questionnaire storyboard — @install-complete (chapter 1).
 // The full Copier walkthrough: one card per question, re-capturing the exact
 // anchored moments the retired copier-*-terminal baselines proved (each gum/
 // copier prompt erases itself on answer, so it is captured live). The Given
@@ -1195,7 +1195,7 @@ storyboardStep(When, 'the developer keeps English as the Gherkin language', {
 }, () => captureCopierQuestion('Enter', 'Language for Gherkin test specifications', 'copier-gherkin'))
 
 storyboardStep(Then, 'the installer builds the project and shows the finished screen', {
-  note: 'Answering the last question builds the framework and runs the setup to the finished screen. The test also checks the log for the key lines (created files, scaffolded successfully, Installation complete!).'
+  note: 'Answering the last question builds the framework and runs the setup all the way to the finished screen.'
 }, async () => {
   // No click (see captureCopierQuestion): copier is still on the last question
   // with mouse tracking on; pressing Enter on the focused terminal accepts it.
@@ -1212,7 +1212,7 @@ storyboardStep(Then, 'the installer builds the project and shows the finished sc
 })
 
 storyboardStep(Then, 'the project folder now holds the full DevSecOps framework', {
-  note: 'The project folder the questions produced — Taskfile.yml, .config, .gitlab-ci.yml, .agent and more (listed without colour so nothing can tint a folder name). The test also lists the folder to check the key files.',
+  note: 'The project folder the questions produced: Taskfile.yml, .config, .gitlab-ci.yml, .agent and more.',
   copy: 'ls -A1p --color=never'
 }, async () => {
   await typeCommandAndWait(I, 'clear')
@@ -1228,7 +1228,7 @@ storyboardStep(Then, 'the project folder now holds the full DevSecOps framework'
 })
 
 // ============================================
-// Piped-install storyboard — @e2e-journey-installer-piped.
+// Piped-install storyboard — @fresh-machine (chapter 2).
 // The documented `curl … | bash` transport: inside the pty the installer's
 // stdin is a PIPE, so the Copier questions only stay interactive through its
 // /dev/tty fallback. Three cards prove it end to end — the blank clone, the
@@ -1260,7 +1260,7 @@ storyboardStep(When, 'the installer still asks what to install, even when piped 
 })
 
 storyboardStep(Then, 'the piped install finishes and opens the framework merge request', {
-  note: 'Answering through the pipe builds and finishes exactly like typing the command by hand. The test also checks the API (the init-framework-devsecops branch and its open merge request into main) and the finished line in the log.'
+  note: 'Answering through the pipe builds and finishes exactly like typing the command by hand.'
 }, async () => {
   await answerAndCompleteInstaller()
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))

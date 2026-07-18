@@ -141,7 +141,7 @@ storyboardStep(When, 'a developer writes a conventional commit message', {
 })
 
 storyboardStep(Then, 'the hooks accept it and let the commit through', {
-  note: 'The commit-msg hook calls commitlint, which accepts the message because it matches the pattern. The test also checks the commit succeeded.',
+  note: 'The commit-msg hook calls commitlint, which accepts the message because it matches the pattern.',
   copy: 'git commit --allow-empty -m "feat: dogfood the commitlint hook"'
 }, async () => {
   commit('feat: dogfood the commitlint hook')
@@ -162,8 +162,8 @@ storyboardStep(When, 'a developer writes a sloppy commit message', {
   await renderPreFrame(I, 'message-sloppy', 'sloppy: skip the conventions')
 })
 
-storyboardStep(Then, "the hooks reject it with their own explanation", {
-  note: "commitlint blocks the commit and lists exactly which rules it broke. The test also checks the commit was rejected.",
+storyboardStep(Then, 'the hooks reject it with their own explanation', {
+  note: 'commitlint blocks the commit and lists exactly which rules it broke.',
   copy: 'git commit --allow-empty -m "update stuff"'
 }, async () => {
   commit('sloppy: skip the conventions')

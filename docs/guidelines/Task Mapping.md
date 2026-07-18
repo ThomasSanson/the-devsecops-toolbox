@@ -194,11 +194,7 @@ task copier:update             # Update from template
 
 **Features Location**: `project/tests/e2e/features/`
 
-Features are organized by journey act:
-`01-install/` (prerequisites, installer, agent-mode), `02-first-init/`
-(auth check, init guidance, init-framework merge request), `03-daily-work/`
-(commit hooks, gitleaks, release window, token healing), `04-evolution/`
-(Copier rendering matrix, renovate, toolbox update).
+Features are organized by journey act: `01-install/` (installer, agent-mode, fresh machine, first-run help, and merge-request safety), `02-daily-work/` (protected commits, self-healing init, release window), and `03-evolution/` (Copier rendering matrix, renovate, toolbox update).
 
 **Step Definitions**: `project/tests/e2e/support/steps/`
 
@@ -232,7 +228,7 @@ task test
 task project:test:e2e
 
 # With grep filter
-task project:test:e2e -- --grep "@e2e-render-matrix"
+task project:test:e2e -- --grep "@render-matrix"
 ```
 
 ---

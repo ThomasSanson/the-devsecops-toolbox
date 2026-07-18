@@ -1,6 +1,6 @@
 /**
  * Deterministic filtering + <pre> frame rendering for the guidance/auth
- * storyboard family (02-first-init: init-guidance + glab-auth-ensure). ONE place for the noise
+ * storyboard family (01-install: init-guidance + glab-auth-ensure). ONE place for the noise
  * patterns, the tail anchoring and the verdict renderer so every guidance card
  * filters the exact same way — those patterns are load-bearing for tolerance:0.
  *

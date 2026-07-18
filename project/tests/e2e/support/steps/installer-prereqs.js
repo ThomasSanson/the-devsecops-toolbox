@@ -1,4 +1,4 @@
-/* global inject Before After */
+/* global inject Before After Given When Then */
 /**
  * Bare-machine cold-start storyboard — the installer proving its OWN
  * prerequisites on a machine that has none: a barren Ubuntu with only sudo
@@ -105,7 +105,7 @@ storyboardStep(Given, 'a fresh machine has only sudo and curl, with the installe
 
 storyboardStep(When, 'the installer runs on the fresh machine with no one to answer its questions', {
   note: 'The installer starts and prints its title. Nothing on the machine has changed yet.',
-  copy: `sh -c "mkdir -p /workspace/my-project && cd /workspace/my-project && yes '' | head -n 40 | bash /tmp/install.sh"`
+  copy: 'sh -c "mkdir -p /workspace/my-project && cd /workspace/my-project && yes \'\' | head -n 40 | bash /tmp/install.sh"'
 }, async () => {
   const cmd = [
     `docker exec -u bootstrap -e DEVSECOPS_TEMPLATE_URL=/tmp/toolbox-template ${shellEscape(bareContainer)}`,
@@ -137,7 +137,7 @@ storyboardStep(When, 'the installer runs on the fresh machine with no one to ans
 // ============================================
 
 storyboardStep(Then, 'the installer installs the tool it was missing and tries again', {
-  note: 'task devsecops:init fails because unzip is missing, so the installer adds unzip with sudo and runs again. The log is checked for the same story.',
+  note: 'task devsecops:init fails because unzip is missing, so the installer adds unzip with sudo and runs again.',
   copy: 'grep -A2 "Attempting to install missing prerequisites" /tmp/install.log'
 }, async () => {
   assertOutputContains('DevSecOps Toolbox Installer')

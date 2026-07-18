@@ -165,7 +165,7 @@ storyboardStep(When, 'the developer commits ordinary tracked, untracked and igno
 })
 
 storyboardStep(Then, 'the scan finds nothing to report', {
-  note: 'scan-branch runs clean and prints "No secrets detected in branch commits." The test also checks it succeeded and printed that line.',
+  note: 'scan-branch runs clean and prints "No secrets detected in branch commits."',
   copy: 'task gitleaks:scan-branch'
 }, async () => {
   const res = runScan()
@@ -193,7 +193,7 @@ storyboardStep(When, 'the developer accidentally commits a private key to the br
 })
 
 storyboardStep(Then, 'the scan blocks it and names the leak', {
-  note: 'scan-branch fails and prints "Gitleaks detected secrets in your branch commits!" The test also checks it failed and printed that line.',
+  note: 'scan-branch fails and prints "Gitleaks detected secrets in your branch commits!"',
   copy: 'task gitleaks:scan-branch'
 }, async () => {
   const res = runScan()
@@ -223,7 +223,7 @@ storyboardStep(When, 'the developer keeps a second secret out of the scan by git
 })
 
 storyboardStep(Then, 'the scan passes silently, the ignored secret stays out of sight', {
-  note: 'scan-branch runs clean again and prints the same "No secrets detected in branch commits." line — the gitignored key was never part of what it scanned. The test also checks it succeeded and printed that line.',
+  note: 'scan-branch runs clean again and prints the same "No secrets detected in branch commits." line — the gitignored key was never part of what it scanned.',
   copy: 'task gitleaks:scan-branch'
 }, async () => {
   const res = runScan()

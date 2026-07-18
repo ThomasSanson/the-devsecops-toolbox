@@ -77,7 +77,7 @@ cd project && ...
     └── tests/
         └── e2e/      # Unified E2E suite (single entry point — see tests/README.md)
             ├── codecept.conf.js
-            ├── features/          # 01-install, 02-first-init, 03-daily-work, 04-evolution
+            ├── features/          # 01-install, 02-daily-work, 03-evolution
             ├── pages/             # GitLab Page Objects (masking for visual determinism)
             ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
             └── screenshots/base/  # Visual baselines (tolerance: 0)

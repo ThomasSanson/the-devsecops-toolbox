@@ -1,29 +1,26 @@
-@e2e @e2e-journey @e2e-journey-agent-mode
-Feature: Developer journey — installing only the AI agent files (agent mode)
-  As a developer adopting the DevSecOps Toolbox
+@e2e @agent-mode-only
+Feature: Installing only the AI agent files (agent mode)
+  As a developer trying out the DevSecOps Toolbox
   I want the installer to first ask whether to install everything, and to show
   a checklist when I say no
-  So that I can pick only what I need — today, the AI agent files
+  So that I can pick only what I need today — the AI agent files
   (.agent/, CLAUDE.md, AGENTS.md) — without the rest of the framework
 
-  # The selection is driven by the premium gum/glow UI layer (the same layer as
-  # glab:auth:ensure). Declining the complete install opens a component list the
-  # developer picks from. With one component on offer it is a single-select list,
-  # so a developer who just presses Enter takes the highlighted component — never
-  # the empty-handed "Nothing selected" trap a bare multi-select would spring on a
-  # lone item the user never toggled.
+  # The choice is driven by the gum/glow menu layer. Say no to the full install
+  # and a component list opens. With one component on offer it is a single-select
+  # list, so pressing Enter takes the highlighted component — never the empty
+  # "Nothing selected" trap a bare multi-select would spring on a lone item the
+  # user never toggled.
   #
-  # ONE sentence = ONE storyboard card = ONE pixel baseline, asserted inside the
-  # step itself (tolerance: 0): a visual regression fails on the exact sentence
-  # whose image drifted. The storyboard SVG — selectable, copyable text around
-  # the untouched frames, including the command that replays this very scenario —
-  # is assembled automatically when the scenario ends. The Given closes the
-  # off-camera stage (lambda user, README project, cloned terminal, staged
-  # installer, pre-installed toolchain) with its visual proof, and each Then
-  # pairs its card with a programmatic assert of the same fact (ls in the
-  # container, REST on the remote branch) so a regression fails loud even
-  # without eyes.
-  @e2e-journey-agent-mode-only
+  # Storyboard contract: ONE sentence = ONE card = ONE pixel baseline, asserted
+  # inside the step (tolerance: 0), so a visual regression fails on the exact
+  # sentence whose image drifted. The storyboard SVG — copyable text around the
+  # untouched frames, including the command that replays this scenario — is
+  # assembled automatically when the scenario ends. The Given closes the
+  # off-camera setup (test user, README project, cloned terminal, staged
+  # installer, pre-installed tools) with its visual proof, and each Then pairs
+  # its card with a check of the same fact (ls in the container, REST on the
+  # remote branch) so a regression fails loud even without eyes.
   Scenario: Saying no to the full framework installs only the AI agent files
     Given a fresh GitLab project with only a README on its main branch
     When the developer opens the cloned project in the terminal

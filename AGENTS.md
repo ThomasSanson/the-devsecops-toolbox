@@ -39,7 +39,7 @@
   `.config/` — it only watches the framework-evolution MR (`.copier-answers.yml`
   → `task copier:update`) plus its own `project/**` deps. So tool upgrades flow
   framework → generated projects via one Copier MR, never per-tool MRs in every
-  downstream repo. Enforced by `features/04-evolution/renovate.feature`.
+  downstream repo. Enforced by `features/03-evolution/renovate.feature`.
 
 ### Key Directory Structure
 

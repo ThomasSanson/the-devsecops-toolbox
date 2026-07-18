@@ -63,14 +63,24 @@ function parseScenarioLines (featureFile, scenarioTitle) {
   if (start === -1) return []
   const out = []
   let group = null
+  let chapter = null
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i]
-    if (line === '' || line.startsWith('#') || line.startsWith('@')) continue
+    if (line.startsWith('#')) {
+      // A `# Chapter: Title` comment structures a LONG scenario: the sentence
+      // that follows it starts a new chapter, and the storyboard draws a
+      // full-width chapter band before its card.
+      const mark = line.match(/^#\s*Chapter\s*:\s*(.+)$/i)
+      if (mark) chapter = mark[1].trim()
+      continue
+    }
+    if (line === '' || line.startsWith('@')) continue
     if (/^(Scenario|Feature|Examples|Background)/.test(line)) break
     const step = line.match(/^(Given|When|Then|And|But)\s+(.*)$/)
     if (!step) continue
     if (step[1] === 'Given' || step[1] === 'When' || step[1] === 'Then') group = step[1].toLowerCase()
-    out.push({ keyword: step[1], group, text: step[2] })
+    out.push({ keyword: step[1], group, text: step[2], chapter })
+    chapter = null
   }
   return out
 }
@@ -348,6 +358,7 @@ function render (outFile, options = {}) {
   const cards = board.panels.flatMap((p, pi) =>
     p.images.map((img, fi) => ({
       n: pi + 1,
+      first: fi === 0,
       title: p.title,
       note: img.note !== undefined ? img.note : (fi === 0 ? p.note : ''),
       copy: img.copy !== undefined ? img.copy : (fi === 0 ? p.copy : ''),
@@ -500,23 +511,42 @@ function render (outFile, options = {}) {
     const scale = Math.min(1, g.cardW / w, MAX_SLOT_H / h)
     return { scale, dispW: w * scale, dispH: h * scale }
   }
-  // Each card is exactly as tall as its own frame + its own text. The top
-  // BADGE_BAND of every card is reserved for the number badge so it never
-  // covers the first line of a frame. Cards are packed masonry-style: each
-  // next card goes to the currently SHORTEST column, so a tall card never
-  // forces a dead gap under its short neighbour (badge numbers keep the
-  // reading order unambiguous).
+  // Cards flow in READING ORDER, two per row, and the two cards of a row are
+  // fully UNIFORM: one shared image slot (as tall as the row's tallest frame —
+  // a smaller frame is centred inside it) and one shared text zone starting at
+  // the same height in both cards. The top BADGE_BAND of every card is
+  // reserved for the number badge so it never covers the first line of a
+  // frame. A `# Chapter:` comment in the .feature closes the current row and
+  // inserts a full-width chapter band — that is how a 20-card story keeps a
+  // beginning, a middle and an end.
   const BADGE_BAND = 28
-  const cardHeightOf = (card) => BADGE_BAND + Math.ceil(slotOf(card).dispH) + Math.ceil(layoutOf(card).h)
-  const colBottoms = new Array(g.cols).fill(0)
-  const slots2d = cards.map((card) => {
-    let col = 0
-    for (let c = 1; c < g.cols; c++) if (colBottoms[c] < colBottoms[col]) col = c
-    const top = colBottoms[col]
-    colBottoms[col] = top + cardHeightOf(card) + g.gap
-    return { col, top }
+  const CHAPTER_BAND = 56
+  const slots2d = []
+  const chapterBands = []
+  let rowTop = 0
+  let row = []
+  const flushRow = () => {
+    if (!row.length) return
+    const rowSlot = Math.max(...row.map(i => BADGE_BAND + Math.ceil(slotOf(cards[i]).dispH)))
+    const rowText = Math.max(...row.map(i => Math.ceil(layoutOf(cards[i]).h)))
+    row.forEach((cardIndex, col) => {
+      slots2d[cardIndex] = { col, top: rowTop, slotH: rowSlot, h: rowSlot + rowText }
+    })
+    rowTop += rowSlot + rowText + g.gap
+    row = []
+  }
+  cards.forEach((card, i) => {
+    const line = lineOf(card.title)
+    if (card.first && line && line.chapter) {
+      flushRow()
+      chapterBands.push({ title: line.chapter, top: rowTop, n: chapterBands.length + 1 })
+      rowTop += CHAPTER_BAND + g.gap
+    }
+    if (row.length === g.cols) flushRow()
+    row.push(i)
   })
-  const gridHeight = cards.length ? Math.max(...colBottoms) - g.gap : 0
+  flushRow()
+  const gridHeight = cards.length ? rowTop - g.gap : 0
 
   // --- Header: feature left (wrapped, never under the right column), the
   // scenario under it, file path top-right, then the rerun bar. ---
@@ -577,12 +607,21 @@ function render (outFile, options = {}) {
 
   let y = drawHeader()
 
+  // --- Chapter bands: full-width titled strips between rows. ---
+  chapterBands.forEach((band) => {
+    const bw = width - 2 * g.pagePad
+    parts.push(`<rect x="${g.pagePad}" y="${y + band.top}" width="${bw}" height="${CHAPTER_BAND}" rx="10" fill="${t.codeBg}"/>`)
+    parts.push(`<rect x="${g.pagePad}" y="${y + band.top}" width="6" height="${CHAPTER_BAND}" fill="${t.accent}"/>`)
+    text(`Chapter ${band.n}`, g.pagePad + 26, y + band.top + 35, { size: 17, fill: t.accent, weight: '700' })
+    text(band.title, g.pagePad + 26 + 9.5 * `Chapter ${band.n}`.length + 18, y + band.top + 35, { size: 17, weight: '600' })
+  })
+
   // --- Cards (every captured frame, the drifted one red-outlined). Rows have
   // their own heights; inside a row every card is top-aligned. ---
   cards.forEach((card, i) => {
     const { scale, dispW, dispH } = slotOf(card)
-    const slotH = BADGE_BAND + Math.ceil(dispH)
-    const cardH = cardHeightOf(card)
+    const slotH = slots2d[i].slotH
+    const cardH = slots2d[i].h
     const cx = g.pagePad + slots2d[i].col * (g.cardW + g.gap)
     const cy = y + slots2d[i].top
 
@@ -592,12 +631,14 @@ function render (outFile, options = {}) {
       (card.failed ? ` stroke="${t.fail}" stroke-width="3"` : '') + '/>'
     )
     parts.push(`<g clip-path="url(#card${i})">`)
-    // The image at NATURAL size (downscaled only when oversized), top-aligned,
-    // centred horizontally on the slot backdrop that hugs it exactly.
+    // The image at NATURAL size (downscaled only when oversized), centred both
+    // ways inside the ROW's shared slot: the two cards of a row keep the same
+    // image zone and the same text zone, whatever each frame's own size.
     parts.push(`<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${slotH}" fill="${t.slot}"/>`)
     const data = fs.readFileSync(card.file).toString('base64')
+    const iy = cy + BADGE_BAND + (slotH - BADGE_BAND - Math.ceil(dispH)) / 2
     parts.push(
-      `<image x="${(cx + (g.cardW - dispW) / 2).toFixed(1)}" y="${cy + BADGE_BAND}"` +
+      `<image x="${(cx + (g.cardW - dispW) / 2).toFixed(1)}" y="${iy.toFixed(1)}"` +
       ` width="${dispW.toFixed(1)}" height="${dispH.toFixed(1)}" href="data:image/png;base64,${data}">` +
       `<title>${esc(path.basename(card.file))}${scale < 1 ? ` (shown at ${(scale * 100).toFixed(0)}%)` : ''}</title></image>`
     )
@@ -730,13 +771,14 @@ module.exports = function storyboardPlugin () {
       file = path.relative(process.cwd(), test.file)
       const fromFeatures = path.relative(path.join(global.codecept_dir, 'features'), test.file)
       if (!fromFeatures.startsWith('..')) {
-        // Per-SCENARIO layout: <feature-dir>/<feature-name>/<scenario-tag>.
-        // A feature can hold several storyboard scenarios; keying by the
-        // scenario's unique tag keeps their baselines and SVGs apart.
+        // FLAT per-scenario layout: <feature-dir>/<scenario-tag> — the film
+        // reads as acts/stories with no per-feature nesting. Scenario tags are
+        // grep filters, unique by construction, so they key the baselines and
+        // the SVG unambiguously.
         const scenarioKey = tag
           ? tag.replace(/^@/, '')
           : stripTags(test.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-        base = path.join(fromFeatures.replace(/\.feature$/, ''), scenarioKey)
+        base = path.join(path.dirname(fromFeatures), scenarioKey)
       }
     }
     begin({

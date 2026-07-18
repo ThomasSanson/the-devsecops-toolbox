@@ -9,7 +9,7 @@
  * This file (kept referenced by codecept.conf.js) replaces the former flat
  * guidance bindings: the whole init-guidance family — missing-auth,
  * disabled-success, non-gitlab-remote — now lives in
- * features/02-first-init/init-guidance.feature as one storyboard.
+ * features/01-install/first-run-help.feature as one storyboard.
  * Setup reuses the fresh-Ubuntu plumbing (freshUbuntu.js); the deterministic
  * filters + <pre> verdict renderer live in helpers/capturedOutput.js, shared
  * with the glab-auth-ensure storyboards.
@@ -81,8 +81,8 @@ storyboardStep(Given, "a developer's new project points at a GitLab remote the C
 
 // Verdict 1 — missing auth: init runs the full setup then stops at the auth
 // gate, naming the sign-in command. The card is the verdict tail.
-storyboardStep(Then, 'running init stops and shows the exact GitLab sign-in command to run', {
-  note: 'init installs its tools, reaches the sign-in check and stops with "GitLab authentication required", pointing at task glab:auth. The test also checks the command failed and printed that line.',
+storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to run', {
+  note: 'init installs its tools, reaches the sign-in check and stops with "GitLab authentication required", pointing at task glab:auth.',
   copy: 'task devsecops:init'
 }, async () => {
   const container = containers[containers.length - 1]
@@ -96,8 +96,8 @@ storyboardStep(Then, 'running init stops and shows the exact GitLab sign-in comm
 
 // Verdict 2 — opt-out: with TASK_GLAB_ENABLED=false every glab task is a no-op,
 // so init completes with no GitLab guidance at all. Fresh project (no remote).
-storyboardStep(Then, 'turning the GitLab integration off lets init finish cleanly', {
-  note: 'TASK_GLAB_ENABLED=false makes every glab step skip, so init reaches "DevSecOps project initialization completed" and never asks about sign-in. The test also checks the command succeeded and never printed "glab auth login".',
+storyboardStep(Then, 'init finishes cleanly once the GitLab integration is turned off', {
+  note: 'TASK_GLAB_ENABLED=false makes every glab step skip, so init reaches "DevSecOps project initialization completed" and never asks about sign-in.',
   copy: 'TASK_GLAB_ENABLED=false task devsecops:init'
 }, async () => {
   const container = freshEnv({ extraPackages: ['git', 'unzip'] })
@@ -122,7 +122,7 @@ storyboardStep(When, "another developer's project points at a GitHub remote inst
 // Verdict 3 — non-GitLab remote: init detects the foreign host and stops with
 // remote-alignment guidance rather than pushing anywhere.
 storyboardStep(Then, 'init refuses the non-GitLab remote and shows how to fix it', {
-  note: 'init finds no GitLab remote and stops with "No GitLab repository remote was detected.", giving the exact git remote set-url line to fix it. The test also checks the command failed and printed those lines.',
+  note: 'init finds no GitLab remote and stops with "No GitLab repository remote was detected.", giving the exact git remote set-url line to fix it.',
   copy: 'task devsecops:init'
 }, async () => {
   const container = containers[containers.length - 1]

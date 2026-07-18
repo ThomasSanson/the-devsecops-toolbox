@@ -1,4 +1,4 @@
-/* global inject Before After */
+/* global inject Before After Given When Then */
 /**
  * Token-healing storyboard — `task devsecops:init` self-heals its GitLab
  * plumbing. ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline,
@@ -8,7 +8,7 @@
  * This file (kept referenced by codecept.conf.js) replaces the former flat
  * token-lifecycle bindings: the whole init/token family — baseline, revoked,
  * resync, renovate-clone, idempotency, tampered, duplicate — now lives in
- * features/03-daily-work/token-healing.feature as two storyboards.
+ * features/02-daily-work/self-healing.feature as one storyboard.
  * Setup reuses the same plumbing as init-baseline.js (workspaceRepo bootstrap +
  * captured init output rendered to a <pre>), and the GitLab pages are the masked
  * page-object captures.
@@ -92,7 +92,13 @@ async function ensureLambdaUser () {
 // Ensure the lambda user, a fresh project, and the first `task devsecops:init`
 // that provisions the token + CI/CD variable + branch protection (run through
 // bootstrapWorkspaceRepo, which also sets up the dev toolchain + glab auth).
-async function provisionInitialisedProject (name) {
+// skipLogin: the two chapters of the @self-healing storyboard run in ONE
+// scenario, so the browser session established by chapter 1 is still signed in
+// when chapter 2 provisions its own project. GitLab redirects an already
+// authenticated session away from /users/sign_in, so a second loginAs would
+// hang waiting for the #user_login form that never appears — chapter 2 reuses
+// the live session instead.
+async function provisionInitialisedProject (name, { skipLogin = false } = {}) {
   projectName = name
   await ensureLambdaUser()
 
@@ -102,7 +108,9 @@ async function provisionInitialisedProject (name) {
     process.env.TASK_GITLAB_ROOT_PASSWORD,
     projectPath(name)
   )
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  if (!skipLogin) {
+    await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  }
   await GitLabProjectPage.createBlankPublicProject(name)
 
   const rootHeaders = await getRootHeaders()
@@ -205,13 +213,13 @@ async function cloneProofFrame (frameName, variableName) {
 }
 
 // ===========================================================================
-// MAIN storyboard — @e2e-token-healing-journey. A revoked token is
+// MAIN storyboard — @self-healing (chapter 1). A revoked token is
 // re-provisioned, the variable re-synced, the healed token clones, and a
 // second run is a no-op.
 // ===========================================================================
 
 storyboardStep(Given, 'a project the framework has already set up with its automation token', {
-  note: 'A fresh project after its first `task devsecops:init`: the access-tokens page shows the automation token init created. Off-camera: the lambda user, the fresh project, the setup that ran init once. Dates that change every run are masked.',
+  note: 'A fresh project after its first `task devsecops:init`: the access-tokens page shows the automation token init created.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   await provisionInitialisedProject('e2e-token-healing')
@@ -220,7 +228,7 @@ storyboardStep(Given, 'a project the framework has already set up with its autom
 })
 
 storyboardStep(When, "the developer revokes the automation token behind the framework's back", {
-  note: 'The token is revoked from outside the framework (as if someone deleted it in GitLab): the access-tokens page no longer lists the automation token. The test also checks through the API that no automation token is active anymore.',
+  note: 'The token is revoked from outside the framework, as if someone deleted it in GitLab: the access-tokens page no longer lists the automation token.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   const token = await singleActiveToken(projectName)
@@ -233,15 +241,15 @@ storyboardStep(When, "the developer revokes the automation token behind the fram
 })
 
 storyboardStep(When, "the developer runs the framework's init again", {
-  note: 'A single `task devsecops:init` re-run: the finishing message shows it noticed the token was missing and created a new one. The test also checks the command succeeded.',
+  note: 'A single `task devsecops:init` re-run: the finishing message shows it noticed the token was missing and created a new one.',
   copy: 'task devsecops:init'
 }, async () => {
   reRunInitCaptured()
   await initVerdictFrame('init-verdict-heal')
 })
 
-storyboardStep(Then, 'init has created a brand-new automation token', {
-  note: 'The access-tokens page shows the automation token again. The test also checks through the API that exactly one is active and it is not the same token as before.',
+storyboardStep(Then, 'GitLab now holds a brand-new automation token', {
+  note: 'The access-tokens page shows the automation token again, a different one from the token that was revoked.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   const token = await singleActiveToken(projectName)
@@ -252,8 +260,8 @@ storyboardStep(Then, 'init has created a brand-new automation token', {
   await pageFrame(gotoAccessTokens, 'tokens-healed')
 })
 
-storyboardStep(Then, 'init has updated the CI/CD variable to match the new token', {
-  note: 'The CI/CD variables page shows the variable again, now pointing at the new token. The test also checks through the API that the variable exists and has a value.',
+storyboardStep(Then, "GitLab's CI/CD variable now matches the new token", {
+  note: 'The CI/CD variables page shows the variable again, now pointing at the new token.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
 }, async () => {
   const variable = await readProjectVariable(projectName, TOKEN, await getRootHeaders())
@@ -264,7 +272,7 @@ storyboardStep(Then, 'init has updated the CI/CD variable to match the new token
 })
 
 storyboardStep(Then, 'the healed token clones the repository over HTTPS', {
-  note: 'The healed token signs in to GitLab and lists the repository over HTTPS (the secret and commit IDs are masked). The test also does a full clone with both the automation token and the Renovate token, to prove they both actually work.',
+  note: 'The healed token signs in to GitLab and lists the repository over HTTPS (the secret and commit IDs are masked).',
   copy: 'git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git'
 }, async () => {
   await cloneProofFrame('clone-healed', TOKEN)
@@ -273,7 +281,7 @@ storyboardStep(Then, 'the healed token clones the repository over HTTPS', {
 })
 
 storyboardStep(When, 'the developer runs init a second time', {
-  note: 'A second `task devsecops:init` on the already-healed project: the finishing message reports the token is already in place, nothing to recreate. The test also checks the command succeeded.',
+  note: 'A second `task devsecops:init` on the already-healed project: the finishing message reports the token is already in place, nothing to recreate.',
   copy: 'task devsecops:init'
 }, async () => {
   reRunInitCaptured()
@@ -281,7 +289,7 @@ storyboardStep(When, 'the developer runs init a second time', {
 })
 
 storyboardStep(Then, 'the second run leaves the healed token untouched', {
-  note: 'The access-tokens page has not changed: still one automation token. The test also checks through the API that it is the exact same token as before — init does not quietly replace it on every run.',
+  note: 'The access-tokens page has not changed: still one automation token. init does not quietly replace the token on every run.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   const token = await singleActiveToken(projectName)
@@ -292,21 +300,21 @@ storyboardStep(Then, 'the second run leaves the healed token untouched', {
 })
 
 // ===========================================================================
-// VARIANT storyboard — @e2e-token-healing-variants. The other two break modes:
+// VARIANT storyboard — @self-healing (chapter 2). The other two break modes:
 // a tampered pipeline variable is repaired, and duplicate tokens are purged.
 // ===========================================================================
 
 storyboardStep(Given, 'a project the framework already set up and is healthy', {
-  note: 'A fresh project after its first `task devsecops:init`, working correctly: one automation token on the access-tokens page. Off-camera: the lambda user, the fresh project, the setup that ran init once.',
+  note: 'A fresh project after its first `task devsecops:init`, working correctly: one automation token on the access-tokens page.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
-  await provisionInitialisedProject('e2e-token-healing-variants')
+  await provisionInitialisedProject('e2e-token-healing-variants', { skipLogin: true })
   await singleActiveToken(projectName)
   await pageFrame(gotoAccessTokens, 'variant-healthy')
 })
 
 storyboardStep(When, "a duplicate automation token is planted behind the framework's back", {
-  note: 'A second token with the same name is created from outside the framework: the access-tokens page now lists two automation tokens where there should be one. The test also checks through the API that two are active.',
+  note: 'A second token with the same name is created from outside the framework: the access-tokens page now lists two automation tokens where there should be one.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   const expiresAt = new Date(Date.now() + 300 * 24 * 3600 * 1000).toISOString().slice(0, 10)
@@ -321,7 +329,7 @@ storyboardStep(When, "a duplicate automation token is planted behind the framewo
 })
 
 storyboardStep(When, 'the CI/CD variable is overwritten with a bad value', {
-  note: 'The CI/CD variable is tampered with (its value replaced by a bad string, hidden on screen by GitLab\'s own masking): the CI/CD variables page still lists it. The test also checks through the API that its value is now the bad one.',
+  note: 'The CI/CD variable is tampered with, its value replaced by a bad string that GitLab hides on screen: the CI/CD variables page still lists it.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
 }, async () => {
   const res = await updateProjectVariable(projectName, TOKEN, { value: TAMPERED_VALUE }, await getRootHeaders())
@@ -334,7 +342,7 @@ storyboardStep(When, 'the CI/CD variable is overwritten with a bad value', {
 })
 
 storyboardStep(When, "the developer runs the framework's init once more", {
-  note: 'A single `task devsecops:init` re-run: the finishing message shows it removed the duplicate token and put the CI/CD variable back. The test also checks the command succeeded.',
+  note: 'A single `task devsecops:init` re-run: the finishing message shows it removed the duplicate token and put the CI/CD variable back.',
   copy: 'task devsecops:init'
 }, async () => {
   reRunInitCaptured()
@@ -342,7 +350,7 @@ storyboardStep(When, "the developer runs the framework's init once more", {
 })
 
 storyboardStep(Then, 'only one automation token survives the purge', {
-  note: 'The access-tokens page is back to a single automation token — the duplicate is gone. The test also checks through the API that exactly one is active.',
+  note: 'The access-tokens page is back to a single automation token — the duplicate is gone.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
 }, async () => {
   await singleActiveToken(projectName)
@@ -350,7 +358,7 @@ storyboardStep(Then, 'only one automation token survives the purge', {
 })
 
 storyboardStep(Then, 'the healed CI/CD variable clones the repository again', {
-  note: 'The variable no longer carries the bad value: it signs in to GitLab again and lists the repository (the secret and commit IDs are masked). The test also checks through the API that the value is no longer the tampered one, and does a full clone with it.',
+  note: 'The variable no longer carries the bad value: it signs in to GitLab again and lists the repository (the secret and commit IDs are masked).',
   copy: 'git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git'
 }, async () => {
   const variable = await readProjectVariable(projectName, TOKEN, await getRootHeaders())

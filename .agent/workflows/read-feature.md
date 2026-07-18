@@ -18,8 +18,7 @@ ls project/tests/e2e/features/
 
 ### 2. List Features in a Domain
 
-Each domain contains one or more `.feature` files. Domains are the four
-journey acts: `01-install`, `02-first-init`, `03-daily-work`, `04-evolution`.
+Each domain contains one or more `.feature` files. Domains are the three journey acts: `01-install`, `02-daily-work`, `03-evolution`.
 
 ```bash
 ls project/tests/e2e/features/{domain}/

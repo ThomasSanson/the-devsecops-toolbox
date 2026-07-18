@@ -1,6 +1,6 @@
 /* global inject Given Then After */
 /**
- * Storyboard for @e2e-renovate-detection (see features/04-evolution/renovate.feature).
+ * Storyboard for @renovate-flow (chapter 2) (see features/03-evolution/renovate.feature).
  *
  * Proves the framework's OWN Renovate wiring detects every bootstrap tool at
  * BOTH endpoints (the canonical .config/<tool> source AND the install.sh pin),
@@ -154,7 +154,7 @@ function trackedDepFiles (json) {
 }
 
 storyboardStep(Then, "Renovate's own extraction log detects every regressed tool", {
-  note: 'The framework\'s real entrypoint runs against the regressed copy; Renovate\'s own "Dependency extraction complete" summary block (verbatim) lists every regex/pip manager hit plus githubDeps — not a hand-built table.',
+  note: 'The framework\'s real entrypoint runs against the regressed copy; Renovate\'s own "Dependency extraction complete" summary lists every regex/pip manager hit plus githubDeps.',
   copy: EXTRACT
 }, async () => {
   const summary = extractionSummary(runExtract(EXTRACT_HUMAN, workdir, gitEnv))

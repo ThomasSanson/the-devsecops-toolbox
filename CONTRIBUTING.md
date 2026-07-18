@@ -232,10 +232,9 @@ The test directory structure groups scenarios by domain:
 project/tests/e2e/
 ├── codecept.conf.js      # CodeceptJS configuration (Playwright + VisualHelper + REST)
 ├── features/             # Gherkin feature files by journey act
-│   ├── 01-install/       # prerequisites, installer, agent-mode
-│   ├── 02-first-init/    # auth check, init guidance, init-framework merge request
-│   ├── 03-daily-work/    # commit hooks, gitleaks, release window, token healing
-│   └── 04-evolution/     # Copier rendering matrix, renovate, toolbox update
+│   ├── 01-install/       # installer, agent-mode, fresh machine, first-run help, merge-request safety
+│   ├── 02-daily-work/    # protected commits, self-healing init, release window
+│   └── 03-evolution/     # Copier rendering matrix, renovate, toolbox update
 ├── pages/                # GitLab Page Objects (masking for visual determinism)
 ├── support/
 │   ├── helpers/          # docker, gitlabApi, copierRender, textRender, …

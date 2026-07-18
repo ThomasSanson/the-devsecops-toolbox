@@ -1,6 +1,6 @@
 /* global inject Before After Given When Then */
 /**
- * glab:auth:ensure storyboard (host detection) — @e2e-auth-host-detection.
+ * glab:auth:ensure storyboard (host detection) — @first-run-help (chapter 2).
  * The check reads the GitLab host straight from the git remote, and normalizes
  * an SSH-style gitlabssh.* remote back to its gitlab.* API host. ONE container
  * with the CLIs installed; the remote is re-pointed between the two verdicts.
@@ -71,7 +71,7 @@ storyboardStep(Given, 'a self-hosted GitLab project with the tools installed but
 
 // Verdict 1 — host read from the remote: CI mode names the detected host.
 storyboardStep(Then, 'the check reads the self-hosted GitLab host straight from the remote', {
-  note: 'CI mode takes the non-interactive path: "GitLab authentication required", naming the exact self-hosted host it read from the remote. The test also checks the command failed and named that host.',
+  note: 'CI mode takes the non-interactive path: "GitLab authentication required", naming the exact self-hosted host it read from the remote.',
   copy: 'CI=true task glab:auth:ensure'
 }, async () => {
   const res = runIn('CI=true task glab:auth:ensure')
@@ -97,7 +97,7 @@ storyboardStep(When, 'the same project instead uses an SSH-style gitlabssh remot
 
 // Verdict 2 — normalized host: gitlabssh.* is rewritten to the gitlab.* API host.
 storyboardStep(Then, 'the check turns it back into the gitlab API host', {
-  note: 'The gitlabssh.* remote is turned back into its gitlab.* API host: the message names gitlab.selfhosted-corp.example and never the ssh name. The test also checks the command failed, named that host, and never printed "gitlabssh".',
+  note: 'The gitlabssh.* remote is turned back into its gitlab.* API host: the message names gitlab.selfhosted-corp.example and never the ssh name.',
   copy: 'CI=true task glab:auth:ensure'
 }, async () => {
   const res = runIn('CI=true task glab:auth:ensure')

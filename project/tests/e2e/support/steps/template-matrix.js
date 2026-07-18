@@ -384,7 +384,7 @@ function validatorVerdictLines (output) {
 }
 
 // ============================================
-// Renovate-contract storyboard — @e2e-renovate-contract. Absorbs the 6
+// Renovate-flow storyboard — @renovate-flow (chapter 1). Absorbs the 6
 // former flat renovate.feature scenarios (validate-default,
 // validate-automerge-off, centralized, downstream-config-ignored,
 // downstream-project-tracked, framework-config-tracked) into ONE journey:
@@ -417,7 +417,7 @@ async function renderColorFrame (frameName, text) {
 }
 
 storyboardStep(Given, "a generated project carries the framework's centralized renovate config", {
-  note: '.config tooling is owned by THIS framework repo — a generated project must NOT receive per-tool Renovate MRs, only the framework-evolution MR. The pixel baseline is the actual rendered config: a re-added rule for one specific tool would show up immediately.',
+  note: '.config tooling is owned by THIS framework repo, so a generated project must NOT receive per-tool Renovate MRs, only the framework-evolution MR. The image is the rendered config, where a rule re-added for one specific tool would stand out.',
   copy: 'cat .config/renovate/config.json'
 }, async () => {
   rendered = renderProject()
@@ -500,8 +500,8 @@ storyboardStep(Then, "the framework repo's own renovate detects that same stale 
 })
 
 // ============================================
-// Render-matrix storyboard — @e2e-render-matrix-defaults +
-// @e2e-render-matrix-answers. Absorbs the 8 former flat
+// Render-matrix storyboard — @render-matrix (chapters 1 + 2).
+// Absorbs the 8 former flat
 // @e2e-template-matrix-* scenarios: the anchor tells the default render as
 // one journey (its full tree, then the manifests every FS assert below used
 // to prove in isolation); the second tells what EACH non-default Copier
@@ -540,7 +540,7 @@ storyboardStep(Given, 'a project is rendered from the working-branch template wi
 })
 
 storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose and project layout', {
-  note: 'The default render: docker-ce and compose are present, podman and ansible are absent, project/ is delivered. Twinned with filesystem checks.',
+  note: 'The default render: docker-ce and compose are present, podman and ansible are absent, project/ is delivered.',
   copy: 'ls -1A; ls -1A .config'
 }, async () => {
   await captureRenderedTree('defaults-tree')
@@ -553,7 +553,7 @@ storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose a
 })
 
 storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compose toolchain', {
-  note: 'The generated root Taskfile includes the docker-ce and project taskfiles, never podman — proven by grepping its own content.',
+  note: 'The generated root Taskfile includes the docker-ce and project taskfiles, never podman.',
   copy: 'grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml'
 }, async () => {
   const content = readRendered('Taskfile.yml')
@@ -704,7 +704,7 @@ storyboardStep(Then, 'choosing French Gherkin changes the language rule for gene
 })
 
 // ============================================
-// Toolbox-update options storyboard — @e2e-toolbox-update-options.
+// Toolbox-update options storyboard — @toolbox-update (chapter 2).
 // The render-side twin of the live journey: re-running `copier update` with a
 // FLIPPED answer (Ansible on) delivers the release's brand-new tooling, while a
 // file the developer hand-edited (a copier skip-if-exists "keep my file") is left
@@ -749,7 +749,7 @@ storyboardStep(Given, "a project generated from an earlier toolbox release carri
 })
 
 storyboardStep(Given, 'the project has no Ansible configuration yet', {
-  note: 'With the default answers the generated project has no Ansible tooling: grepping .config for ansible finds nothing. Twinned with a filesystem check.',
+  note: 'With the default answers the generated project has no Ansible tooling: grepping .config for ansible finds nothing.',
   copy: 'ls -1A .config | grep ansible'
 }, async () => {
   await renderPreFrame(I, 'options-no-ansible', `$ ls -1A .config | grep ansible\n${ansibleEntries()}`)
@@ -759,7 +759,7 @@ storyboardStep(Given, 'the project has no Ansible configuration yet', {
 })
 
 storyboardStep(When, 'the developer re-runs the toolbox update and turns the Ansible option on', {
-  note: 'The same `copier update`, this time answering ansible_enabled=true: the same grep now finds the ansible and ansible-lint entries the flip delivered. Twinned with a filesystem check.',
+  note: 'The same `copier update`, this time answering ansible_enabled=true: the same grep now finds the ansible and ansible-lint entries the flip delivered.',
   copy: "task copier:update TASK_COPIER_CLI_OPTS='--data ansible_enabled=true'"
 }, async () => {
   updateProject(rendered, '1.0.1', { ansible_enabled: 'true' })
@@ -770,7 +770,7 @@ storyboardStep(When, 'the developer re-runs the toolbox update and turns the Ans
 })
 
 storyboardStep(Then, 'the new Ansible tooling is delivered by the update', {
-  note: 'The flipped answer delivers the release\'s Ansible tooling — .config/ansible and .config/ansible-lint. Twinned with filesystem checks plus the root Taskfile wiring and the template-change marker the release also carried.',
+  note: 'The flipped answer delivers the release\'s Ansible tooling — .config/ansible and .config/ansible-lint.',
   copy: 'ls -1A .config/ansible .config/ansible-lint'
 }, async () => {
   const listing = execSync('ls -1A .config/ansible .config/ansible-lint', { cwd: rendered, encoding: 'utf8' }).trimEnd()
@@ -792,7 +792,7 @@ storyboardStep(Then, 'the new Ansible tooling is delivered by the update', {
 })
 
 storyboardStep(Then, "the developer's own edit survived the update untouched", {
-  note: `${CUSTOM_TASKFILE} still carries the developer's marker after the update — the skip-if-exists file was never overwritten. Twinned with a content check.`,
+  note: `${CUSTOM_TASKFILE} still carries the developer's marker after the update — the skip-if-exists file was never overwritten.`,
   copy: `tail -4 ${CUSTOM_TASKFILE}`
 }, async () => {
   await renderPreFrame(I, 'options-edit-survived', `$ tail -4 ${CUSTOM_TASKFILE}\n${tailLines(readRendered(CUSTOM_TASKFILE), 4)}`)

@@ -10,7 +10,7 @@ function buildGitLabTaskEnv (glabToken) {
     // These scenarios assert the GitLab CONFIG effects of init (tokens, CI/CD
     // vars, branch protection), not the MR delivery. Run init in direct mode so
     // it does not open the init-framework-devsecops MR (that flow is covered by
-    // the dedicated @e2e-init-framework-mr feature).
+    // the dedicated @merge-request-safety feature).
     TASK_DEVSECOPS_INIT_DIRECT: 'true'
   }
 }

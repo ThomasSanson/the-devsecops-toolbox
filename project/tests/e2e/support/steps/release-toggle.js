@@ -203,7 +203,7 @@ storyboardStep(Given, 'main starts locked behind push protection', {
 // ============================================
 
 storyboardStep(When, 'a release run opens the push window for maintainers', {
-  note: 'task release opens push access for Maintainers just before it runs the version-bump step (Commitizen). The test also checks the release log for this exact line.',
+  note: 'task release opens push access for Maintainers just before it runs the version-bump step (Commitizen).',
   copy: 'task release'
 }, async () => {
   successRun = await runRelease(successProject.name, successProject.repoDir, successProject.glabToken, { expectFailure: false })()
@@ -217,7 +217,7 @@ storyboardStep(When, 'a release run opens the push window for maintainers', {
 })
 
 storyboardStep(When, 'the release pushes the version bump to main', {
-  note: 'The version-bump step updates the version, and task release pushes it straight to main. The test also checks through the API that GitLab\'s main is now at this exact commit.',
+  note: 'The version-bump step updates the version, and task release pushes it straight to main.',
   copy: "git -C <repo> log -1 --format='%s'"
 }, async () => {
   const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
@@ -232,7 +232,7 @@ storyboardStep(When, 'the release pushes the version bump to main', {
 // ============================================
 
 storyboardStep(Then, 'the window closes again and push protection is restored', {
-  note: 'task release turns push access back off when it exits, even after a successful push. The test also checks through the API that the protection is restored.',
+  note: 'task release turns push access back off when it exits, even after a successful push.',
   copy: 'task release'
 }, async () => {
   assertContains(successRun.raw, RESTORE_MARKER)
@@ -243,7 +243,7 @@ storyboardStep(Then, 'the window closes again and push protection is restored', 
 })
 
 storyboardStep(Then, 'the safety net still closes the window when the push fails', {
-  note: 'A second project, pointed at a host that doesn\'t exist: task release fails, but it still turns push access back off on the way out. The test also checks through the API that the protection is restored.',
+  note: 'A second project, pointed at a host that doesn\'t exist: task release fails, but it still turns push access back off on the way out.',
   copy: 'task release'
 }, async () => {
   const failureProjectName = 'e2e-release-toggle-failure'

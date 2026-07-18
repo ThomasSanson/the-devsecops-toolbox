@@ -20,73 +20,34 @@ description: Test integrity — never cheat; a visual-regression baseline must b
 
 ## Visual Regression
 
-Every test that proves something observable MUST include visual regression
-(`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.
+Every test that proves something observable MUST include visual regression (`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.
 
 ### A baseline must be REAL output — never composed
 
-- ✅ Render the genuine artifact: run the REAL entrypoint (`task <thing>`, never the
-  underlying tool by hand) and capture its output **verbatim**; for files/diffs show the
-  real `cat` / `git diff`.
-- ❌ NEVER hand-compose a baseline — no prose, no reformatted summary, no cherry-picking
-  the "important" lines. If a user running the command would not see exactly that text,
-  it is wrong.
-- ✅ Mask ONLY truly volatile fields (durations, timestamps, per-run paths, the toolbox
-  version). Prove determinism by running the assertion strict **twice** — a fresh volatile
-  value each run, so the mask must absorb it.
+- ✅ Render the genuine artifact: run the REAL entrypoint (`task <thing>`, never the underlying tool by hand) and capture its output **verbatim**; for files/diffs show the real `cat` / `git diff`.
+- ❌ NEVER hand-compose a baseline — no prose, no reformatted summary, no cherry-picking the "important" lines. If a user running the command would not see exactly that text, it is wrong.
+- ✅ Mask ONLY truly volatile fields (durations, timestamps, per-run paths, the toolbox version). Prove determinism by running the assertion strict **twice** — a fresh volatile value each run, so the mask must absorb it.
 - ✅ Keep the real terminal colours (force them through the pipe; do not strip ANSI to grey).
 
 ### Prove the SETUP, not just the result
 
-An image is worth a thousand words: show the precondition you established (the file you
-created, the `git diff` of what you changed) AND THEN the result. A test that only captures
-the final state cannot prove its own setup.
+An image is worth a thousand words: show the precondition you established (the file you created, the `git diff` of what you changed) AND THEN the result. A test that only captures the final state cannot prove its own setup.
 
-**Count the baselines: a result-only scenario is a half-job.** Every scenario that
-screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`,
-`$ git diff`) so a human reading the images understands the journey without guessing. Rule of
-thumb: a scenario with exactly one `assertTextVisualMatch` almost always forgot its setup.
+**Count the baselines: a result-only scenario is a half-job.** Every scenario that screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`, `$ git diff`) so a human reading the images understands the journey without guessing. Rule of thumb: a scenario with exactly one `assertTextVisualMatch` almost always forgot its setup.
 
 ### A discriminating proof needs BOTH halves
 
-To prove "X is handled but Y is not", show BOTH — a positive case and a negative case (a
-symmetric pair). A lone "nothing happened" baseline is ambiguous (broken vs intentionally
-ignored). Keep the meaningful check programmatic (throw on violation); the visual is the
-proof, not the test.
+To prove "X is handled but Y is not", show BOTH — a positive case and a negative case (a symmetric pair). A lone "nothing happened" baseline is ambiguous (broken vs intentionally ignored). Keep the meaningful check programmatic (throw on violation); the visual is the proof, not the test.
 
 ### Whole-journey scenarios — the storyboard is the reference pattern
 
-Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow the
-storyboard pattern meticulously: ONE SVG assembled from real per-moment PNG frames
-tells the whole journey — a reviewer grasps it at a glance, and every title, note
-and reproduce command around the frames is selectable, copyable text (including the
-header's re-run command for exactly this scenario). The whole API ships with the
-framework in `.config/codeceptjs/storyboard.js` (plugin + step helpers + SVG
-renderer) — use it as-is, never reinvent it.
+Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow the storyboard pattern meticulously: ONE SVG assembled from real per-moment PNG frames tells the whole journey — a reviewer grasps it at a glance, and every title, note and reproduce command around the frames is selectable, copyable text (including the header's re-run command for exactly this scenario). The whole API ships with the framework in `.config/codeceptjs/storyboard.js` (plugin + step helpers + SVG renderer) — use it as-is, never reinvent it.
 
-- ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence of the scenario —
-  the Given included — is registered through `storyboardStep(Given|When|Then,
-  pattern, opts, fn)` from `.config/codeceptjs/storyboard.js`, whose pattern string
-  is BOTH the scenario line and the card's title, and closes on a real capture
-  asserted INSIDE the step via `addStoryboardFrame(I, png)` (tolerance: 0) — a
-  visual regression fails on the exact sentence whose image drifted, and the feature
-  and the storyboard cannot drift apart, by construction. A sentence without a
-  visual proof does not belong in a storyboard scenario.
-- ✅ Tell the whole journey: BEFORE (the state on the remote system) → the acting
-  (the live session, its ephemeral screens captured at their instant — interactive
-  menus never coexist with the result, so snapshot each moment as it happens with
-  `capturePageFrame(I, name)`) → AFTER (the remote proof).
-- ✅ Register the `storyboard` plugin in codecept.conf.js (see
-  codecept.conf.sample.js): it fills the SVG header from the Gherkin metadata and
-  renders the board when the test ends — `_output/<feature-dir>/<scenario>.svg` on
-  every outcome, and the committed copy under `storyboards/` (mirroring the
-  feature tree) only on a PASSED `TASK_E2E_UPDATE_BASELINES=1` run, rebuilt from
-  the reviewed baselines.
-- ✅ Twin every visual fact with a programmatic assert of the same fact (working tree,
-  REST on the remote branch) so a regression fails loud even without eyes.
-- ❌ NEVER scatter journey baselines outside their storyboard (a frame without its
-  card tells no story), and NEVER compose or retouch card content — every pixel
-  inside a card is a real capture taken at its instant.
+- ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence of the scenario — the Given included — is registered through `storyboardStep(Given|When|Then, pattern, opts, fn)` from `.config/codeceptjs/storyboard.js`, whose pattern string is BOTH the scenario line and the card's title, and closes on a real capture asserted INSIDE the step via `addStoryboardFrame(I, png)` (tolerance: 0) — a visual regression fails on the exact sentence whose image drifted, and the feature and the storyboard cannot drift apart, by construction. A sentence without a visual proof does not belong in a storyboard scenario.
+- ✅ Tell the whole journey: BEFORE (the state on the remote system) → the acting (the live session, its ephemeral screens captured at their instant — interactive menus never coexist with the result, so snapshot each moment as it happens with `capturePageFrame(I, name)`) → AFTER (the remote proof). Prefer few BIG stories over many small ones, and split a long one into chapters with a `# Chapter: Title` line inside the Scenario body — the engine draws a full-width band before the next card.
+- ✅ Register the `storyboard` plugin in codecept.conf.js (see codecept.conf.sample.js): it fills the SVG header from the Gherkin metadata and renders the board when the test ends — cards in reading order, two per row (the two cards of a row fully uniform: a shared image slot and a shared text zone), a band before each chapter. The layout is flat: `_output/<act>/<story-tag>.svg` on every outcome, and the committed copy at `storyboards/<act>/<story-tag>.svg` only on a PASSED `TASK_E2E_UPDATE_BASELINES=1` run, rebuilt from the reviewed baselines.
+- ✅ Twin every visual fact with a programmatic assert of the same fact (working tree, REST on the remote branch) so a regression fails loud even without eyes.
+- ❌ NEVER scatter journey baselines outside their storyboard (a frame without its card tells no story), and NEVER compose or retouch card content — every pixel inside a card is a real capture taken at its instant.
 
 ### Mechanics
 
@@ -100,8 +61,6 @@ renderer) — use it as-is, never reinvent it.
 ### When a visual test fails — the only honest fixes
 
 - Content differs → fix the **code** so the output is correct.
-- Rendering differs (font / DPI / sub-pixel) → fix the deterministic launch args; do NOT
-  raise tolerance, lower threshold, or skip the assertion.
-- Legitimate evolution (e.g. a version bump) → regenerate the baseline in the SAME
-  environment, and only after you understand exactly why it changed.
+- Rendering differs (font / DPI / sub-pixel) → fix the deterministic launch args; do NOT raise tolerance, lower threshold, or skip the assertion.
+- Legitimate evolution (e.g. a version bump) → regenerate the baseline in the SAME environment, and only after you understand exactly why it changed.
 {% endraw %}
