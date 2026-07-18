@@ -123,12 +123,16 @@ The Toolbox implements a complete DevSecOps lifecycle through distinct stages:
 
 ### Prerequisites
 
-Before using the DevSecOps Toolbox, ensure you have the following installed:
+The recommended one-liner installer needs only:
 
 - Git
+- `curl` (to fetch the installer)
+- Docker or Docker Desktop 4.x or newer (for container support)
+
+It installs `task` and `uv` for you. The tools below are only required for the manual "Standard installation" path further down:
+
 - [pipx](https://pipx.pypa.io/) – to install Python CLI applications (e.g., Copier and uv)
 - Taskfile as go-task ([installation guide](https://taskfile.dev/installation/))
-- Docker or Docker Desktop 4.x or newer (for container support)
 - Visual Studio Code (recommended)
 
 
@@ -142,6 +146,12 @@ curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/
 
 That's it. The installer sets up `task`, `uv`, scaffolds your project with Copier, and runs the initial configuration.
 
+> **Trying it locally, without GitLab?** The initial configuration targets GitLab (auth, protected branches, project access tokens, the init merge request), so on a bare local repo it will otherwise drop into an interactive `glab` login. Disable that step to scaffold and explore the project offline:
+>
+> ```bash
+> curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh | TASK_GLAB_ENABLED=false bash
+> ```
+>
 > **🔒 Security:** Review the script before executing it:
 >
 > ```bash
@@ -201,12 +211,14 @@ Replace `/path/to/your/new/project` with your desired project location.
 Use `.` to create in the current directory
 
 
-4. Commit the toolbox
+5. Commit the toolbox and start the pipeline:
 
 ```bash
-task deploy
 git add .
-git commit -m"feat(devsecops): init"
+git commit -m "feat(devsecops): init"
+task          # Show available tasks
+task code     # Run linters
+task test     # Run tests
 ```
 
 ## Usage
@@ -236,17 +248,17 @@ Key environment variables are automatically loaded by Task. See [`.env.dist`](.e
 
 2. **Run Code Quality and Security Checks**:
   ```bash
-  task devsecops:code
+  task code
   ```
 
-3. **Validate Code Quality**:
+3. **Run the Test Suite**:
   ```bash
-  task devsecops:code
+  task test
   ```
 
 4. **Create Release**:
   ```bash
-  task devsecops:release
+  task release
   ```
 
 ### Project Customization
@@ -424,20 +436,19 @@ The toolbox implements multiple security measures:
 
 ### MegaLinter CSpell Configuration Fix
 
-When encountering MegaLinter CSpell errors, you can quickly fix configuration issues by:
+When CSpell flags a word that is legitimate for your project, add it to your project dictionary — never overwrite the framework file:
 
-1. Copy the generated configuration file:
-  ```bash
-  cp megalinter-reports/.config/cspell/config.json .config/cspell/config.json
+1. Add the word(s) to the `words` array in `.config/cspell/config.project.json` (your project's own list, kept across toolbox updates):
+  ```json
+  {
+    "version": "0.2",
+    "words": ["widget", "payload"]
+  }
   ```
 
-2. Review the differences between the files to understand what changed
+2. Re-run `task code` to confirm CSpell passes.
 
-3. Validate the configuration works correctly
-
-4. Commit the updated configuration
-
-This approach ensures your CSpell configuration stays in sync with MegaLinter's requirements and resolves most spelling check issues.
+Do not edit or overwrite `.config/cspell/config.json`: it is a framework-managed wiring file (marked "DO NOT EDIT by hand") and any change is lost on the next `task copier:update`.
 
 ## Contributing
 
