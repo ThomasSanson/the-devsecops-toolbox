@@ -23,6 +23,23 @@ const RENDER_TIMEOUT_MS = 300000
 const UPDATE_MARKER_FILE = '.config/jq/Taskfile.yml'
 const UPDATE_MARKER = '# e2e-update-marker'
 
+// The generated project's .gitlab-ci.yml pins the toolbox base image to a
+// toolbox version. It is copied verbatim (no .jinja, not skip-if-exists), so a
+// copier update overwrites it — the exact behaviour the toolbox-update story
+// proves. The cspell-migration fixture stamps each tag's copy with the matching
+// toolbox version so BEFORE/AFTER cards show the image moving 22.0.0 -> 22.7.1.
+const CI_FILE = '.gitlab-ci.yml'
+const CI_IMAGE_RE = /(image: registry\.gitlab\.com\/digital-commons\/devsecops\/the-devsecops-toolbox:)[0-9][^\n]*/
+
+function pinCiImage (tpl, version) {
+  const file = `${tpl}/${CI_FILE}`
+  const content = fs.readFileSync(file, 'utf8')
+  if (!CI_IMAGE_RE.test(content)) {
+    throw new Error(`Fixture setup: no toolbox image line to pin in ${file}`)
+  }
+  fs.writeFileSync(file, content.replace(CI_IMAGE_RE, `$1${version}`))
+}
+
 function run (cmd, cwd) {
   return execSync(cmd, { encoding: 'utf8', stdio: 'pipe', timeout: RENDER_TIMEOUT_MS, ...(cwd ? { cwd } : {}) })
 }
@@ -97,6 +114,8 @@ function prepareCspellMigrationTemplate () {
   fs.writeFileSync(`${tpl}/copier.yml`, realCopier
     .replace(/\n# cspell vocabulary migration[\s\S]*?migrate-words\.py dedup"\n/, '\n')
     .replace('  - .config/cspell/config.project.json\n', ''))
+  // 22.0.0 pins its CI base image to the matching old toolbox version.
+  pinCiImage(tpl, '22.0.0')
   run('git init --quiet --initial-branch=main', tpl)
   run('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
   run('git add -A && git commit --quiet --no-verify -m "chore: release 22.0.0 (old single-file cspell)"', tpl)
@@ -107,6 +126,8 @@ function prepareCspellMigrationTemplate () {
   fs.writeFileSync(`${dir}/config.project.json`, realOverride)
   fs.writeFileSync(`${dir}/migrate-words.py`, realMig)
   fs.writeFileSync(`${tpl}/copier.yml`, realCopier)
+  // 22.7.1 moves the CI base image forward to the new toolbox version.
+  pinCiImage(tpl, '22.7.1')
   run('git add -A && git commit --quiet --no-verify -m "chore: release 22.7.1 (split cspell + migration)"', tpl)
   run('git tag 22.7.1', tpl)
   return tpl

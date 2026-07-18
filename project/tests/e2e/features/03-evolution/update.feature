@@ -26,6 +26,9 @@ Feature: A toolbox release arrives — copier update preserves my work
     # Note: A project made with an older toolbox (release 22.0.0), from before the spelling dictionary was split. The line on screen shows which toolbox version it came from.
     # Copy: grep _commit .config/devsecops/.copier-answers.yml
     Given a developer's project was generated from an earlier toolbox release
+    # Note: The project's CI pipeline runs inside a toolbox image, pinned to that same old release. The line on screen is the image every pipeline run uses.
+    # Copy: grep '^image:' .gitlab-ci.yml
+    And its CI pipeline runs on that older toolbox image
     # Note: At this old release the whole spelling dictionary is one file, config.json — the only place a project can add its own words.
     # Copy: ls -1 .config/cspell/
     And its spelling dictionary is a single framework-owned file
@@ -38,6 +41,9 @@ Feature: A toolbox release arrives — copier update preserves my work
     # Note: The project is now on release 22.7.1 — the version line has moved forward.
     # Copy: grep _commit .config/devsecops/.copier-answers.yml
     Then the project now tracks the new toolbox release
+    # Note: After the update the pipeline image points to the new release — every pipeline run now uses the new toolbox.
+    # Copy: grep '^image:' .gitlab-ci.yml
+    And its CI pipeline now runs on the new toolbox image
     # Note: The one dictionary is now three files: config.json, config.base.json (framework words) and config.project.json (project words).
     # Copy: ls -1 .config/cspell/
     And its dictionary has been split into three files

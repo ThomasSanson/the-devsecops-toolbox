@@ -232,6 +232,14 @@ storyboardStep(Given, "a developer's project was generated from an earlier toolb
   twinContains('grep _commit .config/devsecops/.copier-answers.yml', OLD_TOOLBOX_VERSION)
 })
 
+storyboardStep(Given, 'its CI pipeline runs on that older toolbox image', async () => {
+  await updateCard(
+    `grep '^image:' .gitlab-ci.yml   # toolbox image BEFORE (${OLD_TOOLBOX_VERSION})`,
+    'toolbox image BEFORE', 'before-ci-image'
+  )
+  twinContains('grep ^image: .gitlab-ci.yml', OLD_TOOLBOX_VERSION)
+})
+
 storyboardStep(Given, 'its spelling dictionary is a single framework-owned file', async () => {
   await updateCard('ls -1 .config/cspell/   # one framework-owned file', 'one framework-owned file', 'before-one-file')
   twinExcludes('ls -1 .config/cspell/', 'config.project.json')
@@ -258,6 +266,15 @@ storyboardStep(Then, 'the project now tracks the new toolbox release', async () 
     'toolbox version AFTER', 'after-version'
   )
   twinContains('grep _commit .config/devsecops/.copier-answers.yml', NEW_TOOLBOX_VERSION)
+})
+
+storyboardStep(Then, 'its CI pipeline now runs on the new toolbox image', async () => {
+  await updateCard(
+    `grep '^image:' .gitlab-ci.yml   # toolbox image AFTER (${NEW_TOOLBOX_VERSION})`,
+    'toolbox image AFTER', 'after-ci-image'
+  )
+  twinContains('grep ^image: .gitlab-ci.yml', NEW_TOOLBOX_VERSION)
+  twinExcludes('grep ^image: .gitlab-ci.yml', OLD_TOOLBOX_VERSION)
 })
 
 storyboardStep(Then, 'its dictionary has been split into three files', async () => {
