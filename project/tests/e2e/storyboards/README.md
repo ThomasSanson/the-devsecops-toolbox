@@ -60,7 +60,9 @@ Read the acts in order and you follow one developer from an empty project all th
 
 ## When a run fails
 
-The failing run writes its partial board to `_output/<act>/<story>.svg` (downloadable from the CI artifacts). Right where the journey broke — in place of the drifted step, after the cards that passed — a full-width band shows the frame three ways side by side: **Expected (baseline) · Diff (the changed pixels highlighted) · Actual (this run)**, each over its full, copyable file path. You see at a glance what should have rendered, exactly which pixels moved, what the run produced, and which files to open; the sentences the journey never reached are listed below it. One download, zero ambiguity.
+The failing run writes its partial board to `_output/<act>/<story>.svg` (downloadable from the CI artifacts).
+Right where the journey broke — in place of the drifted step, after the cards that passed — a full-width band shows the frame three ways side by side: **Expected (baseline) · Diff (the changed pixels highlighted) · Actual (this run)**, each over its full, copyable file path.
+You see at a glance what should have rendered, exactly which pixels moved, what the run produced, and which files to open; the sentences the journey never reached are listed below it. One download, zero ambiguity.
 
 ## Regenerating
 
