@@ -3,7 +3,7 @@
 One SVG per e2e journey scenario: the whole journey as numbered cards — one
 Gherkin sentence = one card = one pixel baseline.
 
-- [gitlab/01-developer-journey/agent-mode.svg](gitlab/01-developer-journey/agent-mode.svg)
+- [gitlab/01-developer-journey/agent-mode/e2e-journey-agent-mode-only.svg](gitlab/01-developer-journey/agent-mode/e2e-journey-agent-mode-only.svg)
   — Declining the full framework installs only the AI agent guardrails
 
 ## How to read one

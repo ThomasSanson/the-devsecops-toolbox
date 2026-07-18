@@ -1,16 +1,18 @@
 /* global inject Before After Given When Then */
 /**
- * E2E scenarios for `task devsecops:init` guidance / opt-out paths.
+ * init-guidance storyboard — `task devsecops:init` tells you exactly what to
+ * fix when your GitLab wiring is not ready. ONE Gherkin sentence = ONE
+ * storyboard card = ONE pixel baseline, asserted inside the step (tolerance: 0);
+ * every verdict card twins its <pre> frame with a programmatic assert of the
+ * same fact (captured stdout / exit code).
  *
- *   - missing-auth: git remote points to a GitLab host the user never
- *     authenticated against → init must fail with actionable guidance.
- *   - disabled-success: TASK_GLAB_ENABLED=false → init must complete
- *     cleanly without producing GitLab-specific output.
- *
- * Both scenarios run a `task devsecops:init` invocation in a fresh
- * Ubuntu container (no ttyd round-trip) and assert against the captured
- * stdout/stderr — rendered as a <pre> block in the browser for visual
- * regression at tolerance:0.
+ * This file (kept referenced by codecept.conf.js) replaces the former flat
+ * guidance bindings: the whole init-guidance family — missing-auth,
+ * disabled-success, non-gitlab-remote — now lives in
+ * features/02-first-init/init-guidance.feature as one storyboard.
+ * Setup reuses the fresh-Ubuntu plumbing (freshUbuntu.js); the deterministic
+ * filters + <pre> verdict renderer live in helpers/capturedOutput.js, shared
+ * with the glab-auth-ensure storyboards.
  */
 
 const { I } = inject()
@@ -21,213 +23,112 @@ const {
   runInFreshUbuntu,
   teardownFreshUbuntu
 } = require('../helpers/freshUbuntu')
+const {
+  storyboardStep
+} = require('../../../../../.config/codeceptjs/storyboard')
+const {
+  renderPreFrame,
+  renderVerdictFrame,
+  assertContains,
+  assertNotContains,
+  assertNonZeroExit,
+  assertZeroExit
+} = require('../helpers/capturedOutput')
 
 const RUN_TIMEOUT = 600000
-// Keep the visual tail short — these scenarios produce a lot of apt/Go/glab
-// install noise upstream of the deterministic ending. 10 lines capture the
-// last meaningful phase markers (Lefthook install → setup complete → init
-// completed OR error block) without remounting into upstream noise.
-const VISUAL_TAIL_LINES = 10
+const GITLAB_REMOTE = 'https://gitlab.com/example/bootstrap-guidance.git'
+const GITHUB_REMOTE = 'https://github.com/acme/widgets.git'
 
-// Scenario-local state — shared via `global` so sibling step files
-// (e.g. glab-auth-ensure.js) can reuse the When/Then steps below
-// without re-implementing setup/teardown. Each scenario's Before
-// resets these to a clean slate; After tears down the container.
-
-function stripAnsi (str) {
-  return str
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\][^\x07]*\x07/g, '')
-}
-
-// Lines whose content varies between runs (token expiry dates, IDs,
-// task-runner header lines) must be filtered before rendering so the
-// pixel-perfect baseline stays reproducible.
-const OUTPUT_NOISE_PATTERNS = [
-  /^\{"id":\d+/,
-  /^🦊 Applying merge request settings/,
-  /^task: \[/,
-  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/,
-  // Go module downloads during `task lefthook:install` are emitted in parallel
-  // → non-deterministic ordering. The "🎉 Lefthook:install phase completed"
-  // line that follows is deterministic and sufficient as proof.
-  /^go: /,
-  // Lefthook iterates a Go map when emitting the synced hook list, so the
-  // order ("(commit-msg, pre-commit)" vs "(pre-commit, commit-msg)") is
-  // non-deterministic. The next "🎉 Lefthook:install phase completed
-  // successfully" line is deterministic and sufficient proof.
-  /^sync hooks: /,
-  // apt-get setup output during `task dev:setup-environment` dominates the
-  // pre-init tail with non-deterministic package install lines. The
-  // deterministic phase markers (✅ Lefthook installed, 🎉 Development
-  // environment setup completed, ✅ DevSecOps project initialization
-  // completed) are sufficient proof.
-  /^Setting up /,
-  /^Unpacking /,
-  /^Preparing to unpack /,
-  /^Selecting previously /,
-  /^Processing triggers /,
-  /^\(Reading database /,
-  // Go / glab / gum / glow installation lines (versions move at each run).
-  /^go installed successfully:/,
-  /^Detected GOROOT:/,
-  /^Creating symlink:/,
-  /^Adding Go environment/,
-  /^GOROOT=/,
-  /^GOPATH=/,
-  /^Installing (glab|gum|glow) v/,
-  /^Attempting installation/,
-  /^(glab|gum|glow) installed to /,
-  /^✅ glab installed successfully/,
-  /^Installation complete!$/,
-  /^glab \d+\.\d+\.\d+ /,
-  /^update-alternatives:/
-]
-
-// Anchor the tail on a known marker so trailing setup noise cannot shift the
-// visual window between runs. Falls back to the last `tail` lines if the
-// marker is absent.
-function tailFromMarker (lines, markers, tail) {
-  const markerIdx = lines.reduce((last, line, idx) => {
-    return markers.some(m => line.includes(m)) ? idx : last
-  }, -1)
-  if (markerIdx < 0) return lines.slice(Math.max(0, lines.length - tail))
-  const end = markerIdx + 1
-  return lines.slice(Math.max(0, end - tail), end)
-}
-
-const TAIL_MARKERS = [
-  '✅ DevSecOps project initialization completed', // disabled-success
-  'then rerun  task devsecops:init', //              missing-auth + glab-auth-ensure (both scenarios)
-  'install     glab', //                             glab-auth-ensure-missing-bin gum box footer
-  // Last remediation line of the gum/glow fast-fail and align-your-remote
-  // guidance blocks. Existing scenarios are unaffected: their last matching
-  // line ('then rerun  task devsecops:init') also contains this substring.
-  '  task devsecops:init'
-]
-
-function filterOutput (raw) {
-  return stripAnsi(raw)
-    .replace(/\r/g, '')
-    .split('\n')
-    .filter(line => {
-      const trimmed = line.trim()
-      if (trimmed === '') return true
-      return !OUTPUT_NOISE_PATTERNS.some(re => re.test(trimmed))
-    })
-}
+// One fresh Ubuntu container per situation, all torn down after the scenario.
+let containers = []
 
 Before(() => {
-  global.freshUbuntuContainer = null
-  global.lastCapturedOutput = ''
-  global.lastCapturedExitCode = 0
+  containers = []
 })
 
 After(() => {
-  teardownFreshUbuntu(global.freshUbuntuContainer)
-  global.freshUbuntuContainer = null
+  for (const name of containers) teardownFreshUbuntu(name)
+  containers = []
 })
 
-// ============================================
-// GIVEN — environment setup
-// ============================================
+function freshEnv (opts) {
+  const name = setupFreshUbuntuEnvironment(opts)
+  containers.push(name)
+  return name
+}
 
-Given('a fresh Ubuntu environment with the toolbox is set up', () => {
-  global.freshUbuntuContainer = setupFreshUbuntuEnvironment()
-})
-
-Given('a fresh Ubuntu environment with the toolbox is set up with git remote {string}', (gitRemote) => {
-  global.freshUbuntuContainer = setupFreshUbuntuEnvironment({
-    extraPackages: ['git', 'unzip'],
-    gitRemote
-  })
-})
-
-Given('a fresh Ubuntu environment with the toolbox is set up with packages {string}', (packages) => {
-  global.freshUbuntuContainer = setupFreshUbuntuEnvironment({
-    extraPackages: packages.split(/\s+/).filter(Boolean)
-  })
-})
-
-// ============================================
-// WHEN — run the command and capture output
-// ============================================
-
-When('I run the command {string} in the fresh Ubuntu environment', (command) => {
-  if (!global.freshUbuntuContainer) {
-    throw new Error('No fresh Ubuntu container has been set up for this scenario.')
-  }
-  const result = runInFreshUbuntu(global.freshUbuntuContainer, command, { timeout: RUN_TIMEOUT })
-  global.lastCapturedOutput = result.output
-  global.lastCapturedExitCode = result.exitCode
+function runCaptured (container, command) {
+  const result = runInFreshUbuntu(container, command, { timeout: RUN_TIMEOUT })
   // Full output as a debug artifact — CodeceptJS truncates assertion errors,
   // which makes long init runs undiagnosable from the report alone.
-  const artifact = path.join(__dirname, '..', '..', '_output', 'captured', `${global.freshUbuntuContainer}.log`)
+  const artifact = path.join(__dirname, '..', '..', '_output', 'captured', `${container}.log`)
   fs.mkdirSync(path.dirname(artifact), { recursive: true })
   fs.writeFileSync(artifact, result.output)
+  return result
+}
+
+// The stage: a fresh project wired to a GitLab remote whose CLI was never
+// authenticated. The card shows the remote itself (git remote -v).
+storyboardStep(Given, "a developer's new project points at a GitLab remote the CLI never signed into", {
+  note: 'A throwaway project whose only link to GitLab is a remote the CLI never signed into. Set up off-camera: a fresh Ubuntu box with the toolbox and this git remote.',
+  copy: 'git remote -v'
+}, async () => {
+  const container = freshEnv({ extraPackages: ['git', 'unzip'], gitRemote: GITLAB_REMOTE })
+  const res = runCaptured(container, 'git remote -v')
+  assertContains(res.output, 'gitlab.com')
+  await renderPreFrame(I, 'remote-gitlab', res.output.trimEnd())
 })
 
-// ============================================
-// THEN — assertions on captured output
-// ============================================
-
-Then('the captured output should contain {string}', (expected) => {
-  const cleaned = stripAnsi(global.lastCapturedOutput)
-  if (!cleaned.includes(expected)) {
-    throw new Error(
-      `Expected captured output to contain ${JSON.stringify(expected)}\n` +
-      `---\n${cleaned}\n---`
-    )
-  }
+// Verdict 1 — missing auth: init runs the full setup then stops at the auth
+// gate, naming the sign-in command. The card is the verdict tail.
+storyboardStep(Then, 'running init stops and shows the exact GitLab sign-in command to run', {
+  note: 'init installs its tools, reaches the sign-in check and stops with "GitLab authentication required", pointing at task glab:auth. The test also checks the command failed and printed that line.',
+  copy: 'task devsecops:init'
+}, async () => {
+  const container = containers[containers.length - 1]
+  const res = runCaptured(container, 'task devsecops:init')
+  assertNonZeroExit(res.exitCode, res.output)
+  assertContains(res.output, 'GitLab authentication required')
+  assertContains(res.output, 'task glab:auth')
+  assertNotContains(res.output, 'DevSecOps project initialization completed')
+  await renderVerdictFrame(I, 'verdict-missing-auth', res.output)
 })
 
-Then('the captured output should not contain {string}', (forbidden) => {
-  const cleaned = stripAnsi(global.lastCapturedOutput)
-  if (cleaned.includes(forbidden)) {
-    throw new Error(
-      `Expected captured output NOT to contain ${JSON.stringify(forbidden)}\n` +
-      `---\n${cleaned}\n---`
-    )
-  }
+// Verdict 2 — opt-out: with TASK_GLAB_ENABLED=false every glab task is a no-op,
+// so init completes with no GitLab guidance at all. Fresh project (no remote).
+storyboardStep(Then, 'turning the GitLab integration off lets init finish cleanly', {
+  note: 'TASK_GLAB_ENABLED=false makes every glab step skip, so init reaches "DevSecOps project initialization completed" and never asks about sign-in. The test also checks the command succeeded and never printed "glab auth login".',
+  copy: 'TASK_GLAB_ENABLED=false task devsecops:init'
+}, async () => {
+  const container = freshEnv({ extraPackages: ['git', 'unzip'] })
+  const res = runCaptured(container, 'TASK_GLAB_ENABLED=false task devsecops:init')
+  assertZeroExit(res.exitCode, res.output)
+  assertContains(res.output, 'DevSecOps project initialization completed')
+  assertNotContains(res.output, 'glab auth login')
+  await renderVerdictFrame(I, 'verdict-optout', res.output)
 })
 
-Then('the captured command should exit with code {int}', (expectedCode) => {
-  if (global.lastCapturedExitCode !== expectedCode) {
-    throw new Error(
-      `Expected exit code ${expectedCode}, got ${global.lastCapturedExitCode}\n` +
-      `--- captured output ---\n${global.lastCapturedOutput}\n---`
-    )
-  }
+// The context shift: another project cloned from GitHub instead of GitLab.
+storyboardStep(When, "another developer's project points at a GitHub remote instead", {
+  note: 'A new project whose remote points at github.com — a non-GitLab host init must never push to. The card shows the remote.',
+  copy: 'git remote -v'
+}, async () => {
+  const container = freshEnv({ extraPackages: ['git', 'unzip'], gitRemote: GITHUB_REMOTE })
+  const res = runCaptured(container, 'git remote -v')
+  assertContains(res.output, 'github.com')
+  await renderPreFrame(I, 'remote-github', res.output.trimEnd())
 })
 
-Then('the captured command should exit with a non-zero code', () => {
-  if (global.lastCapturedExitCode === 0) {
-    throw new Error(
-      'Expected non-zero exit, got 0\n' +
-      `--- captured output ---\n${global.lastCapturedOutput}\n---`
-    )
-  }
-})
-
-When('the captured output is displayed in the browser', async () => {
-  const lines = filterOutput(global.lastCapturedOutput)
-  const tail = tailFromMarker(lines, TAIL_MARKERS, VISUAL_TAIL_LINES)
-  const output = tail.join('\n')
-
-  await I.usePlaywrightTo('render captured output in browser', async ({ page }) => {
-    await page.setContent(
-      '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
-      '<pre id="task-output" style="color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-all">' +
-      output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
-      '</pre></body></html>'
-    )
-  })
-  await I.wait(0.5)
-})
-
-Then('the captured output should visually match {string}', async (baselineName) => {
-  const { assertPageVisualMatch } = require('../helpers/pageVisual')
-  await assertPageVisualMatch(I, baselineName)
+// Verdict 3 — non-GitLab remote: init detects the foreign host and stops with
+// remote-alignment guidance rather than pushing anywhere.
+storyboardStep(Then, 'init refuses the non-GitLab remote and shows how to fix it', {
+  note: 'init finds no GitLab remote and stops with "No GitLab repository remote was detected.", giving the exact git remote set-url line to fix it. The test also checks the command failed and printed those lines.',
+  copy: 'task devsecops:init'
+}, async () => {
+  const container = containers[containers.length - 1]
+  const res = runCaptured(container, 'task devsecops:init')
+  assertNonZeroExit(res.exitCode, res.output)
+  assertContains(res.output, 'No GitLab repository remote was detected.')
+  assertContains(res.output, 'Align your repository remote, then rerun:')
+  await renderVerdictFrame(I, 'verdict-github', res.output)
 })

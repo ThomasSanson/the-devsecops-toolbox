@@ -125,12 +125,20 @@ function panels () {
 // Step-side API — register a sentence as a card, capture and assert frames.
 // ---------------------------------------------------------------------------
 
+// Storyboard sentences are LITERAL: a cucumber-expression would reinterpret
+// "CI/CD" as an alternation and "(...)" as optional text. Escape the
+// metacharacters at registration so the .feature line, the registered step
+// and the card title stay the exact same verbatim string.
+function escapeCucumberExpression (sentence) {
+  return sentence.replace(/[\\/(){}]/g, '\\$&')
+}
+
 // Register a Gherkin step through its Given/When/Then function AND open the
 // card whose title IS the step's own pattern: the same string declares the
 // scenario line and captions the image, so the feature and the storyboard
 // can never drift apart.
 function storyboardStep (register, pattern, opts, fn) {
-  register(pattern, async (...args) => {
+  register(escapeCucumberExpression(pattern), async (...args) => {
     panel(pattern, opts)
     await fn(...args)
   })
@@ -146,6 +154,47 @@ async function capturePageFrame (I, frameName) {
   fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
   await I.takeScreenshot(`storyboard-frames/${frameName}`)
   return frameOutputPath(frameName)
+}
+
+// Element-cropped snapshot: the frame is EXACTLY the selector's box, never
+// the whole viewport — a short verdict yields a short frame, not a mostly
+// empty page. Use for rendered <pre> verdicts and any focused element.
+async function captureElementFrame (I, frameName, selector) {
+  fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
+  await I.captureScreenshot(`storyboard-frames/${frameName}`, 'actual', selector)
+  return frameOutputPath(frameName)
+}
+
+// Guarantee the capture actually rendered: a frame whose sampled pixels are
+// ~one single colour is a blank/unfinished capture (page not loaded, empty
+// render) and must fail LOUD at capture time, not survive into a baseline.
+// pngjs ships with the visual helper in the runner image; outside it (local
+// standalone rendering) the guard degrades to a no-op.
+function assertFrameNotEmpty (png) {
+  let PNG
+  try { PNG = require('pngjs').PNG } catch (_) { return }
+  const img = PNG.sync.read(fs.readFileSync(png))
+  const { width, height, data } = img
+  const step = Math.max(1, Math.floor(Math.sqrt((width * height) / 20000)))
+  const counts = new Map()
+  let sampled = 0
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const i = (width * y + x) << 2
+      // Quantize to 4 bits per channel so soft gradients still count as one colour.
+      const key = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4)
+      counts.set(key, (counts.get(key) || 0) + 1)
+      sampled++
+    }
+  }
+  const dominant = Math.max(...counts.values())
+  const ratio = dominant / sampled
+  if (ratio > 0.985) {
+    throw new Error(
+      `storyboard frame "${path.basename(png)}" looks empty — ${(ratio * 100).toFixed(1)}% of its pixels are a single colour. ` +
+      'The capture probably fired before the content rendered (or the element crop missed). Fix the capture; do not baseline a blank frame.'
+    )
+  }
 }
 
 /**
@@ -183,6 +232,7 @@ async function assertOrUpdateBaseline (I, baselineName) {
 // regression fails on the exact sentence whose image drifted, and the error
 // message carries everything a human needs to act on it.
 async function addStoryboardFrame (I, png) {
+  assertFrameNotEmpty(png)
   frame(png)
   const name = `${baseDir()}/${path.basename(png, '.png')}`
   const actualPath = path.join(e2eDir(), '_output', `${name}.png`)
@@ -267,7 +317,6 @@ const THEME = {
 const GRID = {
   cols: 2,
   cardW: 700,
-  imgH: 438,
   pagePad: 32,
   gap: 24,
   textPad: 18
@@ -427,28 +476,67 @@ function render (outFile, options = {}) {
     return bandH
   }
 
-  // Uniform card height: the tallest text block sets it for every card.
+  // Text block of a card. Glyph-width estimates are deliberately generous
+  // (bold sans ≈ 9.3px/char at 15.5px) — an over-wrap is invisible, an
+  // under-wrap bleeds into the next card.
   const layoutOf = (card) => {
     const line = lineOf(card.title)
     const keyword = line ? line.keyword : ''
-    const title = wrap(`${keyword ? keyword + ' ' : ''}${card.title}`, textW, 8.2)
-    const note = card.note ? wrap(card.note, textW, 6.6) : []
-    const copy = card.copy ? wrap(card.copy, textW, 7.6) : []
+    const title = wrap(`${keyword ? keyword + ' ' : ''}${card.title}`, textW, 9.3)
+    const note = card.note ? wrap(card.note, textW, 7.2) : []
+    const copy = card.copy ? wrap(card.copy, textW, 8.0) : []
     return { keyword, group: line ? line.group : '', title, note, copy, h: 16 + title.length * 21 + note.length * 18 + (copy.length ? 6 + copy.length * 18 : 0) + 16 }
   }
-  const textH = cards.length ? Math.max(...cards.map(c => layoutOf(c).h)) : 0
-  const cardH = g.imgH + textH
-  const rows = Math.ceil(cards.length / g.cols)
 
-  // --- Header: feature left, scenario under it, file top-right, rerun bar ---
+  // ADAPTIVE slots: the image is shown at natural size (downscaled only when
+  // wider than the card or taller than MAX_SLOT_H — never upscaled, terminal
+  // text must stay crisp) and the slot HUGS it: a 3-line verdict gets a short
+  // card, a 90-line one gets a tall card. Cards on the same ROW share the
+  // row's tallest slot/text so the grid stays aligned without drowning short
+  // frames in letterbox.
+  const MAX_SLOT_H = 1100
+  const slotOf = (card) => {
+    const { w, h } = pngSize(card.file)
+    const scale = Math.min(1, g.cardW / w, MAX_SLOT_H / h)
+    return { scale, dispW: w * scale, dispH: h * scale }
+  }
+  // Each card is exactly as tall as its own frame + its own text. The top
+  // BADGE_BAND of every card is reserved for the number badge so it never
+  // covers the first line of a frame. Cards are packed masonry-style: each
+  // next card goes to the currently SHORTEST column, so a tall card never
+  // forces a dead gap under its short neighbour (badge numbers keep the
+  // reading order unambiguous).
+  const BADGE_BAND = 28
+  const cardHeightOf = (card) => BADGE_BAND + Math.ceil(slotOf(card).dispH) + Math.ceil(layoutOf(card).h)
+  const colBottoms = new Array(g.cols).fill(0)
+  const slots2d = cards.map((card) => {
+    let col = 0
+    for (let c = 1; c < g.cols; c++) if (colBottoms[c] < colBottoms[col]) col = c
+    const top = colBottoms[col]
+    colBottoms[col] = top + cardHeightOf(card) + g.gap
+    return { col, top }
+  })
+  const gridHeight = cards.length ? Math.max(...colBottoms) - g.gap : 0
+
+  // --- Header: feature left (wrapped, never under the right column), the
+  // scenario under it, file path top-right, then the rerun bar. ---
   const drawHeader = () => {
-    text(board.feature, g.pagePad, 54, { size: 28, weight: '700' })
-    text('Scenario: ' + board.scenario, g.pagePad, 82, { size: 15, fill: t.dim })
+    const rightZone = 470
+    const titleW = width - 2 * g.pagePad - rightZone
+    let hy = 54
+    for (const line of wrap(board.feature, titleW, 16.8)) {
+      text(line, g.pagePad, hy, { size: 28, weight: '700' })
+      hy += 34
+    }
+    for (const line of wrap('Scenario: ' + board.scenario, titleW, 8.7)) {
+      text(line, g.pagePad, hy - 6, { size: 15, fill: t.dim })
+      hy += 20
+    }
     if (board.file) {
       text(board.file, width - g.pagePad, 44, { size: 12, fill: t.dim, font: t.mono, anchor: 'end' })
       text('e2e storyboard · baseline', width - g.pagePad, 62, { size: 12, fill: t.dim, anchor: 'end' })
     }
-    let hy = 104
+    hy = Math.max(hy + 8, 104)
     if (board.rerun) {
       parts.push(`<rect x="${g.pagePad}" y="${hy}" width="${width - 2 * g.pagePad}" height="36" rx="8" fill="${t.codeBg}"/>`)
       text('replay this scenario', g.pagePad + 16, hy + 23, { size: 12.5, fill: t.dim })
@@ -462,7 +550,7 @@ function render (outFile, options = {}) {
   // never reached, the verdict line and the colour legend. ---
   const drawFooter = (fy) => {
     if (failure && failure.frame) {
-      if (rows > 0) fy += g.gap
+      if (cards.length) fy += g.gap
       fy += drawFailureBand(failure.frame, fy)
     }
     if (failure && failure.notReached && failure.notReached.length) {
@@ -489,27 +577,33 @@ function render (outFile, options = {}) {
 
   let y = drawHeader()
 
-  // --- Cards (every captured frame, the drifted one red-outlined) ---
+  // --- Cards (every captured frame, the drifted one red-outlined). Rows have
+  // their own heights; inside a row every card is top-aligned. ---
   cards.forEach((card, i) => {
-    const cx = g.pagePad + (i % g.cols) * (g.cardW + g.gap)
-    const cy = y + Math.floor(i / g.cols) * (cardH + g.gap)
+    const { scale, dispW, dispH } = slotOf(card)
+    const slotH = BADGE_BAND + Math.ceil(dispH)
+    const cardH = cardHeightOf(card)
+    const cx = g.pagePad + slots2d[i].col * (g.cardW + g.gap)
+    const cy = y + slots2d[i].top
+
     parts.push(`<clipPath id="card${i}"><rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12"/></clipPath>`)
     parts.push(
       `<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12" fill="${t.card}"` +
       (card.failed ? ` stroke="${t.fail}" stroke-width="3"` : '') + '/>'
     )
     parts.push(`<g clip-path="url(#card${i})">`)
-    // The native <title> tooltip names the frame's baseline PNG: hover a
-    // card, know exactly which baseline to inspect or regenerate.
-    drawImage(card.file, cx, cy, g.cardW, g.imgH, path.basename(card.file))
-    parts.push('</g>')
-
-    // Number badge on the card chrome, never inside the captured pixels.
-    parts.push(`<circle cx="${cx + 30}" cy="${cy + 30}" r="16" fill="${card.failed ? t.fail : t.badge}"/>`)
-    text(String(card.n), cx + 30, cy + 35, { size: 15, fill: '#ffffff', weight: '700', anchor: 'middle' })
+    // The image at NATURAL size (downscaled only when oversized), top-aligned,
+    // centred horizontally on the slot backdrop that hugs it exactly.
+    parts.push(`<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${slotH}" fill="${t.slot}"/>`)
+    const data = fs.readFileSync(card.file).toString('base64')
+    parts.push(
+      `<image x="${(cx + (g.cardW - dispW) / 2).toFixed(1)}" y="${cy + BADGE_BAND}"` +
+      ` width="${dispW.toFixed(1)}" height="${dispH.toFixed(1)}" href="data:image/png;base64,${data}">` +
+      `<title>${esc(path.basename(card.file))}${scale < 1 ? ` (shown at ${(scale * 100).toFixed(0)}%)` : ''}</title></image>`
+    )
 
     const layout = layoutOf(card)
-    let ty = cy + g.imgH + 16 + 15
+    let ty = cy + slotH + 16 + 15
     layout.title.forEach((line, li) => {
       if (li === 0 && layout.keyword && line.startsWith(layout.keyword)) {
         // Verbatim keyword coloured by its group — the only chrome that also
@@ -533,9 +627,15 @@ function render (outFile, options = {}) {
       copyText(card.copy, cx + g.textPad, ty)
       ty += layout.copy.length * 18
     }
+    parts.push('</g>')
+
+    // Number badge astride the card's TOP-LEFT CORNER — on the chrome, never
+    // over the captured pixels.
+    parts.push(`<circle cx="${cx + 4}" cy="${cy + 4}" r="16" fill="${card.failed ? t.fail : t.badge}"/>`)
+    text(String(card.n), cx + 4, cy + 9, { size: 15, fill: '#ffffff', weight: '700', anchor: 'middle' })
   })
 
-  if (rows > 0) y += rows * (cardH + g.gap) - g.gap
+  if (cards.length) y += gridHeight
   y = drawFooter(y)
 
   const height = y + g.pagePad
@@ -629,7 +729,15 @@ module.exports = function storyboardPlugin () {
       // container), correct wherever the suite lives in a given project.
       file = path.relative(process.cwd(), test.file)
       const fromFeatures = path.relative(path.join(global.codecept_dir, 'features'), test.file)
-      if (!fromFeatures.startsWith('..')) base = fromFeatures.replace(/\.feature$/, '')
+      if (!fromFeatures.startsWith('..')) {
+        // Per-SCENARIO layout: <feature-dir>/<feature-name>/<scenario-tag>.
+        // A feature can hold several storyboard scenarios; keying by the
+        // scenario's unique tag keeps their baselines and SVGs apart.
+        const scenarioKey = tag
+          ? tag.replace(/^@/, '')
+          : stripTags(test.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        base = path.join(fromFeatures.replace(/\.feature$/, ''), scenarioKey)
+      }
     }
     begin({
       feature: stripTags(test.parent && test.parent.title),
@@ -673,6 +781,7 @@ module.exports.annotate = annotate
 module.exports.panels = panels
 module.exports.storyboardStep = storyboardStep
 module.exports.capturePageFrame = capturePageFrame
+module.exports.captureElementFrame = captureElementFrame
 module.exports.frameOutputPath = frameOutputPath
 module.exports.assertOrUpdateBaseline = assertOrUpdateBaseline
 module.exports.addStoryboardFrame = addStoryboardFrame

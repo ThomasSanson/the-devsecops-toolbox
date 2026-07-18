@@ -194,10 +194,11 @@ task copier:update             # Update from template
 
 **Features Location**: `project/tests/e2e/features/`
 
-Features are organized by domain:
-`gitlab/` (01-developer-journey, 02-init-guidance, 03-init-effects, 04-auth),
-`template/` (Copier rendering matrix + update), `security/` (gitleaks),
-`installer/` (prerequisite paths).
+Features are organized by journey act:
+`01-install/` (prerequisites, installer, agent-mode), `02-first-init/`
+(auth check, init guidance, init-framework merge request), `03-daily-work/`
+(commit hooks, gitleaks, release window, token healing), `04-evolution/`
+(Copier rendering matrix, renovate, toolbox update).
 
 **Step Definitions**: `project/tests/e2e/support/steps/`
 
@@ -231,7 +232,7 @@ task test
 task project:test:e2e
 
 # With grep filter
-task project:test:e2e -- --grep "@e2e-template-matrix"
+task project:test:e2e -- --grep "@e2e-render-matrix"
 ```
 
 ---

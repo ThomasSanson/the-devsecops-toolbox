@@ -18,9 +18,8 @@ ls project/tests/e2e/features/
 
 ### 2. List Features in a Domain
 
-Each domain contains one or more `.feature` files (the `gitlab/` domain is
-further grouped by journey stage: `01-developer-journey`, `02-init-guidance`,
-`03-init-effects`, `04-auth`).
+Each domain contains one or more `.feature` files. Domains are the four
+journey acts: `01-install`, `02-first-init`, `03-daily-work`, `04-evolution`.
 
 ```bash
 ls project/tests/e2e/features/{domain}/

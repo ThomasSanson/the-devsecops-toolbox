@@ -50,39 +50,54 @@ async function maskLoggedInChrome (projectName) {
   }, { projectName })
 }
 
+// Expand + scroll to the "Protected branches" section (long settings page).
+async function scrollToProtectedBranches () {
+  await I.executeScript(() => {
+    const headers = Array.from(document.querySelectorAll('h2, h3, h4, span'))
+    const target = headers.find(el => el.textContent.trim() === 'Protected branches')
+    const section = target
+      ? (target.closest('section') || target.closest('div[id*="protected-branches"]'))
+      : (document.querySelector('#js-protected-branches-settings') || document.querySelector('#protected-branches-settings'))
+    if (section) {
+      section.classList.add('expanded')
+      section.scrollIntoView({ behavior: 'instant', block: 'start' })
+    } else if (target) {
+      target.scrollIntoView({ behavior: 'instant', block: 'start' })
+    }
+  })
+}
+
 class GitLabSettingsPage {
-  async verifyMergeSettingsVisual (projectPath, projectName, screenshotName) {
+  // Navigate + mask WITHOUT asserting — the storyboard steps capture a masked
+  // frame and assert it against their own per-scenario baseline; the verify*
+  // methods add the flat assert on top for the non-storyboard callers.
+  async gotoMergeSettingsAndMask (projectPath, projectName) {
     await I.amOnPage(`/${projectPath}/-/settings/merge_requests`)
     await I.waitForElement('body', 30)
     await I.wait(2)
     await maskLoggedInChrome(projectName)
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
+  }
+
+  async verifyMergeSettingsVisual (projectPath, projectName, screenshotName) {
+    await this.gotoMergeSettingsAndMask(projectPath, projectName)
     await assertPageVisualMatch(I, screenshotName)
   }
 
-  async verifyProtectedBranchVisual (projectPath, projectName, screenshotName) {
+  async gotoProtectedBranchAndMask (projectPath, projectName) {
     await I.amOnPage(`/${projectPath}/-/settings/repository`)
     await I.waitForElement('body', 30)
     await I.wait(2)
-    // Expand + scroll to the "Protected branches" section (long settings page).
-    await I.executeScript(() => {
-      const headers = Array.from(document.querySelectorAll('h2, h3, h4, span'))
-      const target = headers.find(el => el.textContent.trim() === 'Protected branches')
-      const section = target
-        ? (target.closest('section') || target.closest('div[id*="protected-branches"]'))
-        : (document.querySelector('#js-protected-branches-settings') || document.querySelector('#protected-branches-settings'))
-      if (section) {
-        section.classList.add('expanded')
-        section.scrollIntoView({ behavior: 'instant', block: 'start' })
-      } else if (target) {
-        target.scrollIntoView({ behavior: 'instant', block: 'start' })
-      }
-    })
+    await scrollToProtectedBranches()
     await I.wait(2)
     await maskLoggedInChrome(projectName)
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
+  }
+
+  async verifyProtectedBranchVisual (projectPath, projectName, screenshotName) {
+    await this.gotoProtectedBranchAndMask(projectPath, projectName)
     await assertPageVisualMatch(I, screenshotName)
   }
 }

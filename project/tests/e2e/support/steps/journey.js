@@ -40,10 +40,8 @@ const {
   listProjectAccessTokens,
   createLambdaPersonalAccessToken,
   revokePersonalAccessToken,
-  getMergeRequest,
-  mergeMergeRequest,
-  updateProjectSettings,
-  listRepositoryTree
+  listRepositoryTree,
+  readProjectVariable
 } = require('../helpers/gitlabApi')
 const { freshGet } = require('../helpers/http')
 const {
@@ -70,7 +68,8 @@ const {
 const {
   storyboardStep,
   addStoryboardFrame,
-  capturePageFrame
+  capturePageFrame,
+  captureElementFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
@@ -91,7 +90,7 @@ After(async () => {
   if (global.journeyContainer) {
     try {
       const logName = `install-${global.journeyProjectName || global.journeyContainer}.log`
-      const dest = path.join(E2E_OUTPUT, 'gitlab', '01-developer-journey', logName)
+      const dest = path.join(E2E_OUTPUT, 'install-logs', logName)
       fs.mkdirSync(path.dirname(dest), { recursive: true })
       runCommand(`docker cp ${shellEscape(`${global.journeyContainer}:${INSTALL_LOG}`)} ${shellEscape(dest)}`)
     } catch (_) {
@@ -129,7 +128,7 @@ After(async () => {
 // GIVEN — environment setup
 // ============================================
 
-Given('a fresh Ubuntu web terminal cloned from a freshly created blank GitLab project', async () => {
+async function openBlankProjectTerminal () {
   const rootHeaders = await getRootHeaders()
   const projectName = `e2e-journey-${crypto.randomBytes(4).toString('hex')}`
   global.journeyProjectName = projectName
@@ -155,39 +154,16 @@ Given('a fresh Ubuntu web terminal cloned from a freshly created blank GitLab pr
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
-})
+}
 
-Given('the working-branch installer is staged in the terminal', () => {
-  prepareWorkingBranchInstaller(global.journeyContainer)
-})
-
-// Pre-install the bootstrap toolchain off-camera so the installer's own toolchain
-// step collapses to a few "already installed" lines (dropped as capture noise),
-// keeping the agent-mode session compact enough to frame the whole before/during/
-// after story in one deterministic screenshot.
-Given('the toolchain is already installed', () => {
-  preinstallToolchain(global.journeyContainer)
-})
-
-Given('the working-branch installer is staged in direct mode in the terminal', () => {
-  prepareWorkingBranchInstaller(global.journeyContainer, { direct: true })
-})
-
-Given('the working-branch installer is staged in piped mode in the terminal', () => {
-  prepareWorkingBranchInstaller(global.journeyContainer, { piped: true })
-})
-
-Given('glab is authenticated against the test GitLab', () => {
-  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-})
+// openBlankProjectTerminal, prepareWorkingBranchInstaller, preinstallToolchain
+// and authenticateGlab are now called directly from the storyboard Given steps
+// (installer / piped / init-framework-mr / agent-mode); their former plain
+// Given bindings were removed with the storyboard migration.
 
 // ============================================
 // WHEN — drive the live terminal
 // ============================================
-
-When('I display the cloned project state in the terminal', async () => {
-  await typeCommandAndWait(I, 'clear; git status')
-})
 
 When('I display the project tree in the terminal', async () => {
   // Full depth (the rendered .agent/ tree bottoms out at skills/<name>/SKILL.md)
@@ -196,110 +172,160 @@ When('I display the project tree in the terminal', async () => {
   await typeCommandAndWait(I, "clear; tree -a -I '.git'")
 })
 
-// cspell vocabulary survives a toolbox update — the real Renovate-driven flow in
-// a live, coloured terminal. A project generated from an EARLIER toolbox version
-// (single-file config.json, the project's word crammed in) receives the update
-// Renovate triggers (`task copier:update`), which splits the dictionary and moves
-// the project's word into its own file. Real command, real conditions.
-Given('a live terminal on a project from an earlier toolbox version with its word {string}', async (word) => {
-  global.journeyContainer = setupCspellUpdateTerminal(word)
+// ============================================
+// Toolbox-update storyboard — @e2e-toolbox-update-journey.
+// The real Renovate-driven upgrade in a live, coloured ttyd terminal: a project
+// generated from an EARLIER toolbox version (single-file config.json, the
+// developer's word crammed in) runs the exact command Renovate triggers
+// (`task copier:update`), which splits the dictionary and moves the developer's
+// word into its own file. ONE sentence = ONE terminal frame = ONE pixel baseline
+// (anchored on the typed command's `# comment` marker so scrollback is excluded);
+// each AFTER card twins its frame with a filesystem read straight from the
+// container, so a regression fails loud even without eyes.
+// ============================================
+
+const CSPELL_PROJECT_WORD = 'Caddyfile'
+const OLD_TOOLBOX_VERSION = '22.0.0'
+const NEW_TOOLBOX_VERSION = '22.7.1'
+
+// Read a real path inside the live journey container's project — the
+// programmatic twin of a terminal card (the same fact, unfiltered).
+function readInProject (script) {
+  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cd ${PROJECT_DIR} && ${script}`)
+  if (res.exitCode !== 0) {
+    throw new Error(`Toolbox-update twin failed (\`${script}\`):\n${res.output}`)
+  }
+  return res.output
+}
+
+function twinContains (script, needle) {
+  const out = readInProject(script)
+  if (!out.includes(needle)) {
+    throw new Error(`Toolbox-update twin: expected "${needle}" in \`${script}\`:\n${out}`)
+  }
+}
+
+function twinExcludes (script, needle) {
+  const out = readInProject(script)
+  if (out.includes(needle)) {
+    throw new Error(`Toolbox-update twin: did NOT expect "${needle}" in \`${script}\`:\n${out}`)
+  }
+}
+
+// Type a command in the live terminal and snapshot the moment as a storyboard
+// frame, anchored on a unique substring of the command so the non-deterministic
+// scrollback above it is excluded.
+async function updateCard (command, marker, frameName, timeoutMs) {
+  await typeCommandAndWait(I, command, timeoutMs || COMMAND_TIMEOUT_MS)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker }))
+}
+
+storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", {
+  note: `Off-camera: a project rendered from the toolbox at release ${OLD_TOOLBOX_VERSION} (the design before the cspell dictionary was split), served in a real ttyd shell. Copier stamps the release in its own \`_commit\`, so \`grep\` proves the BEFORE version.`,
+  copy: 'grep _commit .config/devsecops/.copier-answers.yml'
+}, async () => {
+  global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
+  await updateCard(
+    `grep _commit .config/devsecops/.copier-answers.yml   # toolbox version BEFORE (${OLD_TOOLBOX_VERSION})`,
+    'toolbox version BEFORE', 'before-version'
+  )
+  twinContains('grep _commit .config/devsecops/.copier-answers.yml', OLD_TOOLBOX_VERSION)
 })
 
-When('the developer runs the toolbox update in the terminal', async () => {
-  // Real commands, each labelled by a trailing `# comment` (no extra echo lines).
-  // The toolbox version comes from copier's own `_commit` in the answers file, so
-  // the screenshot proves we go from 22.0.0 to 22.7.1 around the real update. `ls -1`
-  // lists one file per line (humans read top-to-bottom); `jq` colours the words.
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, '# a generated project keeps its own cspell words across a toolbox update')
-  await typeCommandAndWait(I, 'grep _commit .config/devsecops/.copier-answers.yml   # toolbox version BEFORE')
-  await typeCommandAndWait(I, 'ls -1 .config/cspell/   # one framework-owned file')
-  await typeCommandAndWait(I, "jq '.words[-4:]' .config/cspell/config.json   # the project word (Caddyfile), crammed in among the framework's")
-  await typeCommandAndWait(I, "task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref 22.7.1'", 240000)
-  await typeCommandAndWait(I, 'grep _commit .config/devsecops/.copier-answers.yml   # toolbox version AFTER')
-  await typeCommandAndWait(I, 'ls -1 .config/cspell/   # three files now')
-  await typeCommandAndWait(I, "jq '.words[-4:]' .config/cspell/config.base.json   # the framework words: KEPT, in the framework's own file")
-  await typeCommandAndWait(I, 'jq . .config/cspell/config.project.json   # the project word: MOVED to its own file')
-  await typeCommandAndWait(I, "jq '.words' .config/cspell/config.json   # config.json: just the structural image now, word-free")
+storyboardStep(Given, 'its spelling dictionary is a single framework-owned file', {
+  note: 'At this old release the cspell dictionary is a single file — config.json — with no split and nowhere but that shared file for a project to add its own words.',
+  copy: 'ls -1 .config/cspell/'
+}, async () => {
+  await updateCard('ls -1 .config/cspell/   # one framework-owned file', 'one framework-owned file', 'before-one-file')
+  twinExcludes('ls -1 .config/cspell/', 'config.project.json')
 })
 
-Then('the cspell update terminal should visually match {string}', async (baselineName) => {
-  await assertTerminalVisualMatch(I, baselineName, { fromMarker: 'keeps its own cspell words across a toolbox update' })
+storyboardStep(Given, 'the developer has added their own word inside that shared file', {
+  note: `The developer's own dictionary word (${CSPELL_PROJECT_WORD}) is crammed into config.json, in among the framework's base words — the only place the old design offers.`,
+  copy: "jq '.words[-4:]' .config/cspell/config.json"
+}, async () => {
+  await updateCard(
+    `jq '.words[-4:]' .config/cspell/config.json   # the developer word (${CSPELL_PROJECT_WORD}) crammed in among the framework's`,
+    'crammed in among', 'before-word-inline'
+  )
+  twinContains('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
 })
 
-When('I type the toolbox installer command in the terminal', async () => {
-  I.click('.xterm-screen')
-  I.type(`bash ${WRAPPER_PATH}`)
-  await waitForTerminalSettle(I)
+storyboardStep(When, 'the developer runs the toolbox update in the terminal', {
+  note: `The exact command Renovate runs automatically — \`task copier:update\` to release ${NEW_TOOLBOX_VERSION} — run live here. The framework refreshes config.json and the cspell migration relocates the project's word.`,
+  copy: `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`
+}, async () => {
+  await updateCard(
+    `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
+    'task copier:update', 'update-run', 240000
+  )
 })
 
-When('I launch the installer and wait for the prompt {string}', async (prompt) => {
-  I.pressKey('Enter')
-  await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+storyboardStep(Then, 'the project now tracks the new toolbox release', {
+  note: `Copier's \`_commit\` moved to ${NEW_TOOLBOX_VERSION}: the project is now on the new release. Twinned with a read of the answers file.`,
+  copy: 'grep _commit .config/devsecops/.copier-answers.yml'
+}, async () => {
+  await updateCard(
+    `grep _commit .config/devsecops/.copier-answers.yml   # toolbox version AFTER (${NEW_TOOLBOX_VERSION})`,
+    'toolbox version AFTER', 'after-version'
+  )
+  twinContains('grep _commit .config/devsecops/.copier-answers.yml', NEW_TOOLBOX_VERSION)
 })
 
-When('I wait for the prompt {string}', async (prompt) => {
-  await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+storyboardStep(Then, 'its dictionary has been split into three files', {
+  note: 'The single dictionary is now three files: config.json (structural), config.base.json (framework words) and config.project.json (the project override). Twinned with a directory listing.',
+  copy: 'ls -1 .config/cspell/'
+}, async () => {
+  await updateCard('ls -1 .config/cspell/   # three files now', 'three files now', 'after-three-files')
+  twinContains('ls -1 .config/cspell/', 'config.base.json')
+  twinContains('ls -1 .config/cspell/', 'config.project.json')
 })
 
-When('I accept the default and wait for the prompt {string}', async (prompt) => {
-  I.pressKey('Enter')
-  await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+storyboardStep(Then, 'the framework keeps its own words in its own file', {
+  note: "The framework's base vocabulary is preserved, now in config.base.json — the developer's word is NOT here. Twinned with a read of the base words.",
+  copy: "jq '.words[-4:]' .config/cspell/config.base.json"
+}, async () => {
+  await updateCard(
+    "jq '.words[-4:]' .config/cspell/config.base.json   # the framework words: KEPT, in the framework's own file",
+    'framework words: KEPT', 'after-framework-words'
+  )
+  twinExcludes('jq -r .words .config/cspell/config.base.json', CSPELL_PROJECT_WORD)
 })
 
-When('I accept the last default and wait for scaffolding to complete', async () => {
-  I.pressKey('Enter')
-  // Poll the PERSISTENT log rather than the visible terminal: once the last
-  // question is answered, copier scaffolds and `task devsecops:init` floods the
-  // screen, scrolling the success line out of the viewport before it can be
-  // seen. The log keeps everything.
-  const deadline = Date.now() + 180000
-  let found = false
-  while (Date.now() < deadline) {
-    const res = execInContainerAsUser(
-      global.journeyContainer,
-      'bootstrap',
-      `grep -c "scaffolded successfully" ${INSTALL_LOG} 2>/dev/null || true`
-    )
-    if (parseInt((res.output || '0').trim(), 10) > 0) { found = true; break }
-    await I.wait(3)
-  }
-  if (!found) {
-    throw new Error('Copier did not report "scaffolded successfully" in the install log within 180s')
-  }
+storyboardStep(Then, "the developer's own word has moved to a project-owned file", {
+  note: `The migration moved ${CSPELL_PROJECT_WORD} into config.project.json, the copier skip-if-exists override an update never overwrites. Twinned with a read of the override.`,
+  copy: 'jq . .config/cspell/config.project.json'
+}, async () => {
+  await updateCard(
+    `jq . .config/cspell/config.project.json   # the developer word: MOVED to its own file`,
+    'MOVED to its own file', 'after-project-word'
+  )
+  twinContains('jq -r .words .config/cspell/config.project.json', CSPELL_PROJECT_WORD)
 })
 
-When('I wait for the installer to finish', async () => {
-  // After scaffolding, install.sh runs `task devsecops:init` (dev environment
-  // setup + GitLab configuration), then prints its final lines. Poll the log
-  // for install.sh's own completion marker (NOT the glab sub-installer's
-  // "Installation complete!", which appears earlier).
-  const deadline = Date.now() + 600000
-  let found = false
-  while (Date.now() < deadline) {
-    const res = execInContainerAsUser(
-      global.journeyContainer,
-      'bootstrap',
-      `grep -c "Run 'task' to see available commands" ${INSTALL_LOG} 2>/dev/null || true`
-    )
-    if (parseInt((res.output || '0').trim(), 10) > 0) { found = true; break }
-    await I.wait(5)
-  }
-  if (!found) {
-    throw new Error("Installer did not reach \"Run 'task' to see available commands\" within 600s")
-  }
+storyboardStep(Then, 'the shared file itself is now empty — it only imports the other two', {
+  note: 'config.json now carries no words at all — it only imports config.base.json and config.project.json. Twinned with a read of its (empty) word list.',
+  copy: "jq '.words' .config/cspell/config.json"
+}, async () => {
+  await updateCard(
+    "jq '.words' .config/cspell/config.json   # config.json: empty now, only imports the other two",
+    'empty now, only imports', 'after-config-image'
+  )
+  twinExcludes('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
 })
+
+// The installer WHEN bindings (type command / launch / accept-default-and-wait
+// per prompt / wait-for-completion) were removed with the storyboard migration:
+// the questionnaire is now driven by the @e2e-journey-installer-full storyboard
+// steps below, which capture each Copier question as its own card. The poll for
+// install.sh's completion marker lives in waitForInstallerComplete().
 
 // ============================================
 // THEN — proofs
 // ============================================
-
-Then('the developer terminal should visually match {string}', async (baselineName) => {
-  await assertTerminalVisualMatch(I, baselineName)
-})
 
 // Marker-anchored capture: keeps only the rows from `marker` downward, so the
 // non-deterministic install scrollback above an interactive prompt is excluded.
@@ -307,32 +333,10 @@ Then('the terminal from {string} should visually match {string}', async (marker,
   await assertTerminalVisualMatch(I, baselineName, { fromMarker: marker })
 })
 
-// Bounded milestone capture: anchor on `marker`, keep exactly `lines` rows, so a
-// deterministic block (e.g. setup/scaffold) is isolated from the
-// non-deterministic toolchain output around it.
-Then('the milestone block from {string} for {int} lines should visually match {string}', async (marker, lines, baselineName) => {
-  await assertTerminalVisualMatch(I, baselineName, { fromMarker: marker, maxRows: lines })
-})
-
-Then('the install log should contain {string}', (expected) => {
-  const result = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cat ${INSTALL_LOG}`)
-  const cleaned = stripAnsiEscapeSequences(result.output || '')
-  if (!cleaned.includes(expected)) {
-    throw new Error(
-      `Expected install log to contain ${JSON.stringify(expected)}\n` +
-      `--- install.log (cleaned, tail) ---\n${cleaned.slice(-2000)}\n---`
-    )
-  }
-})
-
-Then('the install log should report at least {int} created files', (min) => {
-  const result = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cat ${INSTALL_LOG}`)
-  const cleaned = stripAnsiEscapeSequences(result.output || '')
-  const count = cleaned.split('\n').filter(line => /^\s*create\s+\S/.test(line)).length
-  if (count < min) {
-    throw new Error(`Expected Copier to scaffold at least ${min} files, the install log reports ${count}`)
-  }
-})
+// The milestone-block and install-log plain bindings (used only by the retired
+// flat installer/piped scenarios) were removed with the storyboard migration;
+// the storyboard steps below assert the install log through assertInstallLog()
+// and assertCreatedFilesAtLeast() instead.
 
 // ============================================
 // Init-framework-devsecops MR flow (stage 4)
@@ -379,64 +383,67 @@ async function openReadmeProjectTerminal () {
   I.wait(3)
 }
 
-Given('a fresh Ubuntu web terminal cloned from a GitLab project that already has a main branch', openReadmeProjectTerminal)
+// openReadmeProjectTerminal and the spike-branch checkout are now driven from
+// the init-framework-MR storyboard Given steps (below); their former plain
+// bindings were removed with the storyboard migration.
 
-Given('the terminal is checked out on a feature branch {string}', (branch) => {
-  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', [
-    `cd ${PROJECT_DIR}`,
-    `git checkout -b ${shellEscape(branch)}`
-  ].join('\n'))
-  if (res.exitCode !== 0) {
-    throw new Error(`Failed to checkout feature branch "${branch}":\n${res.output}`)
-  }
-})
-
-When('I run the working-branch installer to completion', async () => {
-  // Re-open the live terminal (a GitLab-page capture may have navigated away).
+// Re-open the live terminal (a GitLab-page capture may have navigated away),
+// type the installer command and stop at the FIRST decision (the gum/glow scope
+// prompt). Split out so a storyboard step can frame the launch before answering.
+async function launchWorkingBranchInstaller () {
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(2)
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
-  // First decision (gum/glow layer): accept the complete-framework install
-  // (gum confirm binds 'y' to the affirmative), so the journey proceeds to the
-  // Copier questionnaire.
   await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  I.pressKey('y')
-  // Accept every Copier question with its default.
-  for (const prompt of COPIER_PROMPTS) {
-    await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
-    I.pressKey('Enter')
-  }
-  // Then init runs (bootstrap main + init-framework-devsecops branch + MR +
-  // GitLab config) and install.sh prints its final marker. Poll the log.
-  const deadline = Date.now() + 600000
-  let done = false
+}
+
+// Poll install.sh's PERSISTENT log until it prints its final marker. NOT the
+// glab sub-installer's "Installation complete!" (that appears earlier): this
+// is install.sh's own last line, after scaffolding + `task devsecops:init`
+// (dev-environment setup + GitLab config), so it proves the whole run finished.
+async function waitForInstallerComplete (timeoutMs = 600000) {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const res = execInContainerAsUser(
       global.journeyContainer, 'bootstrap',
       `grep -c "Run 'task' to see available commands" ${INSTALL_LOG} 2>/dev/null || true`
     )
-    if (parseInt((res.output || '0').trim(), 10) > 0) { done = true; break }
+    if (parseInt((res.output || '0').trim(), 10) > 0) return
     await I.wait(5)
   }
-  if (!done) {
-    throw new Error("Installer did not finish (no \"Run 'task' to see available commands\" in the log within 600s)")
-  }
-})
+  throw new Error(`Installer did not finish (no "Run 'task' to see available commands" in the log within ${timeoutMs}ms)`)
+}
 
-// ============================================
-// Selective install — gum/glow scope selection (agent mode)
-// ============================================
-
-// Accept the first gum confirm (install everything). gum confirm binds 'y' to
-// the affirmative action, so the journey proceeds to the Copier questionnaire.
-When('I choose to install the complete framework', async () => {
-  await waitForTerminalSettle(I)
+// Accept the complete-framework install (gum confirm binds 'y' to the
+// affirmative), accept every Copier question with its default, then wait for
+// install.sh's final marker (init: bootstrap main + init-framework-devsecops
+// branch + MR + GitLab config, then the completion lines).
+async function answerAndCompleteInstaller () {
+  // Re-focus the live terminal: in the blank storyboard a capture overlay is
+  // built and torn down between the launch and here, so click before answering.
+  I.click('.xterm-screen')
   I.pressKey('y')
-})
+  for (const prompt of COPIER_PROMPTS) {
+    await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+    I.pressKey('Enter')
+  }
+  await waitForInstallerComplete()
+}
+
+async function runWorkingBranchInstaller () {
+  await launchWorkingBranchInstaller()
+  await answerAndCompleteInstaller()
+}
+
+// The "I run the working-branch installer to completion" and "I choose to
+// install the complete framework" plain bindings were removed with the
+// storyboard migration (their only feature callers — piped-install and the
+// flat installer — are now storyboards). runWorkingBranchInstaller stays: the
+// init-framework-mr storyboard steps still call it directly.
 
 // ============================================
 // Agent-mode storyboard — ONE sentence = ONE card = ONE pixel baseline.
@@ -460,7 +467,7 @@ When('I choose to install the complete framework', async () => {
 // toolchain (its volatile output must never reach a frame). On camera: the
 // blank project page — a README and nothing else.
 storyboardStep(Given, 'a fresh GitLab project with only a README on its main branch', {
-  note: 'The blank project as cloned: a README and nothing else. Volatile content (dates, avatars, project name) is masked for determinism.',
+  note: 'The empty project after cloning: a README and nothing else. Changing details (dates, avatars, project name) are hidden so the picture is always the same.',
   copy: 'http://gitlab/<lambda-user>/<project>'
 }, async () => {
   await GitLabUserPage.ensureUserViaApi(
@@ -486,8 +493,8 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
 
 // Back to the live terminal — a NEW shell session (the GitLab capture navigated
 // away); the cloned repo state lives on disk, not in the session.
-storyboardStep(When, 'the developer checks out the cloned project in the terminal', {
-  note: 'A fresh shell in the web terminal: the clone carries only the README, git is clean.',
+storyboardStep(When, 'the developer opens the cloned project in the terminal', {
+  note: 'A new terminal window: the copy has only the README, and git shows no changes.',
   copy: 'ls -A1 && git status'
 }, async () => {
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
@@ -503,8 +510,8 @@ storyboardStep(When, 'the developer checks out the cloned project in the termina
 // executed), and ArrowRight moves the gum focus onto "Choose components"
 // BEFORE the capture, so the image shows the choice the developer actually
 // makes — not the default-highlighted "Install everything".
-storyboardStep(When, 'the developer launches the installer and chooses to pick components', {
-  note: 'The installer opens the gum scope prompt; focus is moved onto "Choose components" before answering.',
+storyboardStep(When, 'the developer starts the installer and chooses to pick what to install', {
+  note: 'The installer asks whether to install everything; the cursor is moved onto "Choose components" before answering.',
   copy: `bash ${WRAPPER_PATH}`
 }, async () => {
   I.click('.xterm-screen')
@@ -520,8 +527,8 @@ storyboardStep(When, 'the developer launches the installer and chooses to pick c
 // Submit the focused "Choose components" -> the live checklist, captured while
 // it is on screen (it erases itself on answer), then take the highlighted
 // component with the natural Enter.
-storyboardStep(When, 'the developer takes the agent component from the checklist', {
-  note: 'Single-select list: Enter takes the highlighted agent component — no empty-handed multi-select trap.'
+storyboardStep(When, 'the developer picks the AI agent option from the checklist', {
+  note: 'A single-choice list: pressing Enter picks the highlighted AI agent option, so you never end up with nothing selected.'
 }, async () => {
   I.pressKey('Enter')
   await waitForTerminalText(I, 'Select the component to install', COMMAND_TIMEOUT_MS)
@@ -534,8 +541,8 @@ storyboardStep(When, 'the developer takes the agent component from the checklist
 // build — the working-tree Then is the loud signal), then the local result:
 // full-depth tree (no -L) because the guardrails bottom out at
 // skills/<name>/SKILL.md and a shallower listing would hide those files.
-storyboardStep(When, 'the installer delivers only the AI agent guardrails', {
-  note: 'The installer confirms what it delivered: the AI agent context only.'
+storyboardStep(When, 'the installer installs only the AI agent files', {
+  note: 'The installer confirms what it installed: the AI agent files only.'
 }, async () => {
   const readLog = () => stripAnsiEscapeSequences(
     execInContainerAsUser(
@@ -560,8 +567,8 @@ storyboardStep(When, 'the installer delivers only the AI agent guardrails', {
 // skills/<name>/SKILL.md); the programmatic twin asserts the same fact with
 // an ls in the container — the installer ADDED only the AI agent context
 // while leaving the repo's own README intact.
-storyboardStep(Then, 'the working tree carries only the AI agent context files', {
-  note: 'The resulting working tree: .agent/, CLAUDE.md, AGENTS.md — none of the framework. Twinned with a programmatic ls assert.',
+storyboardStep(Then, 'the project folder now holds only the AI agent files', {
+  note: 'The project folder now: .agent/, CLAUDE.md, AGENTS.md — and none of the rest of the framework. The test also lists the folder to be sure.',
   copy: "ls -A1 && tree -a -I '.git'"
 }, async () => {
   await typeCommandAndWait(I, 'ls -A1')
@@ -590,8 +597,8 @@ storyboardStep(Then, 'the working tree carries only the AI agent context files',
 // The GitLab hook: agent mode goes straight to main (no MR). Off-camera, point
 // origin at a token-free URL backed by a credential store so the push never
 // renders the PAT; on-camera, commit + push -q + list the REMOTE main.
-storyboardStep(When, 'the developer pushes the guardrails to main', {
-  note: 'Agent mode goes straight to main (no MR); the remote tree lists the guardrails.',
+storyboardStep(When, 'the developer pushes the AI agent files to main', {
+  note: 'Agent mode pushes straight to the main branch, with no merge request to review first; GitLab now lists the AI agent files.',
   copy: 'git add -A && git commit -q -m "chore: install the AI agent guardrails" && git push -q origin main'
 }, async () => {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
@@ -612,8 +619,8 @@ storyboardStep(When, 'the developer pushes the guardrails to main', {
 // itself (the repo root alone would hide what agent mode actually shipped).
 // The remote proof, visual AND programmatic: the project page carries the
 // guardrails on main, and the REST tree of the branch confirms each file.
-storyboardStep(Then, "the guardrails are live on the project's main page", {
-  note: 'The same project page now carries the guardrails on main, committed as "chore: install the AI agent guardrails". Twinned with REST asserts on the remote branch.',
+storyboardStep(Then, "the AI agent files are live on the project's main page", {
+  note: 'The same project page now shows the AI agent files on main, saved as the commit "chore: install the AI agent guardrails". The test also checks the branch through the API.',
   copy: 'http://gitlab/<lambda-user>/<project>'
 }, async () => {
   I.resizeWindow(1024, 640)
@@ -626,8 +633,8 @@ storyboardStep(Then, "the guardrails are live on the project's main page", {
   }
 })
 
-storyboardStep(Then, 'the shipped .agent tree is browsable on GitLab main', {
-  note: 'The .agent tree itself: rules, skills and workflows agent mode shipped. Twinned with a REST assert of the same tree.',
+storyboardStep(Then, 'the .agent folder can now be opened on GitLab', {
+  note: 'Inside the .agent folder: the rules, skills and workflows agent mode installed. The test also checks the same folder through the API.',
   copy: 'http://gitlab/<lambda-user>/<project>/-/tree/main/.agent'
 }, async () => {
   I.resizeWindow(1024, 640)
@@ -649,25 +656,32 @@ storyboardStep(Then, 'the shipped .agent tree is browsable on GitLab main', {
   }
 })
 
-Then('the project should have a branch {string}', async (branch) => {
+// ============================================
+// Reusable REST asserts (the programmatic twin of each storyboard proof).
+// Kept as plain functions so the storyboard steps (installer / piped /
+// init-framework-mr) and the shared plain bindings (init-baseline /
+// release-toggle) all assert the exact same fact.
+// ============================================
+
+async function assertBranchExists (branch) {
   const headers = await getRootHeaders()
   const res = await listProjectBranches(global.journeyProjectName, headers)
   const names = (res.data || []).map(b => b.name)
   if (!names.includes(branch)) {
     throw new Error(`Branch "${branch}" not found for ${global.journeyProjectName}. Branches: ${JSON.stringify(names)}`)
   }
-})
+}
 
-Then('the project should not have a branch {string}', async (branch) => {
+async function assertBranchAbsent (branch) {
   const headers = await getRootHeaders()
   const res = await listProjectBranches(global.journeyProjectName, headers)
   const names = (res.data || []).map(b => b.name)
   if (names.includes(branch)) {
     throw new Error(`Branch "${branch}" should NOT exist for ${global.journeyProjectName}, but it does. Branches: ${JSON.stringify(names)}`)
   }
-})
+}
 
-Then('no merge request should be open for the project', async () => {
+async function assertNoOpenMr () {
   const headers = await getRootHeaders()
   const res = await listProjectMergeRequests(global.journeyProjectName, headers, '?state=opened')
   const open = res.data || []
@@ -677,9 +691,10 @@ Then('no merge request should be open for the project', async () => {
       JSON.stringify(open.map(m => `${m.source_branch}->${m.target_branch}`))
     )
   }
-})
+}
 
-Then('a merge request from {string} into {string} should be open for the project', async (source, target) => {
+// Locate the open MR source->target, record its iid (the page steps reuse it).
+async function findOpenMr (source, target) {
   const headers = await getRootHeaders()
   const res = await listProjectMergeRequests(global.journeyProjectName, headers, '?state=opened')
   const mr = (res.data || []).find(m => m.source_branch === source && m.target_branch === target)
@@ -690,18 +705,23 @@ Then('a merge request from {string} into {string} should be open for the project
     )
   }
   global.journeyMergeRequestIid = mr.iid
-})
+  return mr
+}
 
-Then('the merge request page should visually match {string}', async (baselineName) => {
-  await GitLabMergeRequestPage.verifyMergeRequestVisual(
-    projectPath(global.journeyProjectName),
-    global.journeyMergeRequestIid,
-    baselineName,
-    global.journeyProjectName
+async function assertMrChangedFiles () {
+  const headers = await getRootHeaders()
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encoded}/merge_requests/${global.journeyMergeRequestIid}/changes`,
+    headers
   )
-})
+  const changes = (res.data && res.data.changes) || []
+  if (changes.length === 0) {
+    throw new Error(`Expected MR !${global.journeyMergeRequestIid} to report changed files, found none`)
+  }
+}
 
-Then('a project access token {string} must exist with Maintainer role for the journey project', async (tokenName) => {
+async function assertTokenMaintainer (tokenName) {
   const headers = await getRootHeaders()
   const tokens = await listProjectAccessTokens(global.journeyProjectName, headers)
   const token = (tokens.data || []).find(t => t.name === tokenName && t.active && !t.revoked)
@@ -711,9 +731,9 @@ Then('a project access token {string} must exist with Maintainer role for the jo
   if (token.access_level < 40) {
     throw new Error(`Token "${tokenName}" has access_level=${token.access_level}, expected >= 40 (Maintainer)`)
   }
-})
+}
 
-Then('the branch {string} must be protected with merge for maintainers and push for no one for the journey project', async (branch) => {
+async function assertMainProtected (branch) {
   const headers = await getRootHeaders()
   const encodedPath = encodeURIComponent(projectPath(global.journeyProjectName))
   const branchResponse = await freshGet(
@@ -729,95 +749,60 @@ Then('the branch {string} must be protected with merge for maintainers and push 
   if (!pushLevel) {
     throw new Error(`Expected push_access_levels to contain 0 (No one), got: ${JSON.stringify(data.push_access_levels)}`)
   }
-})
+}
 
-// ============================================
-// GitLab repository views (visual regression)
-// ============================================
-
-Then('the empty project page should visually match {string}', async (baselineName) => {
-  await GitLabRepositoryPage.verifyEmptyProjectVisual(
-    projectPath(global.journeyProjectName), global.journeyProjectName, baselineName
-  )
-})
-
-Then('the project home page should visually match {string}', async (baselineName) => {
-  await GitLabRepositoryPage.verifyProjectHomeVisual(
-    projectPath(global.journeyProjectName), global.journeyProjectName, baselineName
-  )
-})
-
-Then('the branches page should visually match {string}', async (baselineName) => {
-  await GitLabRepositoryPage.verifyBranchesVisual(
-    projectPath(global.journeyProjectName), global.journeyProjectName, baselineName
-  )
-})
-
-// The MR diff content IS the (volatile, self-hosting) repo content, so a
-// pixel baseline of it drifts; assert it carries changed files via REST instead.
-Then('the merge request should report changed files', async () => {
+async function assertMergeMethodFf () {
   const headers = await getRootHeaders()
   const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  const res = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encoded}/merge_requests/${global.journeyMergeRequestIid}/changes`,
-    headers
-  )
-  const changes = (res.data && res.data.changes) || []
-  if (changes.length === 0) {
-    throw new Error(`Expected MR !${global.journeyMergeRequestIid} to report changed files, found none`)
+  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)
+  const method = res.data && res.data.merge_method
+  if (method !== 'ff') {
+    throw new Error(`Expected project merge_method "ff" (fast-forward), got ${JSON.stringify(method)}`)
   }
-})
+}
 
-// ============================================
-// Stage 5 — the reviewer merges the framework MR
-// ============================================
-
-Given('the merge gate on pipelines is lifted for the journey project', async () => {
-  // The test GitLab has no CI runner, so the only_allow_merge_if_pipeline_succeeds
-  // gate applied by init can never be satisfied here. Lifting it scopes the
-  // merge to the mechanics this scenario proves (ff merge against the branch
-  // protection); the pipeline gate itself would need a registered runner.
+async function assertCommitizenVariable () {
   const headers = await getRootHeaders()
-  const res = await updateProjectSettings(
-    global.journeyProjectName,
-    { only_allow_merge_if_pipeline_succeeds: false },
-    headers
+  const res = await readProjectVariable(global.journeyProjectName, 'TASK_COMMITIZEN_TOKEN', headers)
+  if (res.status >= 400 || !(res.data && res.data.key === 'TASK_COMMITIZEN_TOKEN')) {
+    throw new Error(`Expected CI/CD variable TASK_COMMITIZEN_TOKEN to exist (status ${res.status}): ${JSON.stringify(res.data)}`)
+  }
+}
+
+// Assert a milestone string is present in the recorded installer session log.
+function assertInstallLog (...markers) {
+  const log = stripAnsiEscapeSequences(
+    execInContainerAsUser(global.journeyContainer, 'bootstrap', `cat ${INSTALL_LOG}`).output || ''
   )
-  if (res.status >= 400) {
-    throw new Error(`Failed to lift the pipeline merge gate (${res.status}): ${JSON.stringify(res.data)}`)
+  for (const marker of markers) {
+    if (!log.includes(marker)) {
+      throw new Error(`Expected the install log to contain ${JSON.stringify(marker)} (tail):\n${log.slice(-1500)}`)
+    }
   }
-})
+}
 
-When('the merge request is merged as lambda', async () => {
-  const headers = { 'PRIVATE-TOKEN': global.journeyLambdaToken }
-  const res = await mergeMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, headers)
-  if (res.status >= 400) {
-    throw new Error(`Merge of MR !${global.journeyMergeRequestIid} failed (${res.status}): ${JSON.stringify(res.data)}`)
-  }
-})
-
-Then('the merge request should be merged', async () => {
-  const headers = await getRootHeaders()
-  const deadline = Date.now() + 30000
-  let state = null
-  while (Date.now() < deadline) {
-    const res = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, headers)
-    state = res.data && res.data.state
-    if (state === 'merged') return
-    await new Promise(resolve => setTimeout(resolve, 1000))
-  }
-  throw new Error(`MR !${global.journeyMergeRequestIid} did not reach state "merged" within 30s (state=${state})`)
-})
-
-Then('the merged merge request page should visually match {string}', async (baselineName) => {
-  await GitLabMergeRequestPage.verifyMergeRequestVisual(
-    projectPath(global.journeyProjectName),
-    global.journeyMergeRequestIid,
-    baselineName,
-    global.journeyProjectName
+// Copier logs one "create <path>" line per scaffolded file; count them to prove
+// the full framework (not a partial tree) was rendered.
+function assertCreatedFilesAtLeast (min) {
+  const cleaned = stripAnsiEscapeSequences(
+    execInContainerAsUser(global.journeyContainer, 'bootstrap', `cat ${INSTALL_LOG}`).output || ''
   )
-})
+  const count = cleaned.split('\n').filter(line => /^\s*create\s+\S/.test(line)).length
+  if (count < min) {
+    throw new Error(`Expected Copier to scaffold at least ${min} files, the install log reports ${count}`)
+  }
+}
 
+// Shared plain bindings (used across features) delegating to the asserts above.
+// (the branch / merge-request bindings were removed with the storyboard
+// migration — their only caller, piped-install, is now a storyboard that
+// twins assertBranchExists / findOpenMr directly.)
+Then('a project access token {string} must exist with Maintainer role for the journey project', assertTokenMaintainer)
+Then('the branch {string} must be protected with merge for maintainers and push for no one for the journey project', assertMainProtected)
+
+// assertBranchContainsFile is consumed by the agent-mode storyboard (the shipped
+// guardrails on the remote branch), so it stays even though the stage-5 plain
+// binding that also used it was removed with the storyboard migration.
 async function assertBranchContainsFile (branch, file) {
   const headers = await getRootHeaders()
   const res = await listRepositoryTree(
@@ -831,39 +816,455 @@ async function assertBranchContainsFile (branch, file) {
   }
 }
 
-Then('the branch {string} must contain the file {string} for the journey project', assertBranchContainsFile)
+// ============================================
+// Init-framework-MR storyboard — ONE sentence = ONE card = ONE pixel baseline.
+// Four scenarios, one per delivery case (blank / existing-main / other-branch /
+// direct), each keying its own per-tag baseline folder. The Given closes the
+// off-camera stage (lambda user, cloned terminal, staged installer, glab auth)
+// with its visual proof; each Then pairs its page/terminal frame with a
+// programmatic REST assert of the SAME fact, so a regression fails loud even
+// without eyes. Reuses the same masked page captures as the flat scenarios.
+// ============================================
+
+// Ensure the lambda user exists (with a password) so the login-gated config
+// pages can be captured and the per-scenario PAT can be minted.
+async function ensureLambdaUser () {
+  await GitLabUserPage.ensureUserViaApi(
+    BASE_URL,
+    process.env.TASK_GITLAB_ROOT_USER,
+    process.env.TASK_GITLAB_ROOT_PASSWORD,
+    {
+      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
+      username: process.env.TASK_GITLAB_LAMBDA_USER,
+      name: 'Lambda User',
+      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
+    }
+  )
+}
+
+function checkoutFeatureBranch (branch) {
+  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', [
+    `cd ${PROJECT_DIR}`,
+    `git checkout -b ${shellEscape(branch)}`
+  ].join('\n'))
+  if (res.exitCode !== 0) {
+    throw new Error(`Failed to checkout feature branch "${branch}":\n${res.output}`)
+  }
+}
+
+// Capture a masked GitLab page as a storyboard frame at the storyboard's page
+// aspect (1024x640), then restore the default window. `navigate` runs the
+// page-object goto+mask; `frameName` is the per-scenario baseline stem.
+async function pageFrame (navigate, frameName) {
+  I.resizeWindow(1024, 640)
+  await navigate()
+  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+  I.resizeWindow(1024, 768)
+}
+
+// The MR overview page is mostly a white sheet once the tabs/notes are masked;
+// crop the frame to its header block (status + "requested to merge <source>
+// into <target>") so the card is content, not white space.
+async function mrHeaderFrame (frameName) {
+  I.resizeWindow(1024, 640)
+  await GitLabMergeRequestPage.gotoAndMaskCropHeader(
+    projectPath(global.journeyProjectName),
+    global.journeyMergeRequestIid,
+    global.journeyProjectName
+  )
+  await addStoryboardFrame(I, await captureElementFrame(I, frameName, '#storyboard-mr-crop'))
+  I.resizeWindow(1024, 768)
+}
+
+// --- Case A: blank project (flagship) ---------------------------------------
+
+storyboardStep(Given, 'a developer has just cloned a brand-new empty project from GitLab', {
+  note: 'The empty project on GitLab before the installer runs: nothing has been committed yet. Changing details (project name, dates, avatars) are hidden so the picture stays the same.',
+  copy: 'http://gitlab/<lambda-user>/<project>'
+}, async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal()
+  prepareWorkingBranchInstaller(global.journeyContainer)
+  preinstallToolchain(global.journeyContainer)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-empty-project')
+})
+
+storyboardStep(When, 'the developer runs the toolbox installer on the blank project', {
+  note: 'The installer opens with its first question — install the complete framework? — the command you typed still shows above it.',
+  copy: `bash ${WRAPPER_PATH}`
+}, async () => {
+  await launchWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
+})
+
+storyboardStep(When, 'the installer sets up the framework and says the setup is done', {
+  note: 'The installer starts main and opens the init-framework-devsecops merge request — the page where changes get reviewed before joining main. The test also checks the install log for each step.'
+}, async () => {
+  await answerAndCompleteInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog('Bootstrapping main', 'init-framework-devsecops', 'Opened merge request', 'Installation complete!')
+})
+
+storyboardStep(Then, 'init has opened a merge request into main for review', {
+  note: 'The merge request init opened from init-framework-devsecops into main, ready for review instead of forced in. The test also checks through the API that it is open and has changed files.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
+}, async () => {
+  await findOpenMr('init-framework-devsecops', 'main')
+  await mrHeaderFrame('gitlab-merge-request')
+  await assertMrChangedFiles()
+})
+
+storyboardStep(Then, 'main now sits next to the init-framework-devsecops branch', {
+  note: 'The branches page: init made main and put init-framework-devsecops next to it. The test also checks both branches through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
+}, async () => {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-branches')
+  await assertBranchExists('main')
+  await assertBranchExists('init-framework-devsecops')
+})
+
+storyboardStep(Then, 'init now lets main accept only fast-forward merges', {
+  note: 'The merge settings init applied: main only accepts fast-forward merges (the branch must be up to date, so history stays in a straight line). The test also checks through the API that the merge method is "ff".',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/merge_requests'
+}, async () => {
+  // First login-gated page: authenticate as lambda off-camera, then the
+  // subsequent config pages reuse the session.
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await pageFrame(
+    () => GitLabSettingsPage.gotoMergeSettingsAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
+    'gitlab-merge-settings'
+  )
+  await assertMergeMethodFf()
+})
+
+storyboardStep(Then, 'init has blocked direct pushes to main', {
+  note: 'The protected-branches settings init applied: maintainers may merge, no one may push straight to main. The test also checks this through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/repository'
+}, async () => {
+  await pageFrame(
+    () => GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
+    'gitlab-protected-branch'
+  )
+  await assertMainProtected('main')
+})
+
+storyboardStep(Then, 'init has created the automation access token', {
+  note: 'The access-tokens page: init created TASK_COMMITIZEN_TOKEN with the Maintainer role — the login the release automation uses. The test also checks this token through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
+}, async () => {
+  await pageFrame(
+    () => GitLabAccessTokenPage.gotoAccessTokensAndMask(projectPath(global.journeyProjectName)),
+    'gitlab-access-tokens'
+  )
+  await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
+})
+
+storyboardStep(Then, 'init has saved the token as a CI/CD variable', {
+  note: 'The CI/CD variables page: init saved TASK_COMMITIZEN_TOKEN as a project variable so the pipeline can read it. The test also checks this variable through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
+}, async () => {
+  await pageFrame(
+    () => GitLabAccessTokenPage.gotoCiCdAndMask(projectPath(global.journeyProjectName)),
+    'gitlab-cicd-variables'
+  )
+  await assertCommitizenVariable()
+})
+
+// --- Case B: main already exists --------------------------------------------
+
+storyboardStep(Given, 'a developer has cloned a project that already has a main branch', {
+  note: 'The cloned copy of a project that already has main: git shows main as the current branch before the installer runs.',
+  copy: 'git branch -a'
+}, async () => {
+  await ensureLambdaUser()
+  await openReadmeProjectTerminal()
+  prepareWorkingBranchInstaller(global.journeyContainer)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'git branch -a')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-existing-main', { fromMarker: 'git branch -a' }))
+})
+
+storyboardStep(When, 'the installer finishes setup on the project that already had main', {
+  note: 'The installer finishes on the existing main; the finished screen still names the init-framework-devsecops merge request — the page where changes get reviewed before joining main. The test also checks the install log.'
+}, async () => {
+  await runWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog('init-framework-devsecops', 'Installation complete!')
+})
+
+storyboardStep(Then, 'init has opened the merge request into the main that already existed', {
+  note: 'The merge request init opened from init-framework-devsecops into the main that was already there. The test also checks through the API that it is open.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
+}, async () => {
+  await findOpenMr('init-framework-devsecops', 'main')
+  await mrHeaderFrame('gitlab-merge-request')
+})
+
+storyboardStep(Then, 'GitLab lists main next to the init-framework-devsecops branch', {
+  note: 'The branches page: the main that was already there, and the framework branch init made from it. The test also checks both branches through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
+}, async () => {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-branches')
+  await assertBranchExists('main')
+  await assertBranchExists('init-framework-devsecops')
+})
+
+// --- Case C: run from a spike branch ----------------------------------------
+
+storyboardStep(Given, 'a developer is working on an experiment branch instead of main', {
+  note: 'The cloned copy switched to a throwaway experiment branch named spike/poc: git shows it as current, main still there, before the installer runs.',
+  copy: 'git checkout -b spike/poc && git branch'
+}, async () => {
+  await ensureLambdaUser()
+  await openReadmeProjectTerminal()
+  checkoutFeatureBranch('spike/poc')
+  prepareWorkingBranchInstaller(global.journeyContainer)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'git branch')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-spike-branch', { fromMarker: 'git branch' }))
+})
+
+storyboardStep(When, 'the installer finishes setup while on the experiment branch', {
+  note: 'The installer finishes while the developer is still on spike/poc; the finished screen still names the merge request — the page where changes get reviewed before joining main. The test also checks the install log.'
+}, async () => {
+  await runWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog('init-framework-devsecops', 'Installation complete!')
+})
+
+storyboardStep(Then, 'init started the framework branch from main, not from the experiment branch', {
+  note: 'The merge request aims at main, and its branch started from main, never from spike/poc. The test also checks through the API that it is open into main.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/merge_requests/1'
+}, async () => {
+  await findOpenMr('init-framework-devsecops', 'main')
+  await mrHeaderFrame('gitlab-merge-request')
+})
+
+storyboardStep(Then, 'GitLab shows only main and the framework branch, never the local experiment branch', {
+  note: 'The branches page holds main and init-framework-devsecops only; the local spike/poc was never pushed. The test also checks all three through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
+}, async () => {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-branches')
+  await assertBranchExists('main')
+  await assertBranchExists('init-framework-devsecops')
+  await assertBranchAbsent('spike/poc')
+})
+
+// --- Case D: direct delivery (no merge request) -----------------------------
+
+storyboardStep(Given, 'a developer has set the installer to deliver straight to main', {
+  note: 'The freshly cloned blank project, installer set to direct-delivery mode — git shows no commits yet before it runs.',
+  copy: 'git status'
+}, async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal()
+  prepareWorkingBranchInstaller(global.journeyContainer, { direct: true })
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'git status')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-direct', { fromMarker: 'git status' }))
+})
+
+storyboardStep(When, 'the installer finishes setup in direct-delivery mode', {
+  note: 'The installer finishes in direct-delivery mode; it names no merge request — the changes go straight to main with no review step. The test also checks the finished line in the install log.'
+}, async () => {
+  await runWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog('Installation complete!')
+})
+
+storyboardStep(Then, 'init has sent the starter README to main with no merge request', {
+  note: 'The branches page shows main alone: no init-framework-devsecops branch, and no merge request was opened. The test also checks all three through the API.',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/branches'
+}, async () => {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-branches')
+  await assertBranchExists('main')
+  await assertBranchAbsent('init-framework-devsecops')
+  await assertNoOpenMr()
+})
+
+storyboardStep(Then, "the project's main holds only the starter README", {
+  note: 'The project home page: main holds just the starter README; the framework stays in the local copy on disk. The test also checks through the API that main exists.',
+  copy: 'http://gitlab/<lambda-user>/<project>'
+}, async () => {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-main-readme')
+  await assertBranchExists('main')
+})
 
 // ============================================
-// GitLab configuration pages (logged in as lambda)
+// Installer questionnaire storyboard — @e2e-journey-installer-full.
+// The full Copier walkthrough: one card per question, re-capturing the exact
+// anchored moments the retired copier-*-terminal baselines proved (each gum/
+// copier prompt erases itself on answer, so it is captured live). The Given
+// closes the off-camera stage (lambda user, blank clone, staged installer,
+// pre-installed toolchain, glab auth) with the blank working tree; the Then
+// twins the completion screen and the scaffolded tree with install-log and ls
+// asserts. Same underlying run as init-framework-mr, framed on the terminal
+// journey instead of the GitLab pages.
 // ============================================
 
-When('I am logged in to GitLab as lambda', async () => {
-  await GitLabUserPage.loginAs(
-    process.env.TASK_GITLAB_LAMBDA_USER,
-    process.env.TASK_GITLAB_LAMBDA_PASSWORD
+// Advance to THIS Copier question, wait for its prompt, and capture it as a
+// card. `advanceKey` accepts the PREVIOUS answer: 'y' keeps the complete
+// framework (the gum scope confirm, ahead of the first question), 'Enter'
+// keeps each subsequent default. The frame is anchored on the prompt so the
+// copier scrollback above it is excluded.
+// NO I.click here: copier's prompt (prompt_toolkit) enables mouse tracking, so
+// clicking .xterm-screen is swallowed as a mouse report instead of focusing the
+// terminal — the following Enter then never reaches copier and it hangs on the
+// question. Focus persists from the launch card's click through every capture
+// (a capture is DOM-only and never blurs the xterm textarea), so pressKey alone
+// drives the questionnaire — the same key-only pattern answerAndCompleteInstaller
+// and the agent-mode gum menus use after a frame.
+async function captureCopierQuestion (advanceKey, prompt, frameName) {
+  I.pressKey(advanceKey)
+  await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt }))
+}
+
+storyboardStep(Given, 'a developer has just cloned a brand-new empty project into the terminal', {
+  note: 'The empty copy (cloned from GitLab) as the developer sees it: git reports an empty project with nothing saved yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.',
+  copy: 'git clone http://gitlab/<lambda-user>/<project>.git && git status'
+}, async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal()
+  prepareWorkingBranchInstaller(global.journeyContainer)
+  preinstallToolchain(global.journeyContainer)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'git status')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
+})
+
+storyboardStep(When, 'the developer starts the toolbox installer', {
+  note: 'The installer opens with its first question — install the complete framework? — with the typed command still visible above it.',
+  copy: `bash ${WRAPPER_PATH}`
+}, async () => {
+  await launchWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
+})
+
+storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', {
+  note: 'Saying yes to the complete framework starts the setup questions from Copier (the tool that builds the project from your answers); the first — does the project need Ansible? — defaults to no.',
+  copy: 'y'
+}, () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible'))
+
+storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', {
+  note: 'The next question asks which CI/CD platform to use — the automatic build-and-deploy system that runs on every change; the developer keeps the default, GitLab.'
+}, () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
+
+storyboardStep(When, 'the developer keeps Docker as the container runtime', {
+  note: 'The next question asks which tool runs the containers; the developer keeps the default, Docker.'
+}, () => captureCopierQuestion('Enter', 'Which container runtime would you like to use?', 'copier-runtime'))
+
+storyboardStep(When, 'the developer keeps the generated docker-compose file', {
+  note: 'With Docker chosen, the setup offers to create project/docker-compose.yml; the developer keeps the default, yes.'
+}, () => captureCopierQuestion('Enter', 'Generate a docker-compose.yml file', 'copier-compose'))
+
+storyboardStep(When, 'the developer keeps the project workspace enabled', {
+  note: 'The next question turns the project workspace on or off (it adds project/Taskfile.yml and docker-compose.yml); the developer keeps it on.'
+}, () => captureCopierQuestion('Enter', 'Enable the project workspace?', 'copier-workspace'))
+
+storyboardStep(When, 'the developer keeps Renovate auto-merge enabled', {
+  note: 'The next question asks whether Renovate — the bot that proposes dependency updates — should merge toolbox updates on its own; the developer keeps it on.'
+}, () => captureCopierQuestion('Enter', 'Auto-merge Renovate merge requests', 'copier-automerge'))
+
+storyboardStep(When, 'the developer keeps English as the Gherkin language', {
+  note: 'The last question sets the language for the test descriptions; the developer keeps the default, en.'
+}, () => captureCopierQuestion('Enter', 'Language for Gherkin test specifications', 'copier-gherkin'))
+
+storyboardStep(Then, 'the installer builds the project and shows the finished screen', {
+  note: 'Answering the last question builds the framework and runs the setup to the finished screen. The test also checks the log for the key lines (created files, scaffolded successfully, Installation complete!).'
+}, async () => {
+  // No click (see captureCopierQuestion): copier is still on the last question
+  // with mouse tracking on; pressing Enter on the focused terminal accepts it.
+  I.pressKey('Enter')
+  await waitForInstallerComplete()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog(
+    'Scaffolding project with Copier',
+    'Your DevSecOps project has been created successfully!',
+    'scaffolded successfully',
+    'Installation complete!'
   )
+  assertCreatedFilesAtLeast(200)
 })
 
-Then('the access tokens page should visually match {string}', async (baselineName) => {
-  await GitLabAccessTokenPage.navigateToAccessTokenSettings(projectPath(global.journeyProjectName))
-  await GitLabAccessTokenPage.verifyTokenWithMaintainerRole('TASK_COMMITIZEN_TOKEN')
-  await GitLabAccessTokenPage.verifyVisualRegression(baselineName)
+storyboardStep(Then, 'the project folder now holds the full DevSecOps framework', {
+  note: 'The project folder the questions produced — Taskfile.yml, .config, .gitlab-ci.yml, .agent and more (listed without colour so nothing can tint a folder name). The test also lists the folder to check the key files.',
+  copy: 'ls -A1p --color=never'
+}, async () => {
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'ls -A1p --color=never')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-project-tree', { fromMarker: 'ls -A1p --color=never' }))
+  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cd ${PROJECT_DIR} && ls -A1`)
+  const entries = stripAnsiEscapeSequences(res.output || '').split('\n').map(line => line.trim()).filter(Boolean)
+  for (const file of ['Taskfile.yml', '.config', '.gitlab-ci.yml', '.agent']) {
+    if (!entries.includes(file)) {
+      throw new Error(`Expected the scaffolded working tree to contain "${file}". Entries: ${JSON.stringify(entries)}`)
+    }
+  }
 })
 
-Then('the CI\\/CD variables page should visually match {string}', async (baselineName) => {
-  await GitLabAccessTokenPage.navigateToCiCdSettings(projectPath(global.journeyProjectName))
-  await GitLabAccessTokenPage.verifyCiCdVariable('TASK_COMMITIZEN_TOKEN')
-  await GitLabAccessTokenPage.verifyVisualRegressionCiCd(baselineName)
+// ============================================
+// Piped-install storyboard — @e2e-journey-installer-piped.
+// The documented `curl … | bash` transport: inside the pty the installer's
+// stdin is a PIPE, so the Copier questions only stay interactive through its
+// /dev/tty fallback. Three cards prove it end to end — the blank clone, the
+// scope prompt rendered THROUGH the pipe, and the same completion screen +
+// framework MR the typed install produces (REST- and log-twinned). Per-scenario
+// baselines, so parallel workers never share actual paths.
+// ============================================
+
+storyboardStep(Given, 'a developer follows the README and pipes the installer into bash', {
+  note: 'The empty copy, with the installer ready to run the documented way — piped into bash (the output of one command fed straight into the next). Set up off-screen: the test user, the tools, and the GitLab login.',
+  copy: 'curl -fsSL http://gitlab/<toolbox>/install.sh | bash'
+}, async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal()
+  prepareWorkingBranchInstaller(global.journeyContainer, { piped: true })
+  preinstallToolchain(global.journeyContainer)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, 'clear')
+  await typeCommandAndWait(I, 'git status')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
 })
 
-Then('the merge request settings page should visually match {string}', async (baselineName) => {
-  await GitLabSettingsPage.verifyMergeSettingsVisual(
-    projectPath(global.journeyProjectName), global.journeyProjectName, baselineName
-  )
+storyboardStep(When, 'the installer still asks what to install, even when piped into bash', {
+  note: 'Even when piped into bash, the installer still reaches its first question: it reads your keystrokes through /dev/tty, so the documented one-line command still lets you answer.',
+  copy: `bash ${WRAPPER_PATH}`
+}, async () => {
+  await launchWorkingBranchInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-scope', { fromMarker: `bash ${WRAPPER_PATH}` }))
 })
 
-Then('the protected branches page should visually match {string}', async (baselineName) => {
-  await GitLabSettingsPage.verifyProtectedBranchVisual(
-    projectPath(global.journeyProjectName), global.journeyProjectName, baselineName
-  )
+storyboardStep(Then, 'the piped install finishes and opens the framework merge request', {
+  note: 'Answering through the pipe builds and finishes exactly like typing the command by hand. The test also checks the API (the init-framework-devsecops branch and its open merge request into main) and the finished line in the log.'
+}, async () => {
+  await answerAndCompleteInstaller()
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
+  assertInstallLog('Installation complete!')
+  await assertBranchExists('init-framework-devsecops')
+  await findOpenMr('init-framework-devsecops', 'main')
 })

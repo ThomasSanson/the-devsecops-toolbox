@@ -1,5 +1,7 @@
 /* global inject Given Then After */
 /**
+ * Storyboard for @e2e-renovate-detection (see features/04-evolution/renovate.feature).
+ *
  * Proves the framework's OWN Renovate wiring detects every bootstrap tool at
  * BOTH endpoints (the canonical .config/<tool> source AND the install.sh pin),
  * so a new release is bumped in both places (one grouped PR), never just one.
@@ -12,16 +14,18 @@
  * side. Extract mode is offline (no datasource lookup), and the task prefers the
  * pinned, baked `renovate` over npx, so the run is deterministic and CI-safe.
  *
- * The pixel baseline is Renovate's OWN verbatim output — the "Dependency extraction
- * complete" summary block it prints (per-manager file/dep counts + githubDeps) — not
- * a hand-built table. The full extract log is ~700 lines, so only that genuine summary
- * block is shown. The dual-endpoint invariant (each tool in its .config source AND in
- * install.sh) is enforced programmatically from the same task's JSON output.
+ * ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline, asserted
+ * inside the step (tolerance: 0): the regression stage, Renovate's own
+ * "Dependency extraction complete" summary block (verbatim — not a hand-built
+ * table), and the dual-endpoint mapping itself, made visible.
  */
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
-const { assertTextVisualMatch } = require('../helpers/textRender')
+const { stripAnsiEscapeSequences } = require('../helpers/docker')
+const { renderTextInBrowser } = require('../helpers/textRender')
+const { renderPreFrame } = require('../helpers/capturedOutput')
+const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 const { I } = inject()
 const REPO = '/workspace'
@@ -48,7 +52,10 @@ After(() => {
   gitEnv = null
 })
 
-Given('a safe copy of the framework with each bootstrap tool regressed to an older version', () => {
+storyboardStep(Given, 'a safe copy of the framework has every bootstrap tool regressed to an older version', {
+  note: 'Off-camera: a full throwaway copy of the framework, git-pristine first. Each bootstrap tool is then pinned OLDER in both its canonical .config source and the install.sh bootstrap pin — the real git diff shows every OLD to regressed move.',
+  copy: 'git diff'
+}, async () => {
   workdir = fs.mkdtempSync('/tmp/renovate-detect-')
   cleanupDirs.push(workdir)
   // Full framework copy (task needs the root Taskfile + every include); drop the
@@ -65,6 +72,7 @@ Given('a safe copy of the framework with each bootstrap tool regressed to an old
   const gitConfig = path.join(workdir, '.gitconfig.e2e')
   fs.writeFileSync(gitConfig, '[safe]\n\tdirectory = *\n[user]\n\temail = e2e@test.local\n\tname = e2e\n[init]\n\tdefaultBranch = main\n')
   gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: gitConfig }
+  execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: workdir, env: gitEnv })
 
   const installSh = path.join(workdir, '.config/devsecops/install.sh')
   let sh = fs.readFileSync(installSh, 'utf8')
@@ -81,7 +89,21 @@ Given('a safe copy of the framework with each bootstrap tool regressed to an old
   }
   fs.writeFileSync(installSh, sh)
 
-  execSync('git init -q && git add -A && git commit -qm "regress bootstrap tool versions"', { cwd: workdir, env: gitEnv })
+  // The downgrade as a real, readable git diff: colours kept (color.ui=always), -U0,
+  // and git's internal plumbing lines (`diff --git …`, `index …`) dropped so every
+  // OLD → regressed move is visible without per-file boilerplate.
+  const diff = execSync('git -c color.ui=always diff -U0', { cwd: workdir, env: gitEnv, encoding: 'utf8' })
+    .split('\n')
+    .filter(line => {
+      const plain = stripAnsiEscapeSequences(line)
+      return !plain.startsWith('diff --git ') && !plain.startsWith('index ')
+    })
+    .map(l => l.replace(/[ \t]+$/, '')).join('\n').trim()
+
+  execSync('git add -A && git commit -qm "regress bootstrap tool versions"', { cwd: workdir, env: gitEnv })
+
+  await renderTextInBrowser(I, `$ git diff\n${diff}`, { columns: 2 })
+  await addStoryboardFrame(I, await capturePageFrame(I, 'detection-regressed'))
 })
 
 // EXTRACT is the command a developer actually types (shown in the baseline). FORCE_COLOR
@@ -131,26 +153,32 @@ function trackedDepFiles (json) {
   return filesByDep
 }
 
-Then('Renovate should detect each regressed tool at both endpoints, visually matching {string}', async (baselineName) => {
-  // GENUINE visual: run the framework's real entrypoint exactly as a developer does
-  // (`task renovate:dry-run`) and show Renovate's own "Dependency extraction complete"
-  // summary block, verbatim (the full ~700-line extract log re-prints the resolved
-  // config + every packageFile). The per-manager counts (regex = the .config/<tool>
-  // pins + install.sh) and githubDeps are Renovate's, not hand-formatted.
+storyboardStep(Then, "Renovate's own extraction log detects every regressed tool", {
+  note: 'The framework\'s real entrypoint runs against the regressed copy; Renovate\'s own "Dependency extraction complete" summary block (verbatim) lists every regex/pip manager hit plus githubDeps — not a hand-built table.',
+  copy: EXTRACT
+}, async () => {
   const summary = extractionSummary(runExtract(EXTRACT_HUMAN, workdir, gitEnv))
+  // FORCE_COLOR=1 output keeps real ANSI colour — renderTextInBrowser
+  // (ansiToHtml-capable), never renderPreFrame (plain escapeHtml only).
+  await renderTextInBrowser(I, `$ ${EXTRACT}\n${summary}`, { columns: 1 })
+  await addStoryboardFrame(I, await capturePageFrame(I, 'detection-summary'))
+})
 
-  // Rigorous per-endpoint invariant: the summary proves the tools are SEEN; this proves
-  // each is detected at BOTH endpoints (its .config source AND the install.sh pin),
-  // parsed from the same task's JSON output (the detail lives in the packageFiles dump).
+storyboardStep(Then, 'each tool is detected at both its config source and the install.sh pin', {
+  note: 'The rule made visible: every tracked tool is reported from its canonical .config source AND install.sh, so one Renovate PR touches both files, never only one.',
+  copy: EXTRACT
+}, async () => {
   const filesByDep = trackedDepFiles(runExtract(EXTRACT_JSON, workdir, gitEnv))
+  const rows = []
   for (const tool of TOOLS) {
     const files = filesByDep[tool.depName] || new Set()
-    const missing = [tool.source || tool.requirements, INSTALL_SH].filter(f => !files.has(f))
+    const endpoint = tool.source || tool.requirements
+    const missing = [endpoint, INSTALL_SH].filter(f => !files.has(f))
     if (missing.length) {
       throw new Error(`${tool.depName} not detected at both endpoints — missing: ${missing.join(', ')} (found in: ${[...files].join(', ') || 'nowhere'})`)
     }
+    rows.push(`${tool.depName.padEnd(20)} ${endpoint.padEnd(38)} detected`)
+    rows.push(`${''.padEnd(20)} ${INSTALL_SH.padEnd(38)} detected`)
   }
-
-  // Baseline = the typed task command + Renovate's verbatim extraction summary.
-  await assertTextVisualMatch(I, baselineName, `$ ${EXTRACT}\n${summary}`)
+  await renderPreFrame(I, 'detection-endpoints', `$ ${EXTRACT}  (per-endpoint)\n${rows.join('\n')}`)
 })

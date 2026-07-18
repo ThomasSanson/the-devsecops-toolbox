@@ -153,6 +153,7 @@ function removeRendered (dir) {
 
 module.exports = {
   TEMPLATE_SRC,
+  COPIER,
   UPDATE_MARKER_FILE,
   UPDATE_MARKER,
   renderProject,

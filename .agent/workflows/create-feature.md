@@ -9,7 +9,7 @@ This workflow guides you through implementing a new template feature using Test-
 ## Prerequisites
 
 - Understand the feature requirements
-- Identify the domain and feature name (existing domains: `gitlab/`, `template/`, `security/`, `installer/`)
+- Identify the domain and feature name (existing domains: `01-install/`, `02-first-init/`, `03-daily-work/`, `04-evolution/`)
 - Have a clear picture of the expected Copier question(s) and template changes
 
 ## Test Architecture
@@ -28,7 +28,7 @@ Create a new feature file in `project/tests/e2e/features/{domain}/{feature}.feat
 
 **Instruction:**
 Read an existing feature file to understand the mandatory tags and step patterns.
-For Copier rendering assertions, start from `features/template/matrix.feature`
+For Copier rendering assertions, start from `features/04-evolution/matrix.feature`
 (steps: `Given a project rendered from the working-branch template with answers "key=value"`).
 
 **Mandatory Rules:**

@@ -1,12 +1,13 @@
-/* global inject Given When Then Before After */
+/* global inject Before After */
 /**
- * Installer prerequisite-path steps (ported from the legacy bootstrap suite).
- *
- * The journey's ubuntu image pre-installs git/jq/unzip, so the installer's
- * prerequisite branches can never trigger there. These steps spawn a BARE
- * ubuntu:24.04 container (sudo + curl only) and prove the installer
- * auto-installs the missing prerequisites with sudo, then fails cleanly with
- * actionable guidance when the project has no GitLab remote.
+ * Bare-machine cold-start storyboard — the installer proving its OWN
+ * prerequisites on a machine that has none: a barren Ubuntu with only sudo
+ * and curl, the installer launching, patching its own gap (unzip) with
+ * sudo, then stopping with the ONE piece of guidance that actually unblocks
+ * a developer (link a GitLab remote). ONE Gherkin sentence = ONE storyboard
+ * card = ONE pixel baseline, asserted inside the step (tolerance: 0); each
+ * verdict card twins its <pre> frame with a programmatic log assert of the
+ * same fact.
  */
 const { I } = inject()
 const fs = require('fs')
@@ -19,7 +20,8 @@ const {
   removeContainer,
   stripAnsiEscapeSequences
 } = require('../helpers/docker')
-const { assertTextVisualMatch } = require('../helpers/textRender')
+const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
+const { renderPreFrame } = require('../helpers/capturedOutput')
 
 const SETUP_TIMEOUT = 300000
 const INSTALLER_TIMEOUT = 600000
@@ -39,11 +41,21 @@ After(() => {
   }
 })
 
+function assertOutputContains (expected) {
+  const cleaned = stripAnsiEscapeSequences(installerResult.output)
+  if (!cleaned.includes(expected)) {
+    throw new Error(`Expected installer output to contain "${expected}"\n--- output tail ---\n${cleaned.slice(-3000)}`)
+  }
+}
+
 // ============================================
-// GIVEN — bare container
+// Given — the barren machine, installer staged
 // ============================================
 
-Given('a bare Ubuntu container with only sudo and curl', () => {
+storyboardStep(Given, 'a fresh machine has only sudo and curl, with the installer ready to run', {
+  note: 'This machine has sudo and curl but no unzip — the tool the installer will have to add by itself. The installer files are copied in but not started yet.',
+  copy: 'command -v unzip'
+}, async () => {
   bareContainer = containerName()
   execSync(`docker run -d --name ${shellEscape(bareContainer)} ubuntu:24.04 sleep infinity`, {
     encoding: 'utf8',
@@ -61,9 +73,7 @@ Given('a bare Ubuntu container with only sudo and curl', () => {
   if (setup.exitCode !== 0) {
     throw new Error(`Failed to prepare the bare container:\n${setup.output}`)
   }
-})
 
-Given('the working-branch installer is staged in the bare container', () => {
   execSync(
     `docker cp /workspace/.config/devsecops/install.sh ${shellEscape(`${bareContainer}:/tmp/install.sh`)}`,
     { stdio: 'pipe', timeout: SETUP_TIMEOUT }
@@ -84,13 +94,19 @@ Given('the working-branch installer is staged in the bare container', () => {
   if (own.exitCode !== 0) {
     throw new Error(`Failed to fix installer ownership:\n${own.output}`)
   }
+
+  const check = execInContainer(bareContainer, 'command -v unzip || echo "unzip: command not found"')
+  await renderPreFrame(I, 'barren-tooling', stripAnsiEscapeSequences(check.output || '').trimEnd())
 })
 
 // ============================================
-// WHEN — run the installer (no tty, defaults)
+// When — the installer runs, non-interactively
 // ============================================
 
-When('I run the installer non-interactively in the bare container', () => {
+storyboardStep(When, 'the installer runs on the fresh machine with no one to answer its questions', {
+  note: 'The installer starts and prints its title. Nothing on the machine has changed yet.',
+  copy: `sh -c "mkdir -p /workspace/my-project && cd /workspace/my-project && yes '' | head -n 40 | bash /tmp/install.sh"`
+}, async () => {
   const cmd = [
     `docker exec -u bootstrap -e DEVSECOPS_TEMPLATE_URL=/tmp/toolbox-template ${shellEscape(bareContainer)}`,
     `sh -c ${shellEscape("mkdir -p /workspace/my-project && cd /workspace/my-project && yes '' | head -n 40 | bash /tmp/install.sh")}`
@@ -108,41 +124,57 @@ When('I run the installer non-interactively in the bare container', () => {
   const artifact = path.join(__dirname, '..', '..', '_output', 'installer', 'prerequisites-failure.log')
   fs.mkdirSync(path.dirname(artifact), { recursive: true })
   fs.writeFileSync(artifact, installerResult.output)
+
+  const cleaned = stripAnsiEscapeSequences(installerResult.output).replace(/\r/g, '')
+  const lines = cleaned.split('\n')
+  const bannerIdx = lines.findIndex(line => line.includes('DevSecOps Toolbox Installer'))
+  const banner = (bannerIdx < 0 ? lines : lines.slice(bannerIdx, bannerIdx + 4)).join('\n').trimEnd()
+  await renderPreFrame(I, 'installer-launch', banner)
 })
 
 // ============================================
-// THEN — auto-install proof + clean failure
+// Then — the auto-install, then the final guidance
 // ============================================
 
-Then('the bare-container installer run should fail', () => {
-  if (installerResult.exitCode === 0) {
-    throw new Error(`Expected the installer to fail without a GitLab remote, but it succeeded\n${installerResult.output}`)
-  }
-})
+storyboardStep(Then, 'the installer installs the tool it was missing and tries again', {
+  note: 'task devsecops:init fails because unzip is missing, so the installer adds unzip with sudo and runs again. The log is checked for the same story.',
+  copy: 'grep -A2 "Attempting to install missing prerequisites" /tmp/install.log'
+}, async () => {
+  assertOutputContains('DevSecOps Toolbox Installer')
+  assertOutputContains('task devsecops:init failed. Attempting to install missing prerequisites...')
+  assertOutputContains('Installing unzip with sudo...')
 
-Then('the bare-container installer output should contain {string}', (expected) => {
-  const cleaned = stripAnsiEscapeSequences(installerResult.output)
-  if (!cleaned.includes(expected)) {
-    throw new Error(`Expected installer output to contain "${expected}"\n--- output tail ---\n${cleaned.slice(-3000)}`)
-  }
+  const cleaned = stripAnsiEscapeSequences(installerResult.output).replace(/\r/g, '')
+  const lines = cleaned.split('\n')
+  const idx = lines.findIndex(line => line.includes('Attempting to install missing prerequisites'))
+  const slice = (idx < 0 ? lines : lines.slice(Math.max(0, idx - 1), idx + 3)).join('\n').trimEnd()
+  await renderPreFrame(I, 'prerequisite-installed', slice)
 })
 
 // The final guidance block (from the no-remote diagnosis down) is the
 // deterministic contract; everything above it (apt, toolchain downloads,
-// temp dirs) is volatile and covered by the string assertions.
+// temp dirs) is volatile and covered by the string assertions in the
+// previous card. LAST occurrence: the marker first fires before the
+// prerequisites install, and the retry that follows floods the output with
+// unpinned toolchain versions (uv, docker, node, …) that drift over time.
+// Only the final failure block after the retry is deterministic.
 const NO_REMOTE_MARKER = "No 'origin' remote configured. Add a GitLab remote, then re-run."
 
-Then('the bare-container installer guidance should visually match {string}', async (baselineName) => {
+storyboardStep(Then, 'the installer stops and explains how to link the project to GitLab', {
+  note: 'The installer stops on purpose: the project has no GitLab link yet, so it prints the exact next step. If this message ever went missing, a new developer would be stuck.',
+  copy: NO_REMOTE_MARKER
+}, async () => {
+  if (installerResult.exitCode === 0) {
+    throw new Error(`Expected the installer to fail without a GitLab remote, but it succeeded\n${installerResult.output}`)
+  }
+  assertOutputContains(NO_REMOTE_MARKER)
+
   const cleaned = stripAnsiEscapeSequences(installerResult.output).replace(/\r/g, '')
   const lines = cleaned.split('\n')
-  // LAST occurrence: the marker first fires before the prerequisites install,
-  // and the retry that follows floods the output with unpinned toolchain
-  // versions (uv, docker, node, …) that drift over time. Only the final
-  // failure block after the retry is deterministic.
   const start = lines.findLastIndex(line => line.includes(NO_REMOTE_MARKER))
   if (start < 0) {
     throw new Error(`Marker "${NO_REMOTE_MARKER}" not found in installer output:\n${cleaned.slice(-3000)}`)
   }
   const block = lines.slice(start).join('\n').trimEnd()
-  await assertTextVisualMatch(I, baselineName, block)
+  await renderPreFrame(I, 'final-guidance', block)
 })

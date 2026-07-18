@@ -77,7 +77,7 @@ cd project && ...
     └── tests/
         └── e2e/      # Unified E2E suite (single entry point — see tests/README.md)
             ├── codecept.conf.js
-            ├── features/gitlab/   # 01-developer-journey, 02-init-guidance, 03-init-effects, 04-auth
+            ├── features/          # 01-install, 02-first-init, 03-daily-work, 04-evolution
             ├── pages/             # GitLab Page Objects (masking for visual determinism)
             ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
             └── screenshots/base/  # Visual baselines (tolerance: 0)

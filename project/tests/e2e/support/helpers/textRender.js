@@ -90,6 +90,7 @@ async function assertTextVisualMatch (I, baselineName, text, renderOptions = {})
 }
 
 module.exports = {
+  ansiToHtml,
   renderTextInBrowser,
   assertTextVisualMatch
 }

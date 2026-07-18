@@ -1,152 +1,50 @@
-/* global inject When Then */
+/* global inject Given When Then Before */
 /**
- * E2E scenario: `task release` opens push access on a protected branch,
- * then restores "push=No one" — both on success AND on failure. The
- * failure path is the irreplaceable safety net: it proves the trap
- * restores the protection even when the release push fails.
- *
- * Setup: re-uses the same workspaceRepo helper as the pilot. The
- * "branch is protected" assertion is shared with init-baseline.js (see
- * the Then step `the branch ... must be protected with merge for ...`).
+ * Release-window storyboard — `task release` as ONE continuous journey: main
+ * starts locked, a release run opens the push window just long enough to
+ * push, then closes it again; the safety net proves the SAME close happens
+ * even when the push itself fails (`trap restore_branch_protection EXIT` in
+ * Taskfile.release.yml). ONE Gherkin sentence = ONE storyboard card = ONE
+ * pixel baseline, asserted inside the step (tolerance: 0); every verdict
+ * card twins its GitLab page or <pre> frame with a programmatic REST/log
+ * assert of the same fact.
  */
+const { I, GitLabProjectPage, GitLabUserPage, GitLabSettingsPage } = inject()
+const { execSync } = require('child_process')
 const {
   BASE_URL,
+  projectPath,
   getRootHeaders,
   createLambdaPersonalAccessToken,
   readProjectVariable
 } = require('../helpers/gitlabApi')
+const { freshGet } = require('../helpers/http')
 const {
   bootstrapWorkspaceRepo,
   runTaskInRepo
 } = require('../helpers/workspaceRepo')
+const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
+const { renderPreFrame, tailFromMarker } = require('../helpers/capturedOutput')
 
 const RELEASE_TIMEOUT = 600000
 
-async function runInitAndRelease (projectName, { expectFailure }) {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const repoDir = `/tmp/${projectName}-repo`
-
-  const rootHeaders = await getRootHeaders()
-  const { token: glabToken } = await createLambdaPersonalAccessToken(
-    `glab-cli-token-for-${projectName}`,
-    ['api', 'write_repository'],
-    rootHeaders
-  )
-  bootstrapWorkspaceRepo(projectName, repoDir, glabToken, { runInit: true })
-
-  // Local GitLab test environment serves HTTP only.
-  // Keep release code HTTPS-based and rewrite transport at git level for E2E.
-  runTaskInRepo('git config --local url."http://".insteadOf "https://"', repoDir, glabToken)
-
-  const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
-  const commitizenToken = variableResponse.data.value
-  if (!commitizenToken) {
-    throw new Error(`CI/CD variable TASK_COMMITIZEN_TOKEN is empty for project '${lambdaUser}/${projectName}'`)
-  }
-
-  const releaseEnv = {
-    TASK_DOCKER_CE_ENABLED: 'false',
-    TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: commitizenToken,
-    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
-    TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: expectFailure ? 'invalid-host-for-release' : 'gitlab',
-    TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
-    TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
-  }
-
-  try {
-    const output = runTaskInRepo('task release', repoDir, glabToken, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      encoding: 'utf8',
-      timeout: RELEASE_TIMEOUT,
-      extraEnv: releaseEnv
-    })
-
-    global.releaseLogs = output || ''
-    global.releaseFailed = false
-    if (expectFailure) {
-      throw new Error('Expected task release to fail, but it succeeded')
-    }
-  } catch (error) {
-    const stdout = error.stdout ? error.stdout.toString() : ''
-    const stderr = error.stderr ? error.stderr.toString() : ''
-    global.releaseLogs = `${stdout}\n${stderr}`
-    global.releaseFailed = true
-
-    if (!expectFailure) {
-      throw new Error(`task release failed unexpectedly:\n${global.releaseLogs}`)
-    }
-  }
-}
-
-When(
-  'I run {string} and then {string} for project {string} with local authentication',
-  async (initCommand, releaseCommand, projectName) => {
-    if (initCommand !== 'task devsecops:init' || releaseCommand !== 'task release') {
-      throw new Error(`Unexpected commands: '${initCommand}' and '${releaseCommand}'`)
-    }
-    await runInitAndRelease(projectName, { expectFailure: false })
-  }
-)
-
-When(
-  'I run {string} and then {string} with a failing push for project {string}',
-  async (initCommand, releaseCommand, projectName) => {
-    if (initCommand !== 'task devsecops:init' || releaseCommand !== 'task release') {
-      throw new Error(`Unexpected commands: '${initCommand}' and '${releaseCommand}'`)
-    }
-    await runInitAndRelease(projectName, { expectFailure: true })
-  }
-)
-
-Then('the release logs should contain {string}', (expectedText) => {
-  const logs = global.releaseLogs || ''
-  if (!logs.includes(expectedText)) {
-    throw new Error(
-      `Expected release logs to contain ${JSON.stringify(expectedText)}\n` +
-      `---\n${logs}\n---`
-    )
-  }
-})
-
-Then('the release command should fail', () => {
-  if (!global.releaseFailed) {
-    throw new Error('Expected task release to fail, but it succeeded')
-  }
-})
-
-// ============================================
-// Visual proof — rendered into a <pre> block
-// ============================================
-const { I } = inject()
-
-function stripAnsi (str) {
-  return str
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\][^\x07]*\x07/g, '')
-}
-
-// `task release` emits a lot of non-deterministic content (commit SHAs, push
-// deltas, version bumps, remote progress). We filter aggressively, then
-// anchor the tail on the trap-restore line which is emitted on BOTH success
-// and failure paths.
+// The task's own contract lines — everything else (SHAs, push deltas, version
+// bumps, remote progress) is volatile and filtered out before a card is
+// rendered.
 const RELEASE_NOISE_PATTERNS = [
   /^task: \[/,
-  /^bump: version /, //                                        e.g. "bump: version 0.1.0 → 0.2.0"
-  /^bump: commit /, //                                         "bump: commit and tag created"
-  /^\s*[0-9a-f]{7,}\.\.[0-9a-f]{7,}\s/, //                     "abc1234..def5678  HEAD -> main"
-  /^\s*\* \[new tag\]/, //                                     " * [new tag]         0.2.0 -> 0.2.0"
-  /^To https?:\/\/[^\s]+\.git$/, //                            "To http://gitlab/lambda/...git"
-  /^remote:\s/, //                                             "remote: GitLab: ..."
+  /^bump: version /,
+  /^bump: commit /,
+  /^\s*[0-9a-f]{7,}\.\.[0-9a-f]{7,}\s/,
+  /^\s*\* \[new tag\]/,
+  /^To https?:\/\/[^\s]+\.git$/,
+  /^remote:\s/,
   /^Cloning into /,
   /^(Counting|Compressing|Writing|Total|Resolving) /,
   /^Delta compression /,
   /^husky - /,
   /^sync hooks: /,
-  /^\[main [0-9a-f]{7,}\]/, //                                 "[main abc1234] message"
+  /^\[main [0-9a-f]{7,}\]/,
   /^Date: /,
   /^Author: /,
   /^commit [0-9a-f]{7,}/,
@@ -154,10 +52,15 @@ const RELEASE_NOISE_PATTERNS = [
   /Rewrite rules:/
 ]
 
-const RELEASE_TAIL_MARKERS = [
-  '🔒 Restoring branch protection (push=No one)'
-]
-const RELEASE_VISUAL_TAIL_LINES = 20
+const RESTORE_MARKER = '🔒 Restoring branch protection (push=No one)'
+
+function stripAnsi (str) {
+  return String(str)
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+}
 
 function filterReleaseLogs (raw) {
   return stripAnsi(raw)
@@ -170,35 +73,190 @@ function filterReleaseLogs (raw) {
     })
 }
 
-function tailFromMarker (lines, markers, tail) {
-  const markerIdx = lines.reduce((last, line, idx) => {
-    return markers.some(m => line.includes(m)) ? idx : last
-  }, -1)
-  if (markerIdx < 0) return lines.slice(Math.max(0, lines.length - tail))
-  const end = markerIdx + 1
-  return lines.slice(Math.max(0, end - tail), end)
+// Forward slice: the first `after` lines starting at the first line
+// containing `marker`.
+function headFromMarker (lines, marker, after) {
+  const idx = lines.findIndex(line => line.includes(marker))
+  if (idx < 0) return lines.slice(0, after)
+  return lines.slice(idx, idx + after)
 }
 
-When('the release logs are displayed in the browser', async () => {
-  const lines = filterReleaseLogs(global.releaseLogs || '')
-  const tail = tailFromMarker(lines, RELEASE_TAIL_MARKERS, RELEASE_VISUAL_TAIL_LINES)
-  // Normalise volatile 3-part versions (the release bump "22.7.0 → 22.8.0", the
-  // "tag to create" line, the pinned commitizen version) to a placeholder so the
-  // baseline stays stable across every release instead of drifting on each bump.
-  const output = tail.join('\n').replace(/\d+\.\d+\.\d+/g, 'x.y.z')
+function assertContains (raw, expected) {
+  if (!raw.includes(expected)) {
+    throw new Error(`Expected release logs to contain ${JSON.stringify(expected)}\n---\n${raw}\n---`)
+  }
+}
 
-  await I.usePlaywrightTo('render release logs in browser', async ({ page }) => {
-    await page.setContent(
-      '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0;padding:16px">' +
-      '<pre id="task-output" style="color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-all">' +
-      output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
-      '</pre></body></html>'
-    )
-  })
-  await I.wait(0.5)
+async function assertMainProtected (projectName) {
+  const headers = await getRootHeaders()
+  const encodedPath = encodeURIComponent(projectPath(projectName))
+  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/protected_branches/main`, headers)
+  const data = res.data || {}
+  const mergeLevel = (data.merge_access_levels || []).find(l => l.access_level === 40)
+  if (!mergeLevel) {
+    throw new Error(`Expected merge_access_levels to contain 40 (Maintainers), got: ${JSON.stringify(data.merge_access_levels)}`)
+  }
+  const pushLevel = (data.push_access_levels || []).find(l => l.access_level === 0)
+  if (!pushLevel) {
+    throw new Error(`Expected push_access_levels to contain 0 (No one), got: ${JSON.stringify(data.push_access_levels)}`)
+  }
+}
+
+async function assertRemoteMainAtSha (projectName, expectedSha) {
+  const headers = await getRootHeaders()
+  const encodedPath = encodeURIComponent(projectPath(projectName))
+  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/repository/branches/main`, headers)
+  const remoteSha = res.data && res.data.commit && res.data.commit.id
+  if (remoteSha !== expectedSha) {
+    throw new Error(`Expected remote main at ${expectedSha}, found ${remoteSha}`)
+  }
+}
+
+// Bootstraps a project, runs `task devsecops:init` (direct mode: no MR, main
+// protected right away) and returns everything the release run needs. The
+// lambda browser session is established ONCE by the Given step — GitLab
+// redirects an already-authenticated session away from /users/sign_in, so a
+// second loginAs (the safety-net project) would hang waiting for the login
+// form that never appears.
+async function bootstrapLockedProject (projectName) {
+  await GitLabProjectPage.deleteProjectIfExists(
+    BASE_URL,
+    process.env.TASK_GITLAB_ROOT_USER,
+    process.env.TASK_GITLAB_ROOT_PASSWORD,
+    projectPath(projectName)
+  )
+  await GitLabProjectPage.createBlankPublicProject(projectName)
+
+  const rootHeaders = await getRootHeaders()
+  const { token: glabToken } = await createLambdaPersonalAccessToken(
+    `glab-cli-token-for-${projectName}`,
+    ['api', 'write_repository'],
+    rootHeaders
+  )
+  const repoDir = `/tmp/${projectName}-repo`
+  bootstrapWorkspaceRepo(projectName, repoDir, glabToken, { runInit: true })
+  runTaskInRepo('git config --local url."http://".insteadOf "https://"', repoDir, glabToken)
+  return { repoDir, glabToken }
+}
+
+function runRelease (projectName, repoDir, glabToken, { expectFailure }) {
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const releaseEnv = {
+    TASK_DOCKER_CE_ENABLED: 'false',
+    TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: null, // filled below once TASK_COMMITIZEN_TOKEN is read
+    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
+    TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: expectFailure ? 'invalid-host-for-release' : 'gitlab',
+    TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
+    TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
+    TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
+    TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
+  }
+  return async () => {
+    const rootHeaders = await getRootHeaders()
+    const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
+    releaseEnv.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN = variableResponse.data.value
+    try {
+      const output = runTaskInRepo('task release', repoDir, glabToken, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        timeout: RELEASE_TIMEOUT,
+        extraEnv: releaseEnv
+      })
+      return { raw: output || '', failed: false }
+    } catch (error) {
+      const stdout = error.stdout ? error.stdout.toString() : ''
+      const stderr = error.stderr ? error.stderr.toString() : ''
+      return { raw: `${stdout}\n${stderr}`, failed: true }
+    }
+  }
+}
+
+let successProject, failureProject
+let successRun
+
+Before(() => {
+  successProject = null
+  failureProject = null
+  successRun = null
 })
 
-Then('the release logs should visually match {string}', async (baselineName) => {
-  const { assertPageVisualMatch } = require('../helpers/pageVisual')
-  await assertPageVisualMatch(I, baselineName)
+// ============================================
+// Given — main starts locked
+// ============================================
+
+storyboardStep(Given, 'main starts locked behind push protection', {
+  note: 'A freshly initialized project: main is protected right away (merge for maintainers, push for no one).',
+  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/repository'
+}, async () => {
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  successProject = 'e2e-release-toggle'
+  const { repoDir, glabToken } = await bootstrapLockedProject(successProject)
+  successProject = { name: successProject, repoDir, glabToken }
+  I.resizeWindow(1024, 640)
+  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(successProject.name), successProject.name)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'protection-locked'))
+  I.resizeWindow(1024, 768)
+})
+
+// ============================================
+// When — the window opens, the push lands
+// ============================================
+
+storyboardStep(When, 'a release run opens the push window for maintainers', {
+  note: 'task release opens push access for Maintainers just before it runs the version-bump step (Commitizen). The test also checks the release log for this exact line.',
+  copy: 'task release'
+}, async () => {
+  successRun = await runRelease(successProject.name, successProject.repoDir, successProject.glabToken, { expectFailure: false })()
+  if (successRun.failed) {
+    throw new Error(`Expected task release to succeed, but it failed:\n${successRun.raw}`)
+  }
+  assertContains(successRun.raw, 'Temporarily opening push access for Maintainers')
+  const filtered = filterReleaseLogs(successRun.raw)
+  const slice = headFromMarker(filtered, 'Temporarily opening push access for Maintainers', 3)
+  await renderPreFrame(I, 'toggle-opens', slice.join('\n'))
+})
+
+storyboardStep(When, 'the release pushes the version bump to main', {
+  note: 'The version-bump step updates the version, and task release pushes it straight to main. The test also checks through the API that GitLab\'s main is now at this exact commit.',
+  copy: "git -C <repo> log -1 --format='%s'"
+}, async () => {
+  const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
+  const sha = execSync(`git -C ${successProject.repoDir} rev-parse HEAD`, { encoding: 'utf8' }).trim()
+  const masked = subject.replace(/\d+\.\d+\.\d+/g, 'x.y.z')
+  await renderPreFrame(I, 'push-lands', masked)
+  await assertRemoteMainAtSha(successProject.name, sha)
+})
+
+// ============================================
+// Then — the window closes, both on success and on the safety net
+// ============================================
+
+storyboardStep(Then, 'the window closes again and push protection is restored', {
+  note: 'task release turns push access back off when it exits, even after a successful push. The test also checks through the API that the protection is restored.',
+  copy: 'task release'
+}, async () => {
+  assertContains(successRun.raw, RESTORE_MARKER)
+  const filtered = filterReleaseLogs(successRun.raw)
+  const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
+  await renderPreFrame(I, 'window-closes', slice.join('\n'))
+  await assertMainProtected(successProject.name)
+})
+
+storyboardStep(Then, 'the safety net still closes the window when the push fails', {
+  note: 'A second project, pointed at a host that doesn\'t exist: task release fails, but it still turns push access back off on the way out. The test also checks through the API that the protection is restored.',
+  copy: 'task release'
+}, async () => {
+  const failureProjectName = 'e2e-release-toggle-failure'
+  const { repoDir, glabToken } = await bootstrapLockedProject(failureProjectName)
+  failureProject = { name: failureProjectName, repoDir, glabToken }
+  const run = await runRelease(failureProjectName, repoDir, glabToken, { expectFailure: true })()
+  if (!run.failed) {
+    throw new Error(`Expected task release to fail, but it succeeded:\n${run.raw}`)
+  }
+  assertContains(run.raw, 'Temporarily opening push access for Maintainers')
+  assertContains(run.raw, RESTORE_MARKER)
+  const filtered = filterReleaseLogs(run.raw)
+  const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
+  await renderPreFrame(I, 'window-closes-on-failure', slice.join('\n'))
+  await assertMainProtected(failureProject.name)
 })

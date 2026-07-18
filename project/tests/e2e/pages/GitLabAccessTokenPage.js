@@ -2,6 +2,50 @@
 const { I } = inject()
 const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
+// GitLab 18: revoked tokens stay visible in an "Inactive" section for 30 days.
+// Remove that section before the screenshot, neutralise dynamic dates
+// ("Created: May 06, 2026", "Expires: in 2 months", "2026-08-04") and hide the
+// top app bar (its global To-Do / MR / Issue counters vary across runs) so the
+// baseline is reproducible.
+async function maskAccessTokens () {
+  await I.executeScript(() => {
+    const inactive = document.querySelector('section#inactive-project-access-tokens')
+    if (inactive) inactive.remove()
+
+    const DATE_PATTERNS = [
+      /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, // "May 06, 2026"
+      /^\d{4}-\d{2}-\d{2}$/, //                "2026-08-04"
+      /^in \d+ (second|minute|hour|day|week|month|year)s?$/, // "in 2 months"
+      /^\d+ (second|minute|hour|day|week|month|year)s? ago$/ //  "3 days ago"
+    ]
+    const PLACEHOLDER = '—'
+    document.querySelectorAll('td, th, dd, dt, span, div, p, time').forEach(el => {
+      if (el.children.length === 0) {
+        const text = el.textContent.trim()
+        if (DATE_PATTERNS.some(re => re.test(text))) el.textContent = PLACEHOLDER
+      }
+    })
+
+    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+      const n = document.querySelector(sel)
+      if (n) n.style.visibility = 'hidden'
+    })
+    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+  })
+  await I.moveCursorTo('body', 1, 1)
+}
+
+async function maskCiCd () {
+  await I.executeScript(() => {
+    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+      const n = document.querySelector(sel)
+      if (n) n.style.visibility = 'hidden'
+    })
+    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+  })
+  await I.moveCursorTo('body', 1, 1)
+}
+
 class GitLabAccessTokenPage {
   async navigateToAccessTokenSettings (projectPath) {
     await I.amOnPage(`/${projectPath}/-/settings/access_tokens`)
@@ -14,42 +58,25 @@ class GitLabAccessTokenPage {
     await I.see('Maintainer')
   }
 
+  // Navigate + mask WITHOUT asserting — the storyboard step captures a masked
+  // frame and asserts it against its own per-scenario baseline.
+  async gotoAccessTokensAndMask (projectPath) {
+    await this.navigateToAccessTokenSettings(projectPath)
+    await I.waitForElement('body', 30)
+    await maskAccessTokens()
+  }
+
   async verifyVisualRegression (screenshotName) {
     await I.waitForElement('body', 30)
-    // GitLab 18: revoked tokens stay visible in an "Inactive" section for 30 days.
-    // Remove the entire inactive section from the DOM before taking the screenshot.
-    // Also neutralise dynamic dates ("Created: May 06, 2026", "Expires: in 2
-    // months", "2026-08-04") so the baseline is reproducible across days.
-    await I.executeScript(() => {
-      const inactive = document.querySelector('section#inactive-project-access-tokens')
-      if (inactive) inactive.remove()
-
-      const DATE_PATTERNS = [
-        /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, // "May 06, 2026"
-        /^\d{4}-\d{2}-\d{2}$/, //                "2026-08-04"
-        /^in \d+ (second|minute|hour|day|week|month|year)s?$/, // "in 2 months"
-        /^\d+ (second|minute|hour|day|week|month|year)s? ago$/ //  "3 days ago"
-      ]
-      const PLACEHOLDER = '—'
-      document.querySelectorAll('td, th, dd, dt, span, div, p, time').forEach(el => {
-        if (el.children.length === 0) {
-          const text = el.textContent.trim()
-          if (DATE_PATTERNS.some(re => re.test(text))) el.textContent = PLACEHOLDER
-        }
-      })
-
-      // Hide the top app bar: its user shortcuts (To-Do / Merge requests /
-      // Issues) carry GLOBAL counters that vary across runs (e.g. the journey's
-      // open MRs). visibility:hidden keeps the layout intact.
-      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
-        const n = document.querySelector(sel)
-        if (n) n.style.visibility = 'hidden'
-      })
-      document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
-    })
-    await I.moveCursorTo('body', 1, 1)
-
+    await maskAccessTokens()
     await assertPageVisualMatch(I, screenshotName)
+  }
+
+  async gotoCiCdAndMask (projectPath) {
+    await this.navigateToCiCdSettings(projectPath)
+    await I.scrollTo('[data-testid="ci-variable-table"]')
+    await I.wait(1)
+    await maskCiCd()
   }
 
   async navigateToCiCdSettings (projectPath) {
@@ -74,15 +101,7 @@ class GitLabAccessTokenPage {
   async verifyVisualRegressionCiCd (screenshotName) {
     await I.scrollTo('[data-testid="ci-variable-table"]')
     await I.wait(1)
-    await I.executeScript(() => {
-      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
-        const n = document.querySelector(sel)
-        if (n) n.style.visibility = 'hidden'
-      })
-      document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
-    })
-    await I.moveCursorTo('body', 1, 1)
-
+    await maskCiCd()
     await assertPageVisualMatch(I, screenshotName)
   }
 }

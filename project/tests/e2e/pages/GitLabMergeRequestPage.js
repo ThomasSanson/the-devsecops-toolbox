@@ -81,14 +81,51 @@ async function maskMergeRequestPage (projectName) {
 }
 
 class GitLabMergeRequestPage {
-  async verifyMergeRequestVisual (projectPath, iid, screenshotName, projectName) {
+  // Navigate to the MR overview and neutralise its volatile content, WITHOUT
+  // asserting — the storyboard steps grab a masked frame of the page and assert
+  // it against their own per-scenario baseline; verifyMergeRequestVisual adds
+  // the assert on top for the flat (non-storyboard) callers.
+  async gotoAndMask (projectPath, iid, projectName) {
     await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}`)
     await I.waitForElement('body', 30)
     await I.wait(3)
     await maskMergeRequestPage(projectName)
     await I.moveCursorTo('body', 1, 1)
     await I.wait(1)
+  }
+
+  async verifyMergeRequestVisual (projectPath, iid, screenshotName, projectName) {
+    await this.gotoAndMask(projectPath, iid, projectName)
     await assertPageVisualMatch(I, screenshotName)
+  }
+
+  // Same masked MR page, but tag its HEADER block (status "Open" + "requested
+  // to merge <source> into <target>") with a stable id so the storyboard can
+  // crop the frame to that content instead of the mostly-white MR sheet. Falls
+  // through the known GitLab header containers and re-shows the region in case
+  // the mask hid it; the storyboard's assertFrameNotEmpty catches a miss.
+  async gotoAndMaskCropHeader (projectPath, iid, projectName) {
+    await this.gotoAndMask(projectPath, iid, projectName)
+    await I.executeScript(() => {
+      const candidates = [
+        '.detail-page-header',
+        '[data-testid="merge-request-sticky-header"]',
+        '.merge-request-details',
+        '.detail-page-description',
+        '.issuable-details'
+      ]
+      let el = null
+      for (const sel of candidates) { el = document.querySelector(sel); if (el) break }
+      if (!el) {
+        const h1 = document.querySelector('h1')
+        el = h1 ? h1.parentElement : null
+      }
+      if (el) {
+        el.style.display = ''
+        el.style.visibility = 'visible'
+        el.id = 'storyboard-mr-crop'
+      }
+    })
   }
 }
 

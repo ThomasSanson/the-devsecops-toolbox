@@ -57,9 +57,9 @@ proof, not the test.
 ### Whole-journey scenarios — the storyboard is the reference pattern
 
 The normative reference is the agent-mode scenario:
-`project/tests/e2e/features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `project/tests/e2e/storyboards/gitlab/01-developer-journey/agent-mode.svg` and
-its per-frame baselines under `screenshots/base/gitlab/01-developer-journey/agent-mode/`.
+`project/tests/e2e/features/01-install/agent-mode.feature`, its committed
+storyboard `project/tests/e2e/storyboards/01-install/agent-mode/e2e-journey-agent-mode-only.svg` and
+its per-frame baselines under `screenshots/base/01-install/agent-mode/e2e-journey-agent-mode-only/`.
 Any NEW journey scenario, and any REFACTOR of an existing one, MUST follow it
 meticulously — full recipe in `project/tests/README.md` (§ Storyboards).
 

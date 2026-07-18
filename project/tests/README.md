@@ -16,11 +16,11 @@ the proof falls back to log/REST assertions — never to a raised tolerance.
 ```text
 project/tests/e2e/
 ├── codecept.conf.js              # Single CodeceptJS config (Playwright + VisualHelper + REST)
-├── features/gitlab/
-│   ├── 01-developer-journey/     # blank repo → installer → Copier → init MR → GitLab configured
-│   ├── 02-init-guidance/         # init failure / opt-out guidance
-│   ├── 03-init-effects/          # task devsecops:init + task release effects on GitLab
-│   └── 04-auth/                  # task glab:auth:ensure guidance
+├── features/
+│   ├── 01-install/                # bare machine → installer → framework or agent-mode-only
+│   ├── 02-first-init/             # auth check → init guidance → init-framework merge request
+│   ├── 03-daily-work/             # commit hooks, gitleaks, release window, token healing
+│   └── 04-evolution/              # Copier rendering matrix, renovate, toolbox update
 ├── pages/                        # GitLab Page Objects (with masking for visual determinism)
 ├── support/
 │   ├── helpers/                  # docker.js, freshUbuntu.js, journeyContainer.js, gitlabApi.js, http.js, workspaceRepo.js
@@ -50,10 +50,10 @@ Use a storyboard when one artifact must tell a journey that a single capture
 cannot: moments that never coexist on screen (interactive gum menus erase
 themselves the instant you answer) or panels living on different pages
 (GitLab web + the live terminal). Reference scenario:
-`features/gitlab/01-developer-journey/agent-mode.feature`, its committed
-storyboard `storyboards/gitlab/01-developer-journey/agent-mode.svg` and
+`features/01-install/agent-mode.feature`, its committed
+storyboard `storyboards/01-install/agent-mode/e2e-journey-agent-mode-only.svg` and
 its per-frame baselines under
-`screenshots/base/gitlab/01-developer-journey/agent-mode/`.
+`screenshots/base/01-install/agent-mode/e2e-journey-agent-mode-only/`.
 Open the SVG locally in a browser: the chrome around the frames is real
 selectable text (one click selects a whole command in Chromium/Safari);
 GitLab's blob preview shows it as a static image only.
@@ -135,8 +135,8 @@ ambiguity.
 
 ```bash
 task project:test:e2e                                   # full suite, parallel (workers=3)
-task project:test:e2e -- --grep "@e2e-init-baseline"    # filter by tag (CLI args)
-task project:test:e2e TASK_CODECEPTJS_GREP=@e2e-init-baseline   # filter by tag (env var)
+task project:test:e2e -- --grep "@e2e-token-healing"    # filter by tag (CLI args)
+task project:test:e2e TASK_CODECEPTJS_GREP=@e2e-token-healing   # filter by tag (env var)
 TASK_E2E_WORKERS=5 task project:test:e2e                # bump parallelism
 ```
 
@@ -161,7 +161,7 @@ to silence drift.
 
 ### Adding a scenario
 
-1. Pick the right group under `features/gitlab/<NN>-<group>/` (or create one).
+1. Pick the right act under `features/<NN>-<act>/` (or create one).
 2. Reuse existing steps from `support/steps/` when possible — see
     `journey.js` for the developer-journey pattern, `init-guidance.js` for
     the fresh-Ubuntu pattern, `release-toggle.js` for the GitLab-linked
