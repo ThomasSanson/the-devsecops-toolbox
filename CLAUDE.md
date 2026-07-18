@@ -67,9 +67,9 @@ cd project && ...
 ```txt
 /
 ├── .agent/           # AI agent rules, skills, and workflows (source of truth)
-├── .config/          # Tool configurations — DO NOT MODIFY
+├── .config/          # Framework tooling — owned & evolved by THIS template repo
 ├── copier.yml        # Copier template questions and answers
-├── Taskfile.yml      # Root orchestrator — DO NOT MODIFY
+├── Taskfile.yml      # Root orchestrator (owned here; + Taskfile.yml.jinja twin)
 ├── .env.dist         # Default env values (no secrets, versioned)
 ├── .env.dev          # Local/dev overrides (dev secrets, versioned)
 └── project/          # Project-specific code
@@ -158,6 +158,5 @@ Visual regression tests (`assertVisualMatch`) are meaningful human-readable chec
 ## Critical Rules
 
 - **Never** run `git add`, `git commit`, `git push`, or any git command that modifies the repository
-- **Never** place infrastructure tests in `tests/application/`
 - **Never** use `docker compose`, `npm run`, or `cd` into subdirectories
 - **Ask before** modifying existing tests, adding dependencies, or changing CI/CD config (`.gitlab-ci.yml`)

@@ -16,7 +16,7 @@
 | [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Respect existing architecture. Never modify `.config/` or root `Taskfile.yml`.                                          |
 | [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                    |
 | [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                           |
-| [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Tests separated by type: business in `tests/application/`, infrastructure in `tests/{infra-name}/`.                     |
+| [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Test conventions for the unified E2E suite under `project/tests/e2e/` (three acts, Gherkin language).                   |
 | [`.agent/rules/code-style.md`](.agent/rules/code-style.md)                 | Code style conventions, script organisation, language conventions, minimalism principle.                                |
 | [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                     |
 | [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Redirect terminal output to `./tmp/exec_logs.log`. Check the log file if the terminal hangs instead of waiting.         |
@@ -27,8 +27,8 @@
 ## Project Overview
 
 - **Type**: Copier template for DevSecOps pipeline scaffolding
-- **Tech stack**: Copier (Python) + Taskfile (Go Task) + Docker + CodeceptJS/Playwright (E2E) + Gherkin (BDD)
-- **Architecture**: Microservices — each service is a subfolder in `project/`
+- **Tech stack**: Copier (Python) + Taskfile (Go Task) + Docker + CodeceptJS (E2E) + Gherkin (BDD)
+- **Architecture**: Copier template — `project/` is the scaffolded workspace (`gitlab/`, `tests/`, `ubuntu/`), not one service per subfolder
 - **License**: EUPL-1.2
 - **This repo is the TEMPLATE / source of truth for `.config/`**: it owns and
   upgrades every tool under `.config/` (task, copier, gum, glow, …). Its own
@@ -41,22 +41,36 @@
   framework → generated projects via one Copier MR, never per-tool MRs in every
   downstream repo. Enforced by `features/03-evolution/renovate.feature`.
 
+> **Who may edit `.config/` and the root `Taskfile.yml`?**
+> In a **generated** project they are framework-managed: never touch them, upgrades
+> arrive through `task copier:update`. In **this template repo** they ARE the product —
+> `.config/`, the root `Taskfile.yml` and its `.jinja` twin are owned and evolved here.
+> The "never modify `.config/` / root `Taskfile.yml`" rules below are written for the
+> generated-project audience; they do not forbid maintaining the template itself.
+
 ### Key Directory Structure
 
 ```text
 /
-├── .agent/                  # AI agent instructions (rules, skills, workflows)
-├── .config/                 # Tool-specific configurations (DO NOT MODIFY)
+├── .agent/                  # AI agent instructions (rules, skills, workflows; .jinja twins ship downstream)
+├── .config/                 # Framework tooling — owned & evolved by THIS template repo
 ├── docs/                    # Documentation
-├── project/                 # Project-specific code and services
-│   ├── Taskfile.yml         # Project tasks (add new tasks here)
-│   └── tests/               # Test suites
-│       ├── application/     # Business E2E tests (Gherkin, French)
-│       └── {infra-name}/    # Infrastructure tests (isolated per tool)
-├── copier.yml               # Copier template configuration
-├── Taskfile.yml             # Root orchestrator (DO NOT MODIFY)
+├── copier.yml               # Copier template questions
+├── Taskfile.yml             # Root orchestrator (+ Taskfile.yml.jinja twin)
 ├── .env.dist                # Default env values (no secrets)
-└── .env.dev                 # Local/dev overrides (dev secrets only)
+├── .env.dev                 # Local/dev overrides (dev secrets only)
+└── project/                 # Scaffolded workspace shipped to generated projects
+    ├── gitlab/              # In-repo GitLab CE used by the E2E tests
+    ├── ubuntu/              # Base image build context
+    ├── Taskfile.yml         # Project tasks (add new tasks here)
+    └── tests/
+        └── e2e/             # Unified E2E suite (single entry point — see project/tests/README.md)
+            ├── codecept.conf.js
+            ├── features/          # 01-install, 02-daily-work, 03-evolution (three acts)
+            ├── pages/             # GitLab Page Objects (masking for visual determinism)
+            ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
+            ├── storyboards/       # Committed SVG storyboards (one per journey)
+            └── screenshots/base/  # Visual baselines (tolerance: 0)
 ```
 
 ---
@@ -202,13 +216,12 @@ Every code change MUST follow this cycle:
 - Never use `docker compose` directly
 - Never use `cd` to change directory before running commands
 - Never create a `.env` file
-- Never modify `.config/` directory contents
-- Never modify root `Taskfile.yml`
+- Never modify `.config/` contents **in a generated project** (framework-managed; see the note above — this template repo owns and evolves them)
+- Never modify the root `Taskfile.yml` **in a generated project** (same exception for this template repo)
 - Never hardcode secrets in code
 - Never write code before the test (TDD violation)
 - Never modify a test to hide a failure
 - Never delete or weaken existing tests
 - Never skip TDD steps
 - Never commit secrets or API keys
-- Never place infrastructure tests in `tests/application/`
 - Never run `git add`, `git commit`, `git push`, or any git command that modifies the repository
