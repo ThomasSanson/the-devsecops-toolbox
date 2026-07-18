@@ -50,13 +50,16 @@ Why SVG: everything drawn AROUND the frames — feature/scenario titles, the com
 Mechanism — the whole step-side API ships with the template in `.config/codeceptjs/storyboard.js` (a generated project uses it as-is).
 `capturePageFrame(I, name)` (any page) and `captureTerminalFrame` (`support/terminal/capture.js`, xterm-specific) write each real moment to `_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame(I, png)` asserts each frame against its OWN baseline at `tolerance: 0` (`assertOrUpdateBaseline`) INSIDE the step — a visual regression fails on the exact sentence whose image drifted.
 The same module, registered as a CodeceptJS plugin, fills the header automatically from the Gherkin metadata (feature title, scenario title, feature file, the scenario's LAST tag as the re-run command, the baseline directory `<act>/<last-tag>`) and renders the SVG when the test ends.
-The board reads cards in reading order, two per row (fully uniform: one shared image slot as tall as the row's tallest frame, one shared text zone), a full-width band before each `# Chapter:`, every card with its number badge, its Gherkin sentence (verbatim keyword coloured: Given green, When blue, Then purple), an optional note and the one-click-copyable reproduce command/URL.
+The board reads cards in reading order, two per row (fully uniform: one shared image slot as tall as the row's tallest frame, one shared text zone), with a full-width band before each `# Chapter:`.
+Each card carries its number badge, its Gherkin sentence (verbatim keyword coloured: Given green, When blue, Then purple), and — read straight from the feature's `# Note:` / `# Copy:` comments — an optional note and the one-click-copyable reproduce command/URL.
 A failing run still gets its partial board in `_output/` (it shows how far the journey got); the committed copy under `storyboards/` is rebuilt only on a PASSED baseline-update run, from the reviewed baselines.
 
-Gherkin alignment: register EVERY sentence through `storyboardStep(Given|When|Then, pattern, opts, fn)` — the pattern string is BOTH the scenario line and the card's title, so one sentence reads as one titled card and the feature and the storyboard cannot drift apart, by construction.
-`opts` carries the human `note` and the copyable `copy` command/URL that reproduces the step; the frame captured during the step lands in its card via `addStoryboardFrame(I, png)`.
+The `.feature` is the single human-authored source: it carries the sentences AND the structured comments attached to the sentence right below them — `# Chapter: Title` opens a chapter band, `# Note: text` is the card's explanation, `# Copy: command` is the one-click-copyable command shown under the card.
+The step file only drives the app and captures the proof: register EVERY sentence through `storyboardStep(Given|When|Then, sentence, fn)`, whose pattern string is BOTH the scenario line and the card's title, so one sentence reads as one titled card and feature and storyboard cannot drift apart.
+Close each step on `addStoryboardFrame(I, png)`; cards open automatically for every sentence (the plugin listens to `bddStep.before`), so the step never does panel bookkeeping.
+JS opts (or `storyboard.annotate({ note, copy })` mid-step) stay ONLY for a note/copy computed at runtime — e.g. a URL known only once the step runs; a runtime value overrides the feature comment.
 
-Write the note for a tired adult: one or two short sentences saying why the step matters and what to look at in the image. Keep exact commands in `copy`, not in the note.
+Write the note for a tired adult: one or two short sentences saying why the step matters and what to look at in the image. Keep exact commands in the `# Copy:` comment, not in the note.
 
 Rules — the panels ARE the proof:
 
@@ -69,7 +72,7 @@ Rules — the panels ARE the proof:
 ### Your first storyboard — 4 steps
 
 1. Write the scenario with a unique tag; EVERY sentence will be one card. For a long journey, split it with `# Chapter: Title` lines inside the Scenario body (each opens a chapter band).
-2. Register each sentence through `storyboardStep(Given|When|Then, sentence, { note, copy }, fn)` and close each step with `await addStoryboardFrame(I, await capturePageFrame(I, 'frame-name'))` (all from `.config/codeceptjs/storyboard.js`; a commented skeleton ships in `.config/codeceptjs/step_definitions/steps.js`).
+2. Put the human text in the `.feature` as `# Note:` / `# Copy:` comments above each sentence, register each sentence through `storyboardStep(Given|When|Then, sentence, fn)`, and close each step with `await addStoryboardFrame(I, await capturePageFrame(I, 'frame-name'))` — full engine guide and a copy-ready example in [.config/codeceptjs/README.md](../../../.config/codeceptjs/README.md).
 3. Run `TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e -- --grep "@your-tag"` — it creates the per-frame baselines AND the committed SVG under `storyboards/`.
 4. Inspect every generated baseline and the storyboard like any reviewed artifact, then commit them.
 

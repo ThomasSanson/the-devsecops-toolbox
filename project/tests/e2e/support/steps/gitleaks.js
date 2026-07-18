@@ -139,19 +139,13 @@ function verdictText (output) {
 // Movement 1 — an ordinary branch stays green
 // ============================================
 
-storyboardStep(Given, "a project protected by the framework's secret scanner starts on a clean feature branch", {
-  note: 'A freshly rendered project, committed once and checked out on its own feature branch: nothing to report yet.',
-  copy: 'git status'
-}, async () => {
+storyboardStep(Given, "a project protected by the framework's secret scanner starts on a clean feature branch", async () => {
   newProject()
   const status = git('status')
   await renderPreFrame(I, 'stage-clean-branch', status.trimEnd())
 })
 
-storyboardStep(When, 'the developer commits ordinary tracked, untracked and ignored files', {
-  note: 'Ordinary work: one file gets committed, another sits in the project without being committed, and a third is listed in .gitignore so git skips it. The scanner must leave all three alone.',
-  copy: 'git status --short --ignored'
-}, async () => {
+storyboardStep(When, 'the developer commits ordinary tracked, untracked and ignored files', async () => {
   fs.writeFileSync(path.join(projectDir, 'tracked.txt'), 'tracked file\n')
   git('add tracked.txt')
   git('commit --quiet --no-verify -m "test: add tracked fixture"')
@@ -164,10 +158,7 @@ storyboardStep(When, 'the developer commits ordinary tracked, untracked and igno
   await renderPreFrame(I, 'ordinary-work-status', status.trimEnd())
 })
 
-storyboardStep(Then, 'the scan finds nothing to report', {
-  note: 'scan-branch runs clean and prints "No secrets detected in branch commits."',
-  copy: 'task gitleaks:scan-branch'
-}, async () => {
+storyboardStep(Then, 'the scan finds nothing to report', async () => {
   const res = runScan()
   if (res.exitCode !== 0) {
     throw new Error(`Expected gitleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)
@@ -180,10 +171,7 @@ storyboardStep(Then, 'the scan finds nothing to report', {
 // Movement 2 — a committed secret gets blocked
 // ============================================
 
-storyboardStep(When, 'the developer accidentally commits a private key to the branch', {
-  note: 'A fresh project (its own branch history): a fake RSA private key lands in a tracked file and gets committed like any other change.',
-  copy: 'cat tracked-secret.pem'
-}, async () => {
+storyboardStep(When, 'the developer accidentally commits a private key to the branch', async () => {
   newProject()
   fs.writeFileSync(path.join(projectDir, 'tracked-secret.pem'), TEST_PRIVATE_KEY_SECRET)
   git('add tracked-secret.pem')
@@ -192,10 +180,7 @@ storyboardStep(When, 'the developer accidentally commits a private key to the br
   await renderPreFrame(I, 'secret-committed', content.trimEnd())
 })
 
-storyboardStep(Then, 'the scan blocks it and names the leak', {
-  note: 'scan-branch fails and prints "Gitleaks detected secrets in your branch commits!"',
-  copy: 'task gitleaks:scan-branch'
-}, async () => {
+storyboardStep(Then, 'the scan blocks it and names the leak', async () => {
   const res = runScan()
   if (res.exitCode === 0) {
     throw new Error(`Expected gitleaks scan-branch to fail, but it succeeded\n${res.output}`)
@@ -208,10 +193,7 @@ storyboardStep(Then, 'the scan blocks it and names the leak', {
 // Movement 3 — a gitignored secret never reaches the scanner
 // ============================================
 
-storyboardStep(When, 'the developer keeps a second secret out of the scan by gitignoring the file it lives in', {
-  note: 'A fresh project again: the secret file is listed in .gitignore before it is ever committed, so the scanner never even looks at it.',
-  copy: 'git diff -- .gitignore'
-}, async () => {
+storyboardStep(When, 'the developer keeps a second secret out of the scan by gitignoring the file it lives in', async () => {
   newProject()
   fs.appendFileSync(path.join(projectDir, '.gitignore'), '\nignored-secret.pem\n')
   const diff = git('diff -- .gitignore')
@@ -222,10 +204,7 @@ storyboardStep(When, 'the developer keeps a second secret out of the scan by git
   await renderPreFrame(I, 'secret-ignored', diff.trimEnd())
 })
 
-storyboardStep(Then, 'the scan passes silently, the ignored secret stays out of sight', {
-  note: 'scan-branch runs clean again and prints the same "No secrets detected in branch commits." line — the gitignored key was never part of what it scanned.',
-  copy: 'task gitleaks:scan-branch'
-}, async () => {
+storyboardStep(Then, 'the scan passes silently, the ignored secret stays out of sight', async () => {
   const res = runScan()
   if (res.exitCode !== 0) {
     throw new Error(`Expected gitleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)

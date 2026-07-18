@@ -13,8 +13,18 @@ Feature: task release opens the push window just long enough, then always closes
   # asserted inside the step (tolerance: 0); every verdict card twins its GitLab
   # page or terminal frame with a REST/log check of the same fact.
   Scenario: task release opens the push window just long enough to push, and always closes it
+    # Note: A freshly initialized project: main is protected right away (merge for maintainers, push for no one).
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository
     Given main starts locked behind push protection
+    # Note: task release opens push access for Maintainers just before it runs the version-bump step (Commitizen).
+    # Copy: task release
     When a release run opens the push window for maintainers
+    # Note: The version-bump step updates the version, and task release pushes it straight to main.
+    # Copy: git -C <repo> log -1 --format='%s'
     And the release pushes the version bump to main
+    # Note: task release turns push access back off when it exits, even after a successful push.
+    # Copy: task release
     Then the window closes again and push protection is restored
+    # Note: A second project, pointed at a host that doesn't exist: task release fails, but it still turns push access back off on the way out.
+    # Copy: task release
     And the safety net still closes the window when the push fails

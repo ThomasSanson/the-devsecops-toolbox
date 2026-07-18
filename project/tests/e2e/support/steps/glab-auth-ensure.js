@@ -62,10 +62,7 @@ function ensure (command = 'task glab:auth:ensure') {
 }
 
 // The stage: a fresh checkout with none of the premium UI tools on PATH.
-storyboardStep(Given, 'a fresh toolbox checkout with none of its UI tools installed yet', {
-  note: 'A throwaway toolbox checkout before any setup: gum, glow and the glab CLI are all missing. The card lists the three, none installed.',
-  copy: 'command -v gum glow glab'
-}, async () => {
+storyboardStep(Given, 'a fresh toolbox checkout with none of its UI tools installed yet', async () => {
   authContainer = setupFreshUbuntuEnvironment()
   const res = runInFreshUbuntu(
     authContainer,
@@ -77,10 +74,7 @@ storyboardStep(Given, 'a fresh toolbox checkout with none of its UI tools instal
 })
 
 // Verdict 1 — gum missing: the check stops at the very first dependency.
-storyboardStep(When, 'the developer runs the auth check straight away', {
-  note: 'With nothing installed the check stops at the first tool, gum: "Required UI dependency missing: gum", pointing at task dev:setup-environment.',
-  copy: 'task glab:auth:ensure'
-}, async () => {
+storyboardStep(When, 'the developer runs the auth check straight away', async () => {
   const res = ensure()
   assertNonZeroExit(res.exitCode, res.output)
   assertContains(res.output, 'Required UI dependency missing: gum')
@@ -89,10 +83,7 @@ storyboardStep(When, 'the developer runs the auth check straight away', {
 })
 
 // Verdict 2 — glow missing: gum in place, the check advances to the next tool.
-storyboardStep(When, 'the developer installs gum and re-runs the check', {
-  note: 'With gum in place the check moves on and stops at the next tool, glow: "Required UI dependency missing: glow".',
-  copy: 'bash .config/gum/install.sh && task glab:auth:ensure'
-}, async () => {
+storyboardStep(When, 'the developer installs gum and re-runs the check', async () => {
   install(GUM_INSTALL)
   const res = ensure()
   assertNonZeroExit(res.exitCode, res.output)
@@ -102,10 +93,7 @@ storyboardStep(When, 'the developer installs gum and re-runs the check', {
 })
 
 // Verdict 3 — CLI missing: both UI tools in place, only glab is absent.
-storyboardStep(When, 'the developer adds glow and re-runs, leaving only the CLI missing', {
-  note: 'With gum and glow in place the check clears the UI tools and stops at the CLI: the "GitLab CLI not found" box tells you to install glab.',
-  copy: 'bash .config/glow/install.sh && task glab:auth:ensure'
-}, async () => {
+storyboardStep(When, 'the developer adds glow and re-runs, leaving only the CLI missing', async () => {
   install(GLOW_INSTALL)
   const res = ensure()
   assertNonZeroExit(res.exitCode, res.output)
@@ -115,10 +103,7 @@ storyboardStep(When, 'the developer adds glow and re-runs, leaving only the CLI 
 
 // Verdict 4 — not signed in: everything installed, CI mode forces the
 // non-interactive branch that names the sign-in command.
-storyboardStep(When, 'the developer installs the CLI and re-runs it in CI mode, still not signed in', {
-  note: 'Every tool is installed but no GitLab sign-in yet; CI=true takes the non-interactive path: "GitLab authentication required", pointing at task glab:auth.',
-  copy: 'task glab:install && CI=true task glab:auth:ensure'
-}, async () => {
+storyboardStep(When, 'the developer installs the CLI and re-runs it in CI mode, still not signed in', async () => {
   install(GLAB_INSTALL)
   const res = ensure('CI=true task glab:auth:ensure')
   assertNonZeroExit(res.exitCode, res.output)

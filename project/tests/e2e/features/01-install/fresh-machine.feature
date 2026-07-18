@@ -20,11 +20,24 @@ Feature: Trusting the installer on a fresh machine
   # merge request (the page where changes get reviewed before joining main).
   Scenario: The installer fixes its own gaps, and stays interactive even when piped
     # Chapter: A bare machine sets itself up
+    # Note: This machine has sudo and curl but no unzip — the tool the installer will have to add by itself. The installer files are copied in but not started yet.
+    # Copy: command -v unzip
     Given a fresh machine has only sudo and curl, with the installer ready to run
+    # Note: The installer starts and prints its title. Nothing on the machine has changed yet.
+    # Copy: sh -c "mkdir -p /workspace/my-project && cd /workspace/my-project && yes '' | head -n 40 | bash /tmp/install.sh"
     When the installer runs on the fresh machine with no one to answer its questions
+    # Note: task devsecops:init fails because unzip is missing, so the installer adds unzip with sudo and runs again.
+    # Copy: grep -A2 "Attempting to install missing prerequisites" /tmp/install.log
     Then the installer installs the tool it was missing and tries again
+    # Note: The installer stops on purpose: the project has no GitLab link yet, so it prints the exact next step. If this message ever went missing, a new developer would be stuck.
+    # Copy: No 'origin' remote configured. Add a GitLab remote, then re-run.
     And the installer stops and explains how to link the project to GitLab
     # Chapter: The one-line install stays interactive
+    # Note: The empty copy, with the installer ready to run the documented way — piped into bash (the output of one command fed straight into the next). Set up off-screen: the test user, the tools, and the GitLab login.
+    # Copy: curl -fsSL http://gitlab/<toolbox>/install.sh | bash
     Given a developer follows the README and pipes the installer into bash
+    # Note: Even when piped into bash, the installer still reaches its first question: it reads your keystrokes through /dev/tty, so the documented one-line command still lets you answer.
+    # Copy: bash /tmp/devsecops-install.sh
     When the installer still asks what to install, even when piped into bash
+    # Note: Answering through the pipe builds and finishes exactly like typing the command by hand.
     Then the piped install finishes and opens the framework merge request

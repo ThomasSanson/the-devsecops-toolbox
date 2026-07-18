@@ -14,14 +14,28 @@
  * inert in Firefox and in GitLab's image-based preview).
  *
  * This module is SELF-CONTAINED so any project generated from the template
- * can use it as shipped: register the plugin in codecept.conf.js, then in a
- * step file
+ * can use it as shipped: register the plugin in codecept.conf.js and the
+ * .feature file becomes the single human-authored source — the sentences,
+ * plus structured comments attached to the sentence below them:
+ *
+ *   # Chapter: a full-width band opens here
+ *   # Note: why this step matters, what to look at
+ *   # Copy: exact command shown one-click-copyable under the card
+ *   When the developer starts the installer
+ *
+ * Cards open automatically for every Gherkin sentence (bddStep.before). The
+ * step file only drives the app and captures the proof:
  *
  *   const storyboard = require('../../../.config/codeceptjs/storyboard')
- *   storyboard.storyboardStep(Given, 'a sentence', { note, copy }, async () => {
+ *   storyboard.storyboardStep(When, 'the developer starts the installer', async () => {
  *     ...drive the app...
  *     await storyboard.addStoryboardFrame(I, await storyboard.capturePageFrame(I, 'frame-name'))
  *   })
+ *
+ * (storyboardStep = plain Given/When/Then registration + escaping of
+ * cucumber-expression metacharacters, so "CI/CD" or "(y/N)" in a sentence
+ * never breaks the match. Runtime-only annotations — e.g. a URL known only
+ * mid-step — still go through storyboard.annotate({ note, copy }).)
  *
  * Every path is derived from global.codecept_dir (the codecept.conf.js
  * directory): frames land in _output/storyboard-frames/, per-frame baselines
@@ -64,14 +78,23 @@ function parseScenarioLines (featureFile, scenarioTitle) {
   const out = []
   let group = null
   let chapter = null
+  let note = null
+  let copy = null
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i]
     if (line.startsWith('#')) {
-      // A `# Chapter: Title` comment structures a LONG scenario: the sentence
-      // that follows it starts a new chapter, and the storyboard draws a
-      // full-width chapter band before its card.
-      const mark = line.match(/^#\s*Chapter\s*:\s*(.+)$/i)
-      if (mark) chapter = mark[1].trim()
+      // Structured comments make the .feature the single human-authored
+      // source: they all attach to the NEXT sentence.
+      //   # Chapter: Title  -> full-width chapter band before that card
+      //   # Note: text      -> the card's explanation (why this step, what to see)
+      //   # Copy: command   -> the card's one-click-copyable command
+      const mark = line.match(/^#\s*(Chapter|Note|Copy)\s*:\s*(.+)$/i)
+      if (mark) {
+        const kind = mark[1].toLowerCase()
+        if (kind === 'chapter') chapter = mark[2].trim()
+        if (kind === 'note') note = mark[2].trim()
+        if (kind === 'copy') copy = mark[2].trim()
+      }
       continue
     }
     if (line === '' || line.startsWith('@')) continue
@@ -79,8 +102,10 @@ function parseScenarioLines (featureFile, scenarioTitle) {
     const step = line.match(/^(Given|When|Then|And|But)\s+(.*)$/)
     if (!step) continue
     if (step[1] === 'Given' || step[1] === 'When' || step[1] === 'Then') group = step[1].toLowerCase()
-    out.push({ keyword: step[1], group, text: step[2], chapter })
+    out.push({ keyword: step[1], group, text: step[2], chapter, note, copy })
     chapter = null
+    note = null
+    copy = null
   }
   return out
 }
@@ -143,13 +168,19 @@ function escapeCucumberExpression (sentence) {
   return sentence.replace(/[\\/(){}]/g, '\\$&')
 }
 
-// Register a Gherkin step through its Given/When/Then function AND open the
-// card whose title IS the step's own pattern: the same string declares the
-// scenario line and captions the image, so the feature and the storyboard
-// can never drift apart.
+// Register a Gherkin step through its Given/When/Then function. The card
+// itself opens AUTOMATICALLY (the plugin listens to bddStep.before), so this
+// wrapper only (1) escapes cucumber-expression metacharacters so the .feature
+// line and the pattern stay the exact same verbatim string, and (2) applies
+// legacy JS note/copy options — new scenarios should prefer `# Note:` /
+// `# Copy:` comments in the .feature instead. `opts` is optional.
 function storyboardStep (register, pattern, opts, fn) {
+  if (typeof opts === 'function') {
+    fn = opts
+    opts = null
+  }
   register(escapeCucumberExpression(pattern), async (...args) => {
-    panel(pattern, opts)
+    if (opts && (opts.note || opts.copy)) annotate(opts)
     await fn(...args)
   })
 }
@@ -354,22 +385,26 @@ function render (outFile, options = {}) {
   // every card still reads as its Gherkin line. The card whose pixels drifted
   // is flagged (red chrome) — the full-width comparison band above the grid
   // carries its expected / diff / actual triptych.
-  const failName = failure && failure.frame && failure.frame.name
-  const cards = board.panels.flatMap((p, pi) =>
-    p.images.map((img, fi) => ({
-      n: pi + 1,
-      first: fi === 0,
-      title: p.title,
-      note: img.note !== undefined ? img.note : (fi === 0 ? p.note : ''),
-      copy: img.copy !== undefined ? img.copy : (fi === 0 ? p.copy : ''),
-      file: resolveImage(img.file),
-      failed: failName === path.basename(img.file)
-    }))
-  )
-
   // Verbatim Gherkin keyword of a sentence (And/But included), coloured by
   // its resolved group so the grid scans as stage / actions / proofs.
   const lineOf = (title) => (board.lines || []).find(l => l.text === title)
+
+  const failName = failure && failure.frame && failure.frame.name
+  // note/copy precedence: per-frame value > JS panel value (opts/annotate,
+  // e.g. a URL only known at runtime) > `# Note:` / `# Copy:` comment in the
+  // .feature — the feature file is the default source of the human text.
+  const cards = board.panels.flatMap((p, pi) => {
+    const line = lineOf(p.title)
+    return p.images.map((img, fi) => ({
+      n: pi + 1,
+      first: fi === 0,
+      title: p.title,
+      note: img.note !== undefined ? img.note : (fi === 0 ? (p.note || (line && line.note) || '') : ''),
+      copy: img.copy !== undefined ? img.copy : (fi === 0 ? (p.copy || (line && line.copy) || '') : ''),
+      file: resolveImage(img.file),
+      failed: failName === path.basename(img.file)
+    }))
+  })
   const keywordColor = { given: t.given, when: t.when, then: t.then }
 
   const width = 2 * g.pagePad + g.cols * g.cardW + (g.cols - 1) * g.gap
@@ -791,8 +826,18 @@ module.exports = function storyboardPlugin () {
     })
   })
 
+  // Every Gherkin sentence opens its own card AUTOMATICALLY, in scenario
+  // order, right before its step function runs — frames captured inside the
+  // step attach to it. Step files never do panel bookkeeping.
+  event.dispatcher.on(event.bddStep.before, (step) => {
+    if (!board) return
+    panel(step.text)
+  })
+
   const finish = (passed) => {
-    if (!board || !board.panels.length || !board.baseDir || !global.codecept_dir) return
+    // Only scenarios that actually captured frames are storyboards — plain
+    // Gherkin tests (no addStoryboardFrame call) must not render empty boards.
+    if (!board || !board.panels.some(p => p.images.length) || !board.baseDir || !global.codecept_dir) return
     try {
       // The drifted frame was marked exactly by addStoryboardFrame; on a
       // diff-less failure (e.g. "Image dimensions do not match") the band's

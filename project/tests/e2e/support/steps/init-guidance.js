@@ -69,10 +69,7 @@ function runCaptured (container, command) {
 
 // The stage: a fresh project wired to a GitLab remote whose CLI was never
 // authenticated. The card shows the remote itself (git remote -v).
-storyboardStep(Given, "a developer's new project points at a GitLab remote the CLI never signed into", {
-  note: 'A throwaway project whose only link to GitLab is a remote the CLI never signed into. Set up off-camera: a fresh Ubuntu box with the toolbox and this git remote.',
-  copy: 'git remote -v'
-}, async () => {
+storyboardStep(Given, "a developer's new project points at a GitLab remote the CLI never signed into", async () => {
   const container = freshEnv({ extraPackages: ['git', 'unzip'], gitRemote: GITLAB_REMOTE })
   const res = runCaptured(container, 'git remote -v')
   assertContains(res.output, 'gitlab.com')
@@ -81,10 +78,7 @@ storyboardStep(Given, "a developer's new project points at a GitLab remote the C
 
 // Verdict 1 — missing auth: init runs the full setup then stops at the auth
 // gate, naming the sign-in command. The card is the verdict tail.
-storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to run', {
-  note: 'init installs its tools, reaches the sign-in check and stops with "GitLab authentication required", pointing at task glab:auth.',
-  copy: 'task devsecops:init'
-}, async () => {
+storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to run', async () => {
   const container = containers[containers.length - 1]
   const res = runCaptured(container, 'task devsecops:init')
   assertNonZeroExit(res.exitCode, res.output)
@@ -96,10 +90,7 @@ storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to 
 
 // Verdict 2 — opt-out: with TASK_GLAB_ENABLED=false every glab task is a no-op,
 // so init completes with no GitLab guidance at all. Fresh project (no remote).
-storyboardStep(Then, 'init finishes cleanly once the GitLab integration is turned off', {
-  note: 'TASK_GLAB_ENABLED=false makes every glab step skip, so init reaches "DevSecOps project initialization completed" and never asks about sign-in.',
-  copy: 'TASK_GLAB_ENABLED=false task devsecops:init'
-}, async () => {
+storyboardStep(Then, 'init finishes cleanly once the GitLab integration is turned off', async () => {
   const container = freshEnv({ extraPackages: ['git', 'unzip'] })
   const res = runCaptured(container, 'TASK_GLAB_ENABLED=false task devsecops:init')
   assertZeroExit(res.exitCode, res.output)
@@ -109,10 +100,7 @@ storyboardStep(Then, 'init finishes cleanly once the GitLab integration is turne
 })
 
 // The context shift: another project cloned from GitHub instead of GitLab.
-storyboardStep(When, "another developer's project points at a GitHub remote instead", {
-  note: 'A new project whose remote points at github.com — a non-GitLab host init must never push to. The card shows the remote.',
-  copy: 'git remote -v'
-}, async () => {
+storyboardStep(When, "another developer's project points at a GitHub remote instead", async () => {
   const container = freshEnv({ extraPackages: ['git', 'unzip'], gitRemote: GITHUB_REMOTE })
   const res = runCaptured(container, 'git remote -v')
   assertContains(res.output, 'github.com')
@@ -121,10 +109,7 @@ storyboardStep(When, "another developer's project points at a GitHub remote inst
 
 // Verdict 3 — non-GitLab remote: init detects the foreign host and stops with
 // remote-alignment guidance rather than pushing anywhere.
-storyboardStep(Then, 'init refuses the non-GitLab remote and shows how to fix it', {
-  note: 'init finds no GitLab remote and stops with "No GitLab repository remote was detected.", giving the exact git remote set-url line to fix it.',
-  copy: 'task devsecops:init'
-}, async () => {
+storyboardStep(Then, 'init refuses the non-GitLab remote and shows how to fix it', async () => {
   const container = containers[containers.length - 1]
   const res = runCaptured(container, 'task devsecops:init')
   assertNonZeroExit(res.exitCode, res.output)

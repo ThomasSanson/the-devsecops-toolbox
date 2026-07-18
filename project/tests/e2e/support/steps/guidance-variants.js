@@ -55,10 +55,7 @@ function runIn (command, timeout = ENSURE_TIMEOUT) {
 
 // The stage: a self-hosted GitLab project with the CLIs installed but no
 // sign-in yet. The card shows the self-hosted remote.
-storyboardStep(Given, 'a self-hosted GitLab project with the tools installed but no sign-in yet', {
-  note: 'A throwaway project whose remote points at a self-hosted GitLab host — a company running its own GitLab — with gum, glow and glab installed but no sign-in yet. The card shows the remote.',
-  copy: 'git remote -v'
-}, async () => {
+storyboardStep(Given, 'a self-hosted GitLab project with the tools installed but no sign-in yet', async () => {
   hostContainer = setupFreshUbuntuEnvironment({ gitRemote: SELF_HOSTED_REMOTE })
   const installed = runIn(GUM_GLOW_GLAB_INSTALL, TOOL_INSTALL_TIMEOUT)
   if (installed.exitCode !== 0) {
@@ -70,10 +67,7 @@ storyboardStep(Given, 'a self-hosted GitLab project with the tools installed but
 })
 
 // Verdict 1 — host read from the remote: CI mode names the detected host.
-storyboardStep(Then, 'the check reads the self-hosted GitLab host straight from the remote', {
-  note: 'CI mode takes the non-interactive path: "GitLab authentication required", naming the exact self-hosted host it read from the remote.',
-  copy: 'CI=true task glab:auth:ensure'
-}, async () => {
+storyboardStep(Then, 'the check reads the self-hosted GitLab host straight from the remote', async () => {
   const res = runIn('CI=true task glab:auth:ensure')
   assertNonZeroExit(res.exitCode, res.output)
   assertContains(res.output, 'GitLab authentication required')
@@ -82,10 +76,7 @@ storyboardStep(Then, 'the check reads the self-hosted GitLab host straight from 
 })
 
 // The remote re-point: an SSH-style gitlabssh.* URL for the same project.
-storyboardStep(When, 'the same project instead uses an SSH-style gitlabssh remote', {
-  note: 'The origin is switched to an SSH-style gitlabssh.* URL — the address a self-hosted GitLab gives out for SSH clones. The card shows the new remote.',
-  copy: 'git remote set-url origin git@gitlabssh.selfhosted-corp.example:acme/widgets.git'
-}, async () => {
+storyboardStep(When, 'the same project instead uses an SSH-style gitlabssh remote', async () => {
   const repoint = runIn(`git remote set-url origin ${GITLABSSH_REMOTE}`, 60000)
   if (repoint.exitCode !== 0) {
     throw new Error(`git remote set-url failed (exit ${repoint.exitCode}):\n${repoint.output}`)
@@ -96,10 +87,7 @@ storyboardStep(When, 'the same project instead uses an SSH-style gitlabssh remot
 })
 
 // Verdict 2 — normalized host: gitlabssh.* is rewritten to the gitlab.* API host.
-storyboardStep(Then, 'the check turns it back into the gitlab API host', {
-  note: 'The gitlabssh.* remote is turned back into its gitlab.* API host: the message names gitlab.selfhosted-corp.example and never the ssh name.',
-  copy: 'CI=true task glab:auth:ensure'
-}, async () => {
+storyboardStep(Then, 'the check turns it back into the gitlab API host', async () => {
   const res = runIn('CI=true task glab:auth:ensure')
   assertNonZeroExit(res.exitCode, res.output)
   assertContains(res.output, EXPECTED_HOST)

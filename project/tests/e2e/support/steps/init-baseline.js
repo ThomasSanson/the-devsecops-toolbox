@@ -78,10 +78,7 @@ function commit (message) {
 // Given — the hooks are installed
 // ============================================
 
-storyboardStep(Given, 'a framework project has the commit hooks installed', {
-  note: 'A freshly initialized project already has commit checks turned on: init installed a commit-msg hook, a script that runs before every commit message is accepted. The card proves the hook is there, not what it says.',
-  copy: 'test -f .git/hooks/commit-msg && echo "commit-msg hook installed"'
-}, async () => {
+storyboardStep(Given, 'a framework project has the commit hooks installed', async () => {
   await GitLabProjectPage.deleteProjectIfExists(
     BASE_URL,
     process.env.TASK_GITLAB_ROOT_USER,
@@ -133,17 +130,11 @@ storyboardStep(Given, 'a framework project has the commit hooks installed', {
 // Movement 1 — a conventional commit passes
 // ============================================
 
-storyboardStep(When, 'a developer writes a conventional commit message', {
-  note: 'A conventional commit message follows a fixed pattern: a short type word, a colon, then a plain instruction — like "feat: add login page".',
-  copy: 'feat: dogfood the commitlint hook'
-}, async () => {
+storyboardStep(When, 'a developer writes a conventional commit message', async () => {
   await renderPreFrame(I, 'message-conventional', 'feat: dogfood the commitlint hook')
 })
 
-storyboardStep(Then, 'the hooks accept it and let the commit through', {
-  note: 'The commit-msg hook calls commitlint, which accepts the message because it matches the pattern.',
-  copy: 'git commit --allow-empty -m "feat: dogfood the commitlint hook"'
-}, async () => {
+storyboardStep(Then, 'the hooks accept it and let the commit through', async () => {
   commit('feat: dogfood the commitlint hook')
   if (lastCommitExitCode !== 0) {
     throw new Error(`Expected the commit to pass the hooks, got exit ${lastCommitExitCode}\n--- output ---\n${lastCommitOutput}\n---`)
@@ -155,17 +146,11 @@ storyboardStep(Then, 'the hooks accept it and let the commit through', {
 // Movement 2 — a sloppy message is rejected
 // ============================================
 
-storyboardStep(When, 'a developer writes a sloppy commit message', {
-  note: '"sloppy" is not one of the allowed type words, so commitlint is about to reject it.',
-  copy: 'sloppy: skip the conventions'
-}, async () => {
+storyboardStep(When, 'a developer writes a sloppy commit message', async () => {
   await renderPreFrame(I, 'message-sloppy', 'sloppy: skip the conventions')
 })
 
-storyboardStep(Then, 'the hooks reject it with their own explanation', {
-  note: 'commitlint blocks the commit and lists exactly which rules it broke.',
-  copy: 'git commit --allow-empty -m "update stuff"'
-}, async () => {
+storyboardStep(Then, 'the hooks reject it with their own explanation', async () => {
   commit('sloppy: skip the conventions')
   if (lastCommitExitCode === 0) {
     throw new Error(`Expected the commit to be rejected by the hooks, but it succeeded.\n--- output ---\n${lastCommitOutput}\n---`)

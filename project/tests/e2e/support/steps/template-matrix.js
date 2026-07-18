@@ -20,9 +20,7 @@ const {
   updateProject,
   removeRendered,
   UPDATE_MARKER_FILE,
-  UPDATE_MARKER,
-  COPIER,
-  TEMPLATE_SRC
+  UPDATE_MARKER
 } = require('../helpers/copierRender')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { assertTextVisualMatch, renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
@@ -416,10 +414,7 @@ async function renderColorFrame (frameName, text) {
   I.resizeWindow(1024, 768)
 }
 
-storyboardStep(Given, "a generated project carries the framework's centralized renovate config", {
-  note: '.config tooling is owned by THIS framework repo, so a generated project must NOT receive per-tool Renovate MRs, only the framework-evolution MR. The image is the rendered config, where a rule re-added for one specific tool would stand out.',
-  copy: 'cat .config/renovate/config.json'
-}, async () => {
+storyboardStep(Given, "a generated project carries the framework's centralized renovate config", async () => {
   rendered = renderProject()
   cleanupDirs.push(rendered)
   // columns:2 so the whole rendered config fits the viewport — a full-page
@@ -428,10 +423,7 @@ storyboardStep(Given, "a generated project carries the framework's centralized r
   await addStoryboardFrame(I, await capturePageFrame(I, 'contract-config'))
 })
 
-storyboardStep(When, 'the config passes the real renovate validator', {
-  note: 'renovate-config-validator itself checks the rendered config, doing far more than a plain JSON.parse would.',
-  copy: 'renovate-config-validator .config/renovate/config.json'
-}, async () => {
+storyboardStep(When, 'the config passes the real renovate validator', async () => {
   renovateResult = runRenovateValidator(rendered)
   if (renovateResult.exitCode !== 0 || !renovateResult.output.includes('Config validated successfully')) {
     throw new Error(`Expected renovate validation to succeed, exit=${renovateResult.exitCode}\n${renovateResult.output}`)
@@ -439,10 +431,7 @@ storyboardStep(When, 'the config passes the real renovate validator', {
   await renderPreFrame(I, 'contract-validate-default', validatorVerdictLines(renovateResult.output))
 })
 
-storyboardStep(Then, 'turning automerge off still passes the same validator', {
-  note: 'The automerge-off branch of the template is real, valid config too.',
-  copy: `${COPIER} copy --defaults --data devsecops_automerge=false ${TEMPLATE_SRC} <project> && renovate-config-validator .config/renovate/config.json`
-}, async () => {
+storyboardStep(Then, 'turning automerge off still passes the same validator', async () => {
   const dir = renderProject(parseAnswers('devsecops_automerge=false'))
   cleanupDirs.push(dir)
   const result = runRenovateValidator(dir)
@@ -452,10 +441,7 @@ storyboardStep(Then, 'turning automerge off still passes the same validator', {
   await renderPreFrame(I, 'contract-validate-automerge-off', validatorVerdictLines(result.output))
 })
 
-storyboardStep(Then, "a downstream project's renovate ignores stale framework-owned .config drift", {
-  note: 'Off-camera: a freshly generated project with every framework-owned .config pin downgraded to a stale value. Renovate\'s own extraction summary then lists no .config file — the downstream project never re-tracks a framework tool.',
-  copy: EXTRACT_CMD
-}, async () => {
+storyboardStep(Then, "a downstream project's renovate ignores stale framework-owned .config drift", async () => {
   const dir = renderProject()
   cleanupDirs.push(dir)
   rendered = dir
@@ -468,10 +454,7 @@ storyboardStep(Then, "a downstream project's renovate ignores stale framework-ow
   await renderColorFrame('contract-downstream-ignores', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
 })
 
-storyboardStep(Then, "a downstream project's renovate tracks its own outdated project dependency", {
-  note: 'A separate freshly generated project, this time with an outdated base image added under project/: its extraction summary picks up the project/ Dockerfile — project/** is exactly what a generated project is meant to track.',
-  copy: EXTRACT_CMD
-}, async () => {
+storyboardStep(Then, "a downstream project's renovate tracks its own outdated project dependency", async () => {
   const dir = renderProject()
   cleanupDirs.push(dir)
   rendered = dir
@@ -485,10 +468,7 @@ storyboardStep(Then, "a downstream project's renovate tracks its own outdated pr
   await renderColorFrame('contract-downstream-tracks', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
 })
 
-storyboardStep(Then, "the framework repo's own renovate detects that same stale .config drift", {
-  note: 'The SAME .config downgrade, run in a throwaway framework checkout instead of a generated project: here renovate MUST detect it — the framework owns .config and tracks its own tool versions. Downstream ignores, the framework evolves them.',
-  copy: EXTRACT_CMD
-}, async () => {
+storyboardStep(Then, "the framework repo's own renovate detects that same stale .config drift", async () => {
   frameworkDir = frameworkCheckout()
   downgradeConfigAndExtract(frameworkDir)
   const configDetected = lastExtract.packageFiles
@@ -530,19 +510,13 @@ async function captureRenderedTree (frameName) {
   await addStoryboardFrame(I, await capturePageFrame(I, frameName))
 }
 
-storyboardStep(Given, 'a project is rendered from the working-branch template with every default Copier answer', {
-  note: 'Off-camera: the working-branch template copier-copied with every default answer — the reference render every other card in this journey is measured against.',
-  copy: 'cat .config/devsecops/.copier-answers.yml'
-}, async () => {
+storyboardStep(Given, 'a project is rendered from the working-branch template with every default Copier answer', async () => {
   rendered = renderProject()
   cleanupDirs.push(rendered)
   await renderPreFrame(I, 'defaults-answers', `$ cat .config/devsecops/.copier-answers.yml\n${readRendered('.config/devsecops/.copier-answers.yml').trimEnd()}`)
 })
 
-storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose and project layout', {
-  note: 'The default render: docker-ce and compose are present, podman and ansible are absent, project/ is delivered.',
-  copy: 'ls -1A; ls -1A .config'
-}, async () => {
+storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose and project layout', async () => {
   await captureRenderedTree('defaults-tree')
   if (!fs.existsSync(renderedPath('project/Taskfile.yml'))) throw new Error('Expected project/Taskfile.yml to exist')
   if (!fs.existsSync(renderedPath('.config/docker-ce/Taskfile.yml'))) throw new Error('Expected .config/docker-ce/Taskfile.yml to exist')
@@ -552,10 +526,7 @@ storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose a
   if (!readRendered('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to contain "networks:"')
 })
 
-storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compose toolchain', {
-  note: 'The generated root Taskfile includes the docker-ce and project taskfiles, never podman.',
-  copy: 'grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml'
-}, async () => {
+storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compose toolchain', async () => {
   const content = readRendered('Taskfile.yml')
   const grepped = runCaptured('grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml', rendered)
   await renderPreFrame(I, 'defaults-taskfile', `$ grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml\n${grepped}`)
@@ -564,10 +535,7 @@ storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compo
   if (content.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference ".config/podman/Taskfile.yml"')
 })
 
-storyboardStep(Then, 'the CI pipeline ships the default docker-in-docker variables and release gate', {
-  note: 'The rendered CI variables target the shared docker-in-docker host, and the release job carries its after-script security gate.',
-  copy: 'grep DOCKER_HOST .config/gitlab/ci/variables.yml; grep after_script: .config/gitlab/ci/devsecops/release.yml'
-}, async () => {
+storyboardStep(Then, 'the CI pipeline ships the default docker-in-docker variables and release gate', async () => {
   const ciVars = readRendered('.config/gitlab/ci/variables.yml')
   const release = readRendered('.config/gitlab/ci/devsecops/release.yml')
   const ciOut = runCaptured('grep DOCKER_HOST .config/gitlab/ci/variables.yml', rendered)
@@ -577,10 +545,7 @@ storyboardStep(Then, 'the CI pipeline ships the default docker-in-docker variabl
   if (!release.includes('after_script:')) throw new Error('Expected .config/gitlab/ci/devsecops/release.yml to contain "after_script:"')
 })
 
-storyboardStep(Then, "the project's own governance and language config are delivered", {
-  note: "The project's own answers file, Gherkin language rule and renovate fast-forward automerge rule are all in place.",
-  copy: 'grep "Gherkin in" .agent/rules/tests-structure.md'
-}, async () => {
+storyboardStep(Then, "the project's own governance and language config are delivered", async () => {
   const testsStructure = readRendered('.agent/rules/tests-structure.md')
   const gherkinOut = runCaptured('grep "Gherkin in" .agent/rules/tests-structure.md', rendered)
   const rule = toolboxPackageRule()
@@ -591,10 +556,7 @@ storyboardStep(Then, "the project's own governance and language config are deliv
   if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward') throw new Error(`Expected toolbox package rule to enable fast-forward automerge, got: ${JSON.stringify(rule)}`)
 })
 
-storyboardStep(Given, 'the default answers render docker-ce, compose and English as the baseline', {
-  note: 'Off-camera: a fresh default render — docker-ce and compose present, Gherkin in English — the baseline every answer below changes exactly one part of.',
-  copy: 'ls .config/docker-ce/Taskfile.yml project/docker-compose.yml; grep "Gherkin in" .agent/rules/tests-structure.md'
-}, async () => {
+storyboardStep(Given, 'the default answers render docker-ce, compose and English as the baseline', async () => {
   rendered = renderProject()
   cleanupDirs.push(rendered)
   const lsOut = runCaptured('ls .config/docker-ce/Taskfile.yml project/docker-compose.yml', rendered)
@@ -604,10 +566,7 @@ storyboardStep(Given, 'the default answers render docker-ce, compose and English
   if (!fs.existsSync(renderedPath('project/docker-compose.yml'))) throw new Error('Expected the baseline render to deliver project/docker-compose.yml')
 })
 
-storyboardStep(Then, 'choosing podman as the runtime replaces docker-ce and compose with podman config', {
-  note: 'container_runtime=podman: the podman Taskfile appears, docker-ce and the compose file are both gone, and the root Taskfile points at podman instead.',
-  copy: `${COPIER} copy --defaults --data container_runtime=podman ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'choosing podman as the runtime replaces docker-ce and compose with podman config', async () => {
   rendered = renderProject(parseAnswers('container_runtime=podman'))
   cleanupDirs.push(rendered)
   const diff = runCaptured('ls .config/podman/Taskfile.yml .config/docker-ce project/docker-compose.yml', rendered)
@@ -620,10 +579,7 @@ storyboardStep(Then, 'choosing podman as the runtime replaces docker-ce and comp
   if (content.includes('.config/docker-ce/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference ".config/docker-ce/Taskfile.yml"')
 })
 
-storyboardStep(Then, 'turning off docker compose drops the compose file but keeps docker-ce', {
-  note: 'use_docker_compose=false: the compose file disappears while the docker-ce taskfile stays exactly as in the default render.',
-  copy: `${COPIER} copy --defaults --data use_docker_compose=false ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'turning off docker compose drops the compose file but keeps docker-ce', async () => {
   rendered = renderProject(parseAnswers('use_docker_compose=false'))
   cleanupDirs.push(rendered)
   const diff = runCaptured('ls project/docker-compose.yml .config/docker-ce/Taskfile.yml', rendered)
@@ -632,10 +588,7 @@ storyboardStep(Then, 'turning off docker compose drops the compose file but keep
   if (!fs.existsSync(renderedPath('.config/docker-ce/Taskfile.yml'))) throw new Error('Expected .config/docker-ce/Taskfile.yml to exist')
 })
 
-storyboardStep(Then, 'turning on Ansible delivers its config and lint tooling', {
-  note: 'ansible_enabled=true: .config/ansible and .config/ansible-lint both appear, and the root Taskfile picks up the new include.',
-  copy: `${COPIER} copy --defaults --data ansible_enabled=true ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'turning on Ansible delivers its config and lint tooling', async () => {
   rendered = renderProject(parseAnswers('ansible_enabled=true'))
   cleanupDirs.push(rendered)
   const diff = runCaptured('ls .config/ansible/Taskfile.yml .config/ansible-lint', rendered)
@@ -645,10 +598,7 @@ storyboardStep(Then, 'turning on Ansible delivers its config and lint tooling', 
   if (!readRendered('Taskfile.yml').includes('.config/ansible/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to reference ".config/ansible/Taskfile.yml"')
 })
 
-storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-docker variables', {
-  note: 'ci_platform=gitlab_self_hosted with an empty host/certdir: the shared DOCKER_HOST is gone and DOCKER_TLS_CERTDIR renders empty.',
-  copy: `${COPIER} copy --defaults --data ci_platform=gitlab_self_hosted --data gitlab_docker_host= --data gitlab_docker_tls_certdir= ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-docker variables', async () => {
   rendered = renderProject(parseAnswers('ci_platform=gitlab_self_hosted gitlab_docker_host= gitlab_docker_tls_certdir='))
   cleanupDirs.push(rendered)
   const diff = runCaptured('grep -E "DOCKER_HOST|DOCKER_TLS_CERTDIR" .config/gitlab/ci/variables.yml', rendered)
@@ -658,10 +608,7 @@ storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-d
   if (!content.includes('DOCKER_TLS_CERTDIR: ""')) throw new Error('Expected rendered CI variables to set DOCKER_TLS_CERTDIR to an empty value')
 })
 
-storyboardStep(Then, 'turning off project mode removes the project directory entirely', {
-  note: 'project_enabled=false: the whole project/ tree is gone and the root Taskfile drops its include.',
-  copy: `${COPIER} copy --defaults --data project_enabled=false ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'turning off project mode removes the project directory entirely', async () => {
   rendered = renderProject(parseAnswers('project_enabled=false'))
   cleanupDirs.push(rendered)
   const diff = runCaptured('ls project', rendered)
@@ -670,10 +617,7 @@ storyboardStep(Then, 'turning off project mode removes the project directory ent
   if (readRendered('Taskfile.yml').includes('project/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference "project/Taskfile.yml"')
 })
 
-storyboardStep(Then, 'turning off automerge removes the fast-forward rule from the renovate config', {
-  note: 'devsecops_automerge=false: the toolbox package rule keeps its match but drops every automerge property, and the config stays valid JSON.',
-  copy: `${COPIER} copy --defaults --data devsecops_automerge=false ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'turning off automerge removes the fast-forward rule from the renovate config', async () => {
   rendered = renderProject(parseAnswers('devsecops_automerge=false'))
   cleanupDirs.push(rendered)
   const rule = toolboxPackageRule()
@@ -692,10 +636,7 @@ storyboardStep(Then, 'turning off automerge removes the fast-forward rule from t
   }
 })
 
-storyboardStep(Then, 'choosing French Gherkin changes the language rule for generated tests', {
-  note: 'gherkin_language=fr: the tests-structure rule now instructs the project to write its Gherkin in French.',
-  copy: `${COPIER} copy --defaults --data gherkin_language=fr ${TEMPLATE_SRC} <project>`
-}, async () => {
+storyboardStep(Then, 'choosing French Gherkin changes the language rule for generated tests', async () => {
   rendered = renderProject(parseAnswers('gherkin_language=fr'))
   cleanupDirs.push(rendered)
   const diff = runCaptured('grep "Gherkin in" .agent/rules/tests-structure.md', rendered)
@@ -732,10 +673,7 @@ function ansibleEntries () {
   }
 }
 
-storyboardStep(Given, "a project generated from an earlier toolbox release carries the developer's own edit", {
-  note: `Off-camera: a versioned template (releases 1.0.0 → 1.0.1), a project generated at 1.0.0, then the developer appends their own marker to ${CUSTOM_TASKFILE} — a copier skip-if-exists file an update must never overwrite.`,
-  copy: `tail -4 ${CUSTOM_TASKFILE}`
-}, async () => {
+storyboardStep(Given, "a project generated from an earlier toolbox release carries the developer's own edit", async () => {
   template = prepareVersionedTemplate()
   cleanupDirs.push(template)
   rendered = renderProjectFromTemplate(template, '1.0.0')
@@ -748,20 +686,14 @@ storyboardStep(Given, "a project generated from an earlier toolbox release carri
   }
 })
 
-storyboardStep(Given, 'the project has no Ansible configuration yet', {
-  note: 'With the default answers the generated project has no Ansible tooling: grepping .config for ansible finds nothing.',
-  copy: 'ls -1A .config | grep ansible'
-}, async () => {
+storyboardStep(Given, 'the project has no Ansible configuration yet', async () => {
   await renderPreFrame(I, 'options-no-ansible', `$ ls -1A .config | grep ansible\n${ansibleEntries()}`)
   if (fs.existsSync(renderedPath('.config/ansible'))) {
     throw new Error('Expected no .config/ansible before the flipped update')
   }
 })
 
-storyboardStep(When, 'the developer re-runs the toolbox update and turns the Ansible option on', {
-  note: 'The same `copier update`, this time answering ansible_enabled=true: the same grep now finds the ansible and ansible-lint entries the flip delivered.',
-  copy: "task copier:update TASK_COPIER_CLI_OPTS='--data ansible_enabled=true'"
-}, async () => {
+storyboardStep(When, 'the developer re-runs the toolbox update and turns the Ansible option on', async () => {
   updateProject(rendered, '1.0.1', { ansible_enabled: 'true' })
   await renderPreFrame(I, 'options-ansible-on', `$ ls -1A .config | grep ansible\n${ansibleEntries()}`)
   if (!fs.existsSync(renderedPath('.config/ansible'))) {
@@ -769,10 +701,7 @@ storyboardStep(When, 'the developer re-runs the toolbox update and turns the Ans
   }
 })
 
-storyboardStep(Then, 'the new Ansible tooling is delivered by the update', {
-  note: 'The flipped answer delivers the release\'s Ansible tooling — .config/ansible and .config/ansible-lint.',
-  copy: 'ls -1A .config/ansible .config/ansible-lint'
-}, async () => {
+storyboardStep(Then, 'the new Ansible tooling is delivered by the update', async () => {
   const listing = execSync('ls -1A .config/ansible .config/ansible-lint', { cwd: rendered, encoding: 'utf8' }).trimEnd()
   await renderPreFrame(I, 'options-ansible-delivered', `$ ls -1A .config/ansible .config/ansible-lint\n${listing}`)
   if (!fs.existsSync(renderedPath('.config/ansible/Taskfile.yml'))) {
@@ -791,10 +720,7 @@ storyboardStep(Then, 'the new Ansible tooling is delivered by the update', {
   }
 })
 
-storyboardStep(Then, "the developer's own edit survived the update untouched", {
-  note: `${CUSTOM_TASKFILE} still carries the developer's marker after the update — the skip-if-exists file was never overwritten.`,
-  copy: `tail -4 ${CUSTOM_TASKFILE}`
-}, async () => {
+storyboardStep(Then, "the developer's own edit survived the update untouched", async () => {
   await renderPreFrame(I, 'options-edit-survived', `$ tail -4 ${CUSTOM_TASKFILE}\n${tailLines(readRendered(CUSTOM_TASKFILE), 4)}`)
   if (!readRendered(CUSTOM_TASKFILE).includes(CUSTOM_MARKER)) {
     throw new Error(`Expected ${CUSTOM_TASKFILE} to still contain the custom marker after the update`)

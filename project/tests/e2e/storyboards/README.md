@@ -73,3 +73,7 @@ TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e -- --grep "@your-story-tag"
 ```
 
 Full recipe: [project/tests/README.md](../../README.md) (§ Storyboards).
+
+## Creating a new story
+
+Start from the engine guide: [.config/codeceptjs/README.md](../../../../.config/codeceptjs/README.md) — how the storyboard plugin works, how to wire it, and the `.feature` conventions (`# Chapter:` / `# Note:` / `# Copy:` on the sentence below them) with a copy-ready minimal example.

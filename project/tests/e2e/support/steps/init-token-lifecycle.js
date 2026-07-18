@@ -218,19 +218,13 @@ async function cloneProofFrame (frameName, variableName) {
 // second run is a no-op.
 // ===========================================================================
 
-storyboardStep(Given, 'a project the framework has already set up with its automation token', {
-  note: 'A fresh project after its first `task devsecops:init`: the access-tokens page shows the automation token init created.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(Given, 'a project the framework has already set up with its automation token', async () => {
   await provisionInitialisedProject('e2e-token-healing')
   capturedTokenId = (await singleActiveToken(projectName)).id
   await pageFrame(gotoAccessTokens, 'tokens-provisioned')
 })
 
-storyboardStep(When, "the developer revokes the automation token behind the framework's back", {
-  note: 'The token is revoked from outside the framework, as if someone deleted it in GitLab: the access-tokens page no longer lists the automation token.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(When, "the developer revokes the automation token behind the framework's back", async () => {
   const token = await singleActiveToken(projectName)
   const res = await revokeProjectAccessToken(projectName, token.id, await getRootHeaders())
   if (res.status >= 400) throw new Error(`Failed to revoke token ${token.id} (${res.status})`)
@@ -240,18 +234,12 @@ storyboardStep(When, "the developer revokes the automation token behind the fram
   }
 })
 
-storyboardStep(When, "the developer runs the framework's init again", {
-  note: 'A single `task devsecops:init` re-run: the finishing message shows it noticed the token was missing and created a new one.',
-  copy: 'task devsecops:init'
-}, async () => {
+storyboardStep(When, "the developer runs the framework's init again", async () => {
   reRunInitCaptured()
   await initVerdictFrame('init-verdict-heal')
 })
 
-storyboardStep(Then, 'GitLab now holds a brand-new automation token', {
-  note: 'The access-tokens page shows the automation token again, a different one from the token that was revoked.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(Then, 'GitLab now holds a brand-new automation token', async () => {
   const token = await singleActiveToken(projectName)
   if (token.id === capturedTokenId) {
     throw new Error(`Token id was NOT rotated by the heal — still ${token.id}`)
@@ -260,10 +248,7 @@ storyboardStep(Then, 'GitLab now holds a brand-new automation token', {
   await pageFrame(gotoAccessTokens, 'tokens-healed')
 })
 
-storyboardStep(Then, "GitLab's CI/CD variable now matches the new token", {
-  note: 'The CI/CD variables page shows the variable again, now pointing at the new token.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
-}, async () => {
+storyboardStep(Then, "GitLab's CI/CD variable now matches the new token", async () => {
   const variable = await readProjectVariable(projectName, TOKEN, await getRootHeaders())
   if (!variable.data || !variable.data.value) {
     throw new Error(`CI/CD variable "${TOKEN}" is missing or empty after heal`)
@@ -271,27 +256,18 @@ storyboardStep(Then, "GitLab's CI/CD variable now matches the new token", {
   await pageFrame(gotoCiCdVariables, 'variable-resynced')
 })
 
-storyboardStep(Then, 'the healed token clones the repository over HTTPS', {
-  note: 'The healed token signs in to GitLab and lists the repository over HTTPS (the secret and commit IDs are masked).',
-  copy: 'git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git'
-}, async () => {
+storyboardStep(Then, 'the healed token clones the repository over HTTPS', async () => {
   await cloneProofFrame('clone-healed', TOKEN)
   await assertCloneWithVariable(TOKEN)
   await assertCloneWithVariable(RENOVATE_TOKEN)
 })
 
-storyboardStep(When, 'the developer runs init a second time', {
-  note: 'A second `task devsecops:init` on the already-healed project: the finishing message reports the token is already in place, nothing to recreate.',
-  copy: 'task devsecops:init'
-}, async () => {
+storyboardStep(When, 'the developer runs init a second time', async () => {
   reRunInitCaptured()
   await initVerdictFrame('init-verdict-idempotent')
 })
 
-storyboardStep(Then, 'the second run leaves the healed token untouched', {
-  note: 'The access-tokens page has not changed: still one automation token. init does not quietly replace the token on every run.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(Then, 'the second run leaves the healed token untouched', async () => {
   const token = await singleActiveToken(projectName)
   if (token.id !== capturedTokenId) {
     throw new Error(`Idempotency broken: token id changed from ${capturedTokenId} to ${token.id}`)
@@ -304,19 +280,13 @@ storyboardStep(Then, 'the second run leaves the healed token untouched', {
 // a tampered pipeline variable is repaired, and duplicate tokens are purged.
 // ===========================================================================
 
-storyboardStep(Given, 'a project the framework already set up and is healthy', {
-  note: 'A fresh project after its first `task devsecops:init`, working correctly: one automation token on the access-tokens page.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(Given, 'a project the framework already set up and is healthy', async () => {
   await provisionInitialisedProject('e2e-token-healing-variants', { skipLogin: true })
   await singleActiveToken(projectName)
   await pageFrame(gotoAccessTokens, 'variant-healthy')
 })
 
-storyboardStep(When, "a duplicate automation token is planted behind the framework's back", {
-  note: 'A second token with the same name is created from outside the framework: the access-tokens page now lists two automation tokens where there should be one.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(When, "a duplicate automation token is planted behind the framework's back", async () => {
   const expiresAt = new Date(Date.now() + 300 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const res = await createProjectAccessToken(projectName, {
     name: TOKEN, scopes: ['api', 'write_repository'], access_level: 40, expires_at: expiresAt
@@ -328,10 +298,7 @@ storyboardStep(When, "a duplicate automation token is planted behind the framewo
   }
 })
 
-storyboardStep(When, 'the CI/CD variable is overwritten with a bad value', {
-  note: 'The CI/CD variable is tampered with, its value replaced by a bad string that GitLab hides on screen: the CI/CD variables page still lists it.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/ci_cd'
-}, async () => {
+storyboardStep(When, 'the CI/CD variable is overwritten with a bad value', async () => {
   const res = await updateProjectVariable(projectName, TOKEN, { value: TAMPERED_VALUE }, await getRootHeaders())
   if (res.status >= 400) throw new Error(`Failed to tamper variable (${res.status}): ${JSON.stringify(res.data)}`)
   await pageFrame(gotoCiCdVariables, 'variant-tampered')
@@ -341,26 +308,17 @@ storyboardStep(When, 'the CI/CD variable is overwritten with a bad value', {
   }
 })
 
-storyboardStep(When, "the developer runs the framework's init once more", {
-  note: 'A single `task devsecops:init` re-run: the finishing message shows it removed the duplicate token and put the CI/CD variable back.',
-  copy: 'task devsecops:init'
-}, async () => {
+storyboardStep(When, "the developer runs the framework's init once more", async () => {
   reRunInitCaptured()
   await initVerdictFrame('variant-init-verdict')
 })
 
-storyboardStep(Then, 'only one automation token survives the purge', {
-  note: 'The access-tokens page is back to a single automation token — the duplicate is gone.',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/access_tokens'
-}, async () => {
+storyboardStep(Then, 'only one automation token survives the purge', async () => {
   await singleActiveToken(projectName)
   await pageFrame(gotoAccessTokens, 'variant-purged')
 })
 
-storyboardStep(Then, 'the healed CI/CD variable clones the repository again', {
-  note: 'The variable no longer carries the bad value: it signs in to GitLab again and lists the repository (the secret and commit IDs are masked).',
-  copy: 'git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git'
-}, async () => {
+storyboardStep(Then, 'the healed CI/CD variable clones the repository again', async () => {
   const variable = await readProjectVariable(projectName, TOKEN, await getRootHeaders())
   if (!variable.data || variable.data.value === TAMPERED_VALUE) {
     throw new Error('Expected the pipeline variable to be healed away from the tampered value')

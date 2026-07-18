@@ -6,6 +6,7 @@ Feature: A toolbox release arrives — copier update preserves my work
   I made
   So that upgrading the framework never destroys my customizations
 
+  # cspell:ignore Caddyfile -- the update story's project word, carried in the card notes below
   # ONE story in two chapters. ONE Gherkin sentence = ONE card = ONE pixel
   # baseline, asserted inside the step (tolerance: 0); every AFTER card twins
   # its frame with a filesystem check read straight from the project, so a
@@ -22,18 +23,46 @@ Feature: A toolbox release arrives — copier update preserves my work
   # they wrote it.
   Scenario: a toolbox update splits the dictionary, keeps my word, and spares my edits
     # Chapter: The update splits the dictionary and keeps my word
+    # Note: A project made with an older toolbox (release 22.0.0), from before the spelling dictionary was split. The line on screen shows which toolbox version it came from.
+    # Copy: grep _commit .config/devsecops/.copier-answers.yml
     Given a developer's project was generated from an earlier toolbox release
+    # Note: At this old release the whole spelling dictionary is one file, config.json — the only place a project can add its own words.
+    # Copy: ls -1 .config/cspell/
     And its spelling dictionary is a single framework-owned file
+    # Note: The developer's own word (Caddyfile) sits inside config.json, mixed in with the framework's own words.
+    # Copy: jq '.words[-4:]' .config/cspell/config.json
     And the developer has added their own word inside that shared file
+    # Note: The exact command Renovate runs on its own to move to release 22.7.1. It refreshes the dictionary and moves the developer's word to its own file.
+    # Copy: task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref 22.7.1'
     When the developer runs the toolbox update in the terminal
+    # Note: The project is now on release 22.7.1 — the version line has moved forward.
+    # Copy: grep _commit .config/devsecops/.copier-answers.yml
     Then the project now tracks the new toolbox release
+    # Note: The one dictionary is now three files: config.json, config.base.json (framework words) and config.project.json (project words).
+    # Copy: ls -1 .config/cspell/
     And its dictionary has been split into three files
+    # Note: The framework's own words now live in config.base.json — the developer's word is not among them.
+    # Copy: jq '.words[-4:]' .config/cspell/config.base.json
     And the framework keeps its own words in its own file
+    # Note: The developer's word (Caddyfile) has moved to config.project.json, the file a toolbox update never overwrites.
+    # Copy: jq . .config/cspell/config.project.json
     And the developer's own word has moved to a project-owned file
+    # Note: config.json now holds no words of its own; it only pulls in the other two files.
+    # Copy: jq '.words' .config/cspell/config.json
     And the shared file itself is now empty — it only imports the other two
     # Chapter: A flipped answer delivers new tools and spares my edits
+    # Note: Off-camera: a versioned template (releases 1.0.0 → 1.0.1), a project generated at 1.0.0, then the developer appends their own marker to project/Taskfile.yml — a copier skip-if-exists file an update must never overwrite.
+    # Copy: tail -4 project/Taskfile.yml
     Given a project generated from an earlier toolbox release carries the developer's own edit
+    # Note: With the default answers the generated project has no Ansible tooling: grepping .config for ansible finds nothing.
+    # Copy: ls -1A .config | grep ansible
     And the project has no Ansible configuration yet
+    # Note: The same `copier update`, this time answering ansible_enabled=true: the same grep now finds the ansible and ansible-lint entries the flip delivered.
+    # Copy: task copier:update TASK_COPIER_CLI_OPTS='--data ansible_enabled=true'
     When the developer re-runs the toolbox update and turns the Ansible option on
+    # Note: The flipped answer delivers the release's Ansible tooling — .config/ansible and .config/ansible-lint.
+    # Copy: ls -1A .config/ansible .config/ansible-lint
     Then the new Ansible tooling is delivered by the update
+    # Note: project/Taskfile.yml still carries the developer's marker after the update — the skip-if-exists file was never overwritten.
+    # Copy: tail -4 project/Taskfile.yml
     And the developer's own edit survived the update untouched

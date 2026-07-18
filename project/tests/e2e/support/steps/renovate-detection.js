@@ -52,10 +52,7 @@ After(() => {
   gitEnv = null
 })
 
-storyboardStep(Given, 'a safe copy of the framework has every bootstrap tool regressed to an older version', {
-  note: 'Off-camera: a full throwaway copy of the framework, git-pristine first. Each bootstrap tool is then pinned OLDER in both its canonical .config source and the install.sh bootstrap pin — the real git diff shows every OLD to regressed move.',
-  copy: 'git diff'
-}, async () => {
+storyboardStep(Given, 'a safe copy of the framework has every bootstrap tool regressed to an older version', async () => {
   workdir = fs.mkdtempSync('/tmp/renovate-detect-')
   cleanupDirs.push(workdir)
   // Full framework copy (task needs the root Taskfile + every include); drop the
@@ -153,10 +150,7 @@ function trackedDepFiles (json) {
   return filesByDep
 }
 
-storyboardStep(Then, "Renovate's own extraction log detects every regressed tool", {
-  note: 'The framework\'s real entrypoint runs against the regressed copy; Renovate\'s own "Dependency extraction complete" summary lists every regex/pip manager hit plus githubDeps.',
-  copy: EXTRACT
-}, async () => {
+storyboardStep(Then, "Renovate's own extraction log detects every regressed tool", async () => {
   const summary = extractionSummary(runExtract(EXTRACT_HUMAN, workdir, gitEnv))
   // FORCE_COLOR=1 output keeps real ANSI colour — renderTextInBrowser
   // (ansiToHtml-capable), never renderPreFrame (plain escapeHtml only).
@@ -164,10 +158,7 @@ storyboardStep(Then, "Renovate's own extraction log detects every regressed tool
   await addStoryboardFrame(I, await capturePageFrame(I, 'detection-summary'))
 })
 
-storyboardStep(Then, 'each tool is detected at both its config source and the install.sh pin', {
-  note: 'The rule made visible: every tracked tool is reported from its canonical .config source AND install.sh, so one Renovate PR touches both files, never only one.',
-  copy: EXTRACT
-}, async () => {
+storyboardStep(Then, 'each tool is detected at both its config source and the install.sh pin', async () => {
   const filesByDep = trackedDepFiles(runExtract(EXTRACT_JSON, workdir, gitEnv))
   const rows = []
   for (const tool of TOOLS) {

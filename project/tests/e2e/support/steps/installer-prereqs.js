@@ -52,10 +52,7 @@ function assertOutputContains (expected) {
 // Given — the barren machine, installer staged
 // ============================================
 
-storyboardStep(Given, 'a fresh machine has only sudo and curl, with the installer ready to run', {
-  note: 'This machine has sudo and curl but no unzip — the tool the installer will have to add by itself. The installer files are copied in but not started yet.',
-  copy: 'command -v unzip'
-}, async () => {
+storyboardStep(Given, 'a fresh machine has only sudo and curl, with the installer ready to run', async () => {
   bareContainer = containerName()
   execSync(`docker run -d --name ${shellEscape(bareContainer)} ubuntu:24.04 sleep infinity`, {
     encoding: 'utf8',
@@ -103,10 +100,7 @@ storyboardStep(Given, 'a fresh machine has only sudo and curl, with the installe
 // When — the installer runs, non-interactively
 // ============================================
 
-storyboardStep(When, 'the installer runs on the fresh machine with no one to answer its questions', {
-  note: 'The installer starts and prints its title. Nothing on the machine has changed yet.',
-  copy: 'sh -c "mkdir -p /workspace/my-project && cd /workspace/my-project && yes \'\' | head -n 40 | bash /tmp/install.sh"'
-}, async () => {
+storyboardStep(When, 'the installer runs on the fresh machine with no one to answer its questions', async () => {
   const cmd = [
     `docker exec -u bootstrap -e DEVSECOPS_TEMPLATE_URL=/tmp/toolbox-template ${shellEscape(bareContainer)}`,
     `sh -c ${shellEscape("mkdir -p /workspace/my-project && cd /workspace/my-project && yes '' | head -n 40 | bash /tmp/install.sh")}`
@@ -136,10 +130,7 @@ storyboardStep(When, 'the installer runs on the fresh machine with no one to ans
 // Then — the auto-install, then the final guidance
 // ============================================
 
-storyboardStep(Then, 'the installer installs the tool it was missing and tries again', {
-  note: 'task devsecops:init fails because unzip is missing, so the installer adds unzip with sudo and runs again.',
-  copy: 'grep -A2 "Attempting to install missing prerequisites" /tmp/install.log'
-}, async () => {
+storyboardStep(Then, 'the installer installs the tool it was missing and tries again', async () => {
   assertOutputContains('DevSecOps Toolbox Installer')
   assertOutputContains('task devsecops:init failed. Attempting to install missing prerequisites...')
   assertOutputContains('Installing unzip with sudo...')
@@ -160,10 +151,7 @@ storyboardStep(Then, 'the installer installs the tool it was missing and tries a
 // Only the final failure block after the retry is deterministic.
 const NO_REMOTE_MARKER = "No 'origin' remote configured. Add a GitLab remote, then re-run."
 
-storyboardStep(Then, 'the installer stops and explains how to link the project to GitLab', {
-  note: 'The installer stops on purpose: the project has no GitLab link yet, so it prints the exact next step. If this message ever went missing, a new developer would be stuck.',
-  copy: NO_REMOTE_MARKER
-}, async () => {
+storyboardStep(Then, 'the installer stops and explains how to link the project to GitLab', async () => {
   if (installerResult.exitCode === 0) {
     throw new Error(`Expected the installer to fail without a GitLab remote, but it succeeded\n${installerResult.output}`)
   }

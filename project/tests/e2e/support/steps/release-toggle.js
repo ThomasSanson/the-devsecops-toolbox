@@ -184,10 +184,7 @@ Before(() => {
 // Given — main starts locked
 // ============================================
 
-storyboardStep(Given, 'main starts locked behind push protection', {
-  note: 'A freshly initialized project: main is protected right away (merge for maintainers, push for no one).',
-  copy: 'http://gitlab/<lambda-user>/<project>/-/settings/repository'
-}, async () => {
+storyboardStep(Given, 'main starts locked behind push protection', async () => {
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   successProject = 'e2e-release-toggle'
   const { repoDir, glabToken } = await bootstrapLockedProject(successProject)
@@ -202,10 +199,7 @@ storyboardStep(Given, 'main starts locked behind push protection', {
 // When — the window opens, the push lands
 // ============================================
 
-storyboardStep(When, 'a release run opens the push window for maintainers', {
-  note: 'task release opens push access for Maintainers just before it runs the version-bump step (Commitizen).',
-  copy: 'task release'
-}, async () => {
+storyboardStep(When, 'a release run opens the push window for maintainers', async () => {
   successRun = await runRelease(successProject.name, successProject.repoDir, successProject.glabToken, { expectFailure: false })()
   if (successRun.failed) {
     throw new Error(`Expected task release to succeed, but it failed:\n${successRun.raw}`)
@@ -216,10 +210,7 @@ storyboardStep(When, 'a release run opens the push window for maintainers', {
   await renderPreFrame(I, 'toggle-opens', slice.join('\n'))
 })
 
-storyboardStep(When, 'the release pushes the version bump to main', {
-  note: 'The version-bump step updates the version, and task release pushes it straight to main.',
-  copy: "git -C <repo> log -1 --format='%s'"
-}, async () => {
+storyboardStep(When, 'the release pushes the version bump to main', async () => {
   const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
   const sha = execSync(`git -C ${successProject.repoDir} rev-parse HEAD`, { encoding: 'utf8' }).trim()
   const masked = subject.replace(/\d+\.\d+\.\d+/g, 'x.y.z')
@@ -231,10 +222,7 @@ storyboardStep(When, 'the release pushes the version bump to main', {
 // Then — the window closes, both on success and on the safety net
 // ============================================
 
-storyboardStep(Then, 'the window closes again and push protection is restored', {
-  note: 'task release turns push access back off when it exits, even after a successful push.',
-  copy: 'task release'
-}, async () => {
+storyboardStep(Then, 'the window closes again and push protection is restored', async () => {
   assertContains(successRun.raw, RESTORE_MARKER)
   const filtered = filterReleaseLogs(successRun.raw)
   const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
@@ -242,10 +230,7 @@ storyboardStep(Then, 'the window closes again and push protection is restored', 
   await assertMainProtected(successProject.name)
 })
 
-storyboardStep(Then, 'the safety net still closes the window when the push fails', {
-  note: 'A second project, pointed at a host that doesn\'t exist: task release fails, but it still turns push access back off on the way out.',
-  copy: 'task release'
-}, async () => {
+storyboardStep(Then, 'the safety net still closes the window when the push fails', async () => {
   const failureProjectName = 'e2e-release-toggle-failure'
   const { repoDir, glabToken } = await bootstrapLockedProject(failureProjectName)
   failureProject = { name: failureProjectName, repoDir, glabToken }
