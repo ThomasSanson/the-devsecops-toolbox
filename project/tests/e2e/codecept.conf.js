@@ -75,6 +75,7 @@ exports.config = {
       './support/steps/quality-gate.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
+      './support/steps/update-conflict.js',
       './support/steps/gitleaks.js',
       './support/steps/installer-prereqs.js',
       './support/steps/guidance-variants.js',
