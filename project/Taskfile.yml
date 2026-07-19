@@ -106,6 +106,16 @@ tasks:
       docker network via the mounted docker socket. The same runner navigates
       the GitLab CE instance for init-effect verification.
     cmds:
+      # cycleH instrumentation: capture disk + docker usage at the very end of
+      # the phase (declared first → this defer runs LAST), so a CI trace shows
+      # the peak the suite left behind, whether it passed or failed. Paired with
+      # the "before suite" probe below, it turns every run into hard numbers.
+      - defer: |
+          {{if ne (env "CI") ""}}
+            date -u +"⏱️  [cycleH] suite end: %H:%M:%S UTC"
+            echo "📊 [cycleH] disk after suite:"; df -h || true
+            docker system df || true
+          {{end}}
       - defer: |
           {{if and (or .EXIT_CODE (eq .TASK_DIAGNOSTIC_FORCE "true")) (ne (env "CI") "")}}
             echo ""
@@ -122,6 +132,22 @@ tasks:
       - cmd: echo "🚀 Starting project E2E test phase"
         silent: true
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
+      # cycleH: once both test images are built, the BuildKit build cache is dead
+      # weight on the disk-constrained CI dind (~25 GB) and competes with the
+      # scenario containers' toolchain extraction (the "No space left on device"
+      # class of failure). Pre-build the ubuntu image so the first scenario does
+      # not pay it, then reclaim ALL build cache before the suite. Local devs keep
+      # their cache (guarded on CI). The df/docker-df probe is the "before suite"
+      # half of the instrumentation.
+      - cmd: |
+          {{if ne (env "CI") ""}}
+            {{.PROJECT_DOCKER_COMPOSE}} build ubuntu || true
+            docker builder prune -af || true
+            docker image prune -f || true
+            date -u +"⏱️  [cycleH] setup done, suite start: %H:%M:%S UTC"
+            echo "📊 [cycleH] disk before suite:"; df -h || true
+            docker system df || true
+          {{end}}
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /workspace"
       # .claude and .env are LOCAL-ONLY (agent tooling / personal overrides,
