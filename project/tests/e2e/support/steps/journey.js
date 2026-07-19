@@ -395,7 +395,13 @@ async function launchWorkingBranchInstaller () {
 // glab sub-installer's "Installation complete!" (that appears earlier): this
 // is install.sh's own last line, after scaffolding + `task devsecops:init`
 // (dev-environment setup + GitLab config), so it proves the whole run finished.
-async function waitForInstallerComplete (timeoutMs = 600000) {
+// Budget calibrated from measured CI traces (2 workers): the worst known-good
+// run (merge-request-safety, job 15417477989) took 391540ms; once the suite
+// grew, the same two heaviest scenarios (fresh-machine, merge-request-safety)
+// overlap for longer and both exceeded the old 600000ms ceiling without
+// finishing (job 15419924229). 900000ms keeps ~2.3x margin over the last
+// measured good run; the CI job's own 90m timeout easily absorbs it.
+async function waitForInstallerComplete (timeoutMs = 900000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const res = execInContainerAsUser(
