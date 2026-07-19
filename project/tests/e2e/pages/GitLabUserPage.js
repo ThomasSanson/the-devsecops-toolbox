@@ -59,6 +59,24 @@ class GitLabUserPage {
   }
 
   async loginAs (username, password) {
+    // A shard can open with a scenario whose FIRST GitLab contact is this UI
+    // login: on that shard's virgin instance the lambda user does not exist
+    // yet (the monolithic suite hid the dependency behind whichever install
+    // scenario ran first). Ensure it via the admin API — one existence check
+    // when the user is already there — so no scenario depends on run order.
+    if (username === process.env.TASK_GITLAB_LAMBDA_USER) {
+      await this.ensureUserViaApi(
+        'http://gitlab:80',
+        process.env.TASK_GITLAB_ROOT_USER,
+        process.env.TASK_GITLAB_ROOT_PASSWORD,
+        {
+          email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
+          username: process.env.TASK_GITLAB_LAMBDA_USER,
+          name: 'Lambda User',
+          password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
+        }
+      )
+    }
     await I.amOnPage(this.urls.login)
     await I.waitForElement('#user_login', 60)
     await I.fillField('#user_login', username)
