@@ -23,12 +23,26 @@ async function getRootHeaders () {
   return { Authorization: `Bearer ${tokenResponse.data.access_token}` }
 }
 
+// Idempotent: on a virgin GitLab (a fresh CI instance), the scenario asking
+// for the lambda user's id may be the first one to need it at all, racing
+// whichever scenario would normally have created it first via
+// GitLabUserPage.ensureUserViaApi. Create-if-missing here too, mirroring that
+// same payload, so callers never depend on run order.
 async function getLambdaUserId (headers) {
-  const usersResponse = await freshGet(
-    `${BASE_URL}/api/v4/users?username=${getLambdaUsername()}`,
-    headers
-  )
-  return usersResponse.data[0].id
+  const username = getLambdaUsername()
+  const usersResponse = await freshGet(`${BASE_URL}/api/v4/users?username=${username}`, headers)
+  if (usersResponse.data.length > 0) return usersResponse.data[0].id
+  await freshPost(`${BASE_URL}/api/v4/users`, {
+    email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
+    username,
+    name: 'Lambda User',
+    password: process.env.TASK_GITLAB_LAMBDA_PASSWORD,
+    skip_confirmation: true,
+    force_random_password: false,
+    reset_password: false
+  }, headers)
+  const retryResponse = await freshGet(`${BASE_URL}/api/v4/users?username=${username}`, headers)
+  return retryResponse.data[0].id
 }
 
 async function createProject (payload, headers) {
