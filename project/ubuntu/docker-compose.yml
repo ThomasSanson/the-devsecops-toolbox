@@ -19,7 +19,7 @@ services:
       - the-devsecops-toolbox
     hostname: workspace
     environment:
-      # cycleH: redirect uv's cache and Python installs to a named volume shared
+      # Redirect uv's cache and Python installs to a named volume shared
       # by every throwaway container. The first scenario that runs `uvx copier`
       # (or the installer's uv step) pays the Python 3.14 + copier download once;
       # every later scenario reuses it, cutting the biggest repeated download and

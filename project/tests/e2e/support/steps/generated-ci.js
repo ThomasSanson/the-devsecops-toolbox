@@ -185,7 +185,7 @@ async function startScopedRunner (rootHeaders) {
     `docker run -d --name ${runnerName} --network ${NET} ` +
     `-v /var/run/docker.sock:/var/run/docker.sock ${RUNNER_IMAGE}`
   )
-  console.log(`[cycleE] runner container started (exit ${run.exitCode}) @${Date.now() - t0}ms`)
+  console.log(`runner container started (exit ${run.exitCode}) in ${Date.now() - t0}ms`)
   if (run.exitCode !== 0) throw new Error(`docker run runner failed: ${run.stderr || run.stdout}`)
   const reg = runCommandWithResult(
     `docker exec ${runnerName} gitlab-runner register --non-interactive ` +
@@ -193,14 +193,14 @@ async function startScopedRunner (rootHeaders) {
     `--docker-image alpine:3.20 --docker-network-mode ${NET}`
   )
   const output = `${reg.stdout || ''}${reg.stderr || ''}`
-  console.log(`[cycleE] runner registered (exit ${reg.exitCode}) @${Date.now() - t0}ms`)
+  console.log(`runner registered (exit ${reg.exitCode}) @${Date.now() - t0}ms`)
   if (reg.exitCode !== 0) throw new Error(`gitlab-runner register failed: ${output}`)
   // The `gitlab-runner run` process started at the container entrypoint before
   // register wrote the [[runners]] into config.toml, and it does not always pick
   // the change up via fsnotify. Restart the container so it reloads the config
   // and starts polling — otherwise the job sits pending forever.
   const restart = runCommandWithResult(`docker restart ${runnerName}`)
-  console.log(`[cycleE] runner restarted (exit ${restart.exitCode}) @${Date.now() - t0}ms`)
+  console.log(`runner restarted (exit ${restart.exitCode}) @${Date.now() - t0}ms`)
   if (restart.exitCode !== 0) throw new Error(`docker restart runner failed: ${restart.stderr || restart.stdout}`)
   await sleep(6000)
   return (output.split('\n').find(l => l.includes('registered successfully')) || 'Runner registered successfully.').trim()
@@ -215,7 +215,7 @@ async function pollTargetJob (headers, pipelineId) {
     const job = jobs.find(j => j.name === TARGET_JOB)
     const status = job ? job.status : 'absent'
     if (status !== last) {
-      console.log(`[cycleE] ${TARGET_JOB}: ${status} @${Math.round((Date.now() - start) / 1000)}s`)
+      console.log(`${TARGET_JOB}: ${status} @${Math.round((Date.now() - start) / 1000)}s`)
       last = status
     }
     if (job && ['success', 'failed', 'canceled', 'skipped'].includes(job.status)) return job
@@ -250,14 +250,14 @@ storyboardStep(Then, "the pipeline's first job runs on that runner and passes", 
     pipelines = [triggered.data]
   }
   const pipelineId = pipelines[0].id
-  console.log(`[cycleE] watching pipeline ${pipelineId} for ${TARGET_JOB}`)
+  console.log(`watching pipeline ${pipelineId} for ${TARGET_JOB}`)
   const job = await pollTargetJob(headers, pipelineId)
   const status = job ? job.status : 'timeout'
   if (status !== 'success') {
     // Surface the runner's own log — the fastest way to see why a job stalled
     // (useful when the embedded runner runs inside dind in CI).
     const logs = runCommandWithResult(`docker logs --tail 40 ${runnerName} 2>&1`)
-    console.log(`[cycleE] runner log tail:\n${logs.stdout || logs.output || logs.stderr}`)
+    console.log(`runner log tail:\n${logs.stdout || logs.output || logs.stderr}`)
   }
   await renderPreFrame(
     I,

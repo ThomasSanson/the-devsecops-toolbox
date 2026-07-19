@@ -106,14 +106,14 @@ tasks:
       docker network via the mounted docker socket. The same runner navigates
       the GitLab CE instance for init-effect verification.
     cmds:
-      # cycleH instrumentation: capture disk + docker usage at the very end of
-      # the phase (declared first → this defer runs LAST), so a CI trace shows
-      # the peak the suite left behind, whether it passed or failed. Paired with
-      # the "before suite" probe below, it turns every run into hard numbers.
+      # Disk/docker usage probe at the very end of the phase (declared first →
+      # this defer runs LAST), so a CI trace shows the peak the suite left
+      # behind, whether it passed or failed. Paired with the "before suite"
+      # probe below, it turns every run into hard numbers.
       - defer: |
           {{if ne (env "CI") ""}}
-            date -u +"⏱️  [cycleH] suite end: %H:%M:%S UTC"
-            echo "📊 [cycleH] disk after suite:"; df -h || true
+            date -u +"⏱️  e2e suite end: %H:%M:%S UTC"
+            echo "📊 disk after suite:"; df -h || true
             docker system df || true
           {{end}}
       - defer: |
@@ -132,7 +132,7 @@ tasks:
       - cmd: echo "🚀 Starting project E2E test phase"
         silent: true
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
-      # cycleH: once both test images are built, the BuildKit build cache is dead
+      # Once both test images are built, the BuildKit build cache is dead
       # weight on the disk-constrained CI dind (~25 GB) and competes with the
       # scenario containers' toolchain extraction (the "No space left on device"
       # class of failure). Pre-build the ubuntu image so the first scenario does
@@ -144,8 +144,8 @@ tasks:
             {{.PROJECT_DOCKER_COMPOSE}} build ubuntu || true
             docker builder prune -af || true
             docker image prune -f || true
-            date -u +"⏱️  [cycleH] setup done, suite start: %H:%M:%S UTC"
-            echo "📊 [cycleH] disk before suite:"; df -h || true
+            date -u +"⏱️  setup done, suite start: %H:%M:%S UTC"
+            echo "📊 disk before suite:"; df -h || true
             docker system df || true
           {{end}}
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /workspace"
@@ -209,7 +209,7 @@ tasks:
           fi
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
-          {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}codeceptjs
+          {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}codeceptjs
           /usr/local/bin/codeceptjs run-workers
           {{.TASK_E2E_WORKERS | default "3"}}
           --features --by pool
