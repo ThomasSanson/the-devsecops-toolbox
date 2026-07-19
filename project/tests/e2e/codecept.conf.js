@@ -72,6 +72,7 @@ exports.config = {
       './support/steps/glab-auth-ensure.js',
       './support/steps/release-toggle.js',
       './support/steps/release-artifacts.js',
+      './support/steps/quality-gate.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/gitleaks.js',
