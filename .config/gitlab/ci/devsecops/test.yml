@@ -26,7 +26,7 @@ test:
     # storyboard SVGs and used to throw them away. Publishing them makes the
     # visual deliverable reviewable straight from the MR widget (expose_as).
     when: always
-    expose_as: 'Storyboards'
+    expose_as: "Storyboards"
     paths:
       # Green boards (the deliverable) + everything needed to debug a red run:
       # failure storyboards and logs (_output), pixel diffs (screenshots/diff),
@@ -36,6 +36,11 @@ test:
       - project/tests/e2e/_output
       - project/tests/e2e/screenshots/diff
       - .diagnostics
+    reports:
+      # One JUnit XML per worker (see project/tests/e2e/support/junit-reporter.js)
+      # feeds the MR "Test summary" widget.
+      junit:
+        - project/tests/e2e/_output/junit/*.xml
     expire_in: 3 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
@@ -79,7 +84,7 @@ pages:
   artifacts:
     paths:
       - public
-    expose_as: 'Storyboard gallery'
+    expose_as: "Storyboard gallery"
     expire_in: 30 days
   rules:
     - if: $CI_COMMIT_TAG =~ /^staging$/

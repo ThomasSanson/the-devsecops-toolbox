@@ -93,6 +93,13 @@ exports.config = {
     storyboard: {
       require: '../../../.config/codeceptjs/storyboard.js',
       enabled: true
+    },
+    // Writes a JUnit XML per worker under _output/junit/ so GitLab renders the
+    // MR "Test summary" widget (artifacts:reports:junit). See the module header
+    // for why this is a 40-line listener and not mocha-junit-reporter.
+    junit: {
+      require: './support/junit-reporter.js',
+      enabled: true
     }
   },
   // Mocha-level retry: gives one second chance to scenarios that fail because
