@@ -78,6 +78,7 @@ exports.config = {
       './support/steps/update-conflict.js',
       './support/steps/gitleaks.js',
       './support/steps/installer-prereqs.js',
+      './support/steps/installer-refusals.js',
       './support/steps/guidance-variants.js',
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
