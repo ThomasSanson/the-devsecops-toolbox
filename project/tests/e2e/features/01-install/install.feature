@@ -1,4 +1,4 @@
-@e2e @install-complete
+@e2e
 Feature: The whole install, from an empty project to a locked-down GitLab
   As a developer adopting the DevSecOps Toolbox
   I want to run the installer, answer its questions, and see the framework land
@@ -21,6 +21,7 @@ Feature: The whole install, from an empty project to a locked-down GitLab
   # forced push. Chapter 3 shows the GitLab project init locked and wired:
   # fast-forward-only merges, no direct pushes to main, the automation token, and
   # that token saved as a CI/CD variable.
+  @install-complete
   Scenario: One interactive install builds the framework and configures GitLab
     # Chapter: Answer the questions, build the framework
     # Note: The empty copy (cloned from GitLab) as the developer sees it: git reports an empty project with nothing saved yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.

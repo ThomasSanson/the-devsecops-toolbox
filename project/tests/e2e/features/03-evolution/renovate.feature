@@ -1,4 +1,4 @@
-@e2e @renovate-flow
+@e2e
 Feature: Dependency updates flow through the framework, not around it
   As a maintainer of the DevSecOps Toolbox and of every project it generates
   I want the rendered Renovate config to pass the real validator and to keep
@@ -20,6 +20,7 @@ Feature: Dependency updates flow through the framework, not around it
   # — both PLACES a bootstrap tool version is pinned (its .config source AND the
   # install.sh bootstrap line) must be seen by Renovate, or one would silently
   # drift on the next release.
+  @renovate-flow
   Scenario: Renovate centralizes .config updates in the framework and watches every pinned tool at both endpoints
     # Chapter: Updates flow through the framework
     # Note: .config tooling is owned by THIS framework repo, so a generated project must NOT receive per-tool Renovate MRs, only the framework-evolution MR. The image is the rendered config, where a rule re-added for one specific tool would stand out.

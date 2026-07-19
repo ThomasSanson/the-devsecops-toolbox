@@ -1,4 +1,4 @@
-@e2e @agent-mode-only
+@e2e
 Feature: Installing only the AI agent files (agent mode)
   As a developer trying out the DevSecOps Toolbox
   I want the installer to first ask whether to install everything, and to show
@@ -21,6 +21,7 @@ Feature: Installing only the AI agent files (agent mode)
   # installer, pre-installed tools) with its visual proof, and each Then pairs
   # its card with a check of the same fact (ls in the container, REST on the
   # remote branch) so a regression fails loud even without eyes.
+  @agent-mode-only
   Scenario: Saying no to the full framework installs only the AI agent files
     # Note: The empty project after cloning: a README and nothing else. Changing details (dates, avatars, project name) are hidden so the picture is always the same.
     # Copy: http://gitlab/<lambda-user>/<project>

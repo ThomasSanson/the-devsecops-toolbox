@@ -1,4 +1,4 @@
-@e2e @toolbox-update
+@e2e
 Feature: A toolbox release arrives — copier update preserves my work
   As a maintainer of a project generated from the DevSecOps Toolbox
   I want `task copier:update` — the command Renovate runs automatically for
@@ -21,6 +21,7 @@ Feature: A toolbox release arrives — copier update preserves my work
   # with a flipped answer (Ansible turned on) delivers the brand-new tooling the
   # release ships, while a file the developer hand-edited is left exactly as
   # they wrote it.
+  @toolbox-update
   Scenario: a toolbox update splits the dictionary, keeps my word, and spares my edits
     # Chapter: The update splits the dictionary and keeps my word
     # Note: A project made with an older toolbox (release 22.0.0), from before the spelling dictionary was split. The line on screen shows which toolbox version it came from.

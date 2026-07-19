@@ -1,4 +1,4 @@
-@e2e @first-run-help
+@e2e
 Feature: On the first run, the toolbox names the exact thing to fix
   As a developer setting up the DevSecOps Toolbox
   I want each check to stop and name the next command to run when something is missing
@@ -16,6 +16,7 @@ Feature: On the first run, the toolbox names the exact thing to fix
   # remote, and turns an SSH-style gitlabssh address back into the normal one.
   # Chapter 3 — init itself guides: it prints the exact sign-in command, refuses
   # a GitHub remote with the fix, and finishes cleanly when GitLab is turned off.
+  @first-run-help
   Scenario: Every check stops and names the fix, then finishes cleanly once nothing is missing
     # Chapter: The check names each missing tool
     # Note: A throwaway toolbox checkout before any setup: gum, glow and the glab CLI are all missing. The card lists the three, none installed.

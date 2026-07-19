@@ -23,6 +23,7 @@ tasks:
       - task: check:include-coverage
       - task: check:build-coverage
       - task: check:test-coverage
+      - task: check:shard-coverage
       - task: :project:test
       - cmd: echo "🎉 Test phase completed successfully"
         silent: true
@@ -383,4 +384,25 @@ tasks:
         silent: true
       - bash .config/devsecops/scripts/check-test-coverage.sh
       - cmd: echo "🎉 Test coverage check completed successfully"
+        silent: true
+
+  check:shard-coverage:
+    desc: |
+      ℹ️ Description:
+        Verifies that every e2e scenario is selected by exactly one CI shard
+        from project/tests/e2e/shards.json (the map behind `parallel:` on the
+        CI test job).
+
+        A scenario matching no shard would silently never run in CI; one
+        matching several would run twice and skew durations and JUnit counts.
+
+      ⚙️ How it works:
+        1. Lists every feature file on disk and every file claimed in shards.json
+        2. Fails if a feature file is claimed by zero or several shards
+        3. Fails if a shard claims a file that does not exist (renames stay loud)
+    cmds:
+      - cmd: echo "🔄 Starting shard coverage check"
+        silent: true
+      - bash .config/devsecops/scripts/check-shard-coverage.sh
+      - cmd: echo "🎉 Shard coverage check completed successfully"
         silent: true

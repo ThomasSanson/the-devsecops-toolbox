@@ -9,17 +9,25 @@ test:
   needs: [] # Allows parallel execution
   extends: .default-tags
   retry: 1
-  # Explicit ceiling, sized from a measured CI run: image builds + GitLab CE
-  # boot + the full e2e suite with in-scenario retries needed >45m on the
-  # 4-vCPU SaaS runner (a 45m cap killed an otherwise progressing run).
-  # retry:1 still bounds the worst case to two attempts.
-  timeout: 90m
+  # The suite is sharded: each of the 5 parallel jobs boots its own full test
+  # environment (GitLab CE, Chromium, scenario containers) and runs only the
+  # scenarios its entry in project/tests/e2e/shards.json selects. Sharding is
+  # what keeps every job under the wall-clock target AND gives each one the
+  # whole runner's RAM/CPU (one shared 4-vCPU runner running the full suite
+  # starved GitLab CE and the browser into OOM kills and 500s).
+  # check:shard-coverage (task test guard) proves every scenario lands in
+  # exactly one shard.
+  parallel: 5
+  # Per-shard ceiling: setup (~6m cold) + the heaviest shard (~7m of
+  # scenarios) + in-scenario retries. retry:1 bounds the worst case.
+  timeout: 45m
   variables:
-    # 2 workers in CI (3 locally): the 4-vCPU SaaS runner also hosts the
-    # GitLab CE instance, Chromium and the scenario containers; at 3 workers
-    # the contention starves GitLab CE into 500s and setup timeouts.
+    # 2 workers per shard: enough to overlap a shard's scenarios while
+    # leaving GitLab CE and Chromium their share of the runner.
     TASK_E2E_WORKERS: "2"
   script:
+    - export TASK_CODECEPTJS_FEATURES="$(jq -re --arg i "$CI_NODE_INDEX" '.[$i]' project/tests/e2e/shards.json)"
+    - echo "🔀 Shard $CI_NODE_INDEX/$CI_NODE_TOTAL → $TASK_CODECEPTJS_FEATURES"
     - task test
   artifacts:
     # `always`, not `on_failure`: a green run regenerates the signature

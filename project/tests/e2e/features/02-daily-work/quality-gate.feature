@@ -1,4 +1,4 @@
-@e2e @quality-gate
+@e2e
 Feature: a freshly generated project passes its own quality gate
   As a developer who just scaffolded a project from the template
   I want `task megalinter` to come back green on the untouched scaffold
@@ -10,6 +10,7 @@ Feature: a freshly generated project passes its own quality gate
   # and that the secret + dependency scanners find nothing. ONE Gherkin sentence
   # = ONE card = ONE pixel baseline (tolerance: 0); every card twins its terminal
   # frame with an exit-code / verdict check of the same fact.
+  @quality-gate
   Scenario: the untouched scaffold's linter suite comes back green
     # Note: A project straight out of the template: nothing edited yet, a clean git tree sitting at version 0.1.0.
     # Copy: git status --short ; cat VERSION

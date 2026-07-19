@@ -1,4 +1,4 @@
-@e2e @protected-commits
+@e2e
 Feature: the framework guards what reaches the repository — clean commits and no secrets
   As a developer using the toolbox
   I want the checks `task devsecops:init` installs to accept clean commits, turn
@@ -18,6 +18,7 @@ Feature: the framework guards what reaches the repository — clean commits and 
   # bleed into an earlier verdict). An ordinary branch stays green, a committed
   # private key is blocked and named, and a secret kept out of git's view via
   # .gitignore never reaches the scanner at all.
+  @protected-commits
   Scenario: the commit checks accept clean work and secrets never reach the repository
     # Chapter: The commit message is checked
     # Note: A freshly initialized project already has commit checks turned on: init installed a commit-msg hook, a script that runs before every commit message is accepted. The card proves the hook is there, not what it says.

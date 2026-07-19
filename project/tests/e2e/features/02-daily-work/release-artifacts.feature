@@ -1,4 +1,4 @@
-@e2e @release-artifacts
+@e2e
 Feature: the first release stamps the version into every file that tracks it
   As a developer shipping a freshly generated project
   I want the first `task release` to leave a real tag, a changelog entry and a
@@ -11,6 +11,7 @@ Feature: the first release stamps the version into every file that tracks it
   # plain 0.2.0 tag (no v prefix) is stamped, and the changelog opens a 0.2.0
   # section. ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0);
   # every card twins its terminal frame with a git/file check of the same fact.
+  @release-artifacts
   Scenario: the first release lands the tag, the changelog and the version bump
     # Note: A brand-new project starts at version 0.1.0 — both its VERSION file and its Helm chart say 0.1.0 — and the developer has just committed a feature worth releasing.
     # Copy: cat VERSION ; grep version: iac/helm/Chart.yaml

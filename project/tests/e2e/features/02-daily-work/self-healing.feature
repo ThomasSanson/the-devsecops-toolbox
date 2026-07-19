@@ -1,4 +1,4 @@
-@e2e @self-healing
+@e2e
 Feature: init repairs its own GitLab connection when something breaks it
   As a maintainer relying on the toolbox
   I want `task devsecops:init` to be the one command that fixes its own GitLab
@@ -18,6 +18,7 @@ Feature: init repairs its own GitLab connection when something breaks it
   # CI/CD variable follows, the healed token really clones the repository, and a
   # second run changes nothing. Chapter 2 — the other two break modes: a
   # tampered CI/CD variable and a planted duplicate token are both repaired.
+  @self-healing
   Scenario: init heals a revoked token, a tampered variable and a duplicate token
     # Chapter: A revoked token is rebuilt
     # Note: A fresh project after its first `task devsecops:init`: the access-tokens page shows the automation token init created.

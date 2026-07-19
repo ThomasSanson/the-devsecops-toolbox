@@ -1,4 +1,4 @@
-@e2e @installer-no-curl
+@e2e
 Feature: The installer refuses cleanly when a prerequisite is missing
   As a developer on a bare machine
   I want the installer to stop with a clear reason when a required tool is
@@ -11,6 +11,7 @@ Feature: The installer refuses cleanly when a prerequisite is missing
   # = ONE pixel baseline, asserted inside the step (tolerance: 0); the verdict
   # card twins its <pre> frame with an exit-code + message assert. Pure container
   # + installer, no GitLab and no network — it stops before any download.
+  @installer-no-curl
   Scenario: without curl the installer stops and says what to install
     # Chapter: The installer refuses without curl
     # Note: A barren Ubuntu machine with no curl. The installer needs curl to download its toolchain, so this is the first thing it checks.

@@ -1,4 +1,4 @@
-@e2e @merge-request-safety
+@e2e
 Feature: init always delivers the framework through a review you can see
   As a developer setting up the DevSecOps Toolbox
   I want init to reach main through a merge request I can review
@@ -18,6 +18,7 @@ Feature: init always delivers the framework through a review you can see
   # stand, and never pushes the local experiment. Chapter 3 — the opt-out you
   # ask for on purpose (TASK_DEVSECOPS_INIT_DIRECT=true): the starter README
   # goes straight to main, no branch and no merge request.
+  @merge-request-safety
   Scenario: init routes through a review from any branch, and steps aside only when you opt out
     # Chapter: main already exists
     # Note: The cloned copy of a project that already has main: git shows main as the current branch before the installer runs.

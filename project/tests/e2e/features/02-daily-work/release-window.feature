@@ -1,4 +1,4 @@
-@e2e @release-window
+@e2e
 Feature: task release opens the push window just long enough, then always closes it
   As a project maintainer
   I want `task release` to open push on main only for the release, and always
@@ -12,6 +12,7 @@ Feature: task release opens the push window just long enough, then always closes
   # Taskfile.release.yml). ONE Gherkin sentence = ONE card = ONE pixel baseline,
   # asserted inside the step (tolerance: 0); every verdict card twins its GitLab
   # page or terminal frame with a REST/log check of the same fact.
+  @release-window
   Scenario: task release opens the push window just long enough to push, and always closes it
     # Note: A freshly initialized project: main is protected right away (merge for maintainers, push for no one).
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository

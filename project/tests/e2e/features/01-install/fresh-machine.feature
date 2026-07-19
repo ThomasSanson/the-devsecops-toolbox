@@ -1,4 +1,4 @@
-@e2e @fresh-machine
+@e2e
 Feature: Trusting the installer on a fresh machine
   As a developer trying the DevSecOps Toolbox on a brand-new machine
   I want the installer to add the tools it is missing by itself, and to keep
@@ -18,6 +18,7 @@ Feature: Trusting the installer on a fresh machine
   # real terminal, so the installer reads your keystrokes through /dev/tty and
   # stays interactive all the way to the finished screen and the framework
   # merge request (the page where changes get reviewed before joining main).
+  @fresh-machine
   Scenario: The installer fixes its own gaps, and stays interactive even when piped
     # Chapter: A bare machine sets itself up
     # Note: This machine has sudo and curl but no unzip — the tool the installer will have to add by itself. The installer files are copied in but not started yet.

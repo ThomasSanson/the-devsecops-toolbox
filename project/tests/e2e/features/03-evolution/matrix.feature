@@ -1,4 +1,4 @@
-@e2e @render-matrix
+@e2e
 Feature: Template rendering matrix — every Copier answer renders the expected project
   As a DevSecOps engineer
   I want every possible Copier answer (runtime, compose, CI platform, ansible,
@@ -15,6 +15,7 @@ Feature: Template rendering matrix — every Copier answer renders the expected 
   # canonical project looks like. Chapter 2 renders the template once per
   # non-default answer and shows exactly what that one answer changes, nothing
   # more.
+  @render-matrix
   Scenario: the default render is canonical, and each answer changes exactly what it promises
     # Chapter: What the default project looks like
     # Note: Off-camera: the working-branch template copier-copied with every default answer — the reference render every other card in this journey is measured against.

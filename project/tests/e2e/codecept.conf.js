@@ -64,7 +64,14 @@ exports.config = {
     }
   },
   gherkin: {
-    features: './features/**/*.feature',
+    // CI shards narrow the run to their slice of feature FILES (one story per
+    // file) via TASK_CODECEPTJS_FEATURES — a comma-separated list of paths
+    // resolved from project/tests/e2e/shards.json. File-based selection is the
+    // shard mechanism because run-workers' pool grep proved unreliable across
+    // otherwise identical feature files. Local runs keep the full glob.
+    features: process.env.TASK_CODECEPTJS_FEATURES
+      ? process.env.TASK_CODECEPTJS_FEATURES.split(',')
+      : './features/**/*.feature',
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
       './support/steps/init-baseline.js',

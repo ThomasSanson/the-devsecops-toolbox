@@ -1,4 +1,4 @@
-@e2e @toolbox-update-conflict
+@e2e
 Feature: A toolbox release collides with a file I hand-edited — the update shows the conflict
   As a maintainer of a project generated from the DevSecOps Toolbox
   I want `task copier:update` to tell me when a new release changes a framework
@@ -16,6 +16,7 @@ Feature: A toolbox release collides with a file I hand-edited — the update sho
   # filesystem + git + copier inside the runner — no GitLab involved. The
   # conflicted file is .gitlab-ci.yml, which the toolbox owns and overwrites on
   # update (it is not a keep-my-file), pinned to the toolbox base image.
+  @toolbox-update-conflict
   Scenario: a toolbox update collides with my edit on a framework file, and I resolve it
     # Chapter: My edit and the release collide on the same line
     # Note: A project made from an older toolbox release (1.0.0). Its CI pipeline runs inside a toolbox image, pinned to that release — the line on screen is the image every pipeline run uses. This .gitlab-ci.yml is framework-owned, so an update is allowed to change it.

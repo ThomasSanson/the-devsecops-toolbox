@@ -1,0 +1,8 @@
+{
+  "comment": "CI shard map for the e2e job (parallel: 5). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Balanced on measured scenario durations: heavy single stories ride alone (1, 2), image-affine scenarios share a shard so the MegaLinter pull is paid once (5).",
+  "1": "./features/01-install/first-run-help.feature,./features/01-install/agent-mode.feature",
+  "2": "./features/01-install/merge-request-safety.feature,./features/01-install/installer-refusals.feature",
+  "3": "./features/01-install/fresh-machine.feature,./features/03-evolution/update.feature,./features/03-evolution/update-conflict.feature,./features/03-evolution/version-pins.feature",
+  "4": "./features/01-install/install.feature,./features/02-daily-work/self-healing.feature,./features/02-daily-work/release-window.feature,./features/02-daily-work/release-artifacts.feature,./features/03-evolution/generated-ci.feature",
+  "5": "./features/02-daily-work/quality-gate.feature,./features/03-evolution/cspell.feature,./features/02-daily-work/protected-commits.feature,./features/03-evolution/matrix.feature,./features/03-evolution/renovate.feature"
+}
