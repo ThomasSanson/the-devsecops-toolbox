@@ -42,9 +42,12 @@ RUN echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" \
     echo 'PROMPT_COMMAND="touch /tmp/ttyd-cmd-done"' \
       >> /home/${BOOTSTRAP_USER}/.bashrc
 
-# 5. Workspace directory
-RUN mkdir -p /workspace && \
-    chown -R ${BOOTSTRAP_USER}:${BOOTSTRAP_USER} /workspace
+# 5. Workspace directory + shared download-cache mount point. A named volume is
+#    mounted at /cache at runtime; a fresh (empty) volume inherits this dir's
+#    ownership, so the non-root bootstrap user can populate the shared uv cache
+#    (see project/ubuntu/docker-compose.yml).
+RUN mkdir -p /workspace /cache && \
+    chown -R ${BOOTSTRAP_USER}:${BOOTSTRAP_USER} /workspace /cache
 
 USER ${BOOTSTRAP_USER}
 WORKDIR /workspace

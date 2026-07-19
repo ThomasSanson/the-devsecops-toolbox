@@ -1,6 +1,9 @@
-# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b
+# kics-scan disable=698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b,8c978947-0ff6-485c-b0c2-0bfca6026466
 # ↳ 698ed579: healthcheck — test container, not a long-lived service
 # ↳ 610e266e: security_opt — test container needs sudo for dev:setup-environment
+# ↳ 8c978947: shared volume — the download cache is deliberately shared across the
+#   throwaway scenario containers within a job (that IS the optimisation); the
+#   containers are ephemeral test sandboxes, not a data-corruption surface.
 ---
 services:
   ubuntu:
@@ -15,8 +18,30 @@ services:
     networks:
       - the-devsecops-toolbox
     hostname: workspace
+    environment:
+      # cycleH: redirect uv's cache and Python installs to a named volume shared
+      # by every throwaway container. The first scenario that runs `uvx copier`
+      # (or the installer's uv step) pays the Python 3.14 + copier download once;
+      # every later scenario reuses it, cutting the biggest repeated download and
+      # its flaky shared-runner egress. uv locks its cache for concurrent access,
+      # so parallel workers are safe. Invisible to the terminal capture — the
+      # cache lives off-screen, so baselines are unaffected (tolerance:0 proves
+      # it). The install step still RUNS in every scenario (nothing is stubbed);
+      # only its network fetch turns into a cache hit.
+      - UV_CACHE_DIR=/cache/uv
+      - UV_PYTHON_INSTALL_DIR=/cache/uv-python
     command: ["bash", "-c", "while :; do sleep 10 & wait; done"]
+    volumes:
+      - toolbox_dl_cache:/cache
     cap_drop:
       - NET_RAW
     healthcheck:
       disable: true
+
+volumes:
+  # Shared download cache for the throwaway scenario containers (see the ubuntu
+  # service environment). A fresh volume inherits /cache's ownership from the
+  # image (bootstrap, set in project/ubuntu/Dockerfile), so the non-root user
+  # can populate it. On the stateless CI runner it is warm only within a job
+  # (exactly the win we want); locally it also speeds up repeated runs.
+  toolbox_dl_cache:
