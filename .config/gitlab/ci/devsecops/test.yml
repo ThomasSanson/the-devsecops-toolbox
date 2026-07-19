@@ -22,10 +22,20 @@ test:
   script:
     - task test
   artifacts:
-    when: on_failure
+    # `always`, not `on_failure`: a green run regenerates the signature
+    # storyboard SVGs and used to throw them away. Publishing them makes the
+    # visual deliverable reviewable straight from the MR widget (expose_as).
+    when: always
+    expose_as: 'Storyboards'
     paths:
+      # Green boards (the deliverable) + everything needed to debug a red run:
+      # failure storyboards and logs (_output), pixel diffs (screenshots/diff),
+      # and infra dumps (.diagnostics). The last three are empty on a green run
+      # (GitLab just warns, the job stays green).
+      - project/tests/e2e/storyboards
+      - project/tests/e2e/_output
+      - project/tests/e2e/screenshots/diff
       - .diagnostics
-      - project
     expire_in: 3 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
@@ -38,4 +48,40 @@ test:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: never
     # Run in all other cases (MRs, feature branches, etc.)
+    - when: always
+
+# Storyboard gallery — publishes the signature visual deliverable on every
+# pipeline. Reads the committed SVGs straight from the checkout (byte-identical
+# to a fresh render at tolerance:0), so it needs neither the heavy e2e job nor a
+# runner. On the default branch GitLab serves it as Pages; on an MR the
+# `public/` artifact is linked in the widget via expose_as.
+pages:
+  stage: deploy
+  needs: []
+  extends: .default-tags
+  script:
+    - mkdir -p public/storyboards
+    - cp -r project/tests/e2e/storyboards/. public/storyboards/
+    - |
+      {
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        echo '<title>DevSecOps Toolbox — storyboards</title>'
+        echo '<style>body{font-family:sans-serif;margin:2rem;max-width:1100px}'
+        echo 'h2{margin-top:2.5rem;border-bottom:1px solid #ccc}'
+        echo 'img{width:100%;height:auto;border:1px solid #eee;margin:.5rem 0}</style>'
+        echo '</head><body><h1>DevSecOps Toolbox — storyboards</h1>'
+        find public/storyboards -name '*.svg' | sort | while read -r f; do
+          rel="${f#public/}"
+          echo "<h2>${rel#storyboards/}</h2><img src=\"$rel\" alt=\"$rel\">"
+        done
+        echo '</body></html>'
+      } > public/index.html
+  artifacts:
+    paths:
+      - public
+    expose_as: 'Storyboard gallery'
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^staging$/
+      when: never
     - when: always
