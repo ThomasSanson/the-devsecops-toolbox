@@ -94,6 +94,13 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+\\w+_VERSION=\"(?:copier==)?(?<currentValue>[0-9][0-9.]*)\""
       ]
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["project/tests/e2e/support/steps/generated-ci\\.js$"],
+      "matchStrings": [
+        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+const RUNNER_IMAGE = '[^:]+:(?<currentValue>[^']+)'"
+      ]
     }
   ]
 }

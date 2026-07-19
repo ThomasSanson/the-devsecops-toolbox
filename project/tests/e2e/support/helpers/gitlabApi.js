@@ -159,6 +159,54 @@ async function lintProjectCi (projectName, headers, ref = 'main') {
   )
 }
 
+// Mint a runner scoped to ONE project (not instance-wide): a project runner only
+// picks up that project's jobs, so it never drains the shared backlog of every
+// other test project. Needs the admin Bearer from getRootHeaders(); returns
+// { id, token: 'glrt-...' }.
+async function createProjectRunner (projectId, headers, tagList = []) {
+  // Tags are fixed at creation for authentication-token (glrt-) runners, not at
+  // `register`; a job that carries a tag is only picked up by a runner that
+  // advertises it, so tag_list must be set here.
+  return freshPost(
+    `${BASE_URL}/api/v4/user/runners`,
+    { runner_type: 'project_type', project_id: projectId, run_untagged: true, tag_list: tagList },
+    headers
+  )
+}
+
+async function deleteRunner (runnerId, headers) {
+  return freshDelete(`${BASE_URL}/api/v4/runners/${runnerId}`, headers)
+}
+
+async function triggerProjectPipeline (projectName, ref, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipeline`,
+    { ref },
+    headers
+  )
+}
+
+async function listProjectPipelines (projectName, headers, query = '') {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines${query}`,
+    headers
+  )
+}
+
+async function getPipeline (projectName, pipelineId, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines/${pipelineId}`,
+    headers
+  )
+}
+
+async function listPipelineJobs (projectName, pipelineId, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines/${pipelineId}/jobs`,
+    headers
+  )
+}
+
 module.exports = {
   BASE_URL,
   projectPath,
@@ -180,5 +228,11 @@ module.exports = {
   createProjectAccessToken,
   revokeProjectAccessToken,
   rotateProjectAccessToken,
-  lintProjectCi
+  lintProjectCi,
+  createProjectRunner,
+  deleteRunner,
+  triggerProjectPipeline,
+  listProjectPipelines,
+  getPipeline,
+  listPipelineJobs
 }
