@@ -9,7 +9,7 @@ test:
   needs: [] # Allows parallel execution
   extends: .default-tags
   retry: 1
-  # The suite is sharded: each of the 5 parallel jobs boots its own full test
+  # The suite is sharded: each of the 8 parallel jobs boots its own full test
   # environment (GitLab CE, Chromium, scenario containers) and runs only the
   # scenarios its entry in project/tests/e2e/shards.json selects. Sharding is
   # what keeps every job under the wall-clock target AND gives each one the
@@ -17,7 +17,7 @@ test:
   # starved GitLab CE and the browser into OOM kills and 500s).
   # check:shard-coverage (task test guard) proves every scenario lands in
   # exactly one shard.
-  parallel: 5
+  parallel: 8
   # Per-shard ceiling: setup (~6m cold) + the heaviest shard (~7m of
   # scenarios) + in-scenario retries. retry:1 bounds the worst case.
   timeout: 45m

@@ -59,15 +59,17 @@ class GitLabProjectPage {
     await I.amOnPage(this.urls.newProject)
     await I.wait(2)
 
-    await I.waitForText('Create blank project', 10)
+    // 30s, not 10: on a CI shard this page can load while parallel scenarios
+    // (MegaLinter under dind) saturate the CPU — the text arrives, just late.
+    await I.waitForText('Create blank project', 30)
     await I.click('Create blank project')
 
-    await I.waitForElement('#project_name', 10)
+    await I.waitForElement('#project_name', 30)
     await I.fillField('#project_name', projectName)
 
     // GitLab 18: select namespace explicitly (no longer defaults to user namespace)
     await I.click('[data-testid="select-namespace-dropdown"] [data-testid="base-dropdown-toggle"]')
-    await I.waitForElement('[role="listbox"]', 5)
+    await I.waitForElement('[role="listbox"]', 15)
     // Select the first available namespace (the user's own namespace)
     await I.click('[role="listbox"] [role="option"]')
 
