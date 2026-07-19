@@ -36,7 +36,6 @@ const CHART = [
 ].join('\n')
 
 let project
-let bumpRun
 
 function git (repo, cmd) {
   return execSync(`git -C ${repo} ${cmd}`, { encoding: 'utf8' }).trim()
@@ -68,7 +67,6 @@ function chartVersion (repo, ref) {
 
 Before(() => {
   project = null
-  bumpRun = null
 })
 
 After(() => {
@@ -99,7 +97,6 @@ storyboardStep(When, 'the first release bumps the version', async () => {
     output = `${error.stdout || ''}${error.stderr || ''}`
     exitCode = error.status || 1
   }
-  bumpRun = { output, exitCode }
   // The deterministic heart of the bump — no SHAs, no dates: the version move,
   // the tag it will cut and the increment it detected.
   const slice = output
