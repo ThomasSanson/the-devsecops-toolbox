@@ -130,6 +130,9 @@ tasks:
       # them) and could leak personal secrets into test containers.
       # .impeccable (editor plugin) and .ruff_cache (recreated every time ruff
       # lints migrate-words.py) are gitignored dev artifacts for the same reason.
+      # .task is go-task's own runtime dir (checksums), recreated on every `task`
+      # run — including this very run — so it is always present locally and would
+      # otherwise land in every Copier render (the matrix `ls` tree baselines).
       - cmd: |
           tar \
             --exclude='.git' \
@@ -137,6 +140,7 @@ tasks:
             --exclude='.claude' \
             --exclude='.impeccable' \
             --exclude='.ruff_cache' \
+            --exclude='.task' \
             --exclude='.env' \
             --exclude='tmp' \
             --exclude='megalinter-reports' \
