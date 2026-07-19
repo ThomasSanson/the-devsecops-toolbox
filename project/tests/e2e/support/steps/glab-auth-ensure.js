@@ -103,6 +103,12 @@ storyboardStep(When, 'the developer adds glow and re-runs, leaving only the CLI 
 
 // Verdict 4 — not signed in: everything installed, CI mode forces the
 // non-interactive branch that names the sign-in command.
+// Last step of this chapter: tear the container down here rather than waiting
+// for the scenario's shared After() hook — first-run-help chains three more
+// chapters afterwards, each spinning its own fresh Ubuntu container (one of
+// them installs the full docker/go/node/python toolchain), and a CI runner
+// only has so much disk. Leaving this one idle until the scenario ends was
+// measured causing "No space left on device" under CI's 2-worker contention.
 storyboardStep(When, 'the developer installs the CLI and re-runs it in CI mode, still not signed in', async () => {
   install(GLAB_INSTALL)
   const res = ensure('CI=true task glab:auth:ensure')
@@ -110,4 +116,6 @@ storyboardStep(When, 'the developer installs the CLI and re-runs it in CI mode, 
   assertContains(res.output, 'GitLab authentication required')
   assertContains(res.output, 'task glab:auth')
   await renderVerdictFrame(I, 'verdict-ci-not-authed', res.output)
+  teardownFreshUbuntu(authContainer)
+  authContainer = null
 })

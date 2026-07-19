@@ -57,6 +57,15 @@ function freshEnv (opts) {
   return name
 }
 
+// Tears a container down as soon as its chapter is done, instead of leaving
+// it idle until the scenario's shared After() — see the missing-auth verdict
+// below for why. Also drops it from `containers` so After() does not retry
+// `docker rm` on an already-removed name.
+function retireContainer (container) {
+  teardownFreshUbuntu(container)
+  containers = containers.filter((name) => name !== container)
+}
+
 function runCaptured (container, command) {
   const result = runInFreshUbuntu(container, command, { timeout: RUN_TIMEOUT })
   // Full output as a debug artifact — CodeceptJS truncates assertion errors,
@@ -78,6 +87,13 @@ storyboardStep(Given, "a developer's new project points at a GitLab remote the C
 
 // Verdict 1 — missing auth: init runs the full setup then stops at the auth
 // gate, naming the sign-in command. The card is the verdict tail.
+// This is the heaviest step in the whole scenario — a fresh Ubuntu box
+// installing python/docker/node/go from scratch before it ever reaches the
+// auth check. Tearing the container down right after (instead of leaving it
+// idle until the scenario's shared After()) frees that disk before the next
+// two chapters spin their own fresh containers — CI runs two workers, and
+// leaving finished containers alive was measured causing dpkg to fail with
+// "No space left on device" when another disk-heavy scenario overlaps.
 storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to run', async () => {
   const container = containers[containers.length - 1]
   const res = runCaptured(container, 'task devsecops:init')
@@ -86,6 +102,7 @@ storyboardStep(Then, 'init stops and prints the exact GitLab sign-in command to 
   assertContains(res.output, 'task glab:auth')
   assertNotContains(res.output, 'DevSecOps project initialization completed')
   await renderVerdictFrame(I, 'verdict-missing-auth', res.output)
+  retireContainer(container)
 })
 
 // Verdict 2 — opt-out: with TASK_GLAB_ENABLED=false every glab task is a no-op,
@@ -97,6 +114,7 @@ storyboardStep(Then, 'init finishes cleanly once the GitLab integration is turne
   assertContains(res.output, 'DevSecOps project initialization completed')
   assertNotContains(res.output, 'glab auth login')
   await renderVerdictFrame(I, 'verdict-optout', res.output)
+  retireContainer(container)
 })
 
 // The context shift: another project cloned from GitHub instead of GitLab.
@@ -116,4 +134,5 @@ storyboardStep(Then, 'init refuses the non-GitLab remote and shows how to fix it
   assertContains(res.output, 'No GitLab repository remote was detected.')
   assertContains(res.output, 'Align your repository remote, then rerun:')
   await renderVerdictFrame(I, 'verdict-github', res.output)
+  retireContainer(container)
 })

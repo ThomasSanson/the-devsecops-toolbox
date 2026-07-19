@@ -87,10 +87,18 @@ storyboardStep(When, 'the same project instead uses an SSH-style gitlabssh remot
 })
 
 // Verdict 2 — normalized host: gitlabssh.* is rewritten to the gitlab.* API host.
+// Last step of this chapter: tear the container down here rather than waiting
+// for the scenario's shared After() hook — first-run-help chains three more
+// chapters afterwards, each spinning its own fresh Ubuntu container (one of
+// them installs the full docker/go/node/python toolchain), and a CI runner
+// only has so much disk. Leaving this one idle until the scenario ends was
+// measured causing "No space left on device" under CI's 2-worker contention.
 storyboardStep(Then, 'the check turns it back into the gitlab API host', async () => {
   const res = runIn('CI=true task glab:auth:ensure')
   assertNonZeroExit(res.exitCode, res.output)
   assertContains(res.output, EXPECTED_HOST)
   assertNotContains(res.output, 'gitlabssh')
   await renderVerdictFrame(I, 'verdict-gitlabssh-normalized', res.output)
+  teardownFreshUbuntu(hostContainer)
+  hostContainer = null
 })
