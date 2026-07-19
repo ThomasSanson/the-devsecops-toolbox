@@ -82,7 +82,8 @@ exports.config = {
       './support/steps/guidance-variants.js',
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
-      './support/steps/renovate-detection.js'
+      './support/steps/renovate-detection.js',
+      './support/steps/generated-ci.js'
     ]
   },
   plugins: {

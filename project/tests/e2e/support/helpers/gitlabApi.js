@@ -148,6 +148,17 @@ async function rotateProjectAccessToken (projectName, tokenId, headers) {
   )
 }
 
+// Ask the embedded GitLab to statically validate the .gitlab-ci.yml that was
+// pushed to `ref` — the way it would before running it. Project-scoped so the
+// `local:` includes and the `spec:inputs` header resolve against the real tree;
+// returns { valid, errors, warnings, merged_yaml }.
+async function lintProjectCi (projectName, headers, ref = 'main') {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/ci/lint?ref=${ref}&dry_run=false`,
+    headers
+  )
+}
+
 module.exports = {
   BASE_URL,
   projectPath,
@@ -168,5 +179,6 @@ module.exports = {
   listProjectAccessTokens,
   createProjectAccessToken,
   revokeProjectAccessToken,
-  rotateProjectAccessToken
+  rotateProjectAccessToken,
+  lintProjectCi
 }
