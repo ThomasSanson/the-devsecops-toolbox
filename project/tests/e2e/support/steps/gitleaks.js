@@ -123,6 +123,49 @@ function assertContains (output, expected) {
   }
 }
 
+// task git:clean-secrets is interactive (reads "yes/no" on stdin) and, when
+// git-filter-repo is absent (the runner image only ships plain git), falls back
+// to git filter-branch. Feed the confirmation on stdin exactly as a developer
+// types it; capture the combined output so the recovery card shows the real run.
+function runCleanSecrets (file) {
+  try {
+    return execSync(`task git:clean-secrets -- ${file} 2>&1`, {
+      cwd: projectDir,
+      encoding: 'utf8',
+      input: 'yes\n',
+      stdio: 'pipe',
+      timeout: 300000
+    })
+  } catch (error) {
+    const out = stripAnsiEscapeSequences(`${error.stdout || ''}${error.stderr || ''}`)
+    throw new Error(`task git:clean-secrets failed (exit ${error.status}):\n${out}`)
+  }
+}
+
+// clean-secrets' only deterministic output is its own status lines: in between
+// them git filter-branch streams volatile per-commit progress ("Rewrite <sha>
+// (n/m) (t seconds…)", carriage-return overwritten) and a deprecation banner,
+// and Task echoes the wrapper cmd. Keep just the status lines, in order — the
+// same allowlist technique verdictText uses above. Real lines, never invented.
+const CLEAN_VERDICT_RES = [
+  /^File to remove: /,
+  /^🔄 Cleaning Git history/,
+  /git-filter-repo not found, using filter-branch/,
+  /^Ref '.+' was rewritten$/,
+  /^✅ History cleaned locally$/
+]
+
+function cleanSecretsFrame (rawOutput) {
+  const lines = stripAnsiEscapeSequences(rawOutput)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => CLEAN_VERDICT_RES.some(re => re.test(line)))
+  if (lines.length === 0) {
+    throw new Error(`No clean-secrets status lines found in output:\n${rawOutput}`)
+  }
+  return lines.join('\n')
+}
+
 function verdictText (output) {
   const lines = stripAnsiEscapeSequences(output)
     .split('\n')
@@ -211,4 +254,62 @@ storyboardStep(Then, 'the scan passes silently, the ignored secret stays out of 
   }
   assertContains(res.output, 'No secrets detected in branch commits.')
   await renderPreFrame(I, 'verdict-silent', verdictText(res.output))
+})
+
+// ============================================
+// Movement 4 — getting out of a secret block: the naive delete traps, clean-secrets frees
+// ============================================
+
+storyboardStep(Given, 'a committed private key is blocking a fresh branch', async () => {
+  newProject()
+  fs.writeFileSync(path.join(projectDir, 'tracked-secret.pem'), TEST_PRIVATE_KEY_SECRET)
+  git('add tracked-secret.pem')
+  git('commit --quiet --no-verify -m "test: add tracked secret fixture"')
+  const res = runScan()
+  if (res.exitCode === 0) {
+    throw new Error(`Expected the committed secret to block the branch, but the scan passed\n${res.output}`)
+  }
+  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  await renderPreFrame(I, 'block-recall', verdictText(res.output))
+})
+
+storyboardStep(When, 'the developer deletes the secret file and commits the removal', async () => {
+  git('rm --quiet tracked-secret.pem')
+  git('commit --quiet --no-verify -m "chore: remove the secret file"')
+  // The removal hides the file from the latest tree, but the commit that ADDED
+  // it still sits in the branch history — prove that before the scan confirms it.
+  const stillInHistory = git('log --oneline -- tracked-secret.pem').trim()
+  if (stillInHistory === '') {
+    throw new Error('Fixture: the secret should still be reachable in history after a naive delete')
+  }
+  const log = git('log --oneline').trimEnd().replace(/^[0-9a-f]{7,40}/gm, '<sha>')
+  await renderPreFrame(I, 'naive-removal', log)
+})
+
+storyboardStep(Then, 'the scan still refuses the branch because the secret stays in its history', async () => {
+  const res = runScan()
+  if (res.exitCode === 0) {
+    throw new Error(`Expected the scan to still fail after a naive delete, but it passed\n${res.output}`)
+  }
+  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  await renderPreFrame(I, 'trap-still-blocked', verdictText(res.output))
+})
+
+storyboardStep(When, "the developer rewrites the history with the framework's clean-secrets task", async () => {
+  const raw = runCleanSecrets('tracked-secret.pem')
+  // Twin: the file is gone from the entire branch history, not just the tip.
+  const purged = git('log --oneline --all -- tracked-secret.pem').trim()
+  if (purged !== '') {
+    throw new Error(`Expected clean-secrets to purge the file from history, still found:\n${purged}`)
+  }
+  await renderPreFrame(I, 'history-cleaned', cleanSecretsFrame(raw))
+})
+
+storyboardStep(Then, 'the scan comes back clean and the branch is safe to push', async () => {
+  const res = runScan()
+  if (res.exitCode !== 0) {
+    throw new Error(`Expected the scan to pass after clean-secrets, exit=${res.exitCode}\n${res.output}`)
+  }
+  assertContains(res.output, 'No secrets detected in branch commits.')
+  await renderPreFrame(I, 'branch-clean', verdictText(res.output))
 })
