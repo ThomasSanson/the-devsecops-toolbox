@@ -109,6 +109,10 @@ project_slug:
 
 _exclude:
   - .agent/rules/code-style.md
+  # Framework-repo marker: its presence tells agents they are in the toolbox
+  # template itself. Excluded so generated projects keep the universal
+  # AGENTS.md/CLAUDE.md without the template-only structure and constraints.
+  - .agent/rules/framework-repo.md
   - .cache
   # CI sharding is a framework-suite concern: the shard map lives under the
   # excluded project/tests and the guard would have nothing to check downstream.

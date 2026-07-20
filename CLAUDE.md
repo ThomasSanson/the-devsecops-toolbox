@@ -1,17 +1,21 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file guides Claude Code (claude.ai/code) when working in this repository.
 
-> **Important:** This repository contains an `AGENTS.md` file and a `.agent/` directory. You MUST read `AGENTS.md` and all files in `.agent/rules/` before taking any action.
+> **Important:** Read `AGENTS.md` and every file in `.agent/rules/` before taking any action.
+> They are the source of truth for how to work here.
+>
+> **If `.agent/rules/framework-repo.md` exists, this *is* The DevSecOps Toolbox template repository itself — read that rule for the repository-specific structure, test suite and constraints.**
 
 ---
 
 ## Project Overview
 
-**The DevSecOps Toolbox** is a [Copier](https://copier.readthedocs.io) template that scaffolds complete DevSecOps pipelines for GitLab CI/CD. It generates projects preconfigured with security scanning, linting, container management, and standardised workflows.
+This repository is built on [The DevSecOps Toolbox](https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox), a [Copier](https://copier.readthedocs.io) framework.
+It provides a complete GitLab CI/CD pipeline: security scanning, linting, container management, and standardised `task` workflows.
 
-- **Tech stack**: Copier (Python) + Taskfile (Go Task) + Docker + CodeceptJS + Gherkin (BDD)
-- **License**: EUPL-1.2
+- **Tech stack**: Taskfile (Go Task) + Docker + GitLab CI/CD
+- **Inherited framework**: everything under `.config/` and the root `Taskfile.yml` comes from the toolbox and is upgraded automatically (see below).
 
 ---
 
@@ -20,86 +24,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **All commands MUST run via `task` from the repository root. No exceptions.**
 
 ```bash
-# Core DevSecOps lifecycle
-task deploy       # Build + start all services
-task build        # Build all Docker images
-task test         # Full test suite (deploy + test)
-task code         # Run linters (MegaLinter)
-task plan         # Planning tasks (Renovate, etc.)
-task release      # Bump version, push tags
-
-# Testing
-task test -- --grep "@my-tag"             # Run tests filtered by tag
-task test:tdd                             # TDD mode (no rebuild)
-task project:test:e2e                     # E2E suite only (no guards)
-task project:test:e2e -- --grep "@tag"    # E2E suite filtered by tag
-
-# Operations
-task project:deploy:light                 # Light deploy (no rebuild)
-task project:operate:down                 # Stop services (keep volumes)
-task project:operate:destroy              # Destroy everything
-task project:operate:ssh:{service}        # SSH into container
-task project:monitor:{service}            # View service logs
-
-# Development setup
-task dev:setup-environment
+task            # List every available task
+task deploy     # Build + start all services
+task build      # Build all Docker images
+task test       # Full test suite
+task code       # Run linters (MegaLinter)
+task plan       # Planning tasks (Renovate, etc.)
+task release    # Bump version, push tags
 ```
 
 **Redirect output when commands may hang:**
+
 ```bash
 task test 2>&1 | tee ./tmp/exec_logs.log
 ```
+
 If the terminal hangs, read `./tmp/exec_logs.log` instead of waiting.
 
 **Forbidden — never use directly:**
+
 ```bash
 docker compose up/down/exec
 npm run / npx
 cd project && ...
 ```
 
+Everything is a `task`. If a command you need does not exist, add it in `project/Taskfile.yml` — never bypass `task`.
+
 ---
 
 ## Architecture
 
-### Repository Layout
+### The framework is managed for you
+
+`.config/` and the root `Taskfile.yml` are **owned by the toolbox**, not by this project.
+Do not edit them here: your changes would be lost on the next upgrade.
+
+Upgrades arrive as a single merge request that runs `task copier:update` (driven by Renovate against `.config/devsecops/.copier-answers.yml`).
+Review that MR like any other change; when auto-merge is enabled, minor and patch updates merge on their own.
+
+### Where things go
 
 ```txt
 /
-├── .agent/           # AI agent rules, skills, and workflows (source of truth)
-├── .config/          # Framework tooling — owned & evolved by THIS template repo
-├── copier.yml        # Copier template questions and answers
-├── Taskfile.yml      # Root orchestrator (owned here; + Taskfile.yml.jinja twin)
+├── .agent/           # AI agent rules, skills, workflows (read these first)
+├── .config/          # Framework tooling — managed by the toolbox, do NOT edit
+├── Taskfile.yml      # Root orchestrator — managed by the toolbox, do NOT edit
 ├── .env.dist         # Default env values (no secrets, versioned)
 ├── .env.dev          # Local/dev overrides (dev secrets, versioned)
-└── project/          # Project-specific code
-    ├── Taskfile.yml  # Add new tasks HERE
-    └── tests/
-        └── e2e/      # Unified E2E suite (single entry point — see tests/README.md)
-            ├── codecept.conf.js
-            ├── features/          # 01-install, 02-daily-work, 03-evolution
-            ├── pages/             # GitLab Page Objects (masking for visual determinism)
-            ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
-            └── screenshots/base/  # Visual baselines (tolerance: 0)
+├── .gitlab-ci.yml    # Inherited pipeline
+├── docs/             # Documentation
+└── project/          # Your code (present when the project workspace is enabled)
+    └── Taskfile.yml  # Add your own tasks HERE
 ```
 
-### How Tests Work
-
-The tests in `project/tests/e2e/` are **E2E tests for the developer journey on
-the Copier template**: clone a blank project from the in-repo test GitLab, run
-the working-branch installer, answer the Copier questions, then verify the
-init-framework-devsecops merge request and the resulting GitLab configuration.
-Every deterministic stage is proven by a pixel baseline (tolerance: 0),
-terminal-side and GitLab-side; volatile content falls back to log/REST asserts.
-
-Tests use [CodeceptJS](https://codecept.io) with Gherkin BDD, executed inside
-the `codeceptjs` container via `task project:test:e2e`. See
-`project/tests/README.md` for capture styles, baseline regeneration and
-conventions. The former legacy suites `tests/{template,bootstrap,gitlab}/`
-were deleted after their coverage was ported into `e2e/` (recoverable from
-git history).
-
-### Environment Layering
+### Environment layering
 
 Taskfile loads dotenv in priority order (first wins): `.env` → `.env.dev` → `.env.dist`
 
@@ -107,21 +86,19 @@ Taskfile loads dotenv in priority order (first wins): `.env` → `.env.dev` → 
 - `.env.dev` — dev overrides, dev secrets only, versioned
 - `.env` — production/staging overrides, never created by agents, not versioned
 
-All Taskfile config variables are prefixed `TASK_` (e.g., `TASK_MEGALINTER_ENABLED`).
+All Taskfile config variables are prefixed `TASK_` (e.g. `TASK_MEGALINTER_ENABLED`).
 
-### Task Naming Convention
+### Task naming convention
 
-All project tasks follow: `project:{phase}:{service}:{action}`
+Add new tasks in `project/Taskfile.yml`, following: `project:{phase}:{service}:{action}`
 
 Where `{phase}` is one of: `plan`, `code`, `build`, `test`, `release`, `deploy`, `operate`, `monitor`, `feedback`.
-
-Example: `project:operate:xxx:env`, `project:monitor:xxx`
 
 ---
 
 ## TDD — Mandatory for Any Code Change
 
-Every code change follows RED → GREEN → REFACTOR in strict order:
+Every code change follows RED → GREEN → REFACTOR in strict order; see `.agent/rules/tdd-cycle.md`.
 
 | Step | Action                         | Command                      | Expected             |
 |------|--------------------------------|------------------------------|----------------------|
@@ -136,27 +113,21 @@ Every code change follows RED → GREEN → REFACTOR in strict order:
 
 **Never write code before the test. Never modify a test to make it pass.**
 
+Test specifications are written in Gherkin (BDD), in the language configured for the project.
+A visual-regression E2E engine (CodeceptJS + storyboard helper) ships under `.config/codeceptjs/`; wire it into `project/tests/` for visual E2E coverage.
+
 ---
 
-## Visual Regression Tests — No Cheating
+## Commit Conventions
 
-Visual regression tests (`assertVisualMatch`) are meaningful human-readable checks. The diff between actual and baseline must be **zero** (`tolerance: 0`). When a visual test fails:
-
-**FORBIDDEN — these are cheats, never do them:**
-- Raising `tolerance` in `codecept.conf.js`
-- Lowering `threshold` in `codecept.conf.js`
-- Skipping or commenting out a visual assertion
-- Regenerating baselines just to make them match without understanding why they differ
-
-**The only correct fixes:**
-- If content differs → fix the code so the terminal output is correct
-- If rendering differs between environments (sub-pixel, font, DPI) → fix the Chromium launch args in `codecept.conf.js` to force deterministic rendering (e.g. SwiftShader WebGL, device scale factor, color profile)
-- If the environment itself differs → regenerate baselines **in the same environment** where the CI runs, not locally with a different OS/font stack
+Commits follow [Conventional Commits](https://www.conventionalcommits.org), enforced by commitlint in CI.
+`task release` (semantic-release) derives the version and changelog from commit messages; git tags use the `${version}` format (no `v` prefix).
 
 ---
 
 ## Critical Rules
 
-- **Never** run `git add`, `git commit`, `git push`, or any git command that modifies the repository
-- **Never** use `docker compose`, `npm run`, or `cd` into subdirectories
-- **Ask before** modifying existing tests, adding dependencies, or changing CI/CD config (`.gitlab-ci.yml`)
+- **Never** edit `.config/` or the root `Taskfile.yml` — they are framework-managed and upgraded via `task copier:update`.
+- **Never** use `docker compose`, `npm run`, or `cd` into subdirectories — everything goes through `task`.
+- Follow the TDD cycle (RED → GREEN → REFACTOR) for any code change; see `.agent/rules/tdd-cycle.md`.
+- **Ask before** changing CI/CD config (`.gitlab-ci.yml`), adding dependencies, or modifying existing tests.
