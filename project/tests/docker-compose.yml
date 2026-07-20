@@ -34,6 +34,10 @@ services:
     depends_on:
       gitlab:
         condition: service_healthy
+      # Boots the blank runner alongside the suite so the @install-complete
+      # scenario can register it on the fly (see gitlab/docker-compose.yml).
+      gitlab-runner:
+        condition: service_started
     # The bootstrap test suite drives fresh Ubuntu+ttyd containers through the
     # host docker daemon. Mounting the socket lets the runner invoke
     # `docker compose run`, `docker exec`, and `docker cp` from inside the

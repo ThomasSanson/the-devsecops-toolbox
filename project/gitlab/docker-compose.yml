@@ -1,7 +1,11 @@
-# kics-scan disable=451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,8c978947-0ff6-485c-b0c2-0bfca6026466
+# kics-scan disable=451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,8c978947-0ff6-485c-b0c2-0bfca6026466,610e266e-6c12-4bca-9925-1ed0cd29742b,d6355c88-1e8d-49e9-b2f2-f8a1ca12c75b,1c1325ff-831d-43a1-973e-839ae57dfcc0,698ed579-b239-4f8f-a388-baa4bcb13ef8
 # ↳ 451d79dc: host interface — bound to 127.0.0.1 but KICS doesn't resolve ${} vars
 # ↳ bc2908f3: privileged port — internal port 80 required by GitLab CE
 # ↳ 8c978947: shared volumes — false positive, single container
+# ↳ 610e266e / 698ed579 / d6355c88 / 1c1325ff: the gitlab-runner service needs the
+#   docker socket (docker executor) and must NOT set no-new-privileges, or the
+#   docker CLI flow breaks — same trade-off as the codeceptjs test runner. It is a
+#   throwaway CI helper the E2E suite registers on the fly, not a production service.
 ---
 services:
   gitlab:
@@ -46,6 +50,27 @@ services:
       timeout: 15s
       retries: 20
       start_period: 300s
+    networks:
+      - the-devsecops-toolbox
+
+  # A GitLab Runner the E2E suite registers on the fly, scoped to the project
+  # under test, to prove a generated project's pipeline runs green and its
+  # framework merge request merges. It boots BLANK — no registration at startup;
+  # the @install-complete scenario registers it via `docker exec ... gitlab-runner
+  # register`, then unregisters and purges config.toml in teardown, so the
+  # container stays up and virgin between runs. It needs the docker socket
+  # (docker executor) and the shared network so its job containers resolve
+  # http://gitlab. cap_drop/security match the codeceptjs runner: NET_RAW dropped,
+  # no-new-privileges omitted (it would break the docker CLI flow).
+  gitlab-runner:
+    # renovate: datasource=docker depName=gitlab/gitlab-runner
+    image: gitlab/gitlab-runner:v18.11.0
+    restart: unless-stopped
+    profiles: ["debug", "dev", "local", "test"]
+    cap_drop:
+      - NET_RAW
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - the-devsecops-toolbox
 
