@@ -24,8 +24,8 @@ Feature: The whole install, from an empty project to a locked-down GitLab
   @install-complete
   Scenario: One interactive install builds the framework and configures GitLab
     # Chapter: Answer the questions, build the framework
-    # Note: The empty copy (cloned from GitLab) as the developer sees it: git reports an empty project with nothing saved yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.
-    # Copy: git clone http://gitlab/<lambda-user>/<project>.git && git status
+    # Note: The brand-new empty project on GitLab, then the same project freshly cloned in the terminal where git shows nothing saved yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.
+    # Copy: http://gitlab/<lambda-user>/<project>
     Given a developer has just cloned a brand-new empty project into the terminal
     # Note: The installer opens with its first question — install the complete framework? — with the typed command still visible above it.
     # Copy: bash /tmp/devsecops-install.sh
@@ -58,26 +58,23 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Copy: http://gitlab/<lambda-user>/<project>/-/branches
     And GitLab now lists main and the new init-framework-devsecops branch
     # Chapter: GitLab is locked and wired
-    # Note: Main only accepts fast-forward merges: a branch must be up to date before it merges, so history stays a straight line.
+    # Note: Main only accepts fast-forward merges, and further down the page a change must pass its pipeline before it can merge — so history stays a straight line and nothing broken reaches main.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/merge_requests
     Then GitLab now lets main accept only fast-forward merges
     # Note: On the protected-branches page: maintainers may merge, but no one may push straight to main. Every change has to go through a review.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository
     And GitLab now refuses pushes straight to main
-    # Note: On the access-tokens page: TASK_COMMITIZEN_TOKEN, with the Maintainer role. This is the login the release automation uses.
+    # Note: On the access-tokens page: the two project tokens the install created — TASK_COMMITIZEN_TOKEN (Maintainer role, used by the release) and TASK_RENOVATE_TOKEN (used by the update bot).
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
     And GitLab now holds an automation token for the project
     # Note: On the CI/CD variables page: the same token, saved as TASK_COMMITIZEN_TOKEN so the pipeline can read it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     And GitLab now keeps that token as a CI/CD variable
     # Chapter: The merge request proves itself
-    # Note: A runner is the machine that runs the pipeline (the checks GitLab runs on every change). The embedded GitLab has a blank one waiting; this install points it at THIS project only, so it runs the framework merge request's pipeline and steals no other. GitLab's own pipeline page shows every job green.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines/<id>
-    Then GitLab runs the whole framework pipeline and every stage passes
-    # Note: With the pipeline green, the merge request meets main's rule that a change may only merge once its pipeline passes, so it merges. The merge request page now carries the Merged badge — reached through review, never a forced push.
+    # Note: The framework merge request, now merged: the green Merged badge, the pipeline that passed all 17 jobs, and the branch joined into main. A project-scoped runner (the machine that runs the pipeline) ran the checks; the merge only happened once they were green — reached through review, never a forced push.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    And the framework merge request merges into main on its green pipeline
-    # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — put there by a reviewed merge, not a direct push. The first install is proven end to end.
+    Then the framework pipeline passes and the merge request merges into main
+    # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — and the commit's own pipeline runs green, so main built clean after the merge. The first install is proven end to end.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     And main now carries the whole framework, merged through review
     # Chapter: The project lives on

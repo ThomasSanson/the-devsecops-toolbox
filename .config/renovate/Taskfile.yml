@@ -7,7 +7,10 @@ vars:
   TASK_RENOVATE_REPOSITORY: '{{.TASK_RENOVATE_REPOSITORY | default "."}}'
   TASK_RENOVATE_LOG_LEVEL: '{{.TASK_RENOVATE_LOG_LEVEL | default "info"}}'
   TASK_RENOVATE_PLATFORM: '{{.TASK_RENOVATE_PLATFORM | default "local"}}'
-  TASK_RENOVATE_ENDPOINT: '{{.TASK_RENOVATE_ENDPOINT | default ""}}'
+  # Default to GitLab's predefined CI_API_V4_URL: correct on gitlab.com AND on
+  # any self-hosted instance — without it Renovate authenticates against
+  # gitlab.com with a local token and dies with "Authentication failure".
+  TASK_RENOVATE_ENDPOINT: '{{.TASK_RENOVATE_ENDPOINT | default (env "CI_API_V4_URL")}}'
   TASK_RENOVATE_CLI_OPTS: '{{.TASK_RENOVATE_CLI_OPTS | default ""}}'
   TASK_RENOVATE_DRY_RUN: '{{.TASK_RENOVATE_DRY_RUN | default "false"}}'
   TASK_RENOVATE_TOKEN: '{{.TASK_RENOVATE_TOKEN | default (env "RENOVATE_TOKEN")}}'

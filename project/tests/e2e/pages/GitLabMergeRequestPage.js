@@ -99,33 +99,43 @@ class GitLabMergeRequestPage {
     await assertPageVisualMatch(I, screenshotName)
   }
 
-  // Same masked MR page, but tag its HEADER block (status "Open" + "requested
-  // to merge <source> into <target>") with a stable id so the storyboard can
-  // crop the frame to that content instead of the mostly-white MR sheet. Falls
-  // through the known GitLab header containers and re-shows the region in case
-  // the mask hid it; the storyboard's assertFrameNotEmpty catches a miss.
-  async gotoAndMaskCropHeader (projectPath, iid, projectName) {
-    await this.gotoAndMask(projectPath, iid, projectName)
+  // The MERGED MR overview, kept whole: gotoAndMask hides the whole discussion
+  // (a mostly-white sheet), but a merged MR proves itself through the merge
+  // widget — the "Merged" state and the pipeline that passed. So re-reveal the
+  // merge/pipeline widget and its hidden ancestors, then re-hide only the
+  // volatile activity notes (system notes carry SHAs and timestamps). The
+  // widget's own volatile bits were already neutralised by maskMergeRequestPage.
+  async gotoAndMaskMerged (projectPath, iid, projectName) {
+    await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}`)
+    await I.waitForElement('body', 30)
+    // The merge widget renders asynchronously (React) — give it time to settle
+    // before the mask, so the pipeline result is on the page, not mid-fetch.
+    await I.wait(5)
+    await maskMergeRequestPage(projectName)
     await I.executeScript(() => {
-      const candidates = [
-        '.detail-page-header',
-        '[data-testid="merge-request-sticky-header"]',
-        '.merge-request-details',
-        '.detail-page-description',
-        '.issuable-details'
+      const widgets = [
+        '.mr-state-widget',
+        '.mr-widget-body',
+        '[data-testid="mr-widget-content"]',
+        '.mr-widget-section',
+        '.mr-section-container',
+        '.state-container'
       ]
-      let el = null
-      for (const sel of candidates) { el = document.querySelector(sel); if (el) break }
-      if (!el) {
-        const h1 = document.querySelector('h1')
-        el = h1 ? h1.parentElement : null
-      }
-      if (el) {
-        el.style.display = ''
-        el.style.visibility = 'visible'
-        el.id = 'storyboard-mr-crop'
-      }
+      widgets.forEach(sel => document.querySelectorAll(sel).forEach(el => {
+        let n = el
+        while (n && n !== document.body) {
+          if (n.style && n.style.display === 'none') n.style.display = ''
+          if (n.style) n.style.visibility = 'visible'
+          n = n.parentElement
+        }
+      }))
+      // Keep the volatile activity feed hidden (SHAs, timestamps, system notes).
+      ;['#notes', '.main-notes-list', '.notes-list', '.issuable-discussion .timeline'].forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => { el.style.display = 'none' })
+      })
     })
+    await I.moveCursorTo('body', 1, 1)
+    await I.wait(1)
   }
 }
 

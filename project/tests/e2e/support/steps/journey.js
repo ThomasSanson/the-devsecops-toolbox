@@ -75,8 +75,7 @@ const {
 const {
   storyboardStep,
   addStoryboardFrame,
-  capturePageFrame,
-  captureElementFrame
+  capturePageFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
@@ -738,6 +737,18 @@ async function assertTokenMaintainer (tokenName) {
   }
 }
 
+// The install creates a second token for the update bot; the access-tokens card
+// shows both, so the twin proves both are really there (this one carries no
+// Maintainer role, only its presence matters).
+async function assertTokenExists (tokenName) {
+  const headers = await getRootHeaders()
+  const tokens = await listProjectAccessTokens(global.journeyProjectName, headers)
+  const token = (tokens.data || []).find(t => t.name === tokenName && t.active && !t.revoked)
+  if (!token) {
+    throw new Error(`Active token "${tokenName}" not found for ${global.journeyProjectName}`)
+  }
+}
+
 async function assertMainProtected (branch) {
   const headers = await getRootHeaders()
   const encodedPath = encodeURIComponent(projectPath(global.journeyProjectName))
@@ -858,27 +869,30 @@ function checkoutFeatureBranch (branch) {
 }
 
 // Capture a masked GitLab page as a storyboard frame at the storyboard's page
-// aspect (1024x640), then restore the default window. `navigate` runs the
-// page-object goto+mask; `frameName` is the per-scenario baseline stem.
-async function pageFrame (navigate, frameName) {
-  I.resizeWindow(1024, 640)
+// aspect (1024x640 by default), then restore the default window. `navigate`
+// runs the page-object goto+mask; `frameName` is the per-scenario baseline
+// stem. Pass `{ height }` to grab a taller viewport when a page has more to
+// prove than fits at 640 (e.g. every merge check, or two access tokens).
+async function pageFrame (navigate, frameName, opts = {}) {
+  I.resizeWindow(1024, opts.height || 640)
   await navigate()
   await addStoryboardFrame(I, await capturePageFrame(I, frameName))
   I.resizeWindow(1024, 768)
 }
 
-// The MR overview page is mostly a white sheet once the tabs/notes are masked;
-// crop the frame to its header block (status + "requested to merge <source>
-// into <target>") so the card is content, not white space.
-async function mrHeaderFrame (frameName) {
-  I.resizeWindow(1024, 640)
-  await GitLabMergeRequestPage.gotoAndMaskCropHeader(
-    projectPath(global.journeyProjectName),
-    global.journeyMergeRequestIid,
-    global.journeyProjectName
+// The full masked merge-request overview page — the whole GitLab view a
+// reviewer sees (title, state badge, "requested to merge <source> into
+// <target>"), not a cropped header band. Reused by the flagship story and the
+// merge-request-safety chapters so every MR card reads as a real page.
+async function mrPageFrame (frameName) {
+  await pageFrame(
+    () => GitLabMergeRequestPage.gotoAndMask(
+      projectPath(global.journeyProjectName),
+      global.journeyMergeRequestIid,
+      global.journeyProjectName
+    ),
+    frameName
   )
-  await addStoryboardFrame(I, await captureElementFrame(I, frameName, '#storyboard-mr-crop'))
-  I.resizeWindow(1024, 768)
 }
 
 // --- Case A: blank project (flagship) ---------------------------------------
@@ -908,7 +922,7 @@ storyboardStep(When, 'the installer sets up the framework and says the setup is 
 
 storyboardStep(Then, 'a merge request into main is now waiting for review on GitLab', async () => {
   await findOpenMr('init-framework-devsecops', 'main')
-  await mrHeaderFrame('gitlab-merge-request')
+  await mrPageFrame('gitlab-merge-request')
   await assertMrChangedFiles()
 })
 
@@ -927,7 +941,8 @@ storyboardStep(Then, 'GitLab now lets main accept only fast-forward merges', asy
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   await pageFrame(
     () => GitLabSettingsPage.gotoMergeSettingsAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
-    'gitlab-merge-settings'
+    'gitlab-merge-settings',
+    { height: 1000 }
   )
   await assertMergeMethodFf()
 })
@@ -943,9 +958,11 @@ storyboardStep(Then, 'GitLab now refuses pushes straight to main', async () => {
 storyboardStep(Then, 'GitLab now holds an automation token for the project', async () => {
   await pageFrame(
     () => GitLabAccessTokenPage.gotoAccessTokensAndMask(projectPath(global.journeyProjectName)),
-    'gitlab-access-tokens'
+    'gitlab-access-tokens',
+    { height: 1200 }
   )
   await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
+  await assertTokenExists('TASK_RENOVATE_TOKEN')
 })
 
 storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', async () => {
@@ -1131,65 +1148,84 @@ async function maskPipelinePage (projectName) {
   await I.wait(0.5)
 }
 
-// The green pipeline graph as GitLab shows it, captured at the storyboard page
-// aspect. Volatile chrome masked (maskPipelinePage), the pipeline id is the
-// card's only would-be variant and it is neutralised too.
-async function pipelinePageFrame (pipelineId) {
-  I.resizeWindow(1024, 640)
-  await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/pipelines/${pipelineId}`)
-  await maskPipelinePage(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'framework-pipeline-green'))
-  I.resizeWindow(1024, 768)
+// Print the trace tails of the failed jobs NOW: the After cleanup deletes the
+// project, so this is the only moment the evidence still exists. Shared by the
+// framework-MR and the main post-merge pipeline waits.
+function dumpFailedTraces (jobs, rootHeaders) {
+  const failed = jobs.filter(j => j.status === 'failed')
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  for (const j of failed.slice(0, 3)) {
+    // The trace endpoint returns raw text, not JSON — curl it directly.
+    const auth = rootHeaders.Authorization
+    const tail = runCommandWithResult(
+      `curl -s -H 'Authorization: ${auth}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
+    )
+    console.log(`── trace tail of ${j.stage}/${j.name} (#${j.id}):\n${tail.stdout || tail.output || tail.stderr || ''}`)
+  }
+  if (global.journeyRunnerSvc) console.log(runCommandWithResult(`docker logs --tail 40 ${global.journeyRunnerSvc} 2>&1`).output || '')
 }
 
-storyboardStep(Then, 'GitLab runs the whole framework pipeline and every stage passes', async () => {
+// The merge fires main's OWN pipeline (a push event on main). Poll it to a
+// terminal state on the same single-slot runner, so the "main carries" card
+// can show a green commit — the finality — instead of a spinner still turning.
+async function waitMainPipeline (headers) {
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
+  let pid = null
+  let last = ''
+  while (Date.now() < deadline) {
+    if (!pid) {
+      const mp = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/pipelines?ref=main&order_by=id&sort=desc`, headers)
+      if (mp.data && mp.data.length) pid = mp.data[0].id
+    }
+    if (pid) {
+      const pipe = await getPipeline(global.journeyProjectName, pid, headers)
+      const status = pipe.data.status
+      if (status !== last) { console.log(`main pipeline ${pid}: ${status}`); last = status }
+      if (['success', 'failed', 'canceled', 'skipped'].includes(status)) return { pid, status }
+    }
+    await I.wait(10)
+  }
+  return { pid, status: 'timeout' }
+}
+
+storyboardStep(Then, 'the framework pipeline passes and the merge request merges into main', async () => {
   const rootHeaders = await getRootHeaders()
   await registerFrameworkRunner(rootHeaders)
   const { pid, status } = await waitFrameworkPipeline(rootHeaders)
   global.journeyPipelineId = pid
   const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
   jobs.sort((a, b) => a.id - b.id)
+  // Twin FIRST: fail loud (with the trace tails) before the merge/capture.
   if (status !== 'success') {
-    const failed = jobs.filter(j => j.status === 'failed')
-    console.log(`framework pipeline not green (status=${status}); failed: ${failed.map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
-    // Print the failed jobs' trace tails NOW: the After cleanup deletes the
-    // project, so this is the only moment the evidence still exists.
-    const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-    for (const j of failed.slice(0, 3)) {
-      // The trace endpoint returns raw text, not JSON — curl it directly.
-      const auth = rootHeaders.Authorization
-      const tail = runCommandWithResult(
-        `curl -s -H 'Authorization: ${auth}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
-      )
-      console.log(`── trace tail of ${j.stage}/${j.name} (#${j.id}):\n${tail.stdout || tail.output || tail.stderr || ''}`)
-    }
-    if (global.journeyRunnerSvc) console.log(runCommandWithResult(`docker logs --tail 40 ${global.journeyRunnerSvc} 2>&1`).output || '')
+    console.log(`framework pipeline not green (status=${status}); failed: ${jobs.filter(j => j.status === 'failed').map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
+    dumpFailedTraces(jobs, rootHeaders)
+    throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
   }
-  // Twin FIRST: fail loud (with the trace tails printed above) before the
-  // capture, so the visual proof is only ever the GREEN pipeline.
-  if (status !== 'success') throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
-  // The proof is GitLab's own pipeline page — the graph of every job, all
-  // green — not a rendered REST payload; the twin above already read the real
-  // status=success and each job's state.
-  await pipelinePageFrame(pid)
-})
-
-storyboardStep(Then, 'the framework merge request merges into main on its green pipeline', async () => {
+  // Twin: the WHOLE generated pipeline ran — all 17 jobs, every one green.
+  if (jobs.length !== 17) {
+    throw new Error(`Expected 17 pipeline jobs, got ${jobs.length}: ${jobs.map(j => j.name).join(', ')}`)
+  }
+  const notGreen = jobs.filter(j => j.status !== 'success')
+  if (notGreen.length) {
+    throw new Error(`Expected every job green, these were not: ${notGreen.map(j => `${j.name}=${j.status}`).join(', ')}`)
+  }
+  // A green pipeline meets main's "pipeline must pass" rule, so the merge goes
+  // through — do it and confirm the merged state.
   const lambdaHeaders = { 'PRIVATE-TOKEN': global.journeyLambdaToken }
   const merged = await mergeMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, lambdaHeaders)
-  const rootHeaders = await getRootHeaders()
   let state = merged.data && merged.data.state
   for (let i = 0; i < 10 && state !== 'merged'; i++) {
     await I.wait(2)
     const mr = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
     state = mr.data && mr.data.state
   }
-  // Twin FIRST: a green pipeline unblocked the merge and the MR is now merged.
+  // Twin FIRST: the green pipeline (17 jobs) unblocked the merge, MR is merged.
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
-  // The proof is the merge request's own page, full width like the pipeline
-  // and main cards: the state badge must read "Merged" before the shot.
-  I.resizeWindow(1024, 640)
-  await GitLabMergeRequestPage.gotoAndMask(
+  // ONE proof: the merged merge-request page, full width — the Merged badge,
+  // its pipeline shown passed, the branch joined into main.
+  I.resizeWindow(1024, 900)
+  await GitLabMergeRequestPage.gotoAndMaskMerged(
     projectPath(global.journeyProjectName),
     global.journeyMergeRequestIid,
     global.journeyProjectName
@@ -1208,9 +1244,19 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
   for (const f of want) {
     if (!names.includes(f)) throw new Error(`Expected main to carry "${f}" after the merge. Entries: ${JSON.stringify(names)}`)
   }
+  // Show the finality, not a spinner: wait for main's own post-merge pipeline
+  // to go green before the shot, so the project page's commit reads success.
+  const { pid, status } = await waitMainPipeline(rootHeaders)
+  if (status !== 'success') {
+    const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
+    jobs.sort((a, b) => a.id - b.id)
+    console.log(`main pipeline not green (status=${status}, pipeline ${pid})`)
+    dumpFailedTraces(jobs, rootHeaders)
+    throw new Error(`Expected main's post-merge pipeline to pass, got status=${status}`)
+  }
   // The proof is GitLab's own file tree for main, now carrying the whole
-  // framework (Taskfile.yml, .gitlab-ci.yml, .config, .agent) — the same masked
-  // repository page agent mode's "files on main" card is shown on.
+  // framework (Taskfile.yml, .gitlab-ci.yml, .config, .agent) with a green
+  // commit pipeline — the same masked repository page agent mode uses.
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
@@ -1237,7 +1283,7 @@ storyboardStep(When, 'the installer finishes setup on the project that already h
 
 storyboardStep(Then, 'a merge request into the existing main is now open on GitLab', async () => {
   await findOpenMr('init-framework-devsecops', 'main')
-  await mrHeaderFrame('mr-header-existing-main')
+  await mrPageFrame('mr-header-existing-main')
 })
 
 storyboardStep(Then, 'GitLab lists main next to the init-framework-devsecops branch', async () => {
@@ -1270,7 +1316,7 @@ storyboardStep(When, 'the installer finishes setup while on the experiment branc
 
 storyboardStep(Then, 'the new merge request targets main, not the experiment branch', async () => {
   await findOpenMr('init-framework-devsecops', 'main')
-  await mrHeaderFrame('mr-header-spike')
+  await mrPageFrame('mr-header-spike')
 })
 
 storyboardStep(Then, 'GitLab shows only main and the framework branch, never the local experiment branch', async () => {
@@ -1356,6 +1402,18 @@ storyboardStep(Given, 'a developer has just cloned a brand-new empty project int
   prepareWorkingBranchInstaller(global.journeyContainer)
   preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  // Open on the empty project as agent-mode does: the GitLab page first (a
+  // brand-new repository with nothing pushed), then the fresh terminal clone.
+  // Two frames on ONE sentence — they share the card number.
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'gitlab-empty-project')
+  // The GitLab navigation left the ttyd page — return to it (the shell session
+  // is still alive, xterm reconnects) before driving the terminal.
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.waitForElement('.xterm-screen', 10)
+  I.wait(3)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'git status')
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
