@@ -1,14 +1,15 @@
 /* global inject Given Then Before After */
 /**
  * Generated-CI storyboard — proves the .gitlab-ci.yml a vanilla project ships is
- * valid and (second scenario) that a real runner executes its pipeline.
+ * valid: GitLab itself lints the config a freshly generated project pushes.
  *
- * The suite stopped at "MR opened + config posted": nothing proved the
- * generated CI plan is even valid, let alone that it runs. Here we render a
- * vanilla project, create a project on the embedded GitLab, push the tree, and
- * ask GitLab itself: (1) is this config valid (GET /ci/lint, the fast
- * deterministic guardrail), and (2) does a scoped runner actually turn one of
- * its jobs green. ONE Gherkin sentence = ONE card = ONE pixel baseline
+ * The suite stopped at "MR opened + config posted": nothing proved the generated
+ * CI plan is even valid. Here we render a vanilla project, create a project on
+ * the embedded GitLab, push the tree, and ask GitLab itself whether the config
+ * is valid (GET /ci/lint, the fast deterministic guardrail). That a REAL runner
+ * executes the WHOLE generated pipeline to green — and the framework merge
+ * request merges on it — is proven end to end by the @install-complete story, so
+ * it is not duplicated here. ONE Gherkin sentence = ONE card = ONE pixel baseline
  * (tolerance: 0); every card twins its frame with a real REST fact.
  */
 const { I } = inject()
@@ -17,7 +18,6 @@ const fs = require('fs')
 const { execSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
-const { runCommandWithResult } = require('../helpers/docker')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const {
   getRootHeaders,
@@ -25,12 +25,7 @@ const {
   deleteProject,
   createLambdaPersonalAccessToken,
   revokePersonalAccessToken,
-  lintProjectCi,
-  createProjectRunner,
-  deleteRunner,
-  triggerProjectPipeline,
-  listProjectPipelines,
-  listPipelineJobs
+  lintProjectCi
 } = require('../helpers/gitlabApi')
 
 const CI_FILE = '.gitlab-ci.yml'
@@ -39,41 +34,18 @@ const CI_FILE = '.gitlab-ci.yml'
 // toolbox and the pipeline is wired in from local includes.
 const IMAGE_VERSION = /(the-devsecops-toolbox):[^\s]+/
 
-// The docker network the whole compose stack shares (project name + network
-// name); the runner and its job containers must join it to resolve http://gitlab.
-const NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
-// renovate: datasource=docker depName=gitlab/gitlab-runner
-const RUNNER_IMAGE = 'gitlab/gitlab-runner:v18.11.0'
-// Generated jobs carry this tag (.config/gitlab/ci/tags.yml `.default-tags`), so
-// the runner must advertise it or every job sits pending.
-const RUNNER_TAG = 'saas-linux-medium-amd64'
-// The job we prove goes green. `plan` is the pipeline's first stage, so a runner
-// picks it up first even at concurrency 1; it runs `task plan` (plain echoes on a
-// vanilla project) so it is deterministic and cheap once the toolbox base image
-// is pulled. The `code:*` gates only run on merge requests, not on a push to the
-// default branch, so they are not available here.
-const TARGET_JOB = 'plan'
-const TARGET_STAGE = 'plan'
-// The job runs in ~40 s locally (toolbox image pull + `task plan` echoes); the
-// runner is slower inside dind in CI, so allow generous headroom (retries: 1
-// absorbs a one-off slow pull).
-const JOB_TIMEOUT_MS = 360000
-
 let project
 let projectName
 let lambdaToken
 let lambdaTokenId
-let projectId
-let runnerName
-let runnerId
 
 function git (dir, cmd) {
   return execSync(`git -C ${dir} ${cmd}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
 // Create a public project owned by the lambda user and push the rendered tree to
-// its main branch, so GitLab can resolve the `local:` includes and, later, run
-// the pipeline. Returns nothing; throws on push failure without leaking the PAT.
+// its main branch, so GitLab can resolve the `local:` includes and lint the
+// pipeline. Returns nothing; throws on push failure without leaking the PAT.
 async function createAndPushProject (dir) {
   const rootHeaders = await getRootHeaders()
   projectName = `e2e-generated-ci-${crypto.randomBytes(4).toString('hex')}`
@@ -89,7 +61,6 @@ async function createAndPushProject (dir) {
   if (created2.status >= 400) {
     throw new Error(`createProject failed (${created2.status}): ${JSON.stringify(created2.data)}`)
   }
-  projectId = created2.data.id
   const user = process.env.TASK_GITLAB_LAMBDA_USER
   const remote = `http://${user}:${encodeURIComponent(lambdaToken)}@gitlab/${user}/${projectName}.git`
   git(dir, 'init --quiet --initial-branch=main')
@@ -111,21 +82,14 @@ function resetState () {
   projectName = null
   lambdaToken = null
   lambdaTokenId = null
-  projectId = null
-  runnerName = null
-  runnerId = null
 }
 
 Before(resetState)
 
 After(async () => {
   if (project) removeRendered(project)
-  // The scoped runner dies with the story: rm the container and delete the
-  // runner so nothing lingers on the shared docker daemon or the GitLab volume.
-  if (runnerName) { try { runCommandWithResult(`docker rm -f ${runnerName}`) } catch (e) {} }
-  if (projectName || lambdaTokenId || runnerId) {
+  if (projectName || lambdaTokenId) {
     const rootHeaders = await getRootHeaders()
-    if (runnerId) { try { await deleteRunner(runnerId, rootHeaders) } catch (e) {} }
     if (projectName) { try { await deleteProject(projectName, rootHeaders) } catch (e) {} }
     if (lambdaTokenId) { try { await revokePersonalAccessToken(lambdaTokenId, rootHeaders) } catch (e) {} }
   }
@@ -162,110 +126,5 @@ storyboardStep(Then, 'GitLab lints that config and reports it is valid', async (
   // Twin: GitLab itself confirms the pushed config holds together.
   if (valid !== true) {
     throw new Error(`Expected valid CI config, got valid=${valid} errors=${JSON.stringify(errors)}`)
-  }
-})
-
-// --- Scenario B: a real scoped runner runs the generated pipeline -------------
-
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-
-// Start one docker-executor runner scoped to this project and register it on the
-// shared network so its job containers resolve http://gitlab. Returns the last
-// line of the register output (the "registered successfully" confirmation).
-async function startScopedRunner (rootHeaders) {
-  const runner = await createProjectRunner(projectId, rootHeaders, [RUNNER_TAG])
-  if (runner.status >= 400) {
-    throw new Error(`createProjectRunner failed (${runner.status}): ${JSON.stringify(runner.data)}`)
-  }
-  runnerId = runner.data.id
-  const glrt = runner.data.token
-  runnerName = `e2e-runner-${crypto.randomBytes(4).toString('hex')}`
-  const t0 = Date.now()
-  const run = runCommandWithResult(
-    `docker run -d --name ${runnerName} --network ${NET} ` +
-    `-v /var/run/docker.sock:/var/run/docker.sock ${RUNNER_IMAGE}`
-  )
-  console.log(`runner container started (exit ${run.exitCode}) in ${Date.now() - t0}ms`)
-  if (run.exitCode !== 0) throw new Error(`docker run runner failed: ${run.stderr || run.stdout}`)
-  const reg = runCommandWithResult(
-    `docker exec ${runnerName} gitlab-runner register --non-interactive ` +
-    `--url http://gitlab --token ${glrt} --executor docker ` +
-    `--docker-image alpine:3.20 --docker-network-mode ${NET}`
-  )
-  const output = `${reg.stdout || ''}${reg.stderr || ''}`
-  console.log(`runner registered (exit ${reg.exitCode}) @${Date.now() - t0}ms`)
-  if (reg.exitCode !== 0) throw new Error(`gitlab-runner register failed: ${output}`)
-  // The `gitlab-runner run` process started at the container entrypoint before
-  // register wrote the [[runners]] into config.toml, and it does not always pick
-  // the change up via fsnotify. Restart the container so it reloads the config
-  // and starts polling — otherwise the job sits pending forever.
-  const restart = runCommandWithResult(`docker restart ${runnerName}`)
-  console.log(`runner restarted (exit ${restart.exitCode}) @${Date.now() - t0}ms`)
-  if (restart.exitCode !== 0) throw new Error(`docker restart runner failed: ${restart.stderr || restart.stdout}`)
-  await sleep(6000)
-  return (output.split('\n').find(l => l.includes('registered successfully')) || 'Runner registered successfully.').trim()
-}
-
-// Poll the pipeline's jobs until TARGET_JOB reaches a terminal state or timeout.
-async function pollTargetJob (headers, pipelineId) {
-  const start = Date.now()
-  let last = ''
-  while (Date.now() - start < JOB_TIMEOUT_MS) {
-    const jobs = (await listPipelineJobs(projectName, pipelineId, headers)).data || []
-    const job = jobs.find(j => j.name === TARGET_JOB)
-    const status = job ? job.status : 'absent'
-    if (status !== last) {
-      console.log(`${TARGET_JOB}: ${status} @${Math.round((Date.now() - start) / 1000)}s`)
-      last = status
-    }
-    if (job && ['success', 'failed', 'canceled', 'skipped'].includes(job.status)) return job
-    await sleep(5000)
-  }
-  return null
-}
-
-storyboardStep(Given, 'a runner scoped to a freshly generated project comes online', async () => {
-  project = renderProject()
-  await createAndPushProject(project)
-  const rootHeaders = await getRootHeaders()
-  const confirmation = await startScopedRunner(rootHeaders)
-  await renderPreFrame(
-    I,
-    'runner-online',
-    `$ gitlab-runner register --url http://gitlab --executor docker\n${confirmation}`
-  )
-  // Twin: the runner registered (createAndPushProject/startScopedRunner throw on
-  // any failure, so reaching here means the scoped runner is registered).
-  if (!runnerId) throw new Error('Expected a scoped runner to be registered')
-})
-
-storyboardStep(Then, "the pipeline's first job runs on that runner and passes", async () => {
-  const headers = { 'PRIVATE-TOKEN': lambdaToken }
-  // The push already created a pipeline (workflow runs on the default branch);
-  // it was pending for lack of a runner and starts now. Fall back to triggering
-  // one if none is present yet.
-  let pipelines = (await listProjectPipelines(projectName, headers)).data || []
-  if (pipelines.length === 0) {
-    const triggered = await triggerProjectPipeline(projectName, 'main', headers)
-    pipelines = [triggered.data]
-  }
-  const pipelineId = pipelines[0].id
-  console.log(`watching pipeline ${pipelineId} for ${TARGET_JOB}`)
-  const job = await pollTargetJob(headers, pipelineId)
-  const status = job ? job.status : 'timeout'
-  if (status !== 'success') {
-    // Surface the runner's own log — the fastest way to see why a job stalled
-    // (useful when the embedded runner runs inside dind in CI).
-    const logs = runCommandWithResult(`docker logs --tail 40 ${runnerName} 2>&1`)
-    console.log(`runner log tail:\n${logs.stdout || logs.output || logs.stderr}`)
-  }
-  await renderPreFrame(
-    I,
-    'pipeline-job-green',
-    `$ GET /projects/<project>/pipelines/<pid>/jobs\n{\n  "name": "${TARGET_JOB}",\n  "stage": "${TARGET_STAGE}",\n  "status": "${status}"\n}`
-  )
-  // Twin: a real job of the generated CI ran on a real runner and passed.
-  if (status !== 'success') {
-    throw new Error(`Expected ${TARGET_JOB} to pass, got status=${status}`)
   }
 })

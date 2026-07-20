@@ -25,6 +25,7 @@ const { I, GitLabMergeRequestPage, GitLabRepositoryPage, GitLabSettingsPage, Git
 const {
   ttydPort,
   runCommand,
+  runCommandWithResult,
   shellEscape,
   execInContainerAsUser,
   stripAnsiEscapeSequences
@@ -41,9 +42,16 @@ const {
   createLambdaPersonalAccessToken,
   revokePersonalAccessToken,
   listRepositoryTree,
-  readProjectVariable
+  readProjectVariable,
+  getPipeline,
+  listPipelineJobs,
+  getMergeRequest,
+  mergeMergeRequest,
+  createProjectRunner,
+  deleteRunner
 } = require('../helpers/gitlabApi')
 const { freshGet } = require('../helpers/http')
+const { renderPreFrame } = require('../helpers/capturedOutput')
 const {
   PROJECT_DIR,
   INSTALL_LOG,
@@ -80,6 +88,10 @@ Before(() => {
   global.journeyLambdaToken = null
   global.journeyLambdaTokenId = null
   global.journeyMergeRequestIid = null
+  // CYCLE F: the scoped runner the framework-MR chapter registers on the fly.
+  global.journeyRunnerId = null
+  global.journeyRunnerSvc = null
+  global.journeyPipelineId = null
 })
 
 After(async () => {
@@ -121,6 +133,25 @@ After(async () => {
       // Best-effort cleanup.
     }
     global.journeyLambdaTokenId = null
+  }
+
+  // Unregister the scoped runner from the compose service (it stays up
+  // and virgin for the next run), purge its config, and delete the runner on
+  // GitLab. All best-effort so a failing scenario still tidies up.
+  if (global.journeyRunnerSvc) {
+    try { runCommandWithResult(`docker exec ${global.journeyRunnerSvc} gitlab-runner unregister --all-runners`) } catch (_) {}
+    try { runCommandWithResult(`docker exec ${global.journeyRunnerSvc} rm -f /etc/gitlab-runner/config.toml`) } catch (_) {}
+    try { runCommandWithResult(`docker restart ${global.journeyRunnerSvc}`) } catch (_) {}
+    global.journeyRunnerSvc = null
+  }
+  if (global.journeyRunnerId) {
+    try {
+      const rootHeaders = await getRootHeaders()
+      await deleteRunner(global.journeyRunnerId, rootHeaders)
+    } catch (_) {
+      // Best-effort cleanup.
+    }
+    global.journeyRunnerId = null
   }
 })
 
@@ -920,6 +951,173 @@ storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', async ()
     'gitlab-cicd-variables'
   )
   await assertCommitizenVariable()
+})
+
+// ============================================
+// @install-complete chapter 4 — "The merge request proves itself".
+// The framework MR (init-framework-devsecops -> main, opened by THIS install)
+// runs its full pipeline on a project-scoped runner, goes green, and merges into
+// main — proving the framework a fresh install ships actually builds and lands
+// through review. Pipeline/merge state is volatile (durations, SHAs, avatars),
+// so each card is a deterministic REST-fact frame (renderPreFrame), twinned with
+// the same REST assert — the proven pattern for volatile CI state.
+// ============================================
+
+const RUNNER_TAG = 'saas-linux-medium-amd64'
+const RUNNER_NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
+// The full generated pipeline runs ~17 jobs on ONE runner (megalinter pulls its
+// image); a wide budget covers the slower nested dind in CI without touching any
+// global timeout.
+const PIPELINE_TIMEOUT_MS = 1500000
+
+async function journeyProjectId (headers) {
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)
+  return res.data && res.data.id
+}
+
+// Register a project-scoped, privileged docker-executor runner inside the blank
+// gitlab-runner compose service (project/gitlab/docker-compose.yml). Scoped so it
+// only ever runs THIS project's jobs; privileged + /certs/client so the generated
+// pipeline's docker:dind service works. Restart makes it reload the freshly
+// written config.toml (else jobs sit pending — same trap as generated-ci).
+async function registerFrameworkRunner (rootHeaders) {
+  const projectId = await journeyProjectId(rootHeaders)
+  const runner = await createProjectRunner(projectId, rootHeaders, [RUNNER_TAG])
+  if (runner.status >= 400) {
+    throw new Error(`createProjectRunner failed (${runner.status}): ${JSON.stringify(runner.data)}`)
+  }
+  global.journeyRunnerId = runner.data.id
+  const glrt = runner.data.token
+  const found = runCommandWithResult('docker ps --format "{{.Names}}" --filter "name=gitlab-runner"')
+  const svc = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)[0]
+  if (!svc) throw new Error('gitlab-runner compose service is not running')
+  global.journeyRunnerSvc = svc
+  // ONE job slot, deliberately: every docker-using job spawns a dind service
+  // named 'docker' on the SHARED network, so two concurrent services collide
+  // (a job reaches the other job's dind and fails TLS: x509 unknown authority).
+  // Stale JOB containers from an aborted run collide the same way — purge them
+  // before registering. The anchored pattern can never match the compose
+  // service itself (its name starts with the project prefix).
+  runCommandWithResult("docker ps --format '{{.Names}}' | grep -E '^runner-' | xargs -r docker rm -f")
+  const reg = runCommandWithResult(
+    `docker exec ${svc} gitlab-runner register --non-interactive ` +
+    `--url http://gitlab --token ${glrt} --executor docker ` +
+    `--docker-image alpine:3.20 --docker-network-mode ${RUNNER_NET} ` +
+    '--docker-privileged --docker-volumes /certs/client'
+  )
+  if (reg.exitCode !== 0) throw new Error(`gitlab-runner register failed: ${reg.stdout || ''}${reg.stderr || ''}`)
+  runCommandWithResult(`docker restart ${svc}`)
+  await I.wait(6)
+}
+
+// Poll the framework MR's pipeline until it reaches a terminal state. The MR
+// pipeline (merge_request_event) was created when the install opened the MR; it
+// sat pending for lack of a runner and starts once registerFrameworkRunner runs.
+async function waitFrameworkPipeline (headers) {
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
+  let pid = null
+  let last = ''
+  while (Date.now() < deadline) {
+    if (!pid) {
+      const mp = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/merge_requests/${global.journeyMergeRequestIid}/pipelines`, headers)
+      if (mp.data && mp.data.length) pid = mp.data[0].id
+      if (pid) {
+        // The install's branch push spawned a second pipeline for the same
+        // commit. On the single-slot runner it would interleave with the one
+        // the merge waits for and double the wall-clock — cancel it.
+        try {
+          const all = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/pipelines`, headers)
+          for (const p of (all.data || [])) {
+            if (p.id !== pid && !['success', 'failed', 'canceled', 'skipped'].includes(p.status)) {
+              await I.sendPostRequest(`${BASE_URL}/api/v4/projects/${encoded}/pipelines/${p.id}/cancel`, {}, headers)
+            }
+          }
+        } catch (e) {
+          console.log(`redundant pipeline cancel skipped: ${e.message}`)
+        }
+      }
+    }
+    if (pid) {
+      const pipe = await getPipeline(global.journeyProjectName, pid, headers)
+      const status = pipe.data.status
+      if (status !== last) { console.log(`framework MR pipeline ${pid}: ${status}`); last = status }
+      if (['success', 'failed', 'canceled', 'skipped'].includes(status)) return { pid, status }
+    }
+    await I.wait(10)
+  }
+  return { pid, status: 'timeout' }
+}
+
+storyboardStep(Then, 'GitLab runs the whole framework pipeline and every stage passes', async () => {
+  const rootHeaders = await getRootHeaders()
+  await registerFrameworkRunner(rootHeaders)
+  const { pid, status } = await waitFrameworkPipeline(rootHeaders)
+  global.journeyPipelineId = pid
+  const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
+  jobs.sort((a, b) => a.id - b.id)
+  if (status !== 'success') {
+    const failed = jobs.filter(j => j.status === 'failed')
+    console.log(`framework pipeline not green (status=${status}); failed: ${failed.map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
+    // Print the failed jobs' trace tails NOW: the After cleanup deletes the
+    // project, so this is the only moment the evidence still exists.
+    const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+    for (const j of failed.slice(0, 3)) {
+      // The trace endpoint returns raw text, not JSON — curl it directly.
+      const auth = rootHeaders.Authorization
+      const tail = runCommandWithResult(
+        `curl -s -H 'Authorization: ${auth}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
+      )
+      console.log(`── trace tail of ${j.stage}/${j.name} (#${j.id}):\n${tail.stdout || tail.output || tail.stderr || ''}`)
+    }
+    if (global.journeyRunnerSvc) console.log(runCommandWithResult(`docker logs --tail 40 ${global.journeyRunnerSvc} 2>&1`).output || '')
+  }
+  const lines = jobs.map(j => `  ${j.stage}/${j.name}: ${j.status}`).join('\n')
+  // The pipeline id increments on every run — mask it so the card stays
+  // pixel-stable; the poll and the twin below still use the real id.
+  await renderPreFrame(
+    I,
+    'framework-pipeline-green',
+    `$ GET /projects/<project>/pipelines/<id>\n{ "status": "${status}", "jobs": ${jobs.length} }\n${lines}`
+  )
+  // Twin: the whole generated pipeline ran on a real runner and passed.
+  if (status !== 'success') throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
+})
+
+storyboardStep(Then, 'the framework merge request merges into main on its green pipeline', async () => {
+  const lambdaHeaders = { 'PRIVATE-TOKEN': global.journeyLambdaToken }
+  const merged = await mergeMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, lambdaHeaders)
+  const rootHeaders = await getRootHeaders()
+  let state = merged.data && merged.data.state
+  for (let i = 0; i < 10 && state !== 'merged'; i++) {
+    await I.wait(2)
+    const mr = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
+    state = mr.data && mr.data.state
+  }
+  await renderPreFrame(
+    I,
+    'framework-mr-merged',
+    `$ PUT /merge_requests/${global.journeyMergeRequestIid}/merge\n{ "state": "${state}", "target_branch": "main" }`
+  )
+  // Twin: a green pipeline unblocked the merge and the MR is now merged.
+  if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
+})
+
+storyboardStep(Then, 'main now carries the whole framework, merged through review', async () => {
+  const rootHeaders = await getRootHeaders()
+  const tree = await listRepositoryTree(global.journeyProjectName, rootHeaders, '?ref=main&per_page=100')
+  const names = (tree.data || []).map(e => e.name)
+  const want = ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']
+  await renderPreFrame(
+    I,
+    'framework-on-main',
+    `$ GET /repository/tree?ref=main\n${want.map(f => `  ${f}: ${names.includes(f) ? 'present' : 'MISSING'}`).join('\n')}`
+  )
+  // Twin: the framework files a fresh install ships are now on main.
+  for (const f of want) {
+    if (!names.includes(f)) throw new Error(`Expected main to carry "${f}" after the merge. Entries: ${JSON.stringify(names)}`)
+  }
 })
 
 // --- Case B: main already exists --------------------------------------------
