@@ -111,6 +111,10 @@ After(async () => {
 
   teardownJourneyTerminal(global.journeyContainer)
   global.journeyContainer = null
+  if (global.journeyReleaseRepoDir) {
+    try { fs.rmSync(global.journeyReleaseRepoDir, { recursive: true, force: true }) } catch (_) {}
+    global.journeyReleaseRepoDir = null
+  }
 
   if (global.journeyProjectName) {
     try {
@@ -1077,6 +1081,12 @@ async function maskPipelinePage (projectName) {
       const n = document.querySelector(sel)
       if (n) n.style.visibility = 'hidden'
     })
+
+    // Action buttons (retry/cancel) on the job graph: controls, not proof,
+    // and their icon rendering drifts between environments.
+    document.querySelectorAll('[data-testid*="retry"], [aria-label*="Retry"], [aria-label*="Run again"], button.retry').forEach(el => {
+      el.style.visibility = 'hidden'
+    })
     document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
     document.querySelectorAll('.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"]').forEach(el => {
       el.style.visibility = 'hidden'
@@ -1430,4 +1440,83 @@ storyboardStep(Then, 'the piped install finishes and opens the framework merge r
   assertInstallLog('Installation complete!')
   await assertBranchExists('init-framework-devsecops')
   await findOpenMr('init-framework-devsecops', 'main')
+})
+
+// --- Chapter 5: the project lives on ----------------------------------------
+// The developer's follow-up work happens in a fresh clone of the merged
+// project (the same repository GitLab serves), driven with the shared
+// workspace-repo helpers the release-window story already trusts.
+const { execSync: execSyncRelease } = require('child_process')
+const { runTaskInRepo: releaseTaskInRepo, runTaskInRepoCaptured: releaseTaskCaptured } = require('../helpers/workspaceRepo')
+const { readProjectVariable: readReleaseVariable } = require('../helpers/gitlabApi')
+const { renderPreFrame } = require('../helpers/capturedOutput')
+
+storyboardStep(When, 'the developer records a first improvement on the fresh project', async () => {
+  const user = process.env.TASK_GITLAB_LAMBDA_USER
+  const dir = fs.mkdtempSync('/tmp/journey-release-')
+  global.journeyReleaseRepoDir = dir
+  const remote = `http://${user}:${encodeURIComponent(global.journeyLambdaToken)}@gitlab/${user}/${global.journeyProjectName}.git`
+  execSyncRelease(`git clone --quiet ${remote} ${dir}`, { stdio: ['ignore', 'pipe', 'pipe'] })
+  releaseTaskInRepo('git config --local user.name "lambda"', dir, global.journeyLambdaToken)
+  releaseTaskInRepo('git config --local user.email "lambda@test.local"', dir, global.journeyLambdaToken)
+  releaseTaskInRepo('git config --local url."http://".insteadOf "https://"', dir, global.journeyLambdaToken)
+  releaseTaskInRepo('git commit --allow-empty -m "feat: record the first improvement"', dir, global.journeyLambdaToken)
+  const subjects = releaseTaskCaptured("git log --format='%s' -2", dir, global.journeyLambdaToken)
+  const shown = (subjects.stdout || subjects.output || '').trim()
+  await renderPreFrame(I, 'first-improvement', `$ git log --format='%s' -2\n${shown}`)
+  // Twin: the clone really carries the developer's feat on top of the merge.
+  if (!shown.includes('feat: record the first improvement')) {
+    throw new Error(`Expected the feat commit on top of the clone, got:\n${shown}`)
+  }
+})
+
+storyboardStep(Then, "task release stamps version 0.2.0 on GitLab's tags page", async () => {
+  const user = process.env.TASK_GITLAB_LAMBDA_USER
+  const dir = global.journeyReleaseRepoDir
+  const rootHeaders = await getRootHeaders()
+  const variable = await readReleaseVariable(global.journeyProjectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
+  releaseTaskInRepo('task release', dir, global.journeyLambdaToken, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 240000,
+    extraEnv: {
+      TASK_DOCKER_CE_ENABLED: 'false',
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: variable.data.value,
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
+      TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: 'gitlab',
+      TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${user}/${global.journeyProjectName}`,
+      TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
+      TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
+      TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
+    }
+  })
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  let tags = []
+  for (let i = 0; i < 15; i++) {
+    const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/repository/tags`, rootHeaders)
+    tags = (res.data || []).map(t => t.name)
+    if (tags.includes('0.2.0')) break
+    await I.wait(2)
+  }
+  // Twin FIRST: the stamped tag is plain semver, with no v prefix anywhere.
+  if (!tags.includes('0.2.0')) throw new Error(`Expected tag 0.2.0, got: ${tags.join(', ') || 'none'}`)
+  if (tags.some(t => /^v\d/.test(t))) throw new Error(`Unexpected v-prefixed tag: ${tags.join(', ')}`)
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/tags`)
+  await I.waitForText('0.2.0', 30)
+  await maskPipelinePage(global.journeyProjectName)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'release-tags-page'))
+  I.resizeWindow(1024, 768)
+})
+
+storyboardStep(Then, 'the inherited Renovate config passes the real validator, ready to keep the project fresh', async () => {
+  const dir = global.journeyReleaseRepoDir
+  const out = releaseTaskCaptured('task renovate:validate', dir, global.journeyLambdaToken, { timeout: 300000 })
+  const raw = `${out.stdout || out.output || ''}${out.stderr || ''}`
+  // Twin FIRST: the real validator accepted the inherited config.
+  if (out.exitCode !== 0 && !/no errors|Config validated/i.test(raw)) {
+    throw new Error(`Expected renovate:validate to pass, exit=${out.exitCode}\n${raw.slice(-800)}`)
+  }
+  const tail = raw.split('\n').filter(l => l.trim() !== '').slice(-4).join('\n')
+    .replace(/renovate[/@ ]\d+\.\d+\.\d+/gi, 'renovate <version>')
+  await renderPreFrame(I, 'renovate-validator-verdict', `$ task renovate:validate\n${tail}`)
 })
