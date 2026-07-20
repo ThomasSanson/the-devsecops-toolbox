@@ -16,7 +16,10 @@ async function maskAccessTokens () {
       /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, // "May 06, 2026"
       /^\d{4}-\d{2}-\d{2}$/, //                "2026-08-04"
       /^in \d+ (second|minute|hour|day|week|month|year)s?$/, // "in 2 months"
-      /^\d+ (second|minute|hour|day|week|month|year)s? ago$/ //  "3 days ago"
+      /^\d+ (second|minute|hour|day|week|month|year)s? ago$/, // "3 days ago"
+      // "Last Used IPs" shows the caller's container address; the docker
+      // subnet moves whenever the compose stack gains or loses a service.
+      /^\d{1,3}(\.\d{1,3}){3}(, \d{1,3}(\.\d{1,3}){3})*$/
     ]
     const PLACEHOLDER = '—'
     document.querySelectorAll('td, th, dd, dt, span, div, p, time').forEach(el => {
