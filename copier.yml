@@ -5,7 +5,6 @@
 _answers_file: .config/devsecops/.copier-answers.yml
 _skip_if_exists:
   - .config/cspell/config.project.json
-  - iac/helm/Chart.yaml
   - VERSION
   - project/Taskfile.yml
   - project/docker-compose.yml

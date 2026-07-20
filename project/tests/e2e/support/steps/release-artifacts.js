@@ -5,7 +5,7 @@
  * the framework repo; this story proves what the release LEAVES BEHIND on a
  * freshly generated project (VERSION 0.1.0): it runs the release's own
  * version-bump step (`task commitizen:bump`, exactly what Taskfile.release.yml
- * calls) for real and asserts the artifacts — VERSION and the Helm chart bumped
+ * calls) for real and asserts the artifacts — VERSION bumped
  * to 0.2.0, a plain `0.2.0` tag (no v prefix, the cz.yaml `tag_format: $version`
  * contract) and a 0.2.0 changelog section. No GitLab is needed: every artifact
  * is a local git/file fact. ONE Gherkin sentence = ONE card = ONE pixel baseline
@@ -21,32 +21,16 @@ const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard
 const BUMP_CMD =
   'TASK_COMMITIZEN_BUMP_YES=true TASK_COMMITIZEN_BUMP_CHANGELOG=true task commitizen:bump'
 
-// A minimal-but-valid Helm chart pinned to the project's starting version. It is
-// what a project adopting Helm adds itself (copier lists iac/helm/Chart.yaml in
-// _skip_if_exists and cz.yaml lists it in version_files), so the release must
-// lift its `version` alongside VERSION. Only the `version` line carries 0.1.0,
-// so the cz `iac/helm/Chart.yaml:version` rule touches exactly that line.
-const CHART = [
-  'apiVersion: v2',
-  'name: e2e-release-artifacts',
-  'description: A Helm chart used to prove the release bumps the chart version',
-  'type: application',
-  'version: 0.1.0',
-  ''
-].join('\n')
-
 let project
 
 function git (repo, cmd) {
   return execSync(`git -C ${repo} ${cmd}`, { encoding: 'utf8' }).trim()
 }
 
-// Render a vanilla project at 0.1.0, add the Helm chart, and commit an initial
-// snapshot plus one eligible `feat:` — the change the first release versions.
+// Render a vanilla project at 0.1.0 and commit an initial snapshot plus one
+// eligible `feat:` — the change the first release versions.
 function scaffoldReleasableProject () {
   const dir = renderProject()
-  fs.mkdirSync(`${dir}/iac/helm`, { recursive: true })
-  fs.writeFileSync(`${dir}/iac/helm/Chart.yaml`, CHART)
   git(dir, 'init --quiet --initial-branch=main')
   git(dir, 'config user.email "e2e@test.local"')
   git(dir, 'config user.name "E2E"')
@@ -57,12 +41,6 @@ function scaffoldReleasableProject () {
   git(dir, 'commit --quiet -m "chore: initial render"')
   git(dir, 'commit --quiet --allow-empty -m "feat: ship the first feature"')
   return dir
-}
-
-function chartVersion (repo, ref) {
-  const file = ref ? git(repo, `show ${ref}:iac/helm/Chart.yaml`) : fs.readFileSync(`${repo}/iac/helm/Chart.yaml`, 'utf8')
-  const line = file.split('\n').find(l => l.startsWith('version:')) || ''
-  return line.replace('version:', '').trim()
 }
 
 Before(() => {
@@ -77,15 +55,9 @@ After(() => {
 storyboardStep(Given, 'a freshly generated project sitting at version 0.1.0', async () => {
   project = scaffoldReleasableProject()
   const versionFile = fs.readFileSync(`${project}/VERSION`, 'utf8').trim()
-  const chart = chartVersion(project)
-  await renderPreFrame(
-    I,
-    'before-0-1-0',
-    `$ cat VERSION\n${versionFile}\n\n$ grep version: iac/helm/Chart.yaml\nversion: ${chart}`
-  )
-  // Twin: the project really starts at 0.1.0 in both version-tracking files.
+  await renderPreFrame(I, 'before-0-1-0', `$ cat VERSION\n${versionFile}`)
+  // Twin: the project really starts at 0.1.0.
   if (versionFile !== '0.1.0') throw new Error(`Expected VERSION 0.1.0, got ${versionFile}`)
-  if (chart !== '0.1.0') throw new Error(`Expected chart version 0.1.0, got ${chart}`)
 })
 
 storyboardStep(When, 'the first release bumps the version', async () => {
@@ -109,17 +81,11 @@ storyboardStep(When, 'the first release bumps the version', async () => {
   assertContains(output, '0.1.0 → 0.2.0')
 })
 
-storyboardStep(Then, 'VERSION and the Helm chart both carry the new 0.2.0', async () => {
+storyboardStep(Then, 'VERSION carries the new 0.2.0', async () => {
   const versionFile = git(project, 'show HEAD:VERSION')
-  const chart = chartVersion(project, 'HEAD')
-  await renderPreFrame(
-    I,
-    'version-stamped',
-    `$ git show HEAD:VERSION\n${versionFile}\n\n$ git show HEAD:iac/helm/Chart.yaml | grep version:\nversion: ${chart}`
-  )
-  // Twin: both version-tracking files now hold 0.2.0 at HEAD (the bump commit).
+  await renderPreFrame(I, 'version-stamped', `$ git show HEAD:VERSION\n${versionFile}`)
+  // Twin: the version file holds 0.2.0 at HEAD (the bump commit).
   if (versionFile !== '0.2.0') throw new Error(`Expected VERSION 0.2.0 at HEAD, got ${versionFile}`)
-  if (chart !== '0.2.0') throw new Error(`Expected chart version 0.2.0 at HEAD, got ${chart}`)
 })
 
 storyboardStep(Then, 'it stamps a plain 0.2.0 tag and opens the changelog', async () => {
