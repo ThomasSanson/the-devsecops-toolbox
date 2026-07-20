@@ -111,6 +111,9 @@ project_slug:
 _exclude:
   - .agent/rules/code-style.md
   - .cache
+  # CI sharding is a framework-suite concern: the shard map lives under the
+  # excluded project/tests and the guard would have nothing to check downstream.
+  - .config/devsecops/scripts/check-shard-coverage.sh
   - .config/**/roles
   - .git
   - .vscode
