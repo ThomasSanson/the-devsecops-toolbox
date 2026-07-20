@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then */
+/* global inject Before After Given When Then NodeFilter */
 // cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
 /**
  * E2E developer-journey scenarios.
@@ -51,7 +51,6 @@ const {
   deleteRunner
 } = require('../helpers/gitlabApi')
 const { freshGet } = require('../helpers/http')
-const { renderPreFrame } = require('../helpers/capturedOutput')
 const {
   PROJECT_DIR,
   INSTALL_LOG,
@@ -958,9 +957,10 @@ storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', async ()
 // The framework MR (init-framework-devsecops -> main, opened by THIS install)
 // runs its full pipeline on a project-scoped runner, goes green, and merges into
 // main — proving the framework a fresh install ships actually builds and lands
-// through review. Pipeline/merge state is volatile (durations, SHAs, avatars),
-// so each card is a deterministic REST-fact frame (renderPreFrame), twinned with
-// the same REST assert — the proven pattern for volatile CI state.
+// through review. Each card is a REAL masked GitLab page — the green pipeline
+// graph, the "Merged" merge-request header, the file tree on main — with all
+// volatile chrome (durations, SHAs, dates, avatars, the pipeline id) masked for
+// tolerance:0, twinned with the REST assert that reads the same fact.
 // ============================================
 
 const RUNNER_TAG = 'saas-linux-medium-amd64'
@@ -1050,6 +1050,88 @@ async function waitFrameworkPipeline (headers) {
   return { pid, status: 'timeout' }
 }
 
+// The pipeline page carries a lot of volatile chrome: the pipeline id (#123),
+// per-job durations (0:42, 00:01:07), the commit SHA, the trigger time, the
+// runner name and avatars. Neutralise ALL of it in the DOM so the "every job
+// green" graph is the only thing that varies between runs — the REST twin has
+// already proven status=success with each job's real state.
+async function maskPipelinePage (projectName) {
+  await I.waitForElement('body', 30)
+  await I.wait(3)
+  await I.executeScript((args) => {
+    const projectName = args.projectName
+    const PLACEHOLDER = '—'
+    const VOLATILE_RE = [
+      /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, //           "Jul 20, 2026"
+      /^\d{4}-\d{2}-\d{2}$/, //                       "2026-07-20"
+      /\b\d+ (second|minute|hour|day|week|month|year)s? ago\b/,
+      /\bjust now\b/i,
+      /^[0-9a-f]{7,40}$/i, //                          commit SHA
+      /^#\d+$/, //                                     pipeline / job id badge (#123)
+      /^\d{1,2}:\d{2}(:\d{2})?$/, //                   job duration 0:42 / 00:01:07
+      /^\d+ (second|minute|hour)s?$/ //                "42 seconds"
+    ]
+
+    // Top app bar (global counters + session state) and every avatar/image.
+    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+      const n = document.querySelector(sel)
+      if (n) n.style.visibility = 'hidden'
+    })
+    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+    document.querySelectorAll('.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"]').forEach(el => {
+      el.style.visibility = 'hidden'
+    })
+    document.querySelectorAll('time, .js-timeago').forEach(el => { el.textContent = PLACEHOLDER })
+
+    // Leaf text nodes that carry a volatile value (id/duration/sha/date).
+    document.querySelectorAll('a, span, strong, li, b, td, div, code, small').forEach(el => {
+      if (el.children.length !== 0) return
+      const text = el.textContent.trim()
+      if (VOLATILE_RE.some(re => re.test(text))) el.textContent = PLACEHOLDER
+    })
+
+    // Durations embedded in composed sentences ("8 minutes 4 seconds, queued
+    // for 51 seconds") never equal a whole leaf — substitute them in place.
+    const SUBSTITUTE_RE = [
+      /\d+ minutes? \d+ seconds?/g,
+      /queued for \d+ (seconds?|minutes?)/g,
+      /\b\d+ seconds\b/g
+    ]
+    const subWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    const subNodes = []
+    while (subWalker.nextNode()) subNodes.push(subWalker.currentNode)
+    subNodes.forEach(n => {
+      let v = n.nodeValue
+      SUBSTITUTE_RE.forEach(re => { v = v.replace(re, PLACEHOLDER) })
+      if (v !== n.nodeValue) n.nodeValue = v
+    })
+
+    // The per-run random project name, wherever it appears (breadcrumb, title).
+    const NAME_RE = projectName
+      ? new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+      : /e2e-journey-[0-9a-f]+/g
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    const textNodes = []
+    while (walker.nextNode()) textNodes.push(walker.currentNode)
+    textNodes.forEach(n => {
+      if (NAME_RE.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(NAME_RE, 'project')
+    })
+  }, { projectName })
+  await I.moveCursorTo('body', 1, 1)
+  await I.wait(0.5)
+}
+
+// The green pipeline graph as GitLab shows it, captured at the storyboard page
+// aspect. Volatile chrome masked (maskPipelinePage), the pipeline id is the
+// card's only would-be variant and it is neutralised too.
+async function pipelinePageFrame (pipelineId) {
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/pipelines/${pipelineId}`)
+  await maskPipelinePage(global.journeyProjectName)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'framework-pipeline-green'))
+  I.resizeWindow(1024, 768)
+}
+
 storyboardStep(Then, 'GitLab runs the whole framework pipeline and every stage passes', async () => {
   const rootHeaders = await getRootHeaders()
   await registerFrameworkRunner(rootHeaders)
@@ -1073,16 +1155,13 @@ storyboardStep(Then, 'GitLab runs the whole framework pipeline and every stage p
     }
     if (global.journeyRunnerSvc) console.log(runCommandWithResult(`docker logs --tail 40 ${global.journeyRunnerSvc} 2>&1`).output || '')
   }
-  const lines = jobs.map(j => `  ${j.stage}/${j.name}: ${j.status}`).join('\n')
-  // The pipeline id increments on every run — mask it so the card stays
-  // pixel-stable; the poll and the twin below still use the real id.
-  await renderPreFrame(
-    I,
-    'framework-pipeline-green',
-    `$ GET /projects/<project>/pipelines/<id>\n{ "status": "${status}", "jobs": ${jobs.length} }\n${lines}`
-  )
-  // Twin: the whole generated pipeline ran on a real runner and passed.
+  // Twin FIRST: fail loud (with the trace tails printed above) before the
+  // capture, so the visual proof is only ever the GREEN pipeline.
   if (status !== 'success') throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
+  // The proof is GitLab's own pipeline page — the graph of every job, all
+  // green — not a rendered REST payload; the twin above already read the real
+  // status=success and each job's state.
+  await pipelinePageFrame(pid)
 })
 
 storyboardStep(Then, 'the framework merge request merges into main on its green pipeline', async () => {
@@ -1095,13 +1174,19 @@ storyboardStep(Then, 'the framework merge request merges into main on its green 
     const mr = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
     state = mr.data && mr.data.state
   }
-  await renderPreFrame(
-    I,
-    'framework-mr-merged',
-    `$ PUT /merge_requests/${global.journeyMergeRequestIid}/merge\n{ "state": "${state}", "target_branch": "main" }`
-  )
-  // Twin: a green pipeline unblocked the merge and the MR is now merged.
+  // Twin FIRST: a green pipeline unblocked the merge and the MR is now merged.
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
+  // The proof is the merge request's own page, full width like the pipeline
+  // and main cards: the state badge must read "Merged" before the shot.
+  I.resizeWindow(1024, 640)
+  await GitLabMergeRequestPage.gotoAndMask(
+    projectPath(global.journeyProjectName),
+    global.journeyMergeRequestIid,
+    global.journeyProjectName
+  )
+  await I.waitForText('Merged', 30)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'framework-mr-merged'))
+  I.resizeWindow(1024, 768)
 })
 
 storyboardStep(Then, 'main now carries the whole framework, merged through review', async () => {
@@ -1109,15 +1194,17 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
   const tree = await listRepositoryTree(global.journeyProjectName, rootHeaders, '?ref=main&per_page=100')
   const names = (tree.data || []).map(e => e.name)
   const want = ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']
-  await renderPreFrame(
-    I,
-    'framework-on-main',
-    `$ GET /repository/tree?ref=main\n${want.map(f => `  ${f}: ${names.includes(f) ? 'present' : 'MISSING'}`).join('\n')}`
-  )
-  // Twin: the framework files a fresh install ships are now on main.
+  // Twin FIRST: the framework files a fresh install ships are now on main.
   for (const f of want) {
     if (!names.includes(f)) throw new Error(`Expected main to carry "${f}" after the merge. Entries: ${JSON.stringify(names)}`)
   }
+  // The proof is GitLab's own file tree for main, now carrying the whole
+  // framework (Taskfile.yml, .gitlab-ci.yml, .config, .agent) — the same masked
+  // repository page agent mode's "files on main" card is shown on.
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, 'framework-on-main')
 })
 
 // --- Case B: main already exists --------------------------------------------

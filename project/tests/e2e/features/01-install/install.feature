@@ -71,12 +71,12 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     And GitLab now keeps that token as a CI/CD variable
     # Chapter: The merge request proves itself
-    # Note: A runner is the machine that runs the pipeline (the checks GitLab runs on every change). The embedded GitLab has a blank one waiting; this install points it at THIS project only, so it runs the framework merge request's pipeline and steals no other. Every stage — build, tests, security scans — runs for real and passes.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/pipelines
+    # Note: A runner is the machine that runs the pipeline (the checks GitLab runs on every change). The embedded GitLab has a blank one waiting; this install points it at THIS project only, so it runs the framework merge request's pipeline and steals no other. GitLab's own pipeline page shows every job green.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines/<id>
     Then GitLab runs the whole framework pipeline and every stage passes
-    # Note: With the pipeline green, the merge request meets main's rule that a change may only merge once its pipeline passes, so it merges. The framework reaches main the way any change should — through review, never a forced push.
-    # Copy: PUT http://gitlab/api/v4/projects/<id>/merge_requests/1/merge
+    # Note: With the pipeline green, the merge request meets main's rule that a change may only merge once its pipeline passes, so it merges. The merge request page now carries the Merged badge — reached through review, never a forced push.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     And the framework merge request merges into main on its green pipeline
-    # Note: main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — put there by a reviewed merge, not a direct push. The first install is proven end to end.
-    # Copy: http://gitlab/api/v4/projects/<id>/repository/tree?ref=main
+    # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — put there by a reviewed merge, not a direct push. The first install is proven end to end.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     And main now carries the whole framework, merged through review

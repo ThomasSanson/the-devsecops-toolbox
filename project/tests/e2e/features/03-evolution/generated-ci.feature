@@ -21,6 +21,6 @@ Feature: the CI a generated project ships is valid
     # Copy: sed -n '13,40p' .gitlab-ci.yml
     Given a freshly generated project whose .gitlab-ci.yml wires in the whole DevSecOps pipeline
     # Chapter: GitLab checks the config
-    # Note: GitLab reads the config the way it would before running it and reports whether it holds together: no bad syntax, no missing include. This is the fast guardrail. If a change ever breaks the generated config, this card turns red.
-    # Copy: curl --header "PRIVATE-TOKEN: <token>" "http://gitlab/api/v4/projects/<id>/ci/lint?ref=main"
+    # Note: GitLab's pipeline editor reads the config the way it would before running it and shows a green "Pipeline syntax is correct" when it holds together: no bad syntax, no missing include. If a template change ever breaks the generated config, this verdict turns red.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/ci/editor
     Then GitLab lints that config and reports it is valid

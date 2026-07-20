@@ -12,13 +12,17 @@
  * it is not duplicated here. ONE Gherkin sentence = ONE card = ONE pixel baseline
  * (tolerance: 0); every card twins its frame with a real REST fact.
  */
-const { I } = inject()
+const { I, GitLabUserPage } = inject()
 const crypto = require('crypto')
 const fs = require('fs')
 const { execSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
-const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
+const {
+  storyboardStep,
+  addStoryboardFrame,
+  captureElementFrame
+} = require('../../../../../.config/codeceptjs/storyboard')
 const {
   getRootHeaders,
   createProject,
@@ -114,17 +118,72 @@ storyboardStep(Given, 'a freshly generated project whose .gitlab-ci.yml wires in
   await createAndPushProject(project)
 })
 
+// GitLab's own pipeline editor lints the .gitlab-ci.yml live and shows a green
+// "Pipeline syntax is correct" verdict. Log in as the lambda owner (the editor
+// is a member view), open it on main, wait for the verdict text to appear
+// (wording-tolerant), tag its row and crop the frame to it — the volatile top
+// app bar and avatars are hidden so the card stays pixel-stable.
+async function captureCiEditorValidity () {
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  I.resizeWindow(1024, 640)
+  const user = process.env.TASK_GITLAB_LAMBDA_USER
+  await I.amOnPage(`/${user}/${projectName}/-/ci/editor`)
+  await I.waitForElement('body', 30)
+
+  // The verdict appears once the editor parses the file. Poll for it rather than
+  // a single literal so a wording change (GitLab version) still finds it.
+  const deadline = Date.now() + 45000
+  let found = false
+  while (Date.now() < deadline && !found) {
+    found = await I.executeScript(() => {
+      const PHRASES = ['syntax is correct', 'configuration is valid', 'ci configuration is valid']
+      return Array.from(document.querySelectorAll('span, div, p, a, small, strong'))
+        .some(el => {
+          const t = el.textContent.trim().toLowerCase()
+          return t.length <= 140 && PHRASES.some(p => t.includes(p))
+        })
+    })
+    if (!found) await I.wait(2)
+  }
+  if (!found) throw new Error('The pipeline editor never showed a "syntax is correct" verdict')
+
+  await I.executeScript(() => {
+    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+      const n = document.querySelector(sel)
+      if (n) n.style.visibility = 'hidden'
+    })
+    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+    const PHRASES = ['syntax is correct', 'configuration is valid', 'ci configuration is valid']
+    let hit = null
+    for (const el of document.querySelectorAll('span, div, p, a, small, strong')) {
+      const t = el.textContent.trim().toLowerCase()
+      if (t.length <= 140 && PHRASES.some(p => t.includes(p))) { hit = el; break }
+    }
+    if (hit) {
+      // Walk up until the row also holds the status icon, so the crop reads as
+      // GitLab's own green verdict (check + text), not bare text.
+      let box = hit
+      for (let i = 0; i < 3 && box.parentElement; i++) {
+        if (box.querySelector('svg')) break
+        box = box.parentElement
+      }
+      box.id = 'storyboard-ci-valid'
+    }
+  })
+  await I.moveCursorTo('body', 1, 1)
+  await I.wait(0.5)
+  await addStoryboardFrame(I, await captureElementFrame(I, 'generated-ci-valid', '#storyboard-ci-valid'))
+  I.resizeWindow(1024, 768)
+}
+
 storyboardStep(Then, 'GitLab lints that config and reports it is valid', async () => {
   const lambdaHeaders = { 'PRIVATE-TOKEN': lambdaToken }
   const response = await lintProjectCi(projectName, lambdaHeaders)
   const { valid, errors } = response.data
-  await renderPreFrame(
-    I,
-    'generated-ci-valid',
-    `$ GET /projects/<project>/ci/lint?ref=main\n{\n  "valid": ${valid},\n  "errors": ${JSON.stringify(errors || [])}\n}`
-  )
-  // Twin: GitLab itself confirms the pushed config holds together.
+  // Twin FIRST: GitLab's own lint API confirms the pushed config holds together.
   if (valid !== true) {
     throw new Error(`Expected valid CI config, got valid=${valid} errors=${JSON.stringify(errors)}`)
   }
+  // The proof is GitLab's own pipeline editor showing the config is valid.
+  await captureCiEditorValidity()
 })
