@@ -29,12 +29,19 @@ const SETUP_TIMEOUT = 300000
 let bareContainer = null
 let installerResult = null
 
-Before(() => {
+// Gherkin Before/After hooks are GLOBAL across every scenario the worker
+// runs — guard by the owning tag so this cleanup never fires mid-scenario
+// for a parallel story (see daily-contribution.js for the war story).
+const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@fresh-machine'))
+
+Before((test) => {
+  if (!ownsScenario(test)) return
   bareContainer = null
   installerResult = null
 })
 
-After(() => {
+After((test) => {
+  if (!ownsScenario(test)) return
   if (bareContainer) {
     removeContainer(bareContainer)
     bareContainer = null
@@ -73,7 +80,10 @@ storyboardStep(Given, 'a fresh machine without curl, with the installer ready to
 
 storyboardStep(When, 'the installer runs on that machine', async () => {
   installerResult = execInContainer(bareContainer, 'bash /tmp/install.sh')
-  await renderPreFrame(I, 'installer-launch', block(installerResult.output, 'DevSecOps Toolbox Installer', 0, 3))
+  // 'installer-launch-no-curl', not 'installer-launch': chapter 2 of the
+  // merged @fresh-machine story captures its own launch under that name, and
+  // two frames sharing a name overwrite each other's baseline.
+  await renderPreFrame(I, 'installer-launch-no-curl', block(installerResult.output, 'DevSecOps Toolbox Installer', 0, 3))
 })
 
 storyboardStep(Then, 'the installer stops and says curl must be installed first', async () => {

@@ -121,8 +121,13 @@ storyboardStep(When, 'the installer runs on the fresh machine with no one to ans
 
   const cleaned = stripAnsiEscapeSequences(installerResult.output).replace(/\r/g, '')
   const lines = cleaned.split('\n')
-  const bannerIdx = lines.findIndex(line => line.includes('DevSecOps Toolbox Installer'))
-  const banner = (bannerIdx < 0 ? lines : lines.slice(bannerIdx, bannerIdx + 4)).join('\n').trimEnd()
+  // Two signature lines only: what sits BETWEEN them (blank lines, download
+  // chatter) varies with container warm-up speed and broke tolerance:0 when
+  // a preceding chapter warmed the caches.
+  const banner = [
+    lines.find(line => line.includes('DevSecOps Toolbox Installer')),
+    lines.find(line => line.includes('Installing toolchain'))
+  ].filter(Boolean).join('\n').trimEnd()
   await renderPreFrame(I, 'installer-launch', banner)
 })
 
