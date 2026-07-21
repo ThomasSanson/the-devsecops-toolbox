@@ -146,6 +146,14 @@ async function revokeProjectAccessToken (projectName, tokenId, headers) {
   )
 }
 
+async function createProjectVariable (projectName, payload, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables`,
+    payload,
+    headers
+  )
+}
+
 async function updateProjectVariable (projectName, variableName, payload, headers) {
   return freshPut(
     `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/variables/${variableName}`,
@@ -221,6 +229,50 @@ async function listPipelineJobs (projectName, pipelineId, headers) {
   )
 }
 
+async function cancelPipeline (projectName, pipelineId, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines/${pipelineId}/cancel`,
+    {},
+    headers
+  )
+}
+
+// The daily-contribution story starts a change the real GitLab way: an issue,
+// then a branch + merge request opened from it. These mirror the "Create merge
+// request" button (a branch named <iid>-<slug> off the default branch and an MR
+// that closes the issue), driven over the API so the story reads deterministically.
+async function createProjectIssue (projectName, payload, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/issues`,
+    payload,
+    headers
+  )
+}
+
+async function createRepositoryBranch (projectName, branch, ref, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/branches` +
+      `?branch=${encodeURIComponent(branch)}&ref=${encodeURIComponent(ref)}`,
+    {},
+    headers
+  )
+}
+
+async function createMergeRequest (projectName, payload, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/merge_requests`,
+    payload,
+    headers
+  )
+}
+
+async function listProjectTags (projectName, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/tags`,
+    headers
+  )
+}
+
 module.exports = {
   BASE_URL,
   projectPath,
@@ -237,6 +289,7 @@ module.exports = {
   createLambdaPersonalAccessToken,
   revokePersonalAccessToken,
   readProjectVariable,
+  createProjectVariable,
   updateProjectVariable,
   listProjectAccessTokens,
   createProjectAccessToken,
@@ -248,5 +301,10 @@ module.exports = {
   triggerProjectPipeline,
   listProjectPipelines,
   getPipeline,
-  listPipelineJobs
+  listPipelineJobs,
+  cancelPipeline,
+  createProjectIssue,
+  createRepositoryBranch,
+  createMergeRequest,
+  listProjectTags
 }

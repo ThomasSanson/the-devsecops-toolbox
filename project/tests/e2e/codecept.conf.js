@@ -80,6 +80,7 @@ exports.config = {
       './support/steps/release-toggle.js',
       './support/steps/release-artifacts.js',
       './support/steps/quality-gate.js',
+      './support/steps/daily-contribution.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/update-conflict.js',

@@ -164,6 +164,7 @@ tasks:
             --exclude='.git' \
             --exclude='.cache' \
             --exclude='.claude' \
+            --exclude='.playwright-mcp' \
             --exclude='.impeccable' \
             --exclude='.ruff_cache' \
             --exclude='.task' \

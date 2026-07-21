@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then NodeFilter */
+/* global inject Before After Given When Then */
 // cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
 /**
  * E2E developer-journey scenarios.
@@ -25,7 +25,6 @@ const { I, GitLabMergeRequestPage, GitLabRepositoryPage, GitLabSettingsPage, Git
 const {
   ttydPort,
   runCommand,
-  runCommandWithResult,
   shellEscape,
   execInContainerAsUser,
   stripAnsiEscapeSequences
@@ -43,13 +42,17 @@ const {
   revokePersonalAccessToken,
   listRepositoryTree,
   readProjectVariable,
-  getPipeline,
   listPipelineJobs,
   getMergeRequest,
-  mergeMergeRequest,
-  createProjectRunner,
-  deleteRunner
+  mergeMergeRequest
 } = require('../helpers/gitlabApi')
+const {
+  registerScopedRunner,
+  teardownScopedRunner,
+  waitMergeRequestPipeline,
+  waitRefPipeline,
+  dumpFailedTraces
+} = require('../helpers/pipelineRunner')
 const { freshGet } = require('../helpers/http')
 const {
   PROJECT_DIR,
@@ -86,9 +89,9 @@ Before(() => {
   global.journeyLambdaToken = null
   global.journeyLambdaTokenId = null
   global.journeyMergeRequestIid = null
-  // CYCLE F: the scoped runner the framework-MR chapter registers on the fly.
-  global.journeyRunnerId = null
-  global.journeyRunnerSvc = null
+  // The scoped runner the framework-MR chapter registers on the fly (descriptor
+  // { runnerId, runnerToken, svc } — torn down surgically by its own token).
+  global.journeyRunner = null
   global.journeyPipelineId = null
 })
 
@@ -110,10 +113,6 @@ After(async () => {
 
   teardownJourneyTerminal(global.journeyContainer)
   global.journeyContainer = null
-  if (global.journeyReleaseRepoDir) {
-    try { fs.rmSync(global.journeyReleaseRepoDir, { recursive: true, force: true }) } catch (_) {}
-    global.journeyReleaseRepoDir = null
-  }
 
   if (global.journeyProjectName) {
     try {
@@ -137,23 +136,17 @@ After(async () => {
     global.journeyLambdaTokenId = null
   }
 
-  // Unregister the scoped runner from the compose service (it stays up
-  // and virgin for the next run), purge its config, and delete the runner on
-  // GitLab. All best-effort so a failing scenario still tidies up.
-  if (global.journeyRunnerSvc) {
-    try { runCommandWithResult(`docker exec ${global.journeyRunnerSvc} gitlab-runner unregister --all-runners`) } catch (_) {}
-    try { runCommandWithResult(`docker exec ${global.journeyRunnerSvc} rm -f /etc/gitlab-runner/config.toml`) } catch (_) {}
-    try { runCommandWithResult(`docker restart ${global.journeyRunnerSvc}`) } catch (_) {}
-    global.journeyRunnerSvc = null
-  }
-  if (global.journeyRunnerId) {
+  // Surgically unregister ONLY this scenario's runner token (never
+  // --all-runners) so @daily-contribution, which shares the same compose service
+  // locally, keeps its own registration and its running job.
+  if (global.journeyRunner) {
     try {
       const rootHeaders = await getRootHeaders()
-      await deleteRunner(global.journeyRunnerId, rootHeaders)
+      await teardownScopedRunner(global.journeyRunner, rootHeaders)
     } catch (_) {
       // Best-effort cleanup.
     }
-    global.journeyRunnerId = null
+    global.journeyRunner = null
   }
 })
 
@@ -984,222 +977,22 @@ storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', async ()
 // tolerance:0, twinned with the REST assert that reads the same fact.
 // ============================================
 
-const RUNNER_TAG = 'saas-linux-medium-amd64'
-const RUNNER_NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
-// The full generated pipeline runs ~17 jobs on ONE runner (megalinter pulls its
-// image); a wide budget covers the slower nested dind in CI without touching any
-// global timeout.
-const PIPELINE_TIMEOUT_MS = 1500000
-
-async function journeyProjectId (headers) {
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)
-  return res.data && res.data.id
-}
-
-// Register a project-scoped, privileged docker-executor runner inside the blank
-// gitlab-runner compose service (project/gitlab/docker-compose.yml). Scoped so it
-// only ever runs THIS project's jobs; privileged + /certs/client so the generated
-// pipeline's docker:dind service works. Restart makes it reload the freshly
-// written config.toml (else jobs sit pending — same trap as generated-ci).
-async function registerFrameworkRunner (rootHeaders) {
-  const projectId = await journeyProjectId(rootHeaders)
-  const runner = await createProjectRunner(projectId, rootHeaders, [RUNNER_TAG])
-  if (runner.status >= 400) {
-    throw new Error(`createProjectRunner failed (${runner.status}): ${JSON.stringify(runner.data)}`)
-  }
-  global.journeyRunnerId = runner.data.id
-  const glrt = runner.data.token
-  const found = runCommandWithResult('docker ps --format "{{.Names}}" --filter "name=gitlab-runner"')
-  const svc = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)[0]
-  if (!svc) throw new Error('gitlab-runner compose service is not running')
-  global.journeyRunnerSvc = svc
-  // ONE job slot, deliberately: every docker-using job spawns a dind service
-  // named 'docker' on the SHARED network, so two concurrent services collide
-  // (a job reaches the other job's dind and fails TLS: x509 unknown authority).
-  // Stale JOB containers from an aborted run collide the same way — purge them
-  // before registering. The anchored pattern can never match the compose
-  // service itself (its name starts with the project prefix).
-  runCommandWithResult("docker ps --format '{{.Names}}' | grep -E '^runner-' | xargs -r docker rm -f")
-  const reg = runCommandWithResult(
-    `docker exec ${svc} gitlab-runner register --non-interactive ` +
-    `--url http://gitlab --token ${glrt} --executor docker ` +
-    `--docker-image alpine:3.20 --docker-network-mode ${RUNNER_NET} ` +
-    '--docker-privileged --docker-volumes /certs/client'
-  )
-  if (reg.exitCode !== 0) throw new Error(`gitlab-runner register failed: ${reg.stdout || ''}${reg.stderr || ''}`)
-  runCommandWithResult(`docker restart ${svc}`)
-  await I.wait(6)
-}
-
-// Poll the framework MR's pipeline until it reaches a terminal state. The MR
-// pipeline (merge_request_event) was created when the install opened the MR; it
-// sat pending for lack of a runner and starts once registerFrameworkRunner runs.
-async function waitFrameworkPipeline (headers) {
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
-  let pid = null
-  let last = ''
-  while (Date.now() < deadline) {
-    if (!pid) {
-      const mp = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/merge_requests/${global.journeyMergeRequestIid}/pipelines`, headers)
-      if (mp.data && mp.data.length) pid = mp.data[0].id
-      if (pid) {
-        // The install's branch push spawned a second pipeline for the same
-        // commit. On the single-slot runner it would interleave with the one
-        // the merge waits for and double the wall-clock — cancel it.
-        try {
-          const all = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/pipelines`, headers)
-          for (const p of (all.data || [])) {
-            if (p.id !== pid && !['success', 'failed', 'canceled', 'skipped'].includes(p.status)) {
-              await I.sendPostRequest(`${BASE_URL}/api/v4/projects/${encoded}/pipelines/${p.id}/cancel`, {}, headers)
-            }
-          }
-        } catch (e) {
-          console.log(`redundant pipeline cancel skipped: ${e.message}`)
-        }
-      }
-    }
-    if (pid) {
-      const pipe = await getPipeline(global.journeyProjectName, pid, headers)
-      const status = pipe.data.status
-      if (status !== last) { console.log(`framework MR pipeline ${pid}: ${status}`); last = status }
-      if (['success', 'failed', 'canceled', 'skipped'].includes(status)) return { pid, status }
-    }
-    await I.wait(10)
-  }
-  return { pid, status: 'timeout' }
-}
-
-// The pipeline page carries a lot of volatile chrome: the pipeline id (#123),
-// per-job durations (0:42, 00:01:07), the commit SHA, the trigger time, the
-// runner name and avatars. Neutralise ALL of it in the DOM so the "every job
-// green" graph is the only thing that varies between runs — the REST twin has
-// already proven status=success with each job's real state.
-async function maskPipelinePage (projectName) {
-  await I.waitForElement('body', 30)
-  await I.wait(3)
-  await I.executeScript((args) => {
-    const projectName = args.projectName
-    const PLACEHOLDER = '—'
-    const VOLATILE_RE = [
-      /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, //           "Jul 20, 2026"
-      /^\d{4}-\d{2}-\d{2}$/, //                       "2026-07-20"
-      /\b\d+ (second|minute|hour|day|week|month|year)s? ago\b/,
-      /\bjust now\b/i,
-      /^[0-9a-f]{7,40}$/i, //                          commit SHA
-      /^#\d+$/, //                                     pipeline / job id badge (#123)
-      /^\d{1,2}:\d{2}(:\d{2})?$/, //                   job duration 0:42 / 00:01:07
-      /^\d+ (second|minute|hour)s?$/ //                "42 seconds"
-    ]
-
-    // Top app bar (global counters + session state) and every avatar/image.
-    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
-      const n = document.querySelector(sel)
-      if (n) n.style.visibility = 'hidden'
-    })
-
-    // Action buttons (retry/cancel) on the job graph: controls, not proof,
-    // and their icon rendering drifts between environments.
-    document.querySelectorAll('[data-testid*="retry"], [aria-label*="Retry"], [aria-label*="Run again"], button.retry').forEach(el => {
-      el.style.visibility = 'hidden'
-    })
-    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
-    document.querySelectorAll('.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"]').forEach(el => {
-      el.style.visibility = 'hidden'
-    })
-    document.querySelectorAll('time, .js-timeago').forEach(el => { el.textContent = PLACEHOLDER })
-
-    // Leaf text nodes that carry a volatile value (id/duration/sha/date).
-    document.querySelectorAll('a, span, strong, li, b, td, div, code, small').forEach(el => {
-      if (el.children.length !== 0) return
-      const text = el.textContent.trim()
-      if (VOLATILE_RE.some(re => re.test(text))) el.textContent = PLACEHOLDER
-    })
-
-    // Durations embedded in composed sentences ("8 minutes 4 seconds, queued
-    // for 51 seconds") never equal a whole leaf — substitute them in place.
-    const SUBSTITUTE_RE = [
-      /\d+ minutes? \d+ seconds?/g,
-      /queued for \d+ (seconds?|minutes?)/g,
-      /\b\d+ seconds\b/g
-    ]
-    const subWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const subNodes = []
-    while (subWalker.nextNode()) subNodes.push(subWalker.currentNode)
-    subNodes.forEach(n => {
-      let v = n.nodeValue
-      SUBSTITUTE_RE.forEach(re => { v = v.replace(re, PLACEHOLDER) })
-      if (v !== n.nodeValue) n.nodeValue = v
-    })
-
-    // The per-run random project name, wherever it appears (breadcrumb, title).
-    const NAME_RE = projectName
-      ? new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-      : /e2e-journey-[0-9a-f]+/g
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const textNodes = []
-    while (walker.nextNode()) textNodes.push(walker.currentNode)
-    textNodes.forEach(n => {
-      if (NAME_RE.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(NAME_RE, 'project')
-    })
-  }, { projectName })
-  await I.moveCursorTo('body', 1, 1)
-  await I.wait(0.5)
-}
-
-// Print the trace tails of the failed jobs NOW: the After cleanup deletes the
-// project, so this is the only moment the evidence still exists. Shared by the
-// framework-MR and the main post-merge pipeline waits.
-function dumpFailedTraces (jobs, rootHeaders) {
-  const failed = jobs.filter(j => j.status === 'failed')
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  for (const j of failed.slice(0, 3)) {
-    // The trace endpoint returns raw text, not JSON — curl it directly.
-    const auth = rootHeaders.Authorization
-    const tail = runCommandWithResult(
-      `curl -s -H 'Authorization: ${auth}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
-    )
-    console.log(`── trace tail of ${j.stage}/${j.name} (#${j.id}):\n${tail.stdout || tail.output || tail.stderr || ''}`)
-  }
-  if (global.journeyRunnerSvc) console.log(runCommandWithResult(`docker logs --tail 40 ${global.journeyRunnerSvc} 2>&1`).output || '')
-}
-
-// The merge fires main's OWN pipeline (a push event on main). Poll it to a
-// terminal state on the same single-slot runner, so the "main carries" card
-// can show a green commit — the finality — instead of a spinner still turning.
-async function waitMainPipeline (headers) {
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
-  let pid = null
-  let last = ''
-  while (Date.now() < deadline) {
-    if (!pid) {
-      const mp = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/pipelines?ref=main&order_by=id&sort=desc`, headers)
-      if (mp.data && mp.data.length) pid = mp.data[0].id
-    }
-    if (pid) {
-      const pipe = await getPipeline(global.journeyProjectName, pid, headers)
-      const status = pipe.data.status
-      if (status !== last) { console.log(`main pipeline ${pid}: ${status}`); last = status }
-      if (['success', 'failed', 'canceled', 'skipped'].includes(status)) return { pid, status }
-    }
-    await I.wait(10)
-  }
-  return { pid, status: 'timeout' }
-}
+// The runner + pipeline machinery (registerScopedRunner / waitMergeRequestPipeline
+// / waitRefPipeline / maskPipelinePage / dumpFailedTraces) lives in
+// support/helpers/pipelineRunner.js — shared with @daily-contribution, which runs
+// a real pipeline the same way on its own shard.
 
 storyboardStep(Then, 'the framework pipeline passes and the merge request merges into main', async () => {
   const rootHeaders = await getRootHeaders()
-  await registerFrameworkRunner(rootHeaders)
-  const { pid, status } = await waitFrameworkPipeline(rootHeaders)
+  global.journeyRunner = await registerScopedRunner(I, global.journeyProjectName, rootHeaders)
+  const { pid, status } = await waitMergeRequestPipeline(I, global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
   global.journeyPipelineId = pid
   const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
   jobs.sort((a, b) => a.id - b.id)
   // Twin FIRST: fail loud (with the trace tails) before the merge/capture.
   if (status !== 'success') {
     console.log(`framework pipeline not green (status=${status}); failed: ${jobs.filter(j => j.status === 'failed').map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
-    dumpFailedTraces(jobs, rootHeaders)
+    dumpFailedTraces(global.journeyProjectName, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
     throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
   }
   // Twin: the WHOLE generated pipeline ran — all 17 jobs, every one green.
@@ -1246,12 +1039,12 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
   }
   // Show the finality, not a spinner: wait for main's own post-merge pipeline
   // to go green before the shot, so the project page's commit reads success.
-  const { pid, status } = await waitMainPipeline(rootHeaders)
+  const { pid, status } = await waitRefPipeline(I, global.journeyProjectName, 'main', rootHeaders)
   if (status !== 'success') {
     const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
     jobs.sort((a, b) => a.id - b.id)
     console.log(`main pipeline not green (status=${status}, pipeline ${pid})`)
-    dumpFailedTraces(jobs, rootHeaders)
+    dumpFailedTraces(global.journeyProjectName, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
     throw new Error(`Expected main's post-merge pipeline to pass, got status=${status}`)
   }
   // The proof is GitLab's own file tree for main, now carrying the whole
@@ -1498,83 +1291,4 @@ storyboardStep(Then, 'the piped install finishes and opens the framework merge r
   assertInstallLog('Installation complete!')
   await assertBranchExists('init-framework-devsecops')
   await findOpenMr('init-framework-devsecops', 'main')
-})
-
-// --- Chapter 5: the project lives on ----------------------------------------
-// The developer's follow-up work happens in a fresh clone of the merged
-// project (the same repository GitLab serves), driven with the shared
-// workspace-repo helpers the release-window story already trusts.
-const { execSync: execSyncRelease } = require('child_process')
-const { runTaskInRepo: releaseTaskInRepo, runTaskInRepoCaptured: releaseTaskCaptured } = require('../helpers/workspaceRepo')
-const { readProjectVariable: readReleaseVariable } = require('../helpers/gitlabApi')
-const { renderPreFrame } = require('../helpers/capturedOutput')
-
-storyboardStep(When, 'the developer records a first improvement on the fresh project', async () => {
-  const user = process.env.TASK_GITLAB_LAMBDA_USER
-  const dir = fs.mkdtempSync('/tmp/journey-release-')
-  global.journeyReleaseRepoDir = dir
-  const remote = `http://${user}:${encodeURIComponent(global.journeyLambdaToken)}@gitlab/${user}/${global.journeyProjectName}.git`
-  execSyncRelease(`git clone --quiet ${remote} ${dir}`, { stdio: ['ignore', 'pipe', 'pipe'] })
-  releaseTaskInRepo('git config --local user.name "lambda"', dir, global.journeyLambdaToken)
-  releaseTaskInRepo('git config --local user.email "lambda@test.local"', dir, global.journeyLambdaToken)
-  releaseTaskInRepo('git config --local url."http://".insteadOf "https://"', dir, global.journeyLambdaToken)
-  releaseTaskInRepo('git commit --allow-empty -m "feat: record the first improvement"', dir, global.journeyLambdaToken)
-  const subjects = releaseTaskCaptured("git log --format='%s' -2", dir, global.journeyLambdaToken)
-  const shown = (subjects.stdout || subjects.output || '').trim()
-  await renderPreFrame(I, 'first-improvement', `$ git log --format='%s' -2\n${shown}`)
-  // Twin: the clone really carries the developer's feat on top of the merge.
-  if (!shown.includes('feat: record the first improvement')) {
-    throw new Error(`Expected the feat commit on top of the clone, got:\n${shown}`)
-  }
-})
-
-storyboardStep(Then, "task release stamps version 0.2.0 on GitLab's tags page", async () => {
-  const user = process.env.TASK_GITLAB_LAMBDA_USER
-  const dir = global.journeyReleaseRepoDir
-  const rootHeaders = await getRootHeaders()
-  const variable = await readReleaseVariable(global.journeyProjectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
-  releaseTaskInRepo('task release', dir, global.journeyLambdaToken, {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 240000,
-    extraEnv: {
-      TASK_DOCKER_CE_ENABLED: 'false',
-      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: variable.data.value,
-      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
-      TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: 'gitlab',
-      TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${user}/${global.journeyProjectName}`,
-      TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
-      TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
-      TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
-    }
-  })
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  let tags = []
-  for (let i = 0; i < 15; i++) {
-    const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/repository/tags`, rootHeaders)
-    tags = (res.data || []).map(t => t.name)
-    if (tags.includes('0.2.0')) break
-    await I.wait(2)
-  }
-  // Twin FIRST: the stamped tag is plain semver, with no v prefix anywhere.
-  if (!tags.includes('0.2.0')) throw new Error(`Expected tag 0.2.0, got: ${tags.join(', ') || 'none'}`)
-  if (tags.some(t => /^v\d/.test(t))) throw new Error(`Unexpected v-prefixed tag: ${tags.join(', ')}`)
-  I.resizeWindow(1024, 640)
-  await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/tags`)
-  await I.waitForText('0.2.0', 30)
-  await maskPipelinePage(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'release-tags-page'))
-  I.resizeWindow(1024, 768)
-})
-
-storyboardStep(Then, 'the inherited Renovate config passes the real validator, ready to keep the project fresh', async () => {
-  const dir = global.journeyReleaseRepoDir
-  const out = releaseTaskCaptured('task renovate:validate', dir, global.journeyLambdaToken, { timeout: 300000 })
-  const raw = `${out.stdout || out.output || ''}${out.stderr || ''}`
-  // Twin FIRST: the real validator accepted the inherited config.
-  if (out.exitCode !== 0 && !/no errors|Config validated/i.test(raw)) {
-    throw new Error(`Expected renovate:validate to pass, exit=${out.exitCode}\n${raw.slice(-800)}`)
-  }
-  const tail = raw.split('\n').filter(l => l.trim() !== '').slice(-4).join('\n')
-    .replace(/renovate[/@ ]\d+\.\d+\.\d+/gi, 'renovate <version>')
-  await renderPreFrame(I, 'renovate-validator-verdict', `$ task renovate:validate\n${tail}`)
 })

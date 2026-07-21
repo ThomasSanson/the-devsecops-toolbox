@@ -77,13 +77,3 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — and the commit's own pipeline runs green, so main built clean after the merge. The first install is proven end to end.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     And main now carries the whole framework, merged through review
-    # Chapter: The project lives on
-    # Note: The developer clones the merged project and records a first improvement — a small feat commit, the kind the release tooling turns into a new version.
-    # Copy: git commit --allow-empty -m "feat: record the first improvement"
-    When the developer records a first improvement on the fresh project
-    # Note: task release opens the push window, reads the feat commit and stamps the next version. GitLab's tags page now shows 0.2.0 — plain, with no v in front.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/tags
-    Then task release stamps version 0.2.0 on GitLab's tags page
-    # Note: The same inherited config keeps the project fresh over time: the real Renovate validator accepts it as it ships, ready to open update merge requests.
-    # Copy: task renovate:validate
-    And the inherited Renovate config passes the real validator, ready to keep the project fresh
