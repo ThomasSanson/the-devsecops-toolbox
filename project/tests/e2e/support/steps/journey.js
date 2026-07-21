@@ -1187,15 +1187,14 @@ storyboardStep(Then, "the project's main holds only the starter README", async (
 // (a capture is DOM-only and never blurs the xterm textarea), so pressKey alone
 // drives the questionnaire — the same key-only pattern answerAndCompleteInstaller
 // and the agent-mode gum menus use after a frame.
-async function captureCopierQuestion (advanceKey, prompt, frameName, beforeRows = 3) {
+async function captureCopierQuestion (advanceKey, prompt, frameName) {
   I.pressKey(advanceKey)
   await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  // 3 rows of context above the question: the scripted answer to the previous
-  // one — deterministic, and it keeps the card from being a bare 2-line crop.
-  // The FIRST question passes 0: above it sits Copier's own startup chatter,
-  // whose surviving row count varies run to run.
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt, beforeRows }))
+  // No context rows above the anchor: the scrollback there (previous answer,
+  // Copier chatter) wraps into a DIFFERENT row count per environment — one
+  // extra line in CI broke tolerance:0 — so the card starts at the question.
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt }))
 }
 
 storyboardStep(Given, 'a brand-new empty project waits on GitLab', async () => {
@@ -1228,7 +1227,7 @@ storyboardStep(When, 'the developer starts the toolbox installer', async () => {
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
 })
 
-storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible', 0))
+storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible'))
 
 storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
 
