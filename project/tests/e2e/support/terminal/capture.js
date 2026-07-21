@@ -232,12 +232,13 @@ async function waitForTerminalText (I, expectedText, timeoutMs = COMMAND_TIMEOUT
   )
 }
 
-async function buildCompactTerminalCapture (I, captureId, patternSources, fromMarker = null, maxRows = 0) {
+async function buildCompactTerminalCapture (I, captureId, patternSources, fromMarker = null, maxRows = 0, beforeRows = 0) {
   return I.executeScript(function (args) {
     const id = args.id
     const sources = args.sources
     const fromMarker = args.fromMarker
     const maxRows = args.maxRows
+    const beforeRows = args.beforeRows || 0
     const patterns = sources.map(function (src) { return new RegExp(src) })
     const screen = document.querySelector('.xterm-screen')
     if (!screen) return { kept: 0, error: 'no-xterm-screen' }
@@ -292,7 +293,9 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
 
     // Anchor the capture on a marker (e.g. an interactive prompt line) so the
     // non-deterministic install scrollback above it is excluded. Keep every
-    // row from the FIRST row containing the marker onward.
+    // row from the FIRST row containing the marker onward — minus `beforeRows`
+    // rows of context above it, when the lines right before the anchor are
+    // deterministic too (a scripted answer to the previous question).
     if (fromMarker) {
       let startIndex = -1
       for (let i = 0; i < sortedRows.length; i++) {
@@ -302,7 +305,7 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
         }
       }
       if (startIndex > 0) {
-        sortedRows = sortedRows.slice(startIndex)
+        sortedRows = sortedRows.slice(Math.max(0, startIndex - beforeRows))
       }
     }
 
@@ -432,7 +435,7 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     host.style.setProperty('width', finalWidth + 'px', 'important')
 
     return { kept, width: finalWidth, rowHeight, maxChars }
-  }, { id: captureId, sources: patternSources, fromMarker, maxRows })
+  }, { id: captureId, sources: patternSources, fromMarker, maxRows, beforeRows })
 }
 
 async function removeCompactTerminalCapture (I, captureId) {
@@ -506,7 +509,8 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
     COMPACT_CAPTURE_ID,
     TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source }),
     opts.fromMarker || null,
-    opts.maxRows || 0
+    opts.maxRows || 0,
+    opts.beforeRows || 0
   )
   if (!info || !info.kept) {
     throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)

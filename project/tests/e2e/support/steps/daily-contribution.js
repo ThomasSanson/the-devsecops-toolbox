@@ -2,26 +2,32 @@
 /**
  * Daily-contribution storyboard — @daily-contribution, on its own shard.
  *
- * A project the installer already set up gets one everyday change and carries it
- * the real GitLab way: an issue, a branch + merge request created from it, a
- * conventional `feat:` commit pushed on the branch, the merge request's pipeline
- * going green, the merge into main, and main's OWN pipeline stamping the next
- * version — no manual release. ONE Gherkin sentence = ONE card = ONE pixel
- * baseline, asserted inside the step (tolerance: 0); each GitLab page is masked
- * for its volatile chrome and each terminal card is a real <pre> of the git
- * output, both twinned with a REST/git check of the same fact.
+ * A project the installer already set up gets one everyday change and carries
+ * it the way a human developer does: the issue first, the merge request
+ * created from it and self-assigned, a fresh clone in a workspace folder named
+ * after the project's address, one README line, a conventional `feat:` commit
+ * pushed on the issue's branch, the merge request's pipeline going green, the
+ * merge into main, main's OWN pipeline running the release stage, the proof in
+ * the job log / the tags page / the files — and finally the local clone
+ * deleted, because GitLab holds everything. The developer stays signed in on
+ * every GitLab page. ONE Gherkin sentence = ONE card = ONE pixel baseline,
+ * asserted inside the step (tolerance: 0); each GitLab page is masked for its
+ * volatile chrome and each terminal card is a real <pre> of the git output,
+ * both twinned with a REST/git check of the same fact.
  *
- * The real MR and main pipelines run on a project-scoped runner registered inside
- * the shared gitlab-runner compose service; concurrent=1 serialises this story's
- * jobs with @install-complete's when the full suite runs locally, and the runner
- * is torn down surgically (its own token only) so neither scenario disturbs the
- * other. See support/helpers/pipelineRunner.js.
+ * The real MR and main pipelines run on a project-scoped runner registered
+ * inside the shared gitlab-runner compose service; concurrent=1 serialises
+ * this story's jobs with @install-complete's when the full suite runs locally,
+ * and the runner is torn down surgically (its own token only) so neither
+ * scenario disturbs the other. See support/helpers/pipelineRunner.js.
  */
 const fs = require('fs')
-const { I, GitLabProjectPage, GitLabRepositoryPage, GitLabMergeRequestPage } = inject()
+const { execSync } = require('child_process')
+const { I, GitLabProjectPage, GitLabRepositoryPage, GitLabMergeRequestPage, GitLabUserPage } = inject()
 const {
   BASE_URL,
   projectPath,
+  encodedProjectPath,
   getRootHeaders,
   createProject,
   deleteProject,
@@ -31,7 +37,11 @@ const {
   createProjectVariable,
   updateProjectSettings,
   listRepositoryTree,
+  listProjectPipelines,
   listPipelineJobs,
+  cancelPipeline,
+  deletePipeline,
+  getLambdaUserId,
   createProjectIssue,
   createRepositoryBranch,
   createMergeRequest,
@@ -47,10 +57,11 @@ const {
   dumpFailedTraces,
   maskPipelinePage
 } = require('../helpers/pipelineRunner')
-const { runTaskInRepo, runTaskInRepoCaptured } = require('../helpers/workspaceRepo')
+const { runTaskInRepo } = require('../helpers/workspaceRepo')
+const { runCommandWithResult } = require('../helpers/docker')
 const { renderProject } = require('../helpers/copierRender')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { renderPreFrame, stripAnsi } = require('../helpers/capturedOutput')
 
 const PROJECT_NAME = 'e2e-daily-contribution'
 const ISSUE_TITLE = 'Mention the toolbox in the README'
@@ -59,19 +70,73 @@ const BRANCH = '1-mention-the-toolbox-in-the-readme'
 const README_LINE = 'This project was scaffolded with The DevSecOps Toolbox.'
 const COMMIT_SUBJECT = 'feat: mention the toolbox in the readme'
 
-Before(() => {
+// Every command of the developer's session runs where the card says it runs: a
+// workspace folder named after the project's address, exactly the layout a
+// real developer keeps (~/workspace/gitlab/<user>/<project>). The session gets
+// its OWN $HOME: the shared /root home is a thoroughfare for the other
+// parallel scenarios (something there deleted this clone mid-run, full-suite
+// only), and `~` on the cards resolves against the developer's home wherever
+// they are — an isolated one included.
+const DAILY_HOME = '/tmp/e2e-daily-home'
+function workspaceHome () {
+  return `${DAILY_HOME}/workspace`
+}
+function lambdaUser () {
+  return process.env.TASK_GITLAB_LAMBDA_USER
+}
+function cloneDir () {
+  return `${workspaceHome()}/gitlab/${lambdaUser()}/${PROJECT_NAME}`
+}
+
+function sh (cmd, cwd) {
+  // A vanished cwd makes execSync die with the opaque "spawnSync /bin/sh
+  // ENOENT" — name the real culprit instead.
+  if (cwd && !fs.existsSync(cwd)) {
+    throw new Error(`sh(): working directory is gone: ${cwd} (command: ${cmd})`)
+  }
+  try {
+    return stripAnsi(execSync(`${cmd} 2>&1`, {
+      cwd,
+      env: { ...process.env, HOME: DAILY_HOME },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120000,
+      encoding: 'utf8'
+    })).trimEnd()
+  } catch (error) {
+    const out = stripAnsi(`${error.stdout || ''}${error.stderr || ''}`).trim()
+    throw new Error(`sh() failed in ${cwd || '(inherited cwd)'}: ${cmd}\n${out || error.message}`)
+  }
+}
+
+// git prints the commit as "[<branch> <short sha>] subject" — keep the branch
+// (it tells the story), mask the sha.
+function maskSha (out) {
+  return out.replace(/\[([^\]]+) [0-9a-f]{7,}\]/g, '[$1 <sha>]')
+}
+
+// CodeceptJS Before/After hooks are GLOBAL: they fire for EVERY scenario the
+// worker runs, not just this file's. Unguarded, this After's clone cleanup
+// (a FIXED path) executed whenever ANOTHER story finished on a parallel
+// worker — deleting the daily clone mid-scenario. Guard both hooks by tag.
+const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@daily-contribution'))
+
+Before((test) => {
+  if (!ownsScenario(test)) return
   global.dailyProject = null
-  global.dailyRepoDir = null
+  global.dailyRenderDir = null
   global.dailyGlabToken = null
   global.dailyTokenId = null
   global.dailyIssueIid = null
   global.dailyMrIid = null
   global.dailyRunner = null
+  global.dailyMainPid = null
 })
 
-After(async () => {
-  // Surgical: unregister ONLY this story's runner token (never --all-runners) so
-  // @install-complete, which shares the compose service locally, is untouched.
+After(async (test) => {
+  if (!ownsScenario(test)) return
+  // Surgical: unregister ONLY this story's runner token (never --all-runners)
+  // so @install-complete, which shares the compose service locally, is
+  // untouched.
   if (global.dailyRunner) {
     try {
       const rootHeaders = await getRootHeaders()
@@ -93,10 +158,11 @@ After(async () => {
     } catch (_) {}
     global.dailyTokenId = null
   }
-  if (global.dailyRepoDir) {
-    try { fs.rmSync(global.dailyRepoDir, { recursive: true, force: true }) } catch (_) {}
-    global.dailyRepoDir = null
+  if (global.dailyRenderDir) {
+    try { fs.rmSync(global.dailyRenderDir, { recursive: true, force: true }) } catch (_) {}
+    global.dailyRenderDir = null
   }
+  try { fs.rmSync(cloneDir(), { recursive: true, force: true }) } catch (_) {}
 })
 
 // ============================================
@@ -120,10 +186,10 @@ async function wireAutomationVariable (projectName, name, rootHeaders) {
 
 // Push the freshly rendered framework straight to main over a token remote. The
 // git output (which echoes the token in the remote URL) is swallowed; the twin
-// on the Given proves the push landed. hooksPath is voided so the story's later
+// on the Given proves the push landed. hooksPath is voided so the fixture
 // commit is fast and deterministic (protected-commits covers hook enforcement).
 function pushFrameworkToMain (repoDir, token) {
-  const user = process.env.TASK_GITLAB_LAMBDA_USER
+  const user = lambdaUser()
   const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
   try {
     runTaskInRepo([
@@ -145,8 +211,9 @@ function pushFrameworkToMain (repoDir, token) {
 // The whole off-camera stage in one sentence, closed by its visual proof: a
 // vanilla GENERATED project (copier render at VERSION 0.1.0 — its pipeline is the
 // generated ~17-job one, and the release stamps a deterministic 0.2.0, never the
-// toolbox's own moving version) pushed to main with its automation tokens wired,
-// and that same render is the developer's working repo for the git steps.
+// toolbox's own moving version) pushed to main with its automation tokens wired.
+// The fixture push's bootstrap pipeline is deleted right away so the ?ref=main
+// pipeline card later shows exactly one pipeline: the release run.
 storyboardStep(Given, 'an installed project with the framework already on its main branch', async () => {
   const rootHeaders = await getRootHeaders()
   global.dailyProject = PROJECT_NAME
@@ -169,13 +236,26 @@ storyboardStep(Given, 'an installed project with the framework already on its ma
     throw new Error(`Failed to create project "${PROJECT_NAME}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
   const repoDir = renderProject()
-  global.dailyRepoDir = repoDir
+  global.dailyRenderDir = repoDir
   pushFrameworkToMain(repoDir, token)
   await wireAutomationVariable(PROJECT_NAME, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
   await wireAutomationVariable(PROJECT_NAME, 'TASK_RENOVATE_TOKEN', rootHeaders)
   // Fast-forward merges so the change joins main as a straight line, the way the
   // toolbox configures a real project.
   await updateProjectSettings(PROJECT_NAME, { merge_method: 'ff', remove_source_branch_after_merge: true }, rootHeaders)
+  // Cancel AND delete the fixture push's pipeline: without a runner it would
+  // sit pending forever, and its row would pollute the release-pipeline card.
+  try {
+    const pipes = await listProjectPipelines(PROJECT_NAME, rootHeaders)
+    for (const p of (pipes.data || [])) {
+      await cancelPipeline(PROJECT_NAME, p.id, rootHeaders)
+      await deletePipeline(PROJECT_NAME, p.id, rootHeaders)
+    }
+  } catch (_) {}
+
+  // The developer works signed in — every GitLab card of this story shows the
+  // project as its author sees it.
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
 
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(PROJECT_NAME)}`)
@@ -210,12 +290,15 @@ storyboardStep(When, 'the developer opens an issue for a small change', async ()
   if (issue.data.state !== 'opened') throw new Error(`Expected the issue open, got state=${issue.data.state}`)
 })
 
-storyboardStep(Then, 'a merge request opens from the issue, with its own branch', async () => {
+storyboardStep(When, 'the developer creates the merge request from the issue and takes it', async () => {
+  const rootHeaders = await getRootHeaders()
   const lambdaHeaders = { 'PRIVATE-TOKEN': global.dailyGlabToken }
-  // Mirror the "Create merge request" button, as the developer: a branch off
-  // main and an MR that closes the issue.
+  // Mirror the issue page's "Create merge request" button, as the developer: a
+  // branch named after the ticket, an MR that closes it, assigned to its
+  // author.
   const branch = await createRepositoryBranch(PROJECT_NAME, BRANCH, 'main', lambdaHeaders)
   if (branch.status >= 400) throw new Error(`Failed to create branch "${BRANCH}" (status ${branch.status}): ${JSON.stringify(branch.data)}`)
+  const assigneeId = await getLambdaUserId(rootHeaders)
   const mr = await createMergeRequest(
     PROJECT_NAME,
     {
@@ -223,66 +306,103 @@ storyboardStep(Then, 'a merge request opens from the issue, with its own branch'
       target_branch: 'main',
       title: `Resolve "${ISSUE_TITLE}"`,
       description: `Closes #${global.dailyIssueIid}`,
+      assignee_id: assigneeId,
       remove_source_branch: true
     },
     lambdaHeaders
   )
   if (mr.status >= 400) throw new Error(`Failed to open the merge request (status ${mr.status}): ${JSON.stringify(mr.data)}`)
   global.dailyMrIid = mr.data.iid
-  I.resizeWindow(1024, 640)
+  // Wide enough for GitLab to unfold the right sidebar — the card must show
+  // the Assignee the developer just took.
+  I.resizeWindow(1280, 700)
   await GitLabMergeRequestPage.gotoAndMask(projectPath(PROJECT_NAME), global.dailyMrIid, PROJECT_NAME)
   await addStoryboardFrame(I, await capturePageFrame(I, 'mr-from-issue'))
   I.resizeWindow(1024, 768)
-  // Twin: the MR is open, on its own branch, targeting main.
+  // Twin: the MR is open, on its own branch, targeting main, taken by its author.
   if (mr.data.state !== 'opened') throw new Error(`Expected the MR open, got state=${mr.data.state}`)
   if (mr.data.source_branch !== BRANCH || mr.data.target_branch !== 'main') {
     throw new Error(`Expected MR ${BRANCH} -> main, got ${mr.data.source_branch} -> ${mr.data.target_branch}`)
   }
+  const assignee = mr.data.assignee && mr.data.assignee.username
+  if (assignee !== lambdaUser()) throw new Error(`Expected the MR assigned to ${lambdaUser()}, got ${assignee}`)
 })
 
 // ============================================
 // Chapter 2 — the change rides a merge request
 // ============================================
 
-storyboardStep(When, 'the developer checks out the branch and edits the README', async () => {
-  const repoDir = global.dailyRepoDir
-  const token = global.dailyGlabToken
-  runTaskInRepo('git fetch origin', repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
-  runTaskInRepo(`git checkout ${BRANCH}`, repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
-  // Add the line to the README (create it if the generated project ships none).
-  fs.appendFileSync(`${repoDir}/README.md`, `\n${README_LINE}\n`)
-  const branchOut = runTaskInRepoCaptured('git branch --show-current', repoDir, token)
-  const tailOut = runTaskInRepoCaptured('tail -1 README.md', repoDir, token)
-  const branch = (branchOut.output || '').trim()
-  const lastLine = (tailOut.output || '').trim()
-  await renderPreFrame(I, 'branch-and-edit', `$ git branch --show-current\n${branch}\n\n$ tail -1 README.md\n${lastLine}`)
-  // Twin: on the issue's branch, and the README now carries the developer's line.
-  if (branch !== BRANCH) throw new Error(`Expected to be on ${BRANCH}, got "${branch}"`)
-  if (lastLine !== README_LINE) throw new Error(`Expected the README to end with the added line, got "${lastLine}"`)
+storyboardStep(When, 'the developer clones the project into a fresh workspace folder', async () => {
+  const user = lambdaUser()
+  const dir = cloneDir()
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(workspaceHome(), { recursive: true })
+  sh(`mkdir -p gitlab/${user}/${PROJECT_NAME}`, workspaceHome())
+  // Keep only the deterministic first clone line; the remote-counting lines
+  // that follow carry object counts and speeds.
+  const cloneOut = sh(`git clone http://gitlab/${user}/${PROJECT_NAME}.git .`, dir)
+    .split('\n').filter(l => l.startsWith('Cloning into'))[0] || ''
+  const checkoutOut = sh(`git checkout ${BRANCH}`, dir)
+  // Off-camera plumbing a real developer has globally: a git identity, and
+  // credentials for pushing (the push URL carries the token; it is never
+  // printed on a card).
+  sh('git config user.email "lambda@test.local" && git config user.name "Lambda"', dir)
+  sh(`git remote set-url --push origin http://${user}:${encodeURIComponent(global.dailyGlabToken)}@gitlab/${user}/${PROJECT_NAME}.git`, dir)
+  await renderPreFrame(I, 'workspace-clone', [
+    '$ cd ~/workspace',
+    `$ mkdir -p gitlab/${user}/${PROJECT_NAME}`,
+    `$ cd gitlab/${user}/${PROJECT_NAME}`,
+    `$ git clone http://gitlab/${user}/${PROJECT_NAME}.git .`,
+    cloneOut,
+    `$ git checkout ${BRANCH}`,
+    checkoutOut
+  ].join('\n'))
+  // Twin: the clone holds the framework and sits on the issue's branch.
+  if (!fs.existsSync(`${dir}/Taskfile.yml`)) throw new Error('Expected the clone to carry the framework (no Taskfile.yml)')
+  const onBranch = sh('git branch --show-current', dir)
+  if (onBranch !== BRANCH) throw new Error(`Expected the clone on ${BRANCH}, got "${onBranch}"`)
+})
+
+storyboardStep(When, 'the developer adds the line to the README', async () => {
+  const dir = cloneDir()
+  sh(`echo "${README_LINE}" >> README.md`, dir)
+  const tailOut = sh('tail -1 README.md', dir)
+  await renderPreFrame(I, 'readme-edit', [
+    `$ echo "${README_LINE}" >> README.md`,
+    '$ tail -1 README.md',
+    tailOut
+  ].join('\n'))
+  // Twin: the README now ends with the developer's line.
+  if (tailOut !== README_LINE) throw new Error(`Expected the README to end with the added line, got "${tailOut}"`)
 })
 
 storyboardStep(When, 'the developer commits the change as a conventional feat', async () => {
-  const repoDir = global.dailyRepoDir
-  const token = global.dailyGlabToken
-  runTaskInRepo(`git add README.md && git commit -m "${COMMIT_SUBJECT}"`, repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
-  const logOut = runTaskInRepoCaptured("git log --format='%s' -1", repoDir, token)
-  const subject = (logOut.output || '').trim()
-  await renderPreFrame(I, 'conventional-commit', `$ git log --format='%s' -1\n${subject}`)
+  const dir = cloneDir()
+  sh('git add README.md', dir)
+  const commitOut = maskSha(sh(`git commit -m "${COMMIT_SUBJECT}"`, dir))
+  await renderPreFrame(I, 'conventional-commit', [
+    '$ git add README.md',
+    `$ git commit -m "${COMMIT_SUBJECT}"`,
+    commitOut
+  ].join('\n'))
   // Twin: the top commit is the conventional feat the release will version.
+  const subject = sh("git log --format='%s' -1", dir)
   if (subject !== COMMIT_SUBJECT) throw new Error(`Expected the feat commit on top, got "${subject}"`)
 })
 
 storyboardStep(When, 'the developer pushes the branch to GitLab', async () => {
-  const repoDir = global.dailyRepoDir
-  const token = global.dailyGlabToken
+  const dir = cloneDir()
   try {
-    // Swallow push output: git echoes the token-embedded remote URL on stderr.
+    // Swallow push output: git echoes the token-embedded push URL on stderr.
     // The twin below fails loud if the branch did not reach GitLab.
-    runTaskInRepo(`git push origin ${BRANCH}`, repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
+    execSync('git push 2>/dev/null', { cwd: dir, stdio: ['ignore', 'ignore', 'ignore'], timeout: 120000 })
   } catch (_) {}
-  const remoteLog = runTaskInRepoCaptured(`git log origin/${BRANCH} --format='%s' -1`, repoDir, token)
-  const remoteSubject = (remoteLog.output || '').trim()
-  await renderPreFrame(I, 'push-to-gitlab', `$ git push origin ${BRANCH}\n$ git log origin/${BRANCH} --format='%s' -1\n${remoteSubject}`)
+  const remoteSubject = sh(`git log origin/${BRANCH} --format='%s' -1`, dir)
+  await renderPreFrame(I, 'push-to-gitlab', [
+    '$ git push',
+    `$ git log origin/${BRANCH} --format='%s' -1`,
+    remoteSubject
+  ].join('\n'))
   // Twin: the commit is on the REMOTE branch — the push really landed.
   if (remoteSubject !== COMMIT_SUBJECT) throw new Error(`Expected the feat on origin/${BRANCH}, got "${remoteSubject}"`)
 })
@@ -305,8 +425,7 @@ storyboardStep(Then, "the merge request's pipeline turns green", async () => {
     throw new Error(`Expected every job green (${jobs.length} jobs), not: ${notGreen.map(j => `${j.name}=${j.status}`).join(', ') || 'none'}`)
   }
   // The merge request itself with its widget on "passed" — the page a developer
-  // actually watches (the stage-graph pipeline page cuts off at this width);
-  // the REST twin above already read every job's real state.
+  // actually watches; the REST twin above already read every job's real state.
   I.resizeWindow(1024, 900)
   await GitLabMergeRequestPage.gotoAndMask(
     projectPath(PROJECT_NAME), global.dailyMrIid, PROJECT_NAME,
@@ -338,18 +457,83 @@ storyboardStep(When, 'the reviewed change merges into main', async () => {
   I.resizeWindow(1024, 768)
 })
 
-storyboardStep(Then, "main's pipeline stamps the next version tag", async () => {
+storyboardStep(Then, 'the project home now shows the change on main', async () => {
+  const dir = cloneDir()
+  // Twin FIRST: main's README really ends with the developer's line.
+  sh('git fetch origin main', dir)
+  const mainReadme = sh('git show origin/main:README.md', dir)
+  if (!mainReadme.includes(README_LINE)) throw new Error('Expected README on main to carry the developer line')
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(`/${projectPath(PROJECT_NAME)}`)
+  await I.waitForText(COMMIT_SUBJECT, 30)
+  await GitLabRepositoryPage.maskVolatile(PROJECT_NAME)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'home-after-merge'))
+  I.resizeWindow(1024, 768)
+})
+
+storyboardStep(Then, "main's own pipeline runs the release", async () => {
   const rootHeaders = await getRootHeaders()
-  // The merge fired main's own pipeline; its release job reads the feat and
-  // pushes the new tag + bumped VERSION. Wait it green before reading the tag.
+  // The merge fired main's own pipeline; wait it green, then prove the release
+  // job is part of what ran.
   const { pid, status } = await waitRefPipeline(I, PROJECT_NAME, 'main', rootHeaders)
+  global.dailyMainPid = pid
+  const jobs = pid ? ((await listPipelineJobs(PROJECT_NAME, pid, rootHeaders)).data || []) : []
+  jobs.sort((a, b) => a.id - b.id)
   if (status !== 'success') {
-    const jobs = pid ? ((await listPipelineJobs(PROJECT_NAME, pid, rootHeaders)).data || []) : []
-    jobs.sort((a, b) => a.id - b.id)
     console.log(`main pipeline not green (status=${status}, pipeline ${pid})`)
     dumpFailedTraces(PROJECT_NAME, jobs, rootHeaders, global.dailyRunner && global.dailyRunner.svc)
     throw new Error(`Expected main's pipeline to pass, got status=${status}`)
   }
+  // Twin: the release job really ran, and green.
+  const release = jobs.find(j => j.name === 'release' || j.stage === 'release')
+  if (!release) throw new Error(`Expected a release job in main's pipeline, got: ${jobs.map(j => `${j.stage}/${j.name}`).join(', ')}`)
+  if (release.status !== 'success') throw new Error(`Expected the release job green, got ${release.status}`)
+  // The bump commit the release just pushed starts its OWN pipeline on main
+  // (it merely re-validates the code the merge pipeline already proved, and
+  // its bump commit is not a feat, so it never releases again). Mid-run it
+  // would put a transient row on the card — cancel and delete it so the list
+  // shows the one pipeline this sentence is about.
+  try {
+    const pipes = await listProjectPipelines(PROJECT_NAME, rootHeaders)
+    for (const p of (pipes.data || [])) {
+      if (p.id !== pid) {
+        await cancelPipeline(PROJECT_NAME, p.id, rootHeaders)
+        await deletePipeline(PROJECT_NAME, p.id, rootHeaders)
+      }
+    }
+  } catch (_) {}
+  I.resizeWindow(1024, 640)
+  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/pipelines?ref=main`)
+  await I.waitForText('Passed', 30)
+  await maskPipelinePage(I, PROJECT_NAME)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'main-pipeline-release'))
+  I.resizeWindow(1024, 768)
+})
+
+storyboardStep(Then, "the release job's own log confirms the version move", async () => {
+  const rootHeaders = await getRootHeaders()
+  const jobs = ((await listPipelineJobs(PROJECT_NAME, global.dailyMainPid, rootHeaders)).data || [])
+  const release = jobs.find(j => j.name === 'release' || j.stage === 'release')
+  if (!release) throw new Error('Release job disappeared between steps')
+  const encoded = encodedProjectPath(PROJECT_NAME)
+  const trace = runCommandWithResult(
+    `curl -s -H 'Authorization: ${rootHeaders.Authorization}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${release.id}/trace'`
+  )
+  const lines = stripAnsi(trace.stdout || trace.output || '')
+    .split('\n')
+    // Each CI trace line opens with "<iso-timestamp>Z 01O " — volatile, strip it.
+    .map(l => l.replace(/^\S+Z \d+[OE]\+? ?/, '').trim())
+    .filter(l => /increment detected|bump: version|tag to create/.test(l))
+  // Twin FIRST: the job's own log decided the 0.2.0 release from the feat.
+  const joined = lines.join('\n')
+  if (!/tag to create: 0\.2\.0/.test(joined) || !/increment detected: MINOR/.test(joined)) {
+    throw new Error(`Expected the release log to decide tag 0.2.0 from a MINOR increment, got:\n${joined || '(no matching lines)'}`)
+  }
+  await renderPreFrame(I, 'release-log', lines.join('\n'))
+})
+
+storyboardStep(Then, "GitLab's tags page now shows 0.2.0", async () => {
+  const rootHeaders = await getRootHeaders()
   let tags = []
   for (let i = 0; i < 20; i++) {
     const res = await listProjectTags(PROJECT_NAME, rootHeaders)
@@ -368,22 +552,49 @@ storyboardStep(Then, "main's pipeline stamps the next version tag", async () => 
   I.resizeWindow(1024, 768)
 })
 
-storyboardStep(Then, 'the new version now lives in the files on main', async () => {
-  const repoDir = global.dailyRepoDir
-  const token = global.dailyGlabToken
-  runTaskInRepo('git fetch origin', repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
-  const versionOut = runTaskInRepoCaptured('git show origin/main:VERSION', repoDir, token)
-  const version = (versionOut.output || '').trim()
-  const readmeOut = runTaskInRepoCaptured('git show origin/main:README.md', repoDir, token)
-  const readme = readmeOut.output || ''
-  // Twin FIRST: the release wrote 0.2.0 into VERSION and the README carries the line.
-  if (version !== '0.2.0') throw new Error(`Expected VERSION 0.2.0 on main, got "${version}"`)
-  if (!readme.includes(README_LINE)) throw new Error('Expected README on main to carry the developer line')
-  // The project home on main: the file list plus the rendered README, now with
-  // the developer's line — the visual bookend to the "installed project" card.
+storyboardStep(Then, 'the project files on main now carry the release', async () => {
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(PROJECT_NAME)}`)
+  // The bump commit the release pushed now heads main's tree.
+  await I.waitForText('build: bump version', 30)
   await GitLabRepositoryPage.maskVolatile(PROJECT_NAME)
   await addStoryboardFrame(I, await capturePageFrame(I, 'files-on-main'))
   I.resizeWindow(1024, 768)
+})
+
+storyboardStep(Then, 'VERSION and the version config really moved to 0.2.0', async () => {
+  const dir = cloneDir()
+  sh('git fetch origin main', dir)
+  const version = sh('git show origin/main:VERSION', dir)
+  const diffStat = sh('git diff --stat origin/main~1 origin/main', dir)
+  const czVersion = sh("git show origin/main:.config/commitizen/cz.yaml | grep 'version:'", dir)
+  // Twin FIRST: the release wrote 0.2.0 into VERSION, and the bump commit
+  // touched exactly the files that track the version.
+  if (version !== '0.2.0') throw new Error(`Expected VERSION 0.2.0 on main, got "${version}"`)
+  if (!/VERSION/.test(diffStat) || !/cz\.yaml/.test(diffStat)) {
+    throw new Error(`Expected the bump commit to touch VERSION and cz.yaml, got:\n${diffStat}`)
+  }
+  await renderPreFrame(I, 'version-in-files', [
+    '$ git fetch origin main',
+    '$ git show origin/main:VERSION',
+    version,
+    '$ git diff --stat origin/main~1 origin/main',
+    diffStat,
+    "$ git show origin/main:.config/commitizen/cz.yaml | grep 'version:'",
+    czVersion
+  ].join('\n'))
+})
+
+storyboardStep(Then, 'the developer removes the local clone, ready to start clean next time', async () => {
+  const user = lambdaUser()
+  const dir = cloneDir()
+  sh(`rm -rf gitlab/${user}/${PROJECT_NAME}`, workspaceHome())
+  const lsOut = sh(`ls gitlab/${user}`, workspaceHome())
+  // Twin FIRST: the clone is really gone — the next change starts from zero.
+  if (fs.existsSync(dir)) throw new Error('Expected the local clone to be deleted')
+  if (lsOut !== '') throw new Error(`Expected the workspace folder empty, got "${lsOut}"`)
+  await renderPreFrame(I, 'clean-slate', [
+    `$ cd ~/workspace && rm -rf gitlab/${user}/${PROJECT_NAME}`,
+    `$ ls gitlab/${user}`
+  ].join('\n'))
 })

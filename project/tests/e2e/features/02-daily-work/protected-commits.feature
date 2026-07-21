@@ -24,6 +24,12 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Note: A freshly initialized project already has commit checks turned on: init installed a commit-msg hook, a script that runs before every commit message is accepted. The card proves the hook is there, not what it says.
     # Copy: test -f .git/hooks/commit-msg && echo "commit-msg hook installed"
     Given a framework project has the commit hooks installed
+    # Note: A teammate clones the very same project from the folder next door — the framework rides along, Taskfile and all. Yet git NEVER copies hooks on a clone, from any remote or path: .git/hooks holds no commit-msg, so at this instant nothing guards their commits.
+    # Copy: git clone e2e-commit-hooks-repo e2e-commit-hooks-clone
+    When a teammate clones the same project bare, with no commit hooks yet
+    # Note: task dev:setup-environment is the one-time setup every clone runs (the dev container even runs it for you when it builds): it checks the toolchain and finishes by installing the git hooks. From here the teammate's clone is guarded exactly like the original — the next cards commit from THIS clone.
+    # Copy: task dev:setup-environment
+    Then task dev:setup-environment turns the hooks on, exactly as the dev container does on build
     # Note: A conventional commit message follows a fixed pattern: a short type word, a colon, then a plain instruction — like "feat: add login page".
     # Copy: feat: dogfood the commitlint hook
     When a developer writes a conventional commit message

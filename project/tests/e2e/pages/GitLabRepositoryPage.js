@@ -52,6 +52,13 @@ class GitLabRepositoryPage {
         if (node) node.style.display = 'none'
       })
 
+      // Pipeline status icon next to the last commit: right after a merge the
+      // commit's pipeline is still running, so the icon repaints (running →
+      // passed) during the capture window.
+      document.querySelectorAll('[data-testid="ci-icon"], .ci-status-link, [class*="ci-status"]').forEach(el => {
+        el.style.visibility = 'hidden'
+      })
+
       // Repository language bar: segment widths derive from per-language byte
       // counts, so ANY content change shifts a segment boundary by a pixel
       // (caught at tolerance:0 between the local working tree and the CI

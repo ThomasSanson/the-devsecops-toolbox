@@ -17,6 +17,7 @@ const {
   getRootHeaders,
   createLambdaPersonalAccessToken
 } = require('../helpers/gitlabApi')
+const fs = require('fs')
 const {
   bootstrapWorkspaceRepo,
   runTaskInRepoCaptured,
@@ -27,10 +28,16 @@ const { renderPreFrame, stripAnsi } = require('../helpers/capturedOutput')
 
 const PROJECT_NAME = 'e2e-commit-hooks'
 const REPO_DIR = `/tmp/${PROJECT_NAME}-repo`
+const CLONE_DIR = `/tmp/${PROJECT_NAME}-clone`
 
 let glabToken = null
 let lastCommitOutput = ''
 let lastCommitExitCode = null
+// Where the commit cards run. Starts in the init repo (hooks installed by
+// init); the teammate-clone steps move it to the bare clone, so the accept /
+// reject cards prove the hooks of a clone that ran `task dev` — not the
+// original's.
+let hooksRepoDir = REPO_DIR
 
 // Masks the dynamic short SHA so "[main abc1234] message" becomes
 // "[main <sha>] message", and lefthook's own elapsed time so
@@ -43,7 +50,7 @@ let lastCommitExitCode = null
 // cares about.
 function maskCommitOutput (raw) {
   return stripAnsi(raw)
-    .replace(/\[(main|master|HEAD) [0-9a-f]{7,}\]/g, '[$1 <sha>]')
+    .replace(/\[[\w./-]+ [0-9a-f]{7,}\]/g, '[<branch> <sha>]')
     .replace(/\(done in [\d.]+ seconds\)/g, '(done in <n>s)')
     .split('\n')
     .filter(line => {
@@ -64,7 +71,7 @@ function commit (message) {
   try {
     const output = execSync(
       `git commit --allow-empty -m ${JSON.stringify(message)} 2>&1`,
-      { cwd: REPO_DIR, env: buildGitLabTaskEnv(glabToken), stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, encoding: 'utf8' }
+      { cwd: hooksRepoDir, env: buildGitLabTaskEnv(glabToken), stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, encoding: 'utf8' }
     )
     lastCommitOutput = output
     lastCommitExitCode = 0
@@ -124,6 +131,79 @@ storyboardStep(Given, 'a framework project has the commit hooks installed', asyn
     throw new Error(`Cache warm-up commit failed unexpectedly (exit ${lastCommitExitCode})\n${lastCommitOutput}`)
   }
   execSync('git reset --soft HEAD~1', { cwd: REPO_DIR, env: buildGitLabTaskEnv(glabToken) })
+})
+
+// ============================================
+// Movement 0b — a bare clone has NO hooks until task dev turns them on
+// ============================================
+
+storyboardStep(When, 'a teammate clones the same project bare, with no commit hooks yet', async () => {
+  hooksRepoDir = REPO_DIR
+  execSync(`rm -rf ${CLONE_DIR}`)
+  // Off-camera: land the framework in the repo's history so the clone carries
+  // it (the bootstrap only COPIES the working tree; nothing was committed).
+  execSync(
+    'git add -A && git commit --no-verify --quiet -m "chore: bring the framework aboard"',
+    { cwd: REPO_DIR, env: buildGitLabTaskEnv(glabToken), stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 }
+  )
+  const repoDirName = REPO_DIR.split('/').pop()
+  const cloneDirName = CLONE_DIR.split('/').pop()
+  // A local clone makes the lesson exact: it is GIT that never copies
+  // .git/hooks on clone — no server involved. Output is fully deterministic
+  // ("Cloning into '…'… done.").
+  const cloneOut = stripAnsi(execSync(
+    `git clone ${repoDirName} ${cloneDirName} 2>&1`,
+    { cwd: '/tmp', env: buildGitLabTaskEnv(glabToken), stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, encoding: 'utf8' }
+  )).trimEnd()
+  // Off-camera: a real developer has a global git identity; the test container
+  // does not, and the accept/reject commits below will run from this clone.
+  execSync('git config user.email "lambda@test.local" && git config user.name "Lambda"', { cwd: CLONE_DIR })
+  // Twins FIRST: main already carries the framework (init pushed it), yet git
+  // must NOT have activated any commit-msg hook on clone.
+  if (!fs.existsSync(`${CLONE_DIR}/Taskfile.yml`)) {
+    throw new Error('Expected the clone to carry the framework on main (no Taskfile.yml)')
+  }
+  const lsOut = execSync('ls Taskfile.yml', { cwd: CLONE_DIR, encoding: 'utf8' }).trimEnd()
+  const proof = execSync(
+    'test -f .git/hooks/commit-msg || echo "no commit-msg hook yet"',
+    { cwd: CLONE_DIR, encoding: 'utf8' }
+  ).trimEnd()
+  if (proof !== 'no commit-msg hook yet') {
+    throw new Error('Expected the bare clone to have NO commit-msg hook, but one is already there')
+  }
+  await renderPreFrame(I, 'clone-no-hooks', [
+    `$ git clone ${repoDirName} ${cloneDirName}`,
+    cloneOut,
+    `$ cd ${cloneDirName} && ls Taskfile.yml`,
+    lsOut,
+    '$ test -f .git/hooks/commit-msg || echo "no commit-msg hook yet"',
+    proof
+  ].join('\n'))
+})
+
+storyboardStep(Then, 'task dev:setup-environment turns the hooks on, exactly as the dev container does on build', async () => {
+  const result = runTaskInRepoCaptured('task dev:setup-environment', CLONE_DIR, glabToken, { timeout: 600000 })
+  if (result.exitCode !== 0) {
+    throw new Error(`task dev:setup-environment failed in the bare clone (exit ${result.exitCode})\n${(result.output || '').slice(-2000)}`)
+  }
+  // The setup prints tool-by-tool detail (versions, "already installed") that
+  // varies per image; the fixed phase-marker lines are the deterministic
+  // skeleton worth showing.
+  const phases = stripAnsi(result.output || '').split('\n').filter(l =>
+    /Starting development environment setup|Lefthook:install phase completed successfully|Development environment setup completed successfully/.test(l)
+  ).map(l => l.trim())
+  const proof = execSync(
+    'test -f .git/hooks/commit-msg && echo "commit-msg hook installed"',
+    { cwd: CLONE_DIR, encoding: 'utf8' }
+  ).trimEnd()
+  await renderPreFrame(I, 'clone-hooks-on', [
+    '$ task dev:setup-environment',
+    ...phases,
+    '$ test -f .git/hooks/commit-msg && echo "commit-msg hook installed"',
+    proof
+  ].join('\n'))
+  // From here every commit card runs in the teammate's clone.
+  hooksRepoDir = CLONE_DIR
 })
 
 // ============================================

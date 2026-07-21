@@ -237,6 +237,16 @@ async function cancelPipeline (projectName, pipelineId, headers) {
   )
 }
 
+// Remove a pipeline entirely (owner/root only). The daily-contribution story
+// deletes the fixture push's bootstrap pipeline so the ?ref=main pipeline list
+// card shows exactly ONE pipeline: the release run the merge started.
+async function deletePipeline (projectName, pipelineId, headers) {
+  return freshDelete(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines/${pipelineId}`,
+    headers
+  )
+}
+
 // The daily-contribution story starts a change the real GitLab way: an issue,
 // then a branch + merge request opened from it. These mirror the "Create merge
 // request" button (a branch named <iid>-<slug> off the default branch and an MR
@@ -303,6 +313,8 @@ module.exports = {
   getPipeline,
   listPipelineJobs,
   cancelPipeline,
+  deletePipeline,
+  getLambdaUserId,
   createProjectIssue,
   createRepositoryBranch,
   createMergeRequest,

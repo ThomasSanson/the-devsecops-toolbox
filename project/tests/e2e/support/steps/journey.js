@@ -935,7 +935,9 @@ storyboardStep(Then, 'GitLab now lets main accept only fast-forward merges', asy
   await pageFrame(
     () => GitLabSettingsPage.gotoMergeSettingsAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
     'gitlab-merge-settings',
-    { height: 1000 }
+    // Tall enough to reach the "Merge checks" section: pipelines must succeed
+    // and all threads resolved are part of what init locks down.
+    { height: 1500 }
   )
   await assertMergeMethodFf()
 })
@@ -943,7 +945,10 @@ storyboardStep(Then, 'GitLab now lets main accept only fast-forward merges', asy
 storyboardStep(Then, 'GitLab now refuses pushes straight to main', async () => {
   await pageFrame(
     () => GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
-    'gitlab-protected-branch'
+    'gitlab-protected-branch',
+    // Tall enough for the whole main row: allowed to merge (Maintainers),
+    // allowed to push (No one) and the force-push toggle.
+    { height: 950 }
   )
   await assertMainProtected('main')
 })
@@ -1182,26 +1187,32 @@ storyboardStep(Then, "the project's main holds only the starter README", async (
 // (a capture is DOM-only and never blurs the xterm textarea), so pressKey alone
 // drives the questionnaire — the same key-only pattern answerAndCompleteInstaller
 // and the agent-mode gum menus use after a frame.
-async function captureCopierQuestion (advanceKey, prompt, frameName) {
+async function captureCopierQuestion (advanceKey, prompt, frameName, beforeRows = 3) {
   I.pressKey(advanceKey)
   await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt }))
+  // 3 rows of context above the question: the scripted answer to the previous
+  // one — deterministic, and it keeps the card from being a bare 2-line crop.
+  // The FIRST question passes 0: above it sits Copier's own startup chatter,
+  // whose surviving row count varies run to run.
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt, beforeRows }))
 }
 
-storyboardStep(Given, 'a developer has just cloned a brand-new empty project into the terminal', async () => {
+storyboardStep(Given, 'a brand-new empty project waits on GitLab', async () => {
   await ensureLambdaUser()
   await openBlankProjectTerminal()
   prepareWorkingBranchInstaller(global.journeyContainer)
   preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  // Open on the empty project as agent-mode does: the GitLab page first (a
-  // brand-new repository with nothing pushed), then the fresh terminal clone.
-  // Two frames on ONE sentence — they share the card number.
+  // Open on the empty project exactly as agent-mode does: the GitLab page of a
+  // brand-new repository with nothing pushed.
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
   }, 'gitlab-empty-project')
+})
+
+storyboardStep(Given, 'the developer has just cloned it into the terminal', async () => {
   // The GitLab navigation left the ttyd page — return to it (the shell session
   // is still alive, xterm reconnects) before driving the terminal.
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
@@ -1217,7 +1228,7 @@ storyboardStep(When, 'the developer starts the toolbox installer', async () => {
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
 })
 
-storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible'))
+storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible', 0))
 
 storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
 

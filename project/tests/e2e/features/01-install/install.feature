@@ -24,9 +24,12 @@ Feature: The whole install, from an empty project to a locked-down GitLab
   @install-complete
   Scenario: One interactive install builds the framework and configures GitLab
     # Chapter: Answer the questions, build the framework
-    # Note: The brand-new empty project on GitLab, then the same project freshly cloned in the terminal where git shows nothing saved yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.
+    # Note: The brand-new project on GitLab: completely empty, nothing pushed yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.
     # Copy: http://gitlab/<lambda-user>/<project>
-    Given a developer has just cloned a brand-new empty project into the terminal
+    Given a brand-new empty project waits on GitLab
+    # Note: The same project freshly cloned in the terminal: git shows nothing saved yet.
+    # Copy: git status
+    And the developer has just cloned it into the terminal
     # Note: The installer opens with its first question — install the complete framework? — with the typed command still visible above it.
     # Copy: bash /tmp/devsecops-install.sh
     When the developer starts the toolbox installer

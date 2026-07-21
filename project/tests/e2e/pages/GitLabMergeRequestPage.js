@@ -119,7 +119,12 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false } = 
     })
 
     document.querySelectorAll('a, span, strong, li, b, div, td, p, dd, dt, code, small').forEach(el => {
-      if (el.children.length === 0 && DATE_RE.some(re => re.test(el.textContent.trim()))) {
+      if (el.children.length !== 0) return
+      // Issue references inside the MR DESCRIPTION ("Closes #1") are
+      // deterministic here — every story recreates its project, so its first
+      // issue is always #1. Pipeline/job id badges live outside it.
+      if (el.closest('.description')) return
+      if (DATE_RE.some(re => re.test(el.textContent.trim()))) {
         el.textContent = PLACEHOLDER
       }
     })
