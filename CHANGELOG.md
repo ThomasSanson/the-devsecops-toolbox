@@ -2,6 +2,54 @@
 
 # Changelog
 
+## 22.9.0 (2026-07-22)
+
+### Feat
+
+- **template**: generated projects release without a default Helm chart
+- **template**: ship generic AGENTS.md/CLAUDE.md to generated projects
+- **test**: ship a blank gitlab-runner service in the test compose stack
+- **tests**: restructure e2e suite to three acts, flatten storyboards
+- **visual**: enhance regression reporting and scrub terminal output
+- **storyboard**: add failure band and docs for visual regression
+- **storyboard**: add per‑sentence card baseline, baseDir handling
+- **storyboard**: add SVG storyboard with frame baselines, update docs
+- **journey**: bind Gherkin When steps to storyboard panels
+- **test**: add storyboard visual capture for agent-mode journey, preinstall toolchain
+
+### Fix
+
+- **test**: anchor copier question cards on the question itself
+- **ci**: drop the pages job and keep the shard guard framework-only
+- **test**: mask token-page IPs and track the runner pin in renovate baselines
+- **test**: make the lambda UI login self-sufficient on a virgin GitLab
+- **test**: size the installer wait for CI contention
+- **test**: retire fresh-Ubuntu containers per chapter in first-run-help
+- **scripts**: restore executable bit on check-include-coverage.sh
+- **test**: make lambda user lookup idempotent in gitlabApi helper
+- **test**: exclude .task from the e2e workspace tarball
+- **task**: resolve kubeseal/sealed-secrets includes and guard include paths
+- **journeyContainer**: chmod project dir and .git to 755 for CI
+- **e2e**: chmod .git to 755 after clone to fix CI umask
+
+### Refactor
+
+- use # Note/# Copy in storyboard, add guide, rename port var
+- **test**: remove notes, copy metadata and unused imports from steps
+- **e2e**: tidy steps, update globals, improve notes, add skipLogin
+- rename PORT, improve storyboard layout, rename test domains, update docs
+- **e2e**: use storyboard steps in tests and rename port constant
+- **e2e**: migrate steps to storyboard and improve assertions
+- **storyboard**: simplify rendering, add helpers; improve docs
+- integrate storyboard API, replace visual helper, update docs, server port
+
+### Perf
+
+- **ci**: split the e2e suite into 8 shards and size UI waits for load
+- **ci**: shard the e2e suite across 5 parallel jobs
+- **ci**: reclaim BuildKit cache and probe disk around the e2e suite
+- **test**: share the uv download cache across throwaway containers
+
 ## 22.8.0 (2026-06-28)
 
 ### Feat
