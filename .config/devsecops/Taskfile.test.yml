@@ -24,6 +24,7 @@ tasks:
       - task: check:build-coverage
       - task: check:test-coverage
       - task: check:shard-coverage
+      - task: check:release-lock
       - task: :project:test
       - cmd: echo "🎉 Test phase completed successfully"
         silent: true
@@ -384,6 +385,27 @@ tasks:
         silent: true
       - bash .config/devsecops/scripts/check-test-coverage.sh
       - cmd: echo "🎉 Test coverage check completed successfully"
+        silent: true
+
+  check:release-lock:
+    desc: |
+      ℹ️ Description:
+        Verifies the release keeps the default branch locked even if its job
+        is killed:
+          - the re-lock trap catches EXIT INT TERM HUP (not only EXIT), so a
+            killed runner cannot leave `main` pushable;
+          - the release CI job does not mask a failed re-lock with `|| true`;
+          - the release job carries `resource_group: release` so two releases
+            cannot race the branch-protection state.
+
+      📊 Exit codes:
+        - 0: Every invariant holds
+        - 1: At least one invariant is broken
+    cmds:
+      - cmd: echo "🔄 Starting release branch-lock check"
+        silent: true
+      - bash .config/devsecops/scripts/check-release-lock.sh
+      - cmd: echo "🎉 Release branch-lock check completed successfully"
         silent: true
 
   check:shard-coverage:

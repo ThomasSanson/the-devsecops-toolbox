@@ -2,6 +2,10 @@
 release:
   stage: release
   needs: [] # Allows parallel execution
+  # Only one release may touch the branch-protection state at a time: two
+  # concurrent releases would race on opening/closing push access to the
+  # default branch.
+  resource_group: release
   extends: .default-tags
   variables:
     # Variables for Docker (likely used within 'task release')
@@ -14,7 +18,10 @@ release:
   script:
     - task release
   after_script:
-    - task glab:release:lock-default-branch || true
+    # No `|| true`: a failed re-lock must be visible in the job log, not
+    # swallowed into a green run. The authoritative gate is the EXIT/INT/TERM/HUP
+    # trap inside `task release`, which fails the job if the door cannot be shut.
+    - task glab:release:lock-default-branch
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always

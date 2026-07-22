@@ -3,14 +3,15 @@
  * Release-window storyboard — `task release` as ONE continuous journey: main
  * starts locked, a release run opens the push window just long enough to
  * push, then closes it again; the safety net proves the SAME close happens
- * even when the push itself fails (`trap restore_branch_protection EXIT` in
- * Taskfile.release.yml). ONE Gherkin sentence = ONE storyboard card = ONE
- * pixel baseline, asserted inside the step (tolerance: 0); every verdict
- * card twins its GitLab page or <pre> frame with a programmatic REST/log
- * assert of the same fact.
+ * even when the push FAILS and even when the job is KILLED mid-window
+ * (`trap restore_branch_protection EXIT` in Taskfile.release.yml — go-task
+ * drains the EXIT trap on a kill signal, so EXIT alone covers the kill case).
+ * ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline, asserted
+ * inside the step (tolerance: 0); every verdict card twins its GitLab page or
+ * <pre> frame with a programmatic REST/log assert of the same fact.
  */
 const { I, GitLabProjectPage, GitLabUserPage, GitLabSettingsPage } = inject()
-const { execSync } = require('child_process')
+const { execSync, spawn } = require('child_process')
 const {
   BASE_URL,
   projectPath,
@@ -21,7 +22,8 @@ const {
 const { freshGet } = require('../helpers/http')
 const {
   bootstrapWorkspaceRepo,
-  runTaskInRepo
+  runTaskInRepo,
+  buildGitLabTaskEnv
 } = require('../helpers/workspaceRepo')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 const { renderPreFrame, tailFromMarker } = require('../helpers/capturedOutput')
@@ -123,6 +125,39 @@ async function assertRemoteMainAtSha (projectName, expectedSha) {
   }
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+// Current push access level on main: 40 (Maintainers) while the window is open,
+// 0 (No one) when it is closed, null during the brief delete/recreate flip or
+// if the branch is momentarily unprotected.
+async function pushAccessLevel (projectName) {
+  const headers = await getRootHeaders()
+  const encodedPath = encodeURIComponent(projectPath(projectName))
+  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/protected_branches/main`, headers)
+  const levels = (res.data && res.data.push_access_levels) || []
+  if (levels.some(l => l.access_level === 40)) return 40
+  if (levels.some(l => l.access_level === 0)) return 0
+  return null
+}
+
+// The release env for the SUCCESS host (gitlab): the window opens for real and
+// stays open for the whole run, giving the kill test a wide target.
+async function buildReleaseEnv (projectName) {
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const rootHeaders = await getRootHeaders()
+  const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
+  return {
+    TASK_DOCKER_CE_ENABLED: 'false',
+    TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: variableResponse.data.value,
+    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
+    TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: 'gitlab',
+    TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
+    TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
+    TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
+    TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
+  }
+}
+
 // Bootstraps a project, runs `task devsecops:init` (direct mode: no MR, main
 // protected right away) and returns everything the release run needs. The
 // lambda browser session is established ONCE by the Given step — GitLab
@@ -182,12 +217,13 @@ function runRelease (projectName, repoDir, glabToken, { expectFailure }) {
   }
 }
 
-let successProject, failureProject
+let successProject, failureProject, killedProject
 let successRun
 
 Before(() => {
   successProject = null
   failureProject = null
+  killedProject = null
   successRun = null
 })
 
@@ -195,7 +231,7 @@ Before(() => {
 // Given — main starts locked
 // ============================================
 
-storyboardStep(Given, 'main starts locked behind push protection', async () => {
+storyboardStep(Given, "main's door is closed to everyone", async () => {
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   successProject = 'e2e-release-toggle'
   const { repoDir, glabToken } = await bootstrapLockedProject(successProject)
@@ -210,7 +246,7 @@ storyboardStep(Given, 'main starts locked behind push protection', async () => {
 // When — the window opens, the push lands
 // ============================================
 
-storyboardStep(When, 'a release run opens the push window for maintainers', async () => {
+storyboardStep(When, 'the release opens the door just long enough to push', async () => {
   successRun = await runRelease(successProject.name, successProject.repoDir, successProject.glabToken, { expectFailure: false })()
   if (successRun.failed) {
     throw new Error(`Expected task release to succeed, but it failed:\n${successRun.raw}`)
@@ -221,7 +257,7 @@ storyboardStep(When, 'a release run opens the push window for maintainers', asyn
   await renderPreFrame(I, 'toggle-opens', slice.join('\n'))
 })
 
-storyboardStep(When, 'the release pushes the version bump to main', async () => {
+storyboardStep(When, 'it makes its one write to main', async () => {
   const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
   const sha = execSync(`git -C ${successProject.repoDir} rev-parse HEAD`, { encoding: 'utf8' }).trim()
   const masked = subject.replace(/\d+\.\d+\.\d+/g, RELEASE_DISPLAY_VERSION)
@@ -233,7 +269,7 @@ storyboardStep(When, 'the release pushes the version bump to main', async () => 
 // Then — the window closes, both on success and on the safety net
 // ============================================
 
-storyboardStep(Then, 'the window closes again and push protection is restored', async () => {
+storyboardStep(Then, 'it closes the door again the moment it is done', async () => {
   assertContains(successRun.raw, RESTORE_MARKER)
   const filtered = filterReleaseLogs(successRun.raw)
   const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
@@ -241,7 +277,7 @@ storyboardStep(Then, 'the window closes again and push protection is restored', 
   await assertMainProtected(successProject.name)
 })
 
-storyboardStep(Then, 'the safety net still closes the window when the push fails', async () => {
+storyboardStep(Then, 'a crash still cannot leave the door open', async () => {
   const failureProjectName = 'e2e-release-toggle-failure'
   const { repoDir, glabToken } = await bootstrapLockedProject(failureProjectName)
   failureProject = { name: failureProjectName, repoDir, glabToken }
@@ -255,4 +291,58 @@ storyboardStep(Then, 'the safety net still closes the window when the push fails
   const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
   await renderPreFrame(I, 'window-closes-on-failure', slice.join('\n'))
   await assertMainProtected(failureProject.name)
+})
+
+storyboardStep(Then, 'a killed job still cannot leave the door open', async () => {
+  const killedName = 'e2e-release-toggle-killed'
+  const { repoDir, glabToken } = await bootstrapLockedProject(killedName)
+  killedProject = { name: killedName, repoDir, glabToken }
+  const releaseEnv = await buildReleaseEnv(killedName)
+
+  // detached: true → the child leads its own process group, so a negative-pid
+  // signal reaches BOTH go-task and the bash child carrying the trap. The trap
+  // then fires whether or not go-task forwards the signal itself.
+  const child = spawn('task', ['release'], {
+    cwd: repoDir,
+    env: { ...buildGitLabTaskEnv(glabToken), ...releaseEnv },
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  if (!child.pid) throw new Error('Failed to spawn `task release`')
+  let out = ''
+  child.stdout.on('data', d => { out += d.toString() })
+  child.stderr.on('data', d => { out += d.toString() })
+  const exited = new Promise(resolve => child.on('close', resolve))
+
+  // Kill ONLY once the window is provably open (push=Maintainers via REST),
+  // never on a timer — the window stays open for the whole release, so a tight
+  // poll always catches it well before the run could finish on its own.
+  const deadline = Date.now() + 120000
+  let opened = false
+  while (Date.now() < deadline) {
+    if (await pushAccessLevel(killedName) === 40) { opened = true; break }
+    await sleep(150)
+  }
+  if (!opened) {
+    try { process.kill(-child.pid, 'SIGKILL') } catch (e) { /* already gone */ }
+    await exited
+    throw new Error(`Release never opened the push window within 120s:\n${out}`)
+  }
+
+  // SIGTERM the group — the exact signal a cancelled or timed-out CI job gets.
+  process.kill(-child.pid, 'SIGTERM')
+  await exited
+
+  // The trap ran on the signal: the window opened, then the restore marker
+  // printed on the way out, and main is protected again on the server.
+  assertContains(out, 'Temporarily opening push access for Maintainers')
+  assertContains(out, RESTORE_MARKER)
+  await assertMainProtected(killedProject.name)
+
+  // The result a human must SEE: GitLab's protected-branches page shows main
+  // locked again ("Allowed to push: No one") AFTER the killed release.
+  I.resizeWindow(1024, 640)
+  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(killedProject.name), killedProject.name)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'protection-relocked-after-kill'))
+  I.resizeWindow(1024, 768)
 })

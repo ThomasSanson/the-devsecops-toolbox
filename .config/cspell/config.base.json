@@ -169,6 +169,7 @@
     "megalinter",
     "microdnf",
     "mkfifo",
+    "mvdan",
     "myproject",
     "netcat",
     "nindent",
