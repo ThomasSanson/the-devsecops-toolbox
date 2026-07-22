@@ -428,3 +428,32 @@ tasks:
       - bash .config/devsecops/scripts/check-shard-coverage.sh
       - cmd: echo "🎉 Shard coverage check completed successfully"
         silent: true
+
+  check:storyboard-coverage:
+    desc: |
+      ℹ️ Description:
+        The key principle of this repo: every PRODUCT change is proven by a
+        VISIBLE storyboard card. This guard makes it mechanical — it FAILS when
+        product files (.config/**, copier.yml, Taskfile.yml{,.jinja}) changed
+        with no storyboard card changed or added.
+
+        Deliberately NOT in the `default` task: it needs a merge-request diff
+        base, which only a `merge_request_event` pipeline provides. CI runs it
+        as the dedicated `storyboard-coverage` job; locally it diffs against
+        origin/main.
+
+      🔧 Variables:
+        - BASE: diff base (default: CI_MERGE_REQUEST_DIFF_BASE_SHA or origin/main)
+
+      🚪 Escape hatch:
+        A `Storyboard-exempt: <reason>` commit trailer waives the gate, visibly.
+
+      📊 Exit codes:
+        - 0: No product change, or a storyboard was changed/added, or exempted
+        - 1: Product changed with no storyboard change/addition and no exemption
+    cmds:
+      - cmd: echo "🔄 Starting storyboard coverage check"
+        silent: true
+      - bash .config/devsecops/scripts/check-storyboard-coverage.sh
+      - cmd: echo "🎉 Storyboard coverage check completed successfully"
+        silent: true

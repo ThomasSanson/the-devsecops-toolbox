@@ -62,3 +62,25 @@ test:
       when: never
     # Run in all other cases (MRs, feature branches, etc.)
     - when: always
+
+# The key principle of this repo: every product change is proven by a VISIBLE
+# storyboard card. This gate makes it mechanical — on a merge request it FAILS
+# when product files (.config/**, copier.yml, Taskfile.yml{,.jinja}) changed
+# with no storyboard card changed or added. A `Storyboard-exempt: <reason>`
+# commit trailer is the only, visible waiver. The gate is only meaningful on MR
+# pipelines, where CI_MERGE_REQUEST_DIFF_BASE_SHA gives the exact diff base
+# (GIT_DEPTH: 0 → that base commit is always in the clone). Its own red→green
+# behaviour is proven visually by the @test-discipline storyboard
+# (project/tests/e2e/features/03-evolution/test-discipline.feature).
+storyboard-coverage:
+  stage: test
+  needs: [] # Parallel, fast (~seconds): a git diff, no environment to boot.
+  extends: .default-tags
+  # The guard needs only git + bash, both in the base image — skip the heavy
+  # curl/task/dev:init:ci bootstrap so an unrelated setup hiccup can't mask it.
+  before_script: []
+  script:
+    # BASE defaults to CI_MERGE_REQUEST_DIFF_BASE_SHA inside the script.
+    - bash .config/devsecops/scripts/check-storyboard-coverage.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
