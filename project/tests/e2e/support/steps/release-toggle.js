@@ -54,6 +54,11 @@ const RELEASE_NOISE_PATTERNS = [
 
 const RESTORE_MARKER = '🔒 Restoring branch protection (push=No one)'
 
+// Fixed stand-in for every semver rendered in a release card. The real toolbox
+// version and pinned tool versions drift on every bump; pinning the DISPLAY
+// keeps the pixel baselines stable without an abstract x.y.z placeholder.
+const RELEASE_DISPLAY_VERSION = '1.0.0'
+
 function stripAnsi (str) {
   return String(str)
     // eslint-disable-next-line no-control-regex
@@ -71,6 +76,12 @@ function filterReleaseLogs (raw) {
       if (trimmed === '') return true
       return !RELEASE_NOISE_PATTERNS.some(re => re.test(trimmed))
     })
+    // Pin every semver to a fixed display version: the toolbox version (bump
+    // commit / tag) AND pinned tool versions (commitizen) are volatile, so
+    // leaving them bare rots the baselines on the next bump — and bump commits
+    // skip CI, so the rot only surfaces on an unrelated MR. It is display only,
+    // so a concrete stand-in reads better than an abstract x.y.z.
+    .map(line => line.replace(/\d+\.\d+\.\d+/g, RELEASE_DISPLAY_VERSION))
 }
 
 // Forward slice: the first `after` lines starting at the first line
@@ -213,7 +224,7 @@ storyboardStep(When, 'a release run opens the push window for maintainers', asyn
 storyboardStep(When, 'the release pushes the version bump to main', async () => {
   const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
   const sha = execSync(`git -C ${successProject.repoDir} rev-parse HEAD`, { encoding: 'utf8' }).trim()
-  const masked = subject.replace(/\d+\.\d+\.\d+/g, 'x.y.z')
+  const masked = subject.replace(/\d+\.\d+\.\d+/g, RELEASE_DISPLAY_VERSION)
   await renderPreFrame(I, 'push-lands', masked)
   await assertRemoteMainAtSha(successProject.name, sha)
 })
