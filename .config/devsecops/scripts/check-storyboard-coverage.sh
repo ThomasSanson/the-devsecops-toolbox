@@ -35,7 +35,11 @@
 
 set -euo pipefail
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[0;33m'; NC='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
 
 # Product = the shipped framework surface. A change here must be proven visibly.
 PRODUCT_RE='^(\.config/|copier\.yml$|Taskfile\.yml(\.jinja)?$)'
@@ -65,7 +69,8 @@ is_exempt() {
 echo -e "${BLUE}🎬 Storyboard-coverage gate (base: ${BASE})...${NC}"
 
 mapfile -t all_changed < <(changed_files | sed '/^$/d')
-product=(); storyboard=()
+product=()
+storyboard=()
 for f in "${all_changed[@]}"; do
   [[ "$f" =~ $PRODUCT_RE ]] && product+=("$f")
   [[ "$f" =~ $STORYBOARD_RE ]] && storyboard+=("$f")
