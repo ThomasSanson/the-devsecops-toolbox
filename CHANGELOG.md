@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.1 (2026-07-24)
+
+### Fix
+
+- **release**: keep main locked when the release is killed, and surface a failed re-lock
+
 ## 22.9.0 (2026-07-22)
 
 ### Feat
