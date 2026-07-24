@@ -8,10 +8,14 @@ useDefault = true
 [allowlist]
 description = "Files to ignore for secrets detection"
 paths = [
+  # Encrypted at rest (Sealed Secrets): safe to commit.
   '''.*/sealed-secrets\.yaml''',
-  '''.*/secrets\.yaml''',
-  '''.*\.env''',
-  '''.*\.env\.dev''',
+  # Placeholder env files ONLY (no real values). A real `.env`, `.env.dist`,
+  # `.env.dev` or `secrets.yaml` is exactly where a live secret lands, so the
+  # scanner must read those (see issue #182). Never widen this back to `.*\.env`.
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.template$''',
+  # Build/cache/vendor trees: no first-party source to scan.
   '''(^|/)\.cache/''',
   '''(^|/)tmp/''',
   '''(^|/)megalinter-reports/''',

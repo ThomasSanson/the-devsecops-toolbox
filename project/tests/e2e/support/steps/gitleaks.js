@@ -233,6 +233,31 @@ storyboardStep(Then, 'the scan blocks it and names the leak', async () => {
 })
 
 // ============================================
+// Movement 2b — a secret in a .env file, which the allowlist used to ignore (#182)
+// ============================================
+
+storyboardStep(When, 'the developer commits a secret inside a secrets.yaml the scanner used to ignore', async () => {
+  newProject()
+  // A file literally named secrets.yaml, carrying a private key — the kind of
+  // file the old allowlist told the scanner to skip. Force-add it in case a
+  // downstream .gitignore lists it.
+  fs.writeFileSync(path.join(projectDir, 'secrets.yaml'), TEST_PRIVATE_KEY_SECRET)
+  git('add -f secrets.yaml')
+  git('commit --quiet --no-verify -m "test: force-commit a secrets.yaml carrying a secret"')
+  const content = fs.readFileSync(path.join(projectDir, 'secrets.yaml'), 'utf8')
+  await renderPreFrame(I, 'secret-in-secrets-yaml', content.trimEnd())
+})
+
+storyboardStep(Then, 'the scan blocks it too, now the allowlist no longer skips secrets files', async () => {
+  const res = runScan()
+  if (res.exitCode === 0) {
+    throw new Error(`Expected gitleaks to block a secret in secrets.yaml, but the scan passed\n${res.output}`)
+  }
+  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  await renderPreFrame(I, 'verdict-secrets-blocked', verdictText(res.output))
+})
+
+// ============================================
 // Movement 3 — a gitignored secret never reaches the scanner
 // ============================================
 

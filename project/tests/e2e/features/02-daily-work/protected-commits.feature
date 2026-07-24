@@ -58,6 +58,10 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Note: scan-branch fails and prints "Gitleaks detected secrets in your branch commits!"
     # Copy: task gitleaks:scan-branch
     Then the scan blocks it and names the leak
+    # Note: A different trap the scanner used to fall into: its allowlist told it to skip every .env file AND secrets.yaml, exactly the files where a real key or token is most likely to sit. Here a private key is force-committed inside a file literally named secrets.yaml.
+    When the developer commits a secret inside a secrets.yaml the scanner used to ignore
+    # Note: The scan blocks the branch and names the leak, just as it did for the .pem. The allowlist no longer looks away from secrets.yaml or .env files (issue #182), so a secret parked in one can no longer slip in unseen.
+    Then the scan blocks it too, now the allowlist no longer skips secrets files
     # Note: A fresh project again: the secret file is listed in .gitignore before it is ever committed, so the scanner never even looks at it.
     # Copy: git diff -- .gitignore
     When the developer keeps a second secret out of the scan by gitignoring the file it lives in
