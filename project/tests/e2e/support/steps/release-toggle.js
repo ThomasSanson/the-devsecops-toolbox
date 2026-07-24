@@ -1,348 +1,428 @@
-/* global inject Given When Then Before */
+/* global inject Given When Then Before After */
 /**
- * Release-window storyboard — `task release` as ONE continuous journey: main
- * starts locked, a release run opens the push window just long enough to
- * push, then closes it again; the safety net proves the SAME close happens
- * even when the push FAILS and even when the job is KILLED mid-window
- * (`trap restore_branch_protection EXIT` in Taskfile.release.yml — go-task
- * drains the EXIT trap on a kill signal, so EXIT alone covers the kill case).
- * ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline, asserted
- * inside the step (tolerance: 0); every verdict card twins its GitLab page or
- * <pre> frame with a programmatic REST/log assert of the same fact.
+ * Release-crash storyboard — @release-window, on the heavy runner shard.
+ *
+ * The real thing, not a local `task release`: a GENERATED project gets an actual
+ * release pipeline on GitLab's own runner, the release job opens main's push
+ * window for real, and then it CRASHES mid-push — the push fails, so the job
+ * ends red. A release that dies with main's door open is the exact hole #180
+ * guards. The story shows main locked again anyway, proving the safety net at
+ * the level it actually runs: the `trap restore_branch_protection EXIT` inside
+ * `task release` and the `after_script: task glab:release:lock-default-branch`
+ * (no `|| true`) plus `resource_group: release` in
+ * .config/gitlab/ci/devsecops/release.yml.
+ *
+ * The crash is deterministic, not a timing race: the push token is granted the
+ * `api` scope (enough to open/close the door via the protected-branches API at
+ * Maintainer level) but NOT `write_repository`, so the git push is refused (403)
+ * while the door open and the re-lock both still work. No flaky "cancel the job
+ * inside its few-second window" — the job reliably reaches its red cross, and
+ * every card is a terminal, stable state.
+ *
+ * ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0); each
+ * GitLab page is masked for its volatile chrome, the job-log card is a <pre> of
+ * the REAL CI trace, and each is twinned with a REST/log check of the same fact.
+ *
+ * Runs on a project-scoped runner registered in the shared gitlab-runner compose
+ * service, exactly like @daily-contribution (its neighbour on this shard); the
+ * runner is torn down surgically so the two stories never disturb each other.
+ * See support/helpers/pipelineRunner.js.
  */
+const fs = require('fs')
 const { I, GitLabProjectPage, GitLabUserPage, GitLabSettingsPage } = inject()
-const { execSync, spawn } = require('child_process')
 const {
   BASE_URL,
   projectPath,
+  encodedProjectPath,
   getRootHeaders,
+  createProject,
+  deleteProject,
   createLambdaPersonalAccessToken,
-  readProjectVariable
+  revokePersonalAccessToken,
+  createProjectAccessToken,
+  createProjectVariable,
+  updateProjectSettings,
+  listProjectPipelines,
+  listPipelineJobs,
+  getPipeline,
+  cancelPipeline,
+  deletePipeline,
+  triggerProjectPipeline
 } = require('../helpers/gitlabApi')
-const { freshGet } = require('../helpers/http')
+const { freshGet, freshPost, freshDelete } = require('../helpers/http')
 const {
-  bootstrapWorkspaceRepo,
-  runTaskInRepo,
-  buildGitLabTaskEnv
-} = require('../helpers/workspaceRepo')
+  registerScopedRunner,
+  teardownScopedRunner,
+  dumpFailedTraces,
+  maskPipelinePage,
+  PIPELINE_TIMEOUT_MS
+} = require('../helpers/pipelineRunner')
+const { runTaskInRepo } = require('../helpers/workspaceRepo')
+const { runCommandWithResult } = require('../helpers/docker')
+const { renderProject } = require('../helpers/copierRender')
+const { stripAnsi } = require('../helpers/capturedOutput')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
-const { renderPreFrame, tailFromMarker } = require('../helpers/capturedOutput')
 
-const RELEASE_TIMEOUT = 600000
+const PROJECT_NAME = 'e2e-release-crash'
+// Fixed stand-in for every semver in the job log: the toolbox version and its
+// pinned tool versions drift on every bump, so leaving them bare rots the
+// baseline. It is display only, so a concrete 1.0.0 reads better than x.y.z.
+const DISPLAY_VERSION = '1.0.0'
 
-// The task's own contract lines — everything else (SHAs, push deltas, version
-// bumps, remote progress) is volatile and filtered out before a card is
-// rendered.
-const RELEASE_NOISE_PATTERNS = [
-  /^task: \[/,
-  /^bump: version /,
-  /^bump: commit /,
-  /^\s*[0-9a-f]{7,}\.\.[0-9a-f]{7,}\s/,
-  /^\s*\* \[new tag\]/,
-  /^To https?:\/\/[^\s]+\.git$/,
-  /^remote:\s/,
-  /^Cloning into /,
-  /^(Counting|Compressing|Writing|Total|Resolving) /,
-  /^Delta compression /,
-  /^husky - /,
-  /^sync hooks: /,
-  /^\[main [0-9a-f]{7,}\]/,
-  /^Date: /,
-  /^Author: /,
-  /^commit [0-9a-f]{7,}/,
-  /Creating new Project Access Token .*expires \d{4}-\d{2}-\d{2}/,
-  /Rewrite rules:/
-]
-
-const RESTORE_MARKER = '🔒 Restoring branch protection (push=No one)'
-
-// Fixed stand-in for every semver rendered in a release card. The real toolbox
-// version and pinned tool versions drift on every bump; pinning the DISPLAY
-// keeps the pixel baselines stable without an abstract x.y.z placeholder.
-const RELEASE_DISPLAY_VERSION = '1.0.0'
-
-function stripAnsi (str) {
-  return String(str)
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/\x1b\][^\x07]*\x07/g, '')
-}
-
-function filterReleaseLogs (raw) {
-  return stripAnsi(raw)
-    .replace(/\r/g, '')
-    .split('\n')
-    .filter(line => {
-      const trimmed = line.trim()
-      if (trimmed === '') return true
-      return !RELEASE_NOISE_PATTERNS.some(re => re.test(trimmed))
-    })
-    // Pin every semver to a fixed display version: the toolbox version (bump
-    // commit / tag) AND pinned tool versions (commitizen) are volatile, so
-    // leaving them bare rots the baselines on the next bump — and bump commits
-    // skip CI, so the rot only surfaces on an unrelated MR. It is display only,
-    // so a concrete stand-in reads better than an abstract x.y.z.
-    .map(line => line.replace(/\d+\.\d+\.\d+/g, RELEASE_DISPLAY_VERSION))
-}
-
-// Forward slice: the first `after` lines starting at the first line
-// containing `marker`.
-function headFromMarker (lines, marker, after) {
-  const idx = lines.findIndex(line => line.includes(marker))
-  if (idx < 0) return lines.slice(0, after)
-  return lines.slice(idx, idx + after)
-}
-
-function assertContains (raw, expected) {
-  if (!raw.includes(expected)) {
-    throw new Error(`Expected release logs to contain ${JSON.stringify(expected)}\n---\n${raw}\n---`)
-  }
-}
-
-async function assertMainProtected (projectName) {
-  const headers = await getRootHeaders()
-  const encodedPath = encodeURIComponent(projectPath(projectName))
-  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/protected_branches/main`, headers)
-  const data = res.data || {}
-  const mergeLevel = (data.merge_access_levels || []).find(l => l.access_level === 40)
-  if (!mergeLevel) {
-    throw new Error(`Expected merge_access_levels to contain 40 (Maintainers), got: ${JSON.stringify(data.merge_access_levels)}`)
-  }
-  const pushLevel = (data.push_access_levels || []).find(l => l.access_level === 0)
-  if (!pushLevel) {
-    throw new Error(`Expected push_access_levels to contain 0 (No one), got: ${JSON.stringify(data.push_access_levels)}`)
-  }
-}
-
-async function assertRemoteMainAtSha (projectName, expectedSha) {
-  const headers = await getRootHeaders()
-  const encodedPath = encodeURIComponent(projectPath(projectName))
-  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/repository/branches/main`, headers)
-  const remoteSha = res.data && res.data.commit && res.data.commit.id
-  if (remoteSha !== expectedSha) {
-    throw new Error(`Expected remote main at ${expectedSha}, found ${remoteSha}`)
-  }
+function lambdaUser () {
+  return process.env.TASK_GITLAB_LAMBDA_USER
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-// Current push access level on main: 40 (Maintainers) while the window is open,
-// 0 (No one) when it is closed, null during the brief delete/recreate flip or
-// if the branch is momentarily unprotected.
-async function pushAccessLevel (projectName) {
-  const headers = await getRootHeaders()
-  const encodedPath = encodeURIComponent(projectPath(projectName))
-  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encodedPath}/protected_branches/main`, headers)
+// Current push access level on main: 40 (Maintainers) while the release holds
+// the push window open, 0 (No one) when it is locked, null during the brief
+// delete/recreate flip the re-lock does. Reuses caller headers when given.
+async function pushAccessLevel (projectName, headers) {
+  const h = headers || await getRootHeaders()
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/protected_branches/main`, h
+  )
   const levels = (res.data && res.data.push_access_levels) || []
   if (levels.some(l => l.access_level === 40)) return 40
   if (levels.some(l => l.access_level === 0)) return 0
   return null
 }
 
-// The release env for the SUCCESS host (gitlab): the window opens for real and
-// stays open for the whole run, giving the kill test a wide target.
-async function buildReleaseEnv (projectName) {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const rootHeaders = await getRootHeaders()
-  const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
-  return {
-    TASK_DOCKER_CE_ENABLED: 'false',
-    TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: variableResponse.data.value,
-    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
-    TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: 'gitlab',
-    TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
-    TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
+// main is protected the way the toolbox leaves it at rest: nobody may push
+// (push=No one/0), Maintainers may merge (40).
+async function assertMainProtected (projectName) {
+  const headers = await getRootHeaders()
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/protected_branches/main`, headers
+  )
+  const data = res.data || {}
+  const pushLevel = (data.push_access_levels || []).find(l => l.access_level === 0)
+  if (!pushLevel) {
+    throw new Error(`Expected push_access_levels to contain 0 (No one), got: ${JSON.stringify(data.push_access_levels)}`)
+  }
+  const mergeLevel = (data.merge_access_levels || []).find(l => l.access_level === 40)
+  if (!mergeLevel) {
+    throw new Error(`Expected merge_access_levels to contain 40 (Maintainers), got: ${JSON.stringify(data.merge_access_levels)}`)
   }
 }
 
-// Bootstraps a project, runs `task devsecops:init` (direct mode: no MR, main
-// protected right away) and returns everything the release run needs. The
-// lambda browser session is established ONCE by the Given step — GitLab
-// redirects an already-authenticated session away from /users/sign_in, so a
-// second loginAs (the safety-net project) would hang waiting for the login
-// form that never appears.
-async function bootstrapLockedProject (projectName) {
+function releaseJobOf (jobs) {
+  return (jobs || []).find(j => j.name === 'release' || j.stage === 'release')
+}
+
+// Wire the release job exactly like `task devsecops:init` — a Maintainer
+// TASK_COMMITIZEN_TOKEN it pushes with — PLUS one deliberate sabotage: point its
+// git server host at a name that does not resolve. The door open and re-lock go
+// through the API URL ($CI_API_V4_URL, untouched) so they still work, but the
+// `git push` (which uses the host) fails to resolve — so the release CRASHES
+// AFTER opening the window, deterministically, with no timing race. A project
+// CI/CD variable overrides the global `variables:` default in variables.yml.
+const CRASH_HOST = 'invalid-host-for-release'
+async function wireReleaseAutomation (projectName, rootHeaders) {
+  const expires = new Date(Date.now() + 300 * 86400000).toISOString().slice(0, 10)
+  const tok = await createProjectAccessToken(
+    projectName, { name: 'TASK_COMMITIZEN_TOKEN', scopes: ['api', 'write_repository'], access_level: 40, expires_at: expires }, rootHeaders
+  )
+  if (tok.status >= 400) throw new Error(`Failed to create TASK_COMMITIZEN_TOKEN (status ${tok.status}): ${JSON.stringify(tok.data)}`)
+  const v = await createProjectVariable(projectName, { key: 'TASK_COMMITIZEN_TOKEN', value: tok.data.token }, rootHeaders)
+  if (v.status >= 400) throw new Error(`Failed to store TASK_COMMITIZEN_TOKEN (status ${v.status}): ${JSON.stringify(v.data)}`)
+  const h = await createProjectVariable(projectName, { key: 'TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST', value: CRASH_HOST }, rootHeaders)
+  if (h.status >= 400) throw new Error(`Failed to store the crash host variable (status ${h.status}): ${JSON.stringify(h.data)}`)
+}
+
+// Push the freshly rendered framework straight to main as a single `feat:`
+// commit: it gives the release a real version to cut, so it actually reaches
+// the push (and crashes there). The token-bearing remote URL is swallowed.
+function pushFeatToMain (repoDir, token) {
+  const user = lambdaUser()
+  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
+  try {
+    runTaskInRepo([
+      'git init --quiet --initial-branch=main',
+      'git config user.email "lambda@test.local"',
+      'git config user.name "Lambda"',
+      'git config core.hooksPath /dev/null',
+      'git config url."http://".insteadOf "https://"',
+      'git add -A',
+      'git commit --quiet -m "feat: scaffold the project from the devsecops toolbox"',
+      `git remote add origin ${remote}`,
+      'git push --quiet -u origin main'
+    ].join(' && '), repoDir, token, { stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (_) {
+    throw new Error('Failed to scaffold and push the framework to main (see runner logs)')
+  }
+}
+
+// Lock main the way `task devsecops:init` leaves it: nobody may push
+// (push=No one/0), Maintainers may merge (40). A fresh GitLab project defaults
+// its default branch to push=Maintainers(40), so WITHOUT this the release
+// "opening the door" (0 -> 40) would be invisible — main would already read 40.
+async function lockMainToNoOne (projectName, headers) {
+  const enc = encodedProjectPath(projectName)
+  try { await freshDelete(`${BASE_URL}/api/v4/projects/${enc}/protected_branches/main`, headers) } catch (_) {}
+  const res = await freshPost(
+    `${BASE_URL}/api/v4/projects/${enc}/protected_branches?name=main&merge_access_level=40&push_access_level=0`,
+    {}, headers
+  )
+  if (res.status >= 400) throw new Error(`Failed to lock main to No one (status ${res.status}): ${JSON.stringify(res.data)}`)
+}
+
+// Wait for the feat push's bootstrap pipeline to actually exist (GitLab creates
+// it a beat after the push), then cancel+delete every pipeline. Done BEFORE the
+// runner registers so no rival release job is holding the `release`
+// resource_group when the run we drive next starts.
+async function clearAllPipelines (projectName, headers) {
+  const appearBy = Date.now() + 60000
+  while (Date.now() < appearBy) {
+    const pipes = await listProjectPipelines(projectName, headers)
+    if (pipes.data && pipes.data.length) break
+    await sleep(2000)
+  }
+  const pipes = await listProjectPipelines(projectName, headers)
+  for (const p of (pipes.data || [])) {
+    try {
+      await cancelPipeline(projectName, p.id, headers)
+      await deletePipeline(projectName, p.id, headers)
+    } catch (_) {}
+  }
+}
+
+// Poll the release job to its terminal state, logging door/status transitions
+// so a stuck run is diagnosable. Returns the release job. Fails loud if the
+// pipeline ends without a release job at all.
+async function waitReleaseJobTerminal (I, projectName, pid, rootHeaders, runner) {
+  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
+  let last = ''
+  while (Date.now() < deadline) {
+    const level = await pushAccessLevel(projectName, rootHeaders)
+    const jobs = (await listPipelineJobs(projectName, pid, rootHeaders)).data || []
+    const release = releaseJobOf(jobs)
+    const line = `door=${level} release=${release ? release.status : 'absent'}`
+    if (line !== last) { console.log(`release-crash: ${line}`); last = line }
+    if (release && ['failed', 'success', 'canceled', 'skipped'].includes(release.status)) {
+      if (release.status !== 'failed') dumpFailedTraces(projectName, jobs, rootHeaders, runner && runner.svc)
+      return release
+    }
+    await I.wait(3)
+  }
+  throw new Error('Release job never reached a terminal state within the pipeline timeout')
+}
+
+// Settle the pipeline to a terminal state so the crashed-pipeline card is
+// deterministic: the release job has already failed, but sibling jobs (feedback)
+// may still be mid-run — cancelling them turns their transient state into a
+// stable "canceled", and the whole pipeline stops on a fixed frame.
+async function waitPipelineTerminal (I, projectName, pid, headers) {
+  const deadline = Date.now() + 120000
+  let last = ''
+  while (Date.now() < deadline) {
+    const pipe = await getPipeline(projectName, pid, headers)
+    const status = pipe.data && pipe.data.status
+    if (status !== last) { console.log(`release-crash pipeline: ${status}`); last = status }
+    if (['failed', 'success', 'canceled', 'skipped'].includes(status)) return status
+    await I.wait(2)
+  }
+  return 'timeout'
+}
+
+// Volatile lines that carry a per-run value (install timing, a bump SHA, a
+// changelog diff summary) — dropped so the log card is byte-stable at tolerance:0.
+const TRACE_NOISE = [
+  /^Installed \d+ packages/,
+  /^\[detached HEAD [0-9a-f]/,
+  /^\s*\d+ files? changed/,
+  /^uvx /
+]
+
+// Fetch the release job's real CI trace and keep the lines that tell the safety
+// net story: the door opening, the failed push, and the restore that ran anyway.
+// CI trace lines open with a volatile "<iso-timestamp>Z 01O " prefix — strip it —
+// every semver is pinned to a fixed display version so the baseline survives a
+// bump, and the per-run noise lines above are dropped.
+function releaseTraceStory (projectName, jobId, rootHeaders) {
+  const encoded = encodedProjectPath(projectName)
+  const raw = runCommandWithResult(
+    `curl -s -H 'Authorization: ${rootHeaders.Authorization}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${jobId}/trace'`
+  )
+  return stripAnsi(raw.stdout || raw.output || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(l => l.replace(/^\S+Z \d+[OE]\+? ?/, '').trimEnd())
+    .map(l => l.replace(/\d+\.\d+\.\d+/g, DISPLAY_VERSION))
+    .filter(l => !TRACE_NOISE.some(re => re.test(l.trim())))
+}
+
+let project = null
+let renderDir = null
+let tokenId = null
+let lambdaHeaders = null
+let runner = null
+let pipelineId = null
+let releaseJobId = null
+
+const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@release-window'))
+
+Before((test) => {
+  if (!ownsScenario(test)) return
+  project = null
+  renderDir = null
+  tokenId = null
+  lambdaHeaders = null
+  runner = null
+  pipelineId = null
+  releaseJobId = null
+})
+
+After(async (test) => {
+  if (!ownsScenario(test)) return
+  // Surgical, best-effort: this story's runner token only (never --all-runners),
+  // so @daily-contribution, which shares the compose service locally, is untouched.
+  if (runner) {
+    try { await teardownScopedRunner(runner, await getRootHeaders()) } catch (_) {}
+    runner = null
+  }
+  if (project) {
+    try { await deleteProject(project, await getRootHeaders()) } catch (_) {}
+    project = null
+  }
+  if (tokenId) {
+    try { await revokePersonalAccessToken(tokenId, await getRootHeaders()) } catch (_) {}
+    tokenId = null
+  }
+  if (renderDir) {
+    try { fs.rmSync(renderDir, { recursive: true, force: true }) } catch (_) {}
+    renderDir = null
+  }
+})
+
+// ============================================
+// Given — a real release crashes with the door open
+// ============================================
+
+storyboardStep(Given, 'a release job crashes on the main branch while it still holds push access', async () => {
+  const rootHeaders = await getRootHeaders()
+  project = PROJECT_NAME
   await GitLabProjectPage.deleteProjectIfExists(
     BASE_URL,
     process.env.TASK_GITLAB_ROOT_USER,
     process.env.TASK_GITLAB_ROOT_PASSWORD,
-    projectPath(projectName)
+    projectPath(PROJECT_NAME)
   )
-  await GitLabProjectPage.createBlankPublicProject(projectName)
-
-  const rootHeaders = await getRootHeaders()
-  const { token: glabToken } = await createLambdaPersonalAccessToken(
-    `glab-cli-token-for-${projectName}`,
-    ['api', 'write_repository'],
-    rootHeaders
+  const { token, id } = await createLambdaPersonalAccessToken(
+    `release-crash-${PROJECT_NAME}`, ['api', 'write_repository'], rootHeaders
   )
-  const repoDir = `/tmp/${projectName}-repo`
-  bootstrapWorkspaceRepo(projectName, repoDir, glabToken, { runInit: true })
-  runTaskInRepo('git config --local url."http://".insteadOf "https://"', repoDir, glabToken)
-  return { repoDir, glabToken }
-}
-
-function runRelease (projectName, repoDir, glabToken, { expectFailure }) {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const releaseEnv = {
-    TASK_DOCKER_CE_ENABLED: 'false',
-    TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: null, // filled below once TASK_COMMITIZEN_TOKEN is read
-    TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: `${BASE_URL}/api/v4`,
-    TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST: expectFailure ? 'invalid-host-for-release' : 'gitlab',
-    TASK_DEVSECOPS_RELEASE_PROJECT_PATH: `${lambdaUser}/${projectName}`,
-    TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH: 'main',
-    TASK_DEVSECOPS_RELEASE_ALLOW_PUSH: 'true'
+  tokenId = id
+  // Owner headers: creating/cancelling pipelines on protected main needs merge
+  // rights, which the project owner (lambda) has and a non-member admin does not
+  // (root gets 400 on trigger, 403 on cancel).
+  lambdaHeaders = { 'PRIVATE-TOKEN': token }
+  const created = await createProject(
+    { name: PROJECT_NAME, visibility: 'public', initialize_with_readme: false },
+    { 'PRIVATE-TOKEN': token }
+  )
+  if (created.status >= 400) {
+    throw new Error(`Failed to create project "${PROJECT_NAME}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
-  return async () => {
-    const rootHeaders = await getRootHeaders()
-    const variableResponse = await readProjectVariable(projectName, 'TASK_COMMITIZEN_TOKEN', rootHeaders)
-    releaseEnv.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN = variableResponse.data.value
-    try {
-      const output = runTaskInRepo('task release', repoDir, glabToken, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        encoding: 'utf8',
-        timeout: RELEASE_TIMEOUT,
-        extraEnv: releaseEnv
-      })
-      return { raw: output || '', failed: false }
-    } catch (error) {
-      const stdout = error.stdout ? error.stdout.toString() : ''
-      const stderr = error.stderr ? error.stderr.toString() : ''
-      return { raw: `${stdout}\n${stderr}`, failed: true }
-    }
+  renderDir = renderProject()
+  pushFeatToMain(renderDir, token)
+  // Wire the release automation AND sabotage its push host, so the release opens
+  // the door then crashes on the push — deterministically, no timing race.
+  await wireReleaseAutomation(PROJECT_NAME, rootHeaders)
+  await updateProjectSettings(PROJECT_NAME, { merge_method: 'ff', remove_source_branch_after_merge: true }, rootHeaders)
+  // Start from the toolbox's resting state: main locked to No one, so the
+  // release's temporary open (0 -> 40) is a real transition and the final
+  // re-lock is a real proof.
+  await lockMainToNoOne(PROJECT_NAME, rootHeaders)
+  // Clear the feat push's bootstrap pipeline BEFORE the runner registers, so no
+  // rival release job holds the `release` resource_group.
+  await clearAllPipelines(PROJECT_NAME, lambdaHeaders)
+
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+
+  runner = await registerScopedRunner(I, PROJECT_NAME, rootHeaders)
+  const trigger = await triggerProjectPipeline(PROJECT_NAME, 'main', lambdaHeaders)
+  if (trigger.status >= 400) throw new Error(`Failed to trigger main's pipeline (status ${trigger.status}): ${JSON.stringify(trigger.data)}`)
+  pipelineId = trigger.data.id
+  const release = await waitReleaseJobTerminal(I, PROJECT_NAME, pipelineId, rootHeaders, runner)
+  releaseJobId = release.id
+
+  // Twin: the release job really ran and failed (opened the door, then crashed
+  // on the refused push), and its log proves it reached the push window.
+  if (release.status !== 'failed') {
+    throw new Error(`Expected the release job to fail on its refused push, got ${release.status}`)
   }
-}
+  const trace = releaseTraceStory(PROJECT_NAME, releaseJobId, rootHeaders).join('\n')
+  if (!trace.includes('Temporarily opening push access for Maintainers')) {
+    throw new Error(`Expected the release to have opened the push window before crashing, trace:\n${trace}`)
+  }
 
-let successProject, failureProject, killedProject
-let successRun
+  // Settle the run before the card: cancel the still-running siblings so the
+  // pipeline stops on a fixed frame (release failed, feedback canceled), instead
+  // of a per-run mix of in-progress jobs.
+  await cancelPipeline(PROJECT_NAME, pipelineId, lambdaHeaders)
+  await waitPipelineTerminal(I, PROJECT_NAME, pipelineId, rootHeaders)
 
-Before(() => {
-  successProject = null
-  failureProject = null
-  killedProject = null
-  successRun = null
+  I.resizeWindow(1024, 768)
+  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/pipelines/${pipelineId}`)
+  await maskPipelinePage(I, PROJECT_NAME)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'release-crashed'))
 })
 
 // ============================================
-// Given — main starts locked
+// When — the safety net runs on the way out
 // ============================================
 
-storyboardStep(Given, "main's door is closed to everyone", async () => {
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  successProject = 'e2e-release-toggle'
-  const { repoDir, glabToken } = await bootstrapLockedProject(successProject)
-  successProject = { name: successProject, repoDir, glabToken }
-  I.resizeWindow(1024, 640)
-  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(successProject.name), successProject.name)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'protection-locked'))
+storyboardStep(When, "GitLab's after_script re-locks the main branch even though the release job failed", async () => {
+  const rootHeaders = await getRootHeaders()
+  const trace = releaseTraceStory(PROJECT_NAME, releaseJobId, rootHeaders).join('\n')
+  // Twin: the after_script really ran the lock TASK and restored protection —
+  // this is the mechanism (after_script runs on success OR failure).
+  if (!trace.includes('Default branch protection restored')) {
+    throw new Error(`Expected the after_script lock task to restore protection, trace:\n${trace}`)
+  }
+
+  I.resizeWindow(1024, 900)
+  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/jobs/${releaseJobId}`)
+  await I.waitForElement('[data-testid="job-log-content"]', 30)
+  await I.wait(4)
+  // Collapse GitLab's long job log to just its after_script section and strip the
+  // volatile gutter/timestamps, so the card is exactly "the job FAILED, and
+  // GitLab still ran `task glab:release:lock-default-branch` from after_script".
+  await I.executeScript(() => {
+    const lineEls = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+    const idx = lineEls.findIndex(l => /Running after[ _]script/i.test(l.textContent))
+    if (idx > 2) lineEls.slice(0, idx - 3).forEach(l => { l.style.display = 'none' })
+    document.querySelectorAll('.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(e => { e.style.display = 'none' })
+    document.querySelectorAll('.job-log-line-content').forEach(e => { e.textContent = e.textContent.replace(/\d+\.\d+\.\d+/g, '1.0.0') })
+  })
+  await maskPipelinePage(I, PROJECT_NAME)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'after-script-relock'))
   I.resizeWindow(1024, 768)
 })
 
 // ============================================
-// When — the window opens, the push lands
+// Then — main is locked again anyway
 // ============================================
 
-storyboardStep(When, 'the release opens the door just long enough to push', async () => {
-  successRun = await runRelease(successProject.name, successProject.repoDir, successProject.glabToken, { expectFailure: false })()
-  if (successRun.failed) {
-    throw new Error(`Expected task release to succeed, but it failed:\n${successRun.raw}`)
-  }
-  assertContains(successRun.raw, 'Temporarily opening push access for Maintainers')
-  const filtered = filterReleaseLogs(successRun.raw)
-  const slice = headFromMarker(filtered, 'Temporarily opening push access for Maintainers', 3)
-  await renderPreFrame(I, 'toggle-opens', slice.join('\n'))
-})
-
-storyboardStep(When, 'it makes its one write to main', async () => {
-  const subject = execSync(`git -C ${successProject.repoDir} log -1 --format=%s`, { encoding: 'utf8' }).trim()
-  const sha = execSync(`git -C ${successProject.repoDir} rev-parse HEAD`, { encoding: 'utf8' }).trim()
-  const masked = subject.replace(/\d+\.\d+\.\d+/g, RELEASE_DISPLAY_VERSION)
-  await renderPreFrame(I, 'push-lands', masked)
-  await assertRemoteMainAtSha(successProject.name, sha)
-})
-
-// ============================================
-// Then — the window closes, both on success and on the safety net
-// ============================================
-
-storyboardStep(Then, 'it closes the door again the moment it is done', async () => {
-  assertContains(successRun.raw, RESTORE_MARKER)
-  const filtered = filterReleaseLogs(successRun.raw)
-  const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
-  await renderPreFrame(I, 'window-closes', slice.join('\n'))
-  await assertMainProtected(successProject.name)
-})
-
-storyboardStep(Then, 'a crash still cannot leave the door open', async () => {
-  const failureProjectName = 'e2e-release-toggle-failure'
-  const { repoDir, glabToken } = await bootstrapLockedProject(failureProjectName)
-  failureProject = { name: failureProjectName, repoDir, glabToken }
-  const run = await runRelease(failureProjectName, repoDir, glabToken, { expectFailure: true })()
-  if (!run.failed) {
-    throw new Error(`Expected task release to fail, but it succeeded:\n${run.raw}`)
-  }
-  assertContains(run.raw, 'Temporarily opening push access for Maintainers')
-  assertContains(run.raw, RESTORE_MARKER)
-  const filtered = filterReleaseLogs(run.raw)
-  const slice = tailFromMarker(filtered, [RESTORE_MARKER], 12)
-  await renderPreFrame(I, 'window-closes-on-failure', slice.join('\n'))
-  await assertMainProtected(failureProject.name)
-})
-
-storyboardStep(Then, 'a killed job still cannot leave the door open', async () => {
-  const killedName = 'e2e-release-toggle-killed'
-  const { repoDir, glabToken } = await bootstrapLockedProject(killedName)
-  killedProject = { name: killedName, repoDir, glabToken }
-  const releaseEnv = await buildReleaseEnv(killedName)
-
-  // detached: true → the child leads its own process group, so a negative-pid
-  // signal reaches BOTH go-task and the bash child carrying the trap. The trap
-  // then fires whether or not go-task forwards the signal itself.
-  const child = spawn('task', ['release'], {
-    cwd: repoDir,
-    env: { ...buildGitLabTaskEnv(glabToken), ...releaseEnv },
-    detached: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
-  if (!child.pid) throw new Error('Failed to spawn `task release`')
-  let out = ''
-  child.stdout.on('data', d => { out += d.toString() })
-  child.stderr.on('data', d => { out += d.toString() })
-  const exited = new Promise(resolve => child.on('close', resolve))
-
-  // Kill ONLY once the window is provably open (push=Maintainers via REST),
-  // never on a timer — the window stays open for the whole release, so a tight
-  // poll always catches it well before the run could finish on its own.
+storyboardStep(Then, 'the main branch is locked again even though the release crashed', async () => {
+  // The safety net (the EXIT trap and the after_script re-lock) shut the door on
+  // the way out. Wait for it, then prove it on the server and on screen.
+  const rootHeaders = await getRootHeaders()
   const deadline = Date.now() + 120000
-  let opened = false
+  let level = null
   while (Date.now() < deadline) {
-    if (await pushAccessLevel(killedName) === 40) { opened = true; break }
-    await sleep(150)
+    level = await pushAccessLevel(PROJECT_NAME, rootHeaders)
+    if (level === 0) break
+    await sleep(1000)
   }
-  if (!opened) {
-    try { process.kill(-child.pid, 'SIGKILL') } catch (e) { /* already gone */ }
-    await exited
-    throw new Error(`Release never opened the push window within 120s:\n${out}`)
+  if (level !== 0) {
+    throw new Error(`main did not re-lock (push=No one) after the crashed release; push level=${level}`)
   }
+  await assertMainProtected(PROJECT_NAME)
 
-  // SIGTERM the group — the exact signal a cancelled or timed-out CI job gets.
-  process.kill(-child.pid, 'SIGTERM')
-  await exited
-
-  // The trap ran on the signal: the window opened, then the restore marker
-  // printed on the way out, and main is protected again on the server.
-  assertContains(out, 'Temporarily opening push access for Maintainers')
-  assertContains(out, RESTORE_MARKER)
-  await assertMainProtected(killedProject.name)
-
-  // The result a human must SEE: GitLab's protected-branches page shows main
-  // locked again ("Allowed to push: No one") AFTER the killed release.
   I.resizeWindow(1024, 640)
-  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(killedProject.name), killedProject.name)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'protection-relocked-after-kill'))
+  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(PROJECT_NAME), PROJECT_NAME)
+  await addStoryboardFrame(I, await capturePageFrame(I, 'door-locked-after'))
   I.resizeWindow(1024, 768)
 })

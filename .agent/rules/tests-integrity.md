@@ -54,6 +54,17 @@ Prefer few BIG stories over many small ones, and split a long one into chapters 
 - ✅ Twin every visual fact with a programmatic assert of the same fact (working tree, REST on the remote branch) so a regression fails loud even without eyes.
 - ❌ NEVER scatter journey baselines outside their storyboard (a frame without its panel tells no story), and NEVER compose or retouch panel content — every pixel inside a panel is a real capture taken at its instant.
 
+#### Write the narration for a human (a 12-year-old must follow it, without being talked down to)
+
+The cards prove the fact; the WORDS make a stranger understand it. A storyboard that regenerates green but reads as a puzzle is a half-job. The bar every `Feature:`/`Scenario:`/`# Note:` must clear:
+
+- ✅ Name everything in full, every time: "the main branch" (never a bare "main"), "the release job", "GitLab", "push access" — the reader never guesses what an "it" or a metaphor points to. A metaphor (the door) is allowed ONLY if its literal meaning (push access to the main branch) sits in the same clause the first time, then drop it for plain words.
+- ✅ Show REAL GitLab, not a look-alike: when the fact lives in the CI, the card is the actual GitLab page (pipeline graph / job log / protected-branch settings), never a `<pre>` that merely resembles a terminal — the reader must see it IS the product, not a CLI reconstruction.
+- ✅ Tell ONE arc across the cards: the normal rule → the one exception and its danger → the incident → the automatic rescue → the proof; close the last card back to the opening rule so the story resolves.
+- ✅ Anchor each `# Note:` on what THAT card's screenshot actually shows, and quote its verbatim strings (the task name, the exact log line, the exact settings label — e.g. `task glab:release:lock-default-branch`, `Allowed to push: No one`); invent no UI.
+- ✅ Explain any unavoidable term in one plain clause (after_script = a cleanup step GitLab runs on every outcome, pass or fail; merge request = a reviewed change). Keep each note 2-4 short concrete sentences; no comma splices, no padding.
+- ✅ Reference exemplar: `features/02-daily-work/release-window.feature` — a real CI release is crashed mid-push and the story proves the main branch re-locks itself, told entirely on real GitLab pages.
+
 ### Mechanics
 
 1. Wait for stability (loader inactive; key element visible with `TIMEOUTS.STABLE`).
