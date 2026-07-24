@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.2 (2026-07-24)
+
+### Fix
+
+- **gitleaks**: stop allowlisting every .env and secrets.yaml so the scanner sees real secrets
+
 ## 22.9.1 (2026-07-24)
 
 ### Fix
