@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.8 (2026-07-25)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.13.3
+
 ## 22.9.7 (2026-07-25)
 
 ### Fix
