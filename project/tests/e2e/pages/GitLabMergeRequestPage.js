@@ -33,7 +33,13 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
     const PLACEHOLDER = '—'
 
     document.querySelectorAll('time, .js-timeago').forEach(el => { el.textContent = PLACEHOLDER })
-    document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+    // Blanket-hiding every <img> also blanks the image PREVIEW of a picture
+    // added by the merge request — which, on a storyboard story, is the very
+    // thing the card must show. With keepContext only avatars go (the rule
+    // right below), and the diff keeps its images.
+    if (!args.keepContext) {
+      document.querySelectorAll('img').forEach(el => { el.style.visibility = 'hidden' })
+    }
     document.querySelectorAll('.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"]').forEach(el => {
       el.style.visibility = 'hidden'
     })

@@ -69,6 +69,12 @@ const FIXTURE_DIR = '/tmp/e2e-storyboard-gate-repo'
 // release job's CI definition owes.
 const PRODUCT_FILE = '.config/gitlab/ci/devsecops/release.yml'
 const CARD_FILE = 'project/tests/e2e/features/02-daily-work/release-window.feature'
+// The baseline the new card captures. The gate wants the PICTURE, not a comment
+// beside it, so the author's second push carries this file too. The fixture
+// stages it from a real frame of that same story — the demo is about the gate's
+// verdict, and every pixel of that frame is a genuine capture.
+const PROOF_PNG = 'project/tests/e2e/screenshots/base/02-daily-work/release-window/cleanup-on-every-outcome.png'
+const STAGED_FROM = 'project/tests/e2e/screenshots/base/02-daily-work/release-window/after-script-relock.png'
 
 function lambdaUser () {
   return process.env.TASK_GITLAB_LAMBDA_USER
@@ -394,7 +400,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   const redTrace = jobTrace(gate.id, rootHeaders)
   const others = jobs.filter(j => j.name !== GATE_JOB)
   if (gate.status !== 'failed' || status !== 'failed' ||
-      !redTrace.includes('Product changed with NO storyboard card changed or added') ||
+      !redTrace.includes('Product changed with NO storyboard picture to prove it') ||
       !redTrace.includes(PRODUCT_FILE)) {
     console.log(`── ${GATE_JOB} said:\n${gateSection(redTrace)}`)
     throw new Error(`Expected the ${GATE_JOB} job to stop the unproven change; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
@@ -421,24 +427,27 @@ storyboardStep(Then, 'the failed job names the file left without proof', async (
   }
 })
 
-storyboardStep(When, 'the author adds the proof card beside the same framework change', async () => {
+storyboardStep(When, 'the author adds the card and the picture it captured', async () => {
   const rootHeaders = await getRootHeaders()
   // The card that proves a change to the release job's CI definition already
   // exists — the crashed-release story. The author extends it, on the SAME
   // merge request, leaving the framework change untouched.
   fs.appendFileSync(
     `${FIXTURE_DIR}/${CARD_FILE}`,
-    '\n  # The cleanup this card proves runs whatever the release job does.\n'
+    '\n    # Note: The cleanup runs whatever the release job does, pass or fail.\n' +
+    '    And the cleanup runs on every outcome\n'
   )
+  fs.copyFileSync(`${FIXTURE_DIR}/${STAGED_FROM}`, `${FIXTURE_DIR}/${PROOF_PNG}`)
   sh([
-    `git add ${CARD_FILE}`,
-    'git commit --quiet -m "test(e2e): note that this card proves the cleanup"',
+    `git add ${CARD_FILE} ${PROOF_PNG}`,
+    'git commit --quiet -m "test(e2e): capture the cleanup that runs on every outcome"',
     'git push --quiet 2>/dev/null'
   ].join(' && '), FIXTURE_DIR)
 
-  // Twin FIRST: both files are in the merge request now.
-  await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE])
-  await captureChangesFrame(CARD_FILE, 'changes-with-card', 820)
+  // Twin FIRST: the sentence AND the picture it captured are both in the merge
+  // request — the gate only accepts the picture.
+  await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE, PROOF_PNG])
+  await captureChangesFrame(PROOF_PNG.split('/').pop(), 'changes-with-card', 1120)
 })
 
 storyboardStep(Then, 'the same job turns green and names the card that proved the change', async () => {
@@ -449,8 +458,8 @@ storyboardStep(Then, 'the same job turns green and names the card that proved th
   const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
   if (status !== 'success' || gate.status !== 'success' ||
-      !greenTrace.includes('Product changed and a storyboard was changed/added') ||
-      !greenTrace.includes(CARD_FILE)) {
+      !greenTrace.includes('Product changed and a storyboard captured it') ||
+      !greenTrace.includes(PROOF_PNG)) {
     console.log(`── ${GATE_JOB} said:\n${gateSection(greenTrace)}`)
     throw new Error(`Expected a green pipeline once the card is there; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
   }

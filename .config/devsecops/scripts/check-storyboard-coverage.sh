@@ -9,11 +9,16 @@
 #   by a VISIBLE storyboard card. A written rule alone is ignorable — an agent
 #   or a rushed human can ship a `.config/**` fix with no visual proof and the
 #   pipeline stays green. This guard turns the principle into teeth: on a merge
-#   request it FAILS when product files changed without any storyboard file
-#   being changed OR added.
+#   request it FAILS when product files changed and no storyboard baseline was
+#   captured or updated with them.
 #
-#   Product   = .config/**, copier.yml, Taskfile.yml{,.jinja}
-#   Storyboard = project/tests/e2e/{features,screenshots/base,support/steps,storyboards}/**
+#   Product = .config/**, copier.yml, Taskfile.yml{,.jinja}
+#   Proof   = project/tests/e2e/screenshots/base/**.png
+#
+#   The proof is the CAPTURED artifact, not a text file next to it: a baseline
+#   image exists only because a test really ran and photographed something. A
+#   comment added to a .feature produces none, so "touch a file under the
+#   storyboard folder" does not pass the gate.
 #
 #   Escape hatch (deliberate + visible, never silent): a commit in the range
 #   carrying a `Storyboard-exempt: <reason>` trailer waives the gate. Review
@@ -25,7 +30,7 @@
 #
 # EXIT CODES:
 #   0  Coverage holds (or no product change, or exempted)
-#   1  Product changed with no storyboard change/addition and no exemption
+#   1  Product changed with no captured baseline and no exemption
 #
 # ============================================================================
 
@@ -48,8 +53,9 @@ NC='\033[0m'
 
 # Product = the shipped framework surface. A change here must be proven visibly.
 PRODUCT_RE='^(\.config/|copier\.yml$|Taskfile\.yml(\.jinja)?$)'
-# A change/addition under any of these satisfies the gate.
-STORYBOARD_RE='^project/tests/e2e/(features|screenshots/base|support/steps|storyboards)/'
+# What satisfies the gate: a baseline image, changed or added. Only a real
+# capture run produces one.
+PROOF_RE='^project/tests/e2e/screenshots/base/.+\.png$'
 
 BASE="${BASE:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-origin/main}}"
 
@@ -86,10 +92,10 @@ if ! diff_output="$(changed_files)"; then
 fi
 mapfile -t all_changed < <(printf '%s\n' "${diff_output}" | sed '/^$/d')
 product=()
-storyboard=()
+proof=()
 for f in "${all_changed[@]}"; do
   [[ "$f" =~ $PRODUCT_RE ]] && product+=("$f")
-  [[ "$f" =~ $STORYBOARD_RE ]] && storyboard+=("$f")
+  [[ "$f" =~ $PROOF_RE ]] && proof+=("$f")
 done
 
 if [ "${#product[@]}" -eq 0 ]; then
@@ -97,9 +103,9 @@ if [ "${#product[@]}" -eq 0 ]; then
   exit 0
 fi
 
-if [ "${#storyboard[@]}" -gt 0 ]; then
-  echo -e "${GREEN}✅ Product changed and a storyboard was changed/added:${NC}"
-  printf '   ~ %s\n' "${storyboard[@]}"
+if [ "${#proof[@]}" -gt 0 ]; then
+  echo -e "${GREEN}✅ Product changed and a storyboard captured it:${NC}"
+  printf '   ~ %s\n' "${proof[@]}"
   exit 0
 fi
 
@@ -108,13 +114,15 @@ if is_exempt; then
   exit 0
 fi
 
-echo -e "${RED}❌ Product changed with NO storyboard card changed or added:${NC}"
+echo -e "${RED}❌ Product changed with NO storyboard picture to prove it:${NC}"
 printf "   ${RED}~${NC} %s\n" "${product[@]}"
 cat >&2 <<'MSG'
 
 The key principle of this repo: every product change is proven by a visible
-storyboard card. Do ONE of:
-  - add/extend a card in project/tests/e2e/features/** (+ its step and baseline);
+storyboard card, and the proof is the picture that card captures — a comment
+next to it is not one. Do ONE of:
+  - add or extend a card in project/tests/e2e/features/** and commit the
+    baseline it captures (project/tests/e2e/screenshots/base/**);
   - if the change is genuinely invisible, add a commit trailer:
         Storyboard-exempt: <why this needs no visual proof>
 See .agent/rules/tests-integrity.md.

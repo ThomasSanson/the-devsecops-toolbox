@@ -26,16 +26,16 @@ Feature: A framework change without its proof card never reaches the main branch
     # Note: So the merge request is stopped. The box reads "Merge blocked: 1 check failed", and right under it the reason: "Pipeline must succeed." Nobody had to notice the missing proof. The project refused the change on its own.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     Then GitLab refuses to merge it, one check failed
-    # Note: A red job is useless if it does not say why, so the author clicks it open. The job's own log spells the verdict out: "Product changed with NO storyboard card changed or added", then names the file it caught.
-    # Note: It also gives the two ways forward. Add a card under project/tests/e2e/features/. Or, when a change genuinely has nothing to show, write a line starting with "Storyboard-exempt:" in the commit message, so the reviewer reads the reason instead of guessing at it.
+    # Note: A red job is useless if it does not say why, so the author clicks it open. The job's own log spells the verdict out: "Product changed with NO storyboard picture to prove it", then names the file it caught.
+    # Note: It also says what counts as a proof, and it is strict: the picture the card captures, under project/tests/e2e/screenshots/base/. A comment written next to a card is not one. Or, when a change genuinely has nothing to show, a line starting with "Storyboard-exempt:" in the commit message, so the reviewer reads the reason instead of guessing at it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
     And the failed job names the file left without proof
-    # Note: The author pushes the missing card to the same merge request, and changes nothing else. The Changes tab now lists two files: the framework file from before, untouched, and beside it the card that pictures what it does.
-    # Note: That card is project/tests/e2e/features/02-daily-work/release-window.feature, the story where a release job crashes and the main branch locks itself again anyway. It is exactly the picture this change owed.
+    # Note: The author pushes the missing card to the same merge request, and changes nothing else. The Changes tab now lists three files: the framework file from before, untouched, the sentence added to the card, and the picture that sentence captured.
+    # Note: That picture is what the gate actually wants. A screenshot only exists because the test really ran and photographed something, so a comment typed next to a card can never stand in for it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
-    When the author adds the proof card beside the same framework change
-    # Note: The very same job runs again on the new push, and this time it reads Passed. Its log carries the opposite verdict: "Product changed and a storyboard was changed/added".
-    # Note: The gate never leaves the reader guessing. It names the file that made it green, so a reviewer can go and look at that card for themselves.
+    When the author adds the card and the picture it captured
+    # Note: The very same job runs again on the new push, and this time it reads Passed. Its log carries the opposite verdict: "Product changed and a storyboard captured it".
+    # Note: The gate never leaves the reader guessing. It names the picture that made it green, so a reviewer can go and look at it for themselves.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
     Then the same job turns green and names the card that proved the change
     # Note: Back on the merge request, every job is green and the block is gone. The Merge button is there, ready: the change that was refused a minute ago can now go in.
