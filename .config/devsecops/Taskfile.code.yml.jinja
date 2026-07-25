@@ -41,3 +41,83 @@ tasks:
           TASK_COPIER_ANSWER_FILE: ".config/devsecops/.copier-answers.yml"
           TASK_COPIER_CLI_OPTS: "--skip-answered"
 {%- endraw %}
+
+{% raw %}
+  # ---------------------------------------------------------------------------
+  # The test-first cycle, driven by the Taskfile instead of anyone's memory.
+  # One task per phase, the phase that was really reached recorded on disk, and
+  # a gate at the end of each one. A phase refuses to start when the recorded
+  # phase is not the one before it, so the sequence cannot be skipped and
+  # nothing has to be remembered. Full story:
+  # .agent/workflows/ai-development-cycle.md
+  # ---------------------------------------------------------------------------
+
+  agent:doctor:
+    desc: |
+      ℹ️ Description:
+        Lists the AI tools this machine actually holds — one drop-in file each,
+        under .config/devsecops/agents.d/ — and the command each one offers for
+        listing its own models. The framework names no tool and no model of its
+        own, so nothing here can go stale.
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh doctor
+
+  agent:red:
+    desc: |
+      ℹ️ Description:
+        Opens the cycle: the executor writes the failing test.
+
+        Gates: the working tree really changed, the change touches test files
+        ONLY, the failure is real (check:red-is-real) and nothing was switched
+        off (check:no-cheat).
+
+      🚀 Usage: task devsecops:code:agent:red -- @my-tag
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh red {{.CLI_ARGS}}
+
+  agent:review:red:
+    desc: |
+      ℹ️ Description:
+        The devil's advocate on the test that was just written — the one step no
+        exit code can replace. Records ACCEPT or REJECT, with the grid that led
+        to it, under tmp/agent/. A REJECT sends the cycle back to the red phase.
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh review:red {{.CLI_ARGS}}
+
+  agent:green:
+    desc: |
+      ℹ️ Description:
+        The executor writes the smallest code that makes the test pass.
+
+        Gates: the working tree really changed, the tests now pass
+        (TASK_AGENT_TEST_CMD, default `task test`) and nothing was switched off.
+
+      🚀 Usage: task devsecops:code:agent:green -- @my-tag
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh green {{.CLI_ARGS}}
+
+  agent:review:green:
+    desc: |
+      ℹ️ Description:
+        Hunts over-engineering in the code that was just written: an abstraction
+        with a single use, indirection with no need, generality nobody asked
+        for. Records numbered actions, or the words "no refactoring needed".
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh review:green {{.CLI_ARGS}}
+
+  agent:refactor:
+    desc: |
+      ℹ️ Description:
+        Closes the cycle: the code is improved without changing what it does,
+        and the tests still pass.
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh refactor {{.CLI_ARGS}}
+
+  agent:reset:
+    desc: |
+      ℹ️ Description:
+        Forgets the recorded phase and starts the cycle over. The only way back
+        to the beginning, so an abandoned cycle is abandoned deliberately.
+    cmds:
+      - bash .config/devsecops/scripts/agent-cycle.sh reset
+{%- endraw %}

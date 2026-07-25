@@ -50,24 +50,32 @@ For ANY feature, bug fix, or modification, execute these steps IN ORDER:
 |------|--------------------------------|------------------------------|----------------------|
 | 1    | Write test (Gherkin, @tag)     | —                            | Feature file created |
 | 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"` | FAIL                 |
-| 3    | Implement minimal code         | —                            | Code written         |
-| 4    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |
-| 5    | Refactor (DO NOT touch test)   | —                            | Code improved        |
-| 6    | Verify after refactor          | `task test -- --grep "@tag"` | PASS                 |
-| 7    | Quality check                  | `task code`                  | PASS                 |
-| 8    | Full test suite                | `task test`                  | ALL PASS             |
+| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS |
+| 4    | Implement minimal code         | —                            | Code written         |
+| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |
+| 6    | Refactor (DO NOT touch test)   | —                            | Code improved        |
+| 7    | Verify after refactor          | `task test -- --grep "@tag"` | PASS                 |
+| 8    | Quality check                  | `task code`                  | PASS                 |
+| 9    | Full test suite                | `task test`                  | ALL PASS             |
 
 ## Checkpoints
 
 - **STEP 2**: DO NOT PROCEED until test fails
-- **STEP 4**: DO NOT PROCEED until test passes
-- **STEP 6**: If test fails, revert refactoring
+- **STEP 3**: DO NOT PROCEED until the failure is proven. A run that dies while
+  loading its files exits non-zero and records no scenario at all — a crash, not
+  a failure. Step 3 reads the report the run left behind and refuses that.
+- **STEP 5**: DO NOT PROCEED until test passes
+- **STEP 7**: If test fails, revert refactoring
 
 ## ⛔ FORBIDDEN
 
 - ❌ Writing code BEFORE the test
 - ❌ Skipping any step
 - ❌ Modifying the test to make it pass
+- ❌ Switching a check off to make the pipeline green (`@skip`, `.only(`, a
+  non-zero `tolerance:`, `allow_failure: true`). The `no-cheat` merge-request job
+  reads the lines a change adds and refuses them; the only waiver is a visible
+  `No-cheat-exempt: <why>` commit trailer.
 - ❌ Stopping at planning without executing this cycle
 
 **NOTE:** Planning is OK. But after planning, execute this cycle.

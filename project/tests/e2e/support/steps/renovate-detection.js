@@ -25,10 +25,10 @@ const { execSync } = require('child_process')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { renderTextInBrowser } = require('../helpers/textRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
+const { REPO, copyFramework } = require('../helpers/frameworkCopy')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 const { I } = inject()
-const REPO = '/workspace'
 
 // Dual-endpoint bootstrap tools, each regressed to a genuinely older version in
 // BOTH its canonical source and the install.sh pin.
@@ -43,16 +43,6 @@ const TRACKED = TOOLS.map(tool => tool.depName)
 let workdir = null
 let gitEnv = null
 const cleanupDirs = []
-
-// Full framework copy (task needs the root Taskfile + every include); drop the
-// heavy, irrelevant trees so the copy stays light.
-function copyFramework (dir) {
-  execSync(
-    `tar -C ${REPO} --exclude=.git --exclude=node_modules --exclude=.cache --exclude=tmp ` +
-    '--exclude=megalinter-reports --exclude="project/tests/e2e/screenshots" ' +
-    `--exclude="project/tests/e2e/_output" -cf - . | tar -C ${dir} -xf -`
-  )
-}
 
 After(() => {
   for (const dir of cleanupDirs.splice(0)) {

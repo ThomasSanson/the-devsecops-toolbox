@@ -14,6 +14,7 @@ const {
   addStoryboardFrame,
   captureElementFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
+const { ansiToHtml } = require('./textRender')
 
 // Keep the visual tail short: these runs emit a lot of apt/Go/glab install
 // noise upstream of the deterministic verdict. 12 lines capture the last
@@ -100,14 +101,13 @@ function filterOutput (raw) {
     })
 }
 
-function escapeHtml (text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 // Render deterministic text to a dark <pre> and capture it as a storyboard
 // frame (asserted pixel-perfect against its own baseline inside the step).
-async function renderPreFrame (I, frameName, text) {
-  I.resizeWindow(1024, 640)
+// The text keeps the REAL terminal colours a command emitted: ansiToHtml turns
+// its ANSI codes into spans, and escapes plain text exactly as before, so
+// monochrome baselines stay byte-identical.
+async function renderPreFrame (I, frameName, text, height = 640) {
+  I.resizeWindow(1024, height)
   await I.usePlaywrightTo('render captured output in browser', async ({ page }) => {
     await page.setContent(
       '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0">' +
@@ -116,7 +116,7 @@ async function renderPreFrame (I, frameName, text) {
       // never a mostly-empty viewport.
       '<div id="task-output-box" style="display:inline-block;background:#1e1e1e;padding:16px 22px 16px 16px;max-width:992px">' +
       '<pre id="task-output" style="margin:0;color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-all">' +
-      escapeHtml(text) +
+      ansiToHtml(text) +
       '</pre></div></body></html>'
     )
   })

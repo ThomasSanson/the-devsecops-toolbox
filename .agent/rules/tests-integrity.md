@@ -28,6 +28,36 @@ The key principle of this repo: **every PRODUCT change is proven by a VISIBLE st
 - **The only waiver is visible:** a change that is genuinely invisible (pure internal refactor, comment) may carry a `Storyboard-exempt: <why>` commit trailer. It is never silent — review sees the reason.
 - **The gate proves itself (dogfood):** it touches `.config/**`, so by its own rule it owes a card — `project/tests/e2e/features/03-evolution/test-discipline.feature` (`@test-discipline`) stops a REAL merge request that changes a framework file with no card, then lets the same one through once the card is pushed.
 
+## 🔴 The failure is checked too, and so is the change that claims it
+
+Two more gates, same principle: a rule that only exists in a document is a rule
+anyone in a hurry steps over.
+
+- **`task devsecops:test:check:red-is-real -- @tag`** — the whole method rests on
+  *the test failed before the code existed*, and that fact was taken on trust. It
+  is checkable: the suite writes a JUnit report per worker, and only when at
+  least one scenario was recorded. So the gate reads
+  `project/tests/e2e/_output/junit/` and accepts only a scenario that was
+  **recorded** AND **failed**. A run that dies while loading its files — a
+  missing module, a syntax error — exits non-zero and records nothing: a crash,
+  not a proof, and it is refused. Local loop only; on a merge request the code is
+  already there and every test is expected to pass.
+- **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
+  pipeline green is not to fix the code, it is to switch the test off. This gate
+  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`,
+  a non-zero `tolerance:`, `allow_failure: true`, and a linter silenced under a
+  test path. Every pattern is anchored at the head of its line, so quoting one in
+  a sentence or a string trips nothing. It runs as the `no-cheat` merge-request
+  job, and locally against `origin/main` — or against the working tree
+  (`BASE=HEAD`), which is what the cycle's phases use before you commit.
+- **The only waiver is visible**, exactly like the storyboard one: a
+  `No-cheat-exempt: <why>` commit trailer.
+- **Both gates prove themselves:** `@agent-harness`
+  (`project/tests/e2e/features/02-daily-work/agent-harness.feature`) runs a real
+  crash and a real failure and shows the first gate telling them apart;
+  `@test-discipline` pushes a real `@skip` to a real merge request and shows the
+  picture gate staying green while the second one stops it.
+
 ## Visual Regression
 
 Every test that proves something observable MUST include visual regression (`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.

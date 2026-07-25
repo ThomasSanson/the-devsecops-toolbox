@@ -33,18 +33,24 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**8. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
+- [**9. agent-harness**](02-daily-work/agent-harness.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, then drives the cycle itself, one checked step at a time.
+  Chapters: A failure that proves nothing · A failure that proves something · The tool that drives the cycle is chosen, never built in · The cycle that cannot be run out of order.
+  Replay: `task project:test:e2e -- --grep "@agent-harness"`
 
 ## Act 3 — Evolution (`03-evolution`)
 
-- [**9. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
+- [**10. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
   Chapters: The update splits the dictionary and keeps my word · A flipped answer delivers new tools and spares my edits.
   Replay: `task project:test:e2e -- --grep "@toolbox-update"`
-- [**10. render-matrix**](03-evolution/render-matrix.svg) — The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
+- [**11. render-matrix**](03-evolution/render-matrix.svg) — The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
   Chapters: What the default project looks like · Each answer changes exactly what it promises.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`
-- [**11. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
+- [**12. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
   Chapters: Updates flow through the framework · Every pinned tool is watched in both places.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
+- [**13. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
+  Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.
+  Replay: `task project:test:e2e -- --grep "@test-discipline"`
 
 ## The two tests with no story to tell
 

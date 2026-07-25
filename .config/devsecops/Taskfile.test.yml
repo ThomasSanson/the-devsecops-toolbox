@@ -429,6 +429,63 @@ tasks:
       - cmd: echo "🎉 Shard coverage check completed successfully"
         silent: true
 
+  check:red-is-real:
+    desc: |
+      ℹ️ Description:
+        The method rests on one fact: the test failed BEFORE the code existed.
+        This guard checks that fact instead of taking anyone's word for it.
+
+        It reads the JUnit reports the suite leaves in
+        project/tests/e2e/_output/junit/ and accepts the failure only when the
+        tagged scenario was really recorded AND really failed. A run that dies
+        while loading its files exits non-zero and records nothing — a crash,
+        not a proof — and is refused.
+
+        Deliberately NOT in the `default` task and NOT a CI job: it gates the
+        LOCAL loop, between writing the test and writing the code. On a merge
+        request the code is already there and every test is expected to pass.
+
+      🔧 Variables:
+        - REPORT_DIR: where the JUnit reports are (default:
+          project/tests/e2e/_output/junit)
+
+      📊 Exit codes:
+        - 0: the scenario ran and failed on its own check
+        - 1: no report, no such scenario, or the scenario passed
+        - 2: no scenario tag given
+    cmds:
+      - bash .config/devsecops/scripts/check-red-is-real.sh {{.CLI_ARGS}}
+
+  check:no-cheat:
+    desc: |
+      ℹ️ Description:
+        A test suite has one job: to fail when the code is wrong. The cheapest
+        way to make a red pipeline green is not to fix the code — it is to
+        switch the test off. This guard reads the lines a merge request ADDS and
+        refuses the ones that do it: a skipped or exclusive scenario, a raised
+        visual tolerance, `allow_failure: true`, a linter silenced inside the
+        tests.
+
+        Deliberately NOT in the `default` task: it needs a merge-request diff
+        base, which only a `merge_request_event` pipeline provides. CI runs it
+        as the dedicated `no-cheat` job; locally it diffs against origin/main.
+
+      🔧 Variables:
+        - BASE: diff base (default: CI_MERGE_REQUEST_DIFF_BASE_SHA or origin/main)
+
+      🚪 Escape hatch:
+        A `No-cheat-exempt: <reason>` commit trailer waives the gate, visibly.
+
+      📊 Exit codes:
+        - 0: nothing switched off, or exempted
+        - 1: the change switches a check off
+    cmds:
+      - cmd: echo "🔄 Starting no-cheat check"
+        silent: true
+      - bash .config/devsecops/scripts/check-no-cheat.sh
+      - cmd: echo "🎉 No-cheat check completed successfully"
+        silent: true
+
   check:storyboard-coverage:
     desc: |
       ℹ️ Description:

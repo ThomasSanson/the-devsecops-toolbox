@@ -18,6 +18,25 @@ description: Test integrity — never cheat; a visual-regression baseline must b
 - ✅ If test is obsolete → discuss with team before removing
 - ✅ Include visual regression test for each UI feature
 
+## 🔴 Both of those are checked, not just written down
+
+A rule that only exists in a document is a rule anyone in a hurry steps over, so
+two guards read the facts themselves.
+
+- **`task devsecops:test:check:red-is-real -- @tag`** — the method rests on *the
+  test failed before the code existed*, and that fact is checkable rather than
+  taken on your word. The gate reads the JUnit report the test run leaves behind
+  and accepts only a scenario that was **recorded** AND **failed**. A run that
+  dies while loading its files exits non-zero and records nothing: a crash, not a
+  proof, and it is refused. Use it between writing the test and writing the code.
+- **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
+  pipeline green is not to fix the code, it is to switch the test off. This gate
+  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`,
+  a non-zero `tolerance:`, `allow_failure: true`, and a linter silenced under a
+  test path. It runs as the `no-cheat` merge-request job, so a switched-off check
+  never reaches the default branch. The only waiver is visible: a
+  `No-cheat-exempt: <why>` commit trailer.
+
 ## Visual Regression
 
 Every test that proves something observable MUST include visual regression (`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.

@@ -27,3 +27,25 @@ test:
       when: never
     # Run in all other cases (MRs, feature branches, etc.)
     - when: always
+
+# A test suite has one job: to fail when the code is wrong. The cheapest way to
+# make a red pipeline green is not to fix the code — it is to switch the test
+# off. This gate reads the lines the merge request ADDS and FAILS on the ones
+# that do it (a skipped or exclusive scenario, a raised visual tolerance,
+# `allow_failure: true`, a linter silenced inside the tests). A
+# `No-cheat-exempt: <reason>` commit trailer is the only, visible waiver — so a
+# deliberate exception stays possible, and stays visible to review.
+no-cheat:
+  stage: test
+  needs: [] # Parallel, fast (~seconds): a git diff, no environment to boot.
+  extends: .default-tags
+  # The guard needs only git + bash, both in the base image — skip the heavy
+  # bootstrap so an unrelated setup hiccup can't mask it.
+  before_script: []
+  script:
+    # BASE defaults to CI_MERGE_REQUEST_DIFF_BASE_SHA inside the script; when
+    # the clone does not carry that commit, the guard falls back to the merge
+    # request's target branch.
+    - bash .config/devsecops/scripts/check-no-cheat.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

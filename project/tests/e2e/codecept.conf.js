@@ -74,6 +74,7 @@ exports.config = {
       : './features/**/*.feature',
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
+      './support/steps/agent-harness.js',
       './support/steps/init-baseline.js',
       './support/steps/init-guidance.js',
       './support/steps/glab-auth-ensure.js',

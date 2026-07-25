@@ -36,14 +36,10 @@
 
 set -euo pipefail
 
-# The CI checkout belongs to another user than the one running the job, so git
-# refuses it and answers "warning: Not a git repository" to EVERY command — the
-# state that used to make this gate announce "nothing to prove" and pass. Other
-# jobs get this from the `dev:init:ci` bootstrap, which this one deliberately
-# skips to stay fast. Trust the tree for THIS process only: the env form adds no
-# duplicate entry to a developer's global config and cannot race two runs
-# (same idiom as .config/devsecops/Taskfile.release.yml).
-export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="${PWD}"
+# The diff base, the git-ownership fix the CI checkout needs and the visible
+# waiver are shared with the other merge-request guard (no-cheat).
+# shellcheck source=.config/devsecops/scripts/diff-base.sh
+source "$(dirname "${BASH_SOURCE[0]}")/diff-base.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -61,28 +57,14 @@ PROOF_RE='^project/tests/e2e/screenshots/base/.+\.png$'
 # refused it anyway, instead of wondering whether it was even looked at.
 TEXT_RE='^project/tests/e2e/(features|support/steps|storyboards)/'
 
-BASE="${BASE:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-origin/main}}"
-
-# The runner's clone does not always carry the diff base: a merge-request
-# pipeline fetches the merge-request ref, and the base commit CI hands over can
-# sit outside it. `git diff <missing>...HEAD` then falls back to path mode and
-# prints its usage — which, before this, was swallowed as "nothing to prove".
-# Fall back to the target branch: `<target>...HEAD` computes the merge base
-# itself, which is exactly the comparison the gate wants.
-if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
-  TARGET="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-  git fetch --quiet origin "+refs/heads/${TARGET}:refs/remotes/origin/${TARGET}" >/dev/null 2>&1 || true
-  if git rev-parse --verify --quiet "origin/${TARGET}^{commit}" >/dev/null 2>&1; then
-    BASE="origin/${TARGET}"
-  fi
-fi
+BASE="$(resolve_diff_base)"
 
 changed_files() {
   git diff --name-only --diff-filter=ACMR "${BASE}...HEAD"
 }
 
 is_exempt() {
-  git log "${BASE}..HEAD" --format='%B' 2>/dev/null | grep -qiE '^Storyboard-exempt:[[:space:]]*\S'
+  has_exempt_trailer Storyboard "${BASE}"
 }
 
 echo -e "${BLUE}🎬 Storyboard-coverage gate (base: ${BASE})...${NC}"

@@ -1,12 +1,23 @@
 /* global inject Given When Then Before After NodeFilter */
 /**
- * Storyboard-coverage gate DOGFOOD — @test-discipline, on the heavy runner shard.
+ * Merge-request gate DOGFOOD — @test-discipline, on the heavy runner shard.
  *
- * The gate (.config/devsecops/scripts/check-storyboard-coverage.sh, wired as the
+ * Two guards, two chapters, one real merge request.
+ *
+ * Chapter 1 — storyboard-coverage
+ * (.config/devsecops/scripts/check-storyboard-coverage.sh, wired as the
  * `storyboard-coverage` job in .config/gitlab/ci/devsecops/test.yml) fails a
  * merge request when product files changed with NO storyboard card changed or
  * added. The gate itself touches .config/**, so by its own rule it owes a
  * visible proof — this is it.
+ *
+ * Chapter 2 — no-cheat (check-no-cheat.sh, the `no-cheat` job) reads the lines
+ * the change ADDS and refuses the ones that switch a check off. Its own proof
+ * belongs here rather than in a story of its own: the same merge request, now
+ * carrying its picture, has the scenario behind that picture switched off. The
+ * first gate stays green — a picture did come with the change — and the second
+ * one is what stops it. Reusing this scenario also keeps the runner on one
+ * shard instead of adding a second one elsewhere.
  *
  * The proof is the product, not a reconstruction: the framework working tree is
  * pushed to the in-repo test GitLab, a REAL merge request changes a REAL
@@ -15,8 +26,9 @@
  * real GitLab page (merge request, job log), twinned with a REST check of the
  * same fact.
  *
- * The job is framework-only (the generated `test.yml.jinja` twin carries no such
- * job), so the fixture is the toolbox tree itself — not a copier render.
+ * The storyboard-coverage job is framework-only (the generated `test.yml.jinja`
+ * twin carries no such job, no-cheat aside), so the fixture is the toolbox tree
+ * itself — not a copier render.
  *
  * Economy, not fabrication: a framework merge-request pipeline holds 26 jobs
  * (9 e2e shards among them). Every job but `storyboard-coverage` is cancelled
@@ -57,6 +69,10 @@ const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../
 
 const PROJECT_NAME = 'e2e-storyboard-gate'
 const GATE_JOB = 'storyboard-coverage'
+// The second merge-request guard, twin of the first: it reads the lines the
+// change ADDS and refuses the ones that switch a check off. A picture cannot
+// satisfy it, which is the whole point of chapter 2.
+const NO_CHEAT_JOB = 'no-cheat'
 const BRANCH = 'ci-release-cleanup-note'
 // Wide enough for GitLab to render the reviewer's context: the file tree beside
 // a diff, the job list beside a job log.
@@ -100,11 +116,11 @@ async function waitMrPipelineId (projectName, mrIid, headers, afterId = 0) {
   throw new Error(`No merge-request pipeline appeared for !${mrIid}`)
 }
 
-// The gate job of a pipeline, once that pipeline reached a terminal state.
-async function gateJobOf (projectName, pid, headers) {
+// A named job of a pipeline, once that pipeline reached a terminal state.
+async function jobOf (projectName, pid, headers, name = GATE_JOB) {
   const jobs = (await listPipelineJobs(projectName, pid, headers)).data || []
-  const gate = jobs.find(j => j.name === GATE_JOB)
-  if (!gate) throw new Error(`No "${GATE_JOB}" job on pipeline ${pid} (${jobs.map(j => j.name).join(', ')})`)
+  const gate = jobs.find(j => j.name === name)
+  if (!gate) throw new Error(`No "${name}" job on pipeline ${pid} (${jobs.map(j => j.name).join(', ')})`)
   return { gate, jobs }
 }
 
@@ -127,21 +143,23 @@ async function waitPipelineTerminal (projectName, pid, headers) {
 // The job page, stripped of everything that moves between runs: the log gutter
 // and timestamps, and the commit SHA the gate prints in its header line. Text
 // nodes only — replacing textContent would flatten the log's real colours.
-async function captureGateJobFrame (jobId, frameName, height) {
+async function captureGateJobFrame (jobId, frameName, height, opts = {}) {
+  const waitText = opts.waitText || 'Storyboard-coverage gate'
+  const script = opts.script || 'check-storyboard-coverage.sh'
   // Wide, so the card carries where the reader is: the project breadcrumb, the
   // job's own name and status, and the pipeline's other jobs in the left panel.
   I.resizeWindow(WIDE, height)
   await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/jobs/${jobId}`)
   await I.waitForElement('[data-testid="job-log-content"]', 60)
-  await I.waitForText('Storyboard-coverage gate', 60)
+  await I.waitForText(waitText, 60)
   await maskPipelinePage(I, PROJECT_NAME, { keepContext: true })
-  await I.executeScript(() => {
+  await I.executeScript((marker) => {
     // Collapse the log to the gate's own run, the way a reader clicks past the
     // runner's boilerplate: everything before the command line goes (cache
     // restore, image pull — and with them the toolbox version and image digest,
     // which move on every release).
     const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-    const start = lines.findIndex(l => /check-storyboard-coverage\.sh/.test(l.textContent))
+    const start = lines.findIndex(l => l.textContent.includes(marker))
     if (start > 0) lines.slice(0, start).forEach(l => { l.style.display = 'none' })
     document.querySelectorAll(
       '.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]'
@@ -155,7 +173,7 @@ async function captureGateJobFrame (jobId, frameName, height) {
       const v = n.nodeValue.replace(/\b[0-9a-f]{8,}\b/g, '<sha>')
       if (v !== n.nodeValue) n.nodeValue = v
     })
-  })
+  }, script)
   await I.wait(1)
   // Back to the top LAST: GitLab scrolls the page down on its own once the log
   // finishes rendering, and a card that starts below the job's name and status
@@ -240,6 +258,8 @@ Before((test) => {
   global.gateRedJobId = null
   global.gateFirstPid = null
   global.gateSecondPid = null
+  global.gateThirdPid = null
+  global.gateFourthPid = null
 })
 
 After(async (test) => {
@@ -402,7 +422,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   if (paths.length !== 1) {
     throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
   }
-  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
+  const { gate, jobs } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   global.gateRedJobId = gate.id
   const redTrace = jobTrace(gate.id, rootHeaders)
   const others = jobs.filter(j => j.name !== GATE_JOB)
@@ -462,7 +482,7 @@ storyboardStep(Then, 'the gate reads that comment and refuses it just the same',
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
   global.gateSecondPid = pid
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
-  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
+  const { gate, jobs } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   const trace = jobTrace(gate.id, rootHeaders)
   // Twin: the same red verdict AND the line that names the card file it read —
   // the gate looked at the comment and refused it, it was not simply unaware.
@@ -501,8 +521,9 @@ storyboardStep(When, 'the author adds the card and the picture it captured', asy
 storyboardStep(Then, 'the same job turns green and names the card that proved the change', async () => {
   const rootHeaders = await getRootHeaders()
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateSecondPid)
+  global.gateThirdPid = pid
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
-  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
+  const { gate, jobs } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
   if (status !== 'success' || gate.status !== 'success' ||
       !greenTrace.includes('Product changed and a storyboard captured it') ||
@@ -515,4 +536,74 @@ storyboardStep(Then, 'the same job turns green and names the card that proved th
 
 storyboardStep(Then, 'the merge request is green from end to end and can be merged', async () => {
   await captureMergeRequestFrame('Ready to merge', 'merge-allowed', 740)
+})
+
+// ---------------------------------------------------------------------------
+// Chapter 2 — the card is there, and the test behind it was switched off
+// ---------------------------------------------------------------------------
+//
+// The first gate asks ONE question: did a picture come with this change. It
+// cannot ask whether the scenario taking that picture still runs, and a single
+// tag is enough to stop it running for good. That is what the second gate reads.
+
+storyboardStep(When, 'the author switches the test off instead of fixing what it caught', async () => {
+  const rootHeaders = await getRootHeaders()
+  // The cheapest way to turn a red pipeline green: tell the suite to walk past
+  // the scenario. The card and its picture both stay exactly where they are.
+  const card = `${FIXTURE_DIR}/${CARD_FILE}`
+  const before = fs.readFileSync(card, 'utf8')
+  const after = before.replace(/^(\s*)@release-window$/m, (_, indent) => `${indent}@skip\n${indent}@release-window`)
+  if (after === before) throw new Error(`Could not find the scenario tag to switch off in ${CARD_FILE}`)
+  fs.writeFileSync(card, after)
+  sh([
+    `git add ${CARD_FILE}`,
+    'git commit --quiet -m "test(e2e): step over the crashed-release scenario for now"',
+    'git push --quiet 2>/dev/null'
+  ].join(' && '), FIXTURE_DIR)
+
+  // Twin FIRST: the merge request still carries the picture from chapter 1 —
+  // whatever the second gate says next, it is not about a missing picture.
+  const paths = await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE, PROOF_PNG])
+  if (!paths.includes(PROOF_PNG)) {
+    throw new Error(`Expected the picture to still be in the merge request, got ${JSON.stringify(paths)}`)
+  }
+  await captureChangesFrame(CARD_FILE, 'changes-test-switched-off', 1120)
+})
+
+storyboardStep(Then, 'the picture check is satisfied: the card and its picture are both still there', async () => {
+  const rootHeaders = await getRootHeaders()
+  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateThirdPid)
+  global.gateFourthPid = pid
+  await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
+  const { gate } = await jobOf(PROJECT_NAME, pid, rootHeaders)
+  const trace = jobTrace(gate.id, rootHeaders)
+  // Twin: the first gate is GREEN on the very push that switches the test off.
+  // It was asked whether a picture came with the change, and one did.
+  if (gate.status !== 'success' || !trace.includes('Product changed and a storyboard captured it')) {
+    console.log(`── ${GATE_JOB} said:\n${gateSection(trace)}`)
+    throw new Error(`Expected ${GATE_JOB} to stay green on the doctored push, got ${gate.status}`)
+  }
+  await captureGateJobFrame(gate.id, 'picture-check-still-green', 690)
+})
+
+storyboardStep(Then, 'the second check reads the change itself and names the line that switched the test off', async () => {
+  const rootHeaders = await getRootHeaders()
+  const { gate, jobs } = await jobOf(PROJECT_NAME, global.gateFourthPid, rootHeaders, NO_CHEAT_JOB)
+  const trace = jobTrace(gate.id, rootHeaders)
+  // Twin: the second gate is RED, and red for the RIGHT reason — it names the
+  // file it read, says what the added line does, and offers its visible waiver.
+  if (gate.status !== 'failed' ||
+      !trace.includes('This change switches a check off instead of fixing what it caught') ||
+      !trace.includes(CARD_FILE) || !trace.includes('without ever running it') ||
+      !trace.includes('No-cheat-exempt:')) {
+    console.log(`── ${NO_CHEAT_JOB} said:\n${trace.slice(-4000)}`)
+    throw new Error(`Expected ${NO_CHEAT_JOB} to name the switched-off scenario; jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
+  }
+  await captureGateJobFrame(gate.id, 'no-cheat-names-the-line', 720, {
+    waitText: 'No-cheat gate', script: 'check-no-cheat.sh'
+  })
+})
+
+storyboardStep(Then, 'GitLab stops the merge request again, on the check a picture cannot satisfy', async () => {
+  await captureMergeRequestFrame('Merge blocked', 'merge-blocked-again', 740)
 })
