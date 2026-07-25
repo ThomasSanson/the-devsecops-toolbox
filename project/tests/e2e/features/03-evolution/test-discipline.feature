@@ -30,6 +30,14 @@ Feature: A framework change without its proof card never reaches the main branch
     # Note: It also says what counts as a proof, and it is strict: the picture the card captures, under project/tests/e2e/screenshots/base/. A comment written next to a card is not one. Or, when a change genuinely has nothing to show, a line starting with "Storyboard-exempt:" in the commit message, so the reviewer reads the reason instead of guessing at it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
     And the failed job names the file left without proof
+    # Note: First reflex, the cheapest one: type a line of text into an existing card and call it done. The Changes tab now holds two files, and the diff of that card is a single comment line. Still nothing under screenshots/base: no picture was taken.
+    # Note: It costs one second, it proves nothing, and a rule written in a document cannot stop it.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
+    When the author pushes only a comment beside the framework change
+    # Note: The pipeline runs again and lands on exactly the same red. The box still reads "Merge blocked: 1 check failed".
+    # Note: The gate does not count files, it looks for a picture. A comment is text anyone can type; a baseline exists only because the test really ran and photographed the result. That is the whole difference, and it is what makes the rule hold.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
+    Then the gate is not fooled and the merge request stays blocked
     # Note: The author pushes the missing card to the same merge request, and changes nothing else. The Changes tab now lists three files: the framework file from before, untouched, the sentence added to the card, and the picture that sentence captured.
     # Note: That picture is what the gate actually wants. A screenshot only exists because the test really ran and photographed something, so a comment typed next to a card can never stand in for it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs

@@ -233,6 +233,7 @@ Before((test) => {
   global.gateRunner = null
   global.gateRedJobId = null
   global.gateFirstPid = null
+  global.gateSecondPid = null
 })
 
 After(async (test) => {
@@ -427,6 +428,44 @@ storyboardStep(Then, 'the failed job names the file left without proof', async (
   }
 })
 
+storyboardStep(When, 'the author pushes only a comment beside the framework change', async () => {
+  const rootHeaders = await getRootHeaders()
+  // The cheapest thing that LOOKS like a proof: a line of text typed into an
+  // existing card. This is exactly what the gate must refuse.
+  fs.appendFileSync(
+    `${FIXTURE_DIR}/${CARD_FILE}`,
+    '\n  # The release cleanup runs on every outcome.\n'
+  )
+  sh([
+    `git add ${CARD_FILE}`,
+    'git commit --quiet -m "test(e2e): mention the cleanup in the crashed-release card"',
+    'git push --quiet 2>/dev/null'
+  ].join(' && '), FIXTURE_DIR)
+
+  // Twin FIRST: the merge request now holds the framework file and the card
+  // file, and still not a single picture.
+  const paths = await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE])
+  if (paths.some(p => /^project\/tests\/e2e\/screenshots\/base\/.+\.png$/.test(p))) {
+    throw new Error(`Expected NO baseline in the merge request yet, got ${JSON.stringify(paths)}`)
+  }
+  await captureChangesFrame(CARD_FILE, 'changes-comment-only', 820)
+})
+
+storyboardStep(Then, 'the gate is not fooled and the merge request stays blocked', async () => {
+  const rootHeaders = await getRootHeaders()
+  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
+  global.gateSecondPid = pid
+  const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
+  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
+  const trace = jobTrace(gate.id, rootHeaders)
+  if (status !== 'failed' || gate.status !== 'failed' ||
+      !trace.includes('Product changed with NO storyboard picture to prove it')) {
+    console.log(`── ${GATE_JOB} said:\n${gateSection(trace)}`)
+    throw new Error(`Expected the comment to change nothing; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
+  }
+  await captureMergeRequestFrame('Merge blocked', 'merge-still-blocked', 740)
+})
+
 storyboardStep(When, 'the author adds the card and the picture it captured', async () => {
   const rootHeaders = await getRootHeaders()
   // The card that proves a change to the release job's CI definition already
@@ -452,8 +491,7 @@ storyboardStep(When, 'the author adds the card and the picture it captured', asy
 
 storyboardStep(Then, 'the same job turns green and names the card that proved the change', async () => {
   const rootHeaders = await getRootHeaders()
-  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
-  global.gateSecondPid = pid
+  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateSecondPid)
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
   const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
