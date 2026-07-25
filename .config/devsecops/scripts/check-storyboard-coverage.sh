@@ -23,10 +23,6 @@
 #   BASE=origin/main bash check-storyboard-coverage.sh      # local
 #   (CI passes CI_MERGE_REQUEST_DIFF_BASE_SHA automatically)
 #
-# TEST SEAM:
-#   STORYBOARD_COVERAGE_FILES="a b c"  # newline/space list, bypasses git diff
-#   STORYBOARD_EXEMPT=1                 # simulate an exemption trailer
-#
 # EXIT CODES:
 #   0  Coverage holds (or no product change, or exempted)
 #   1  Product changed with no storyboard change/addition and no exemption
@@ -34,6 +30,15 @@
 # ============================================================================
 
 set -euo pipefail
+
+# The CI checkout belongs to another user than the one running the job, so git
+# refuses it and answers "warning: Not a git repository" to EVERY command — the
+# state that used to make this gate announce "nothing to prove" and pass. Other
+# jobs get this from the `dev:init:ci` bootstrap, which this one deliberately
+# skips to stay fast. Trust the tree for THIS process only: the env form adds no
+# duplicate entry to a developer's global config and cannot race two runs
+# (same idiom as .config/devsecops/Taskfile.release.yml).
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="${PWD}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -48,27 +53,38 @@ STORYBOARD_RE='^project/tests/e2e/(features|screenshots/base|support/steps|story
 
 BASE="${BASE:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-origin/main}}"
 
-changed_files() {
-  if [ -n "${STORYBOARD_COVERAGE_FILES:-}" ]; then
-    # Intentional word-split of the space/newline-separated test list.
-    # shellcheck disable=SC2086
-    printf '%s\n' ${STORYBOARD_COVERAGE_FILES}
-  else
-    git diff --name-only --diff-filter=ACMR "${BASE}...HEAD"
+# The runner's clone does not always carry the diff base: a merge-request
+# pipeline fetches the merge-request ref, and the base commit CI hands over can
+# sit outside it. `git diff <missing>...HEAD` then falls back to path mode and
+# prints its usage — which, before this, was swallowed as "nothing to prove".
+# Fall back to the target branch: `<target>...HEAD` computes the merge base
+# itself, which is exactly the comparison the gate wants.
+if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
+  TARGET="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+  git fetch --quiet origin "+refs/heads/${TARGET}:refs/remotes/origin/${TARGET}" >/dev/null 2>&1 || true
+  if git rev-parse --verify --quiet "origin/${TARGET}^{commit}" >/dev/null 2>&1; then
+    BASE="origin/${TARGET}"
   fi
+fi
+
+changed_files() {
+  git diff --name-only --diff-filter=ACMR "${BASE}...HEAD"
 }
 
 is_exempt() {
-  if [ -n "${STORYBOARD_EXEMPT:-}" ]; then
-    return 0
-  fi
-  [ -z "${STORYBOARD_COVERAGE_FILES:-}" ] || return 1
   git log "${BASE}..HEAD" --format='%B' 2>/dev/null | grep -qiE '^Storyboard-exempt:[[:space:]]*\S'
 }
 
 echo -e "${BLUE}🎬 Storyboard-coverage gate (base: ${BASE})...${NC}"
 
-mapfile -t all_changed < <(changed_files | sed '/^$/d')
+# `mapfile < <(cmd)` SWALLOWS cmd's exit status: a git diff that cannot resolve
+# BASE would leave the list empty and the gate would announce "nothing to prove"
+# — failing open, silently. Capture first, and refuse loudly instead.
+if ! diff_output="$(changed_files)"; then
+  echo -e "${RED}❌ Cannot compute the diff against ${BASE} — refusing to pass silently.${NC}" >&2
+  exit 1
+fi
+mapfile -t all_changed < <(printf '%s\n' "${diff_output}" | sed '/^$/d')
 product=()
 storyboard=()
 for f in "${all_changed[@]}"; do

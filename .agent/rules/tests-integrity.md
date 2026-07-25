@@ -72,7 +72,8 @@ The cards prove the fact; the WORDS make a stranger understand it. A storyboard 
 - ✅ Tell ONE arc across the cards: the normal rule → the one exception and its danger → the incident → the automatic rescue → the proof; close the last card back to the opening rule so the story resolves.
 - ✅ Anchor each `# Note:` on what THAT card's screenshot actually shows, and quote its verbatim strings (the task name, the exact log line, the exact settings label — e.g. `task glab:release:lock-default-branch`, `Allowed to push: No one`); invent no UI.
 - ✅ Explain any unavoidable term in one plain clause (after_script = a cleanup step GitLab runs on every outcome, pass or fail; merge request = a reviewed change). Keep each note 2-4 short concrete sentences; no comma splices, no padding.
-- ✅ Reference exemplar: `features/02-daily-work/release-window.feature` — a real CI release is crashed mid-push and the story proves the main branch re-locks itself, told entirely on real GitLab pages.
+- ✅ OPEN every regenerated baseline as an image and read it as a stranger would, BEFORE committing it. A green suite proves determinism, never legibility: if the card does not show the product doing the thing its sentence claims, the card is wrong even though the test passed. This is the step that catches a `<pre>` standing in for a GitLab page.
+- ✅ Reference exemplars, both told entirely on real GitLab pages: `features/02-daily-work/release-window.feature` (a real CI release is crashed mid-push and the main branch re-locks itself) and `features/03-evolution/test-discipline.feature` (a real merge request is stopped by the `storyboard-coverage` job, then goes green once the card is added).
 
 ### Mechanics
 

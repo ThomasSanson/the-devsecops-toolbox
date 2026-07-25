@@ -17,6 +17,7 @@
   "semanticCommits": "enabled",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
+  "commitBody": "Storyboard-exempt: dependency bump, proven by the whole suite re-running against the new versions rather than by a new card.",
   "dependencyDashboard": true,
   "packageRules": [
     {
