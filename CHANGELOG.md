@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.5 (2026-07-25)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v3.7.9
+
 ## 22.9.4 (2026-07-25)
 
 ### Fix
