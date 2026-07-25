@@ -234,7 +234,12 @@ async function maskPipelinePage (I, projectName) {
     const SUBSTITUTE_RE = [
       /\d+ minutes? \d+ seconds?/g,
       /queued for \d+ (seconds?|minutes?)/g,
-      /\b\d+ seconds\b/g,
+      // A duration that lands on a round minute renders as "1 minute," with no
+      // seconds part, which the pair above cannot match — it drifted a
+      // @release-window baseline by 0.0177%. Keep this AFTER the pair so a
+      // "8 minutes 4 seconds" is still replaced in one go.
+      /\b\d+ minutes?\b/g,
+      /\b\d+ seconds?\b/g,
       /\b\d{2}:\d{2}:\d{2}\b/g //           duration clock (00:01:16) in mixed nodes
     ]
     const subWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
