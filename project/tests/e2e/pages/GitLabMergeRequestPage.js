@@ -169,6 +169,20 @@ class GitLabMergeRequestPage {
     await assertPageVisualMatch(I, screenshotName)
   }
 
+  // The Changes tab — the page a reviewer opens to see WHICH files a merge
+  // request touches. Waits for a known path to be rendered (the diff list is
+  // built asynchronously) before neutralising the same volatile chrome as the
+  // Overview.
+  async gotoChangesAndMask (projectPath, iid, projectName, waitPath) {
+    await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}/diffs`)
+    await I.waitForElement('body', 30)
+    if (waitPath) await I.waitForText(waitPath, 30)
+    await I.wait(3)
+    await maskMergeRequestPage(projectName, { hideMergeWidget: true })
+    await I.moveCursorTo('body', 1, 1)
+    await I.wait(1)
+  }
+
   // The MERGED MR overview, kept whole: the merge widget IS the proof (the
   // "Merged" state and the pipeline that passed), so keep it visible and wait
   // for it before masking.

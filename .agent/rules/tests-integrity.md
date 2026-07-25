@@ -22,10 +22,10 @@ description: Test integrity — never cheat; a visual-regression baseline must b
 
 The key principle of this repo: **every PRODUCT change is proven by a VISIBLE storyboard card.** Product = `.config/**`, `copier.yml`, `Taskfile.yml{,.jinja}` — the framework surface shipped to every generated project. A written rule alone is ignorable: a rushed human, or any AI, can ship a `.config/**` fix with no visual proof and the pipeline stays green. So the principle has teeth.
 
-- **The gate:** `.config/devsecops/scripts/check-storyboard-coverage.sh`, wired as the `storyboard-coverage` CI job (`.config/gitlab/ci/devsecops/test.yml`). On a merge request it **FAILS** when product files changed with **no** storyboard file (`project/tests/e2e/{features,screenshots/base,support/steps,storyboards}/**`) changed or added. Run it locally with `task devsecops:test:check:storyboard-coverage` (diffs against `origin/main`).
+- **The gate:** `.config/devsecops/scripts/check-storyboard-coverage.sh`, wired as the `storyboard-coverage` CI job. On a merge request it **FAILS** when product files changed and no storyboard file changed or was added (storyboard = `project/tests/e2e/{features,screenshots/base,support/steps,storyboards}/**`). Locally: `task devsecops:test:check:storyboard-coverage`.
 - **What "proven" means:** add or extend a card in `project/tests/e2e/features/**` — a `storyboardStep` whose frame shows the fix's real result, twinned with a programmatic assert (see the storyboard rules below). Graft it into the closest existing feature; a brand-new feature only when the fix is genuinely off-topic for every existing one.
 - **The only waiver is visible:** a change that is genuinely invisible (pure internal refactor, comment) may carry a `Storyboard-exempt: <why>` commit trailer. It is never silent — review sees the reason.
-- **The gate proves itself (dogfood):** it touches `.config/**`, so by its own rule it owes a card — `project/tests/e2e/features/03-evolution/test-discipline.feature` (`@test-discipline`) shows it stop an unproven change, pass a proven one, and waive only a visibly-exempted one.
+- **The gate proves itself (dogfood):** it touches `.config/**`, so by its own rule it owes a card — `project/tests/e2e/features/03-evolution/test-discipline.feature` (`@test-discipline`) stops a REAL merge request that changes a framework file with no card, then lets the same one through once the card is pushed.
 
 ## Visual Regression
 

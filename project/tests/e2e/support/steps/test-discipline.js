@@ -242,9 +242,9 @@ After(async (test) => {
 })
 
 // The whole off-camera stage in one sentence, closed by its visual proof: the
-// framework tree on its own GitLab project, a merge request that changes one
-// framework file and nothing else, and GitLab refusing to merge it.
-storyboardStep(Given, 'a merge request changes a framework file and brings no proof card, GitLab refuses to merge it', async () => {
+// framework tree on its own GitLab project, and a merge request holding exactly
+// one framework file and no card at all.
+storyboardStep(Given, 'the merge request changes one framework file and brings no proof card', async () => {
   const rootHeaders = await getRootHeaders()
   global.gateProject = PROJECT_NAME
   await GitLabProjectPage.deleteProjectIfExists(
@@ -317,6 +317,25 @@ storyboardStep(Given, 'a merge request changes a framework file and brings no pr
   if (mr.status >= 400) throw new Error(`Failed to open the merge request (status ${mr.status}): ${JSON.stringify(mr.data)}`)
   global.gateMrIid = mr.data.iid
 
+  // The Changes tab, as its reviewer opens it: one framework file, nothing else.
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  I.resizeWindow(1024, 640)
+  await GitLabMergeRequestPage.gotoChangesAndMask(
+    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME, PRODUCT_FILE
+  )
+  await addStoryboardFrame(I, await capturePageFrame(I, 'changes-without-card'))
+  I.resizeWindow(1024, 768)
+
+  // Twin: the merge request really holds product and no storyboard file.
+  const changes = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
+    rootHeaders
+  )
+  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
+  if (paths.length !== 1 || paths[0] !== PRODUCT_FILE) {
+    throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
+  }
+
   // Cancel every job but the gate BEFORE any runner exists, then give the
   // pipeline its single job slot.
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders)
@@ -334,8 +353,11 @@ storyboardStep(Given, 'a merge request changes a framework file and brings no pr
     }
   } catch (_) {}
   global.gateRunner = await registerScopedRunner(I, PROJECT_NAME, rootHeaders)
+})
 
-  const gate = await waitGateJob(PROJECT_NAME, pid, rootHeaders)
+storyboardStep(Then, 'GitLab refuses to merge it, one check failed', async () => {
+  const rootHeaders = await getRootHeaders()
+  const gate = await waitGateJob(PROJECT_NAME, global.gateFirstPid, rootHeaders)
   global.gateRedJobId = gate.id
   // Assert the gate stopped the change FOR THE RIGHT REASON before screenshotting
   // anything: a job that fails because it cannot even diff would otherwise pose
@@ -347,13 +369,11 @@ storyboardStep(Given, 'a merge request changes a framework file and brings no pr
     console.log(`── ${GATE_JOB} said:\n${gateSection(redTrace)}`)
     throw new Error(`Expected the ${GATE_JOB} job to stop the unproven change, got status=${gate.status}`)
   }
-  await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
+  await waitPipelineTerminal(PROJECT_NAME, global.gateFirstPid, rootHeaders)
 
   // The merge request as its author finds it: the pipeline failed, so GitLab
-  // will not let it merge.
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  // Cropped to the header and the merge widget: the story is "GitLab refuses to
-  // merge this", and the activity feed below adds nothing to it.
+  // will not let it merge. Cropped to the header and the merge widget — the
+  // activity feed below adds nothing to the story.
   I.resizeWindow(1024, 585)
   await GitLabMergeRequestPage.gotoAndMask(
     projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME,
@@ -363,17 +383,13 @@ storyboardStep(Given, 'a merge request changes a framework file and brings no pr
   // never-rendered are two different layouts, and the widget arrives on its own
   // polling cycle. Waiting makes the DOM the same shape on every run.
   await I.waitForText('Merge request pipeline', 60)
-  // Two rows of the merge widget arrive on their own polling cycle, so they are
-  // present on one run and missing on the next (proven by a strict re-run: the
-  // whole widget shifted by the height of the pipeline row). Drop both. What the
-  // card must show survives untouched: "Merge blocked: 1 check failed" and
-  // "Pipeline must succeed." — and card two shows the failed job itself.
   await I.executeScript(() => {
     // Persistent CSS + observer, not one-shot inline styles: the merge widget is
     // a Vue subtree that re-renders on its own polling cycle, so a node styled
     // once comes back. The pipeline row is doubly volatile — it is absent on
-    // some runs (proven by a strict re-run) and its mini job graph depends on
-    // which sibling job the runner had grabbed before being cancelled.
+    // some runs and its mini job graph depends on which sibling job the runner
+    // had grabbed before being cancelled. What the card must show survives:
+    // "Merge blocked: 1 check failed" and "Pipeline must succeed."
     const style = document.createElement('style')
     style.textContent = '[data-e2e-hide] { display: none !important }'
     document.head.appendChild(style)
@@ -400,20 +416,9 @@ storyboardStep(Given, 'a merge request changes a framework file and brings no pr
   await I.wait(1)
   await addStoryboardFrame(I, await capturePageFrame(I, 'merge-blocked'))
   I.resizeWindow(1024, 768)
-
-  // Twin: the merge request really changed product and nothing else.
-  const changes = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
-    rootHeaders
-  )
-  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
-  if (!paths.includes(PRODUCT_FILE)) throw new Error(`Expected ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
-  if (paths.some(p => /^project\/tests\/e2e\/(features|screenshots\/base|support\/steps|storyboards)\//.test(p))) {
-    throw new Error(`Expected NO storyboard file in the merge request, got ${JSON.stringify(paths)}`)
-  }
 })
 
-storyboardStep(When, 'the author opens the failed job, it names the file left without proof', async () => {
+storyboardStep(Then, 'the failed job names the file left without proof', async () => {
   const rootHeaders = await getRootHeaders()
   await captureGateJobFrame(global.gateRedJobId, 'gate-names-the-file')
   // Twin: the gate's own words, read straight from the job trace.
@@ -423,7 +428,7 @@ storyboardStep(When, 'the author opens the failed job, it names the file left wi
   }
 })
 
-storyboardStep(Then, 'the author adds the missing proof card and the same job turns green', async () => {
+storyboardStep(When, 'the author adds the proof card beside the same framework change', async () => {
   const rootHeaders = await getRootHeaders()
   // The card that proves a change to the release job's CI definition already
   // exists — the crashed-release story. The author extends it, on the SAME
@@ -438,6 +443,28 @@ storyboardStep(Then, 'the author adds the missing proof card and the same job tu
     'git push --quiet 2>/dev/null'
   ].join(' && '), FIXTURE_DIR)
 
+  // The same Changes tab, one file richer: the fix is visible, not narrated.
+  I.resizeWindow(1024, 640)
+  await GitLabMergeRequestPage.gotoChangesAndMask(
+    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME, CARD_FILE
+  )
+  await addStoryboardFrame(I, await capturePageFrame(I, 'changes-with-card'))
+  I.resizeWindow(1024, 768)
+
+  // Twin: both files are in the merge request now, and the framework file is
+  // still the one from the first push.
+  const changes = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
+    rootHeaders
+  )
+  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
+  if (!paths.includes(PRODUCT_FILE) || !paths.includes(CARD_FILE)) {
+    throw new Error(`Expected both the framework file and the card in the merge request, got ${JSON.stringify(paths)}`)
+  }
+})
+
+storyboardStep(Then, 'the same job turns green and the change can go in', async () => {
+  const rootHeaders = await getRootHeaders()
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
   const gate = await waitGateJob(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
@@ -447,17 +474,8 @@ storyboardStep(Then, 'the author adds the missing proof card and the same job tu
   }
   await captureGateJobFrame(gate.id, 'gate-names-the-card')
 
-  // Twin: the gate went green BECAUSE of the card, and the framework change is
-  // still in the merge request.
+  // Twin: the gate went green BECAUSE of the card.
   if (!greenTrace.includes(CARD_FILE)) {
     throw new Error(`Expected the job trace to name ${CARD_FILE}, got:\n${gateSection(greenTrace)}`)
-  }
-  const changes = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
-    rootHeaders
-  )
-  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
-  if (!paths.includes(PRODUCT_FILE) || !paths.includes(CARD_FILE)) {
-    throw new Error(`Expected both the framework file and the card in the merge request, got ${JSON.stringify(paths)}`)
   }
 })
