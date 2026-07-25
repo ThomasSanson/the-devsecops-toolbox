@@ -123,17 +123,17 @@ Detailed rules: [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md) | Skill
 
 Every code change MUST follow this cycle:
 
-| Step | Action                                      | Command                      | Expected          |
-|------|---------------------------------------------|------------------------------|-------------------|
-| 1    | Write test specification with unique `@tag` | —                            | Test file created |
-| 2    | **RED** — Verify test fails                 | `task test -- --grep "@tag"` | FAIL              |
-| 3    | **Prove the failure is real**               | `task devsecops:test:check:red-is-real -- @tag` | PASS |
-| 4    | Implement minimal code                      | —                            | Code written      |
-| 5    | **GREEN** — Verify test passes              | `task test -- --grep "@tag"` | PASS              |
-| 6    | Refactor (DO NOT touch test)                | —                            | Code improved     |
-| 7    | Verify after refactor                       | `task test -- --grep "@tag"` | PASS              |
-| 8    | Quality check                               | `task code`                  | PASS              |
-| 9    | Full test suite                             | `task test`                  | ALL PASS          |
+| Step | Action                                      | Command                                         | Expected          |
+|------|---------------------------------------------|-------------------------------------------------|-------------------|
+| 1    | Write test specification with unique `@tag` | —                                               | Test file created |
+| 2    | **RED** — Verify test fails                 | `task test -- --grep "@tag"`                    | FAIL              |
+| 3    | **Prove the failure is real**               | `task devsecops:test:check:red-is-real -- @tag` | PASS              |
+| 4    | Implement minimal code                      | —                                               | Code written      |
+| 5    | **GREEN** — Verify test passes              | `task test -- --grep "@tag"`                    | PASS              |
+| 6    | Refactor (DO NOT touch test)                | —                                               | Code improved     |
+| 7    | Verify after refactor                       | `task test -- --grep "@tag"`                    | PASS              |
+| 8    | Quality check                               | `task code`                                     | PASS              |
+| 9    | Full test suite                             | `task test`                                     | ALL PASS          |
 
 Test specifications are written in Gherkin, in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) ships under `.config/codeceptjs/`; use its sample config to wire up `project/tests/` if you want visual E2E coverage.

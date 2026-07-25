@@ -514,3 +514,86 @@ tasks:
       - bash .config/devsecops/scripts/check-storyboard-coverage.sh
       - cmd: echo "🎉 Storyboard coverage check completed successfully"
         silent: true
+
+  # ---------------------------------------------------------------------------
+  # The test-first cycle, driven by the Taskfile instead of anyone's memory.
+  # One task per phase, the phase really reached recorded on disk, and a gate at
+  # the end of each one. A phase refuses to start when the recorded phase is not
+  # the one before it, so the sequence cannot be skipped and nothing has to be
+  # remembered.
+  #
+  # The cycle is for whoever drives it. Declaring an AI assistant is OPTIONAL:
+  # with one, the phase hands it the prompt and then checks what came back;
+  # without one, the phase checks the work you just did, against the same gates.
+  # Full story: .agent/workflows/tdd-cycle-tasks.md
+  # ---------------------------------------------------------------------------
+
+  tdd:doctor:
+    desc: |
+      ℹ️ Description:
+        Lists the AI assistants this machine actually holds — one drop-in file
+        each, under .config/devsecops/agents.d/ — and the models each one
+        reports when asked. The framework names no tool and no model of its own,
+        so nothing here can go stale. Holding none is fine: the phases then
+        check the work you do yourself.
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh doctor
+
+  tdd:red:
+    desc: |
+      ℹ️ Description:
+        Opens the cycle: the failing test is written.
+
+        Gates: the working tree really changed, the change touches test files
+        ONLY, the tests are run (a failure here is the point), that failure is
+        real (check:red-is-real) and nothing was switched off (check:no-cheat).
+
+      🚀 Usage: task devsecops:test:tdd:red -- @my-tag
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh red {{.CLI_ARGS}}
+
+  tdd:review:red:
+    desc: |
+      ℹ️ Description:
+        The devil's advocate on the test that was just written — the one step no
+        exit code can replace. Records ACCEPT or REJECT, with the grid that led
+        to it, under tmp/agent/. A REJECT sends the cycle back to the red phase.
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh review:red {{.CLI_ARGS}}
+
+  tdd:green:
+    desc: |
+      ℹ️ Description:
+        The smallest code that makes the test pass.
+
+        Gates: the working tree really changed, the tests now pass
+        (TASK_AGENT_TEST_CMD, default `task test`) and nothing was switched off.
+
+      🚀 Usage: task devsecops:test:tdd:green -- @my-tag
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh green {{.CLI_ARGS}}
+
+  tdd:review:green:
+    desc: |
+      ℹ️ Description:
+        Hunts over-engineering in the code that was just written: an abstraction
+        with a single use, indirection with no need, generality nobody asked
+        for. Records numbered actions, or the words "no refactoring needed".
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh review:green {{.CLI_ARGS}}
+
+  tdd:refactor:
+    desc: |
+      ℹ️ Description:
+        Closes the cycle: the code is improved without changing what it does,
+        and the tests still pass.
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh refactor {{.CLI_ARGS}}
+
+  tdd:reset:
+    desc: |
+      ℹ️ Description:
+        Forgets the recorded phase and starts the cycle over. The only way back
+        to the beginning, so an abandoned cycle is abandoned deliberately.
+    cmds:
+      - bash .config/devsecops/scripts/tdd-cycle.sh reset

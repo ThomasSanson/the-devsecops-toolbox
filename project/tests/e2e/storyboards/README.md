@@ -33,9 +33,9 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**8. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
-- [**9. agent-harness**](02-daily-work/agent-harness.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, then drives the cycle itself, one checked step at a time.
-  Chapters: A failure that proves nothing · A failure that proves something · The tool that drives the cycle is chosen, never built in · The cycle that cannot be run out of order.
-  Replay: `task project:test:e2e -- --grep "@agent-harness"`
+- [**9. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, then runs the cycle one checked step at a time — by hand first, then handed to an assistant.
+  Chapters: A failure that proves nothing · A failure that proves something · The cycle checks the work, whoever wrote it · An assistant may take a turn, under the very same gates.
+  Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
 
 ## Act 3 — Evolution (`03-evolution`)
 

@@ -24,8 +24,8 @@
 
 ## ✅ ALLOWED (the phase tasks, and only them)
 
-The tasks of the test-first cycle (`task devsecops:code:agent:red`, `:green`,
-`:refactor` — see `.agent/workflows/ai-development-cycle.md`) run `git add -N`
+The tasks of the test-first cycle (`task devsecops:test:tdd:red`, `:green`,
+`:refactor` — see `.agent/workflows/tdd-cycle-tasks.md`) run `git add -N`
 and `git diff` on your behalf: `-N` is how a brand-new test file becomes visible
 to `git diff`, and the diff is how the phase checks the work was really done.
 Running those tasks is allowed. They commit nothing and push nothing.

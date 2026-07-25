@@ -100,21 +100,21 @@ Where `{phase}` is one of: `plan`, `code`, `build`, `test`, `release`, `deploy`,
 
 Every code change follows RED → GREEN → REFACTOR in strict order; see `.agent/rules/tdd-cycle.md`.
 
-| Step | Action                         | Command                      | Expected             |
-|------|--------------------------------|------------------------------|----------------------|
-| 1    | Write test with unique `@tag`  | —                            | Feature file created |
-| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"` | FAIL                 |
-| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS |
-| 4    | Implement minimal code         | —                            | Code written         |
-| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |
-| 6    | Refactor (do NOT touch test)   | —                            | Code improved        |
-| 7    | Verify after refactor          | `task test -- --grep "@tag"` | PASS                 |
-| 8    | Quality check                  | `task code`                  | PASS                 |
-| 9    | Full test suite                | `task test`                  | ALL PASS             |
+| Step | Action                         | Command                                         | Expected             |
+|------|--------------------------------|-------------------------------------------------|----------------------|
+| 1    | Write test with unique `@tag`  | —                                               | Feature file created |
+| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"`                    | FAIL                 |
+| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS                 |
+| 4    | Implement minimal code         | —                                               | Code written         |
+| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"`                    | PASS                 |
+| 6    | Refactor (do NOT touch test)   | —                                               | Code improved        |
+| 7    | Verify after refactor          | `task test -- --grep "@tag"`                    | PASS                 |
+| 8    | Quality check                  | `task code`                                     | PASS                 |
+| 9    | Full test suite                | `task test`                                     | ALL PASS             |
 
 **Never write code before the test. Never modify a test to make it pass.**
 
-Step 3 is checked, not taken on your word: a run that dies while loading its files exits non-zero and records nothing, and that is a crash, not a failure. On a merge request, the `no-cheat` job refuses any added line that switches a check off (`@skip`, `.only(`, a non-zero `tolerance:`, `allow_failure: true`). The whole cycle can also be driven step by step — see `.agent/workflows/ai-development-cycle.md`.
+Step 3 is checked, not taken on your word: a run that dies while loading its files exits non-zero and records nothing, and that is a crash, not a failure. On a merge request, the `no-cheat` job refuses any added line that switches a check off (`@skip`, `.only(`, a non-zero `tolerance:`, `allow_failure: true`). The whole cycle can also be driven step by step — see `.agent/workflows/tdd-cycle-tasks.md`.
 
 Test specifications are written in Gherkin (BDD), in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + storyboard helper) ships under `.config/codeceptjs/`; wire it into `project/tests/` for visual E2E coverage.

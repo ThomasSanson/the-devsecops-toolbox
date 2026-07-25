@@ -1,8 +1,8 @@
 # AI tool drop-ins
 
 The toolbox can drive its test-first cycle with an AI assistant
-(`task devsecops:code:agent:red`, `:green`, `:refactor` — see
-`.agent/workflows/ai-development-cycle.md`). It does not ship with one, and it
+(`task devsecops:test:tdd:red`, `:green`, `:refactor` — see
+`.agent/workflows/tdd-cycle-tasks.md`). It does not ship with one, and it
 names none: tools and model names move faster than a framework can follow, and a
 name baked in here would be stale within months.
 
@@ -39,7 +39,7 @@ up, so the template itself is never used by mistake.
 ## Seeing what a machine holds
 
 ```bash
-task devsecops:code:agent:doctor
+task devsecops:test:tdd:doctor
 ```
 
 It lists every drop-in, whether its binary is really on this machine, and the

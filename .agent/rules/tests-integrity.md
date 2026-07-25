@@ -52,8 +52,8 @@ anyone in a hurry steps over.
   (`BASE=HEAD`), which is what the cycle's phases use before you commit.
 - **The only waiver is visible**, exactly like the storyboard one: a
   `No-cheat-exempt: <why>` commit trailer.
-- **Both gates prove themselves:** `@agent-harness`
-  (`project/tests/e2e/features/02-daily-work/agent-harness.feature`) runs a real
+- **Both gates prove themselves:** `@tdd-cycle`
+  (`project/tests/e2e/features/02-daily-work/tdd-cycle.feature`) runs a real
   crash and a real failure and shows the first gate telling them apart;
   `@test-discipline` pushes a real `@skip` to a real merge request and shows the
   picture gate staying green while the second one stops it.

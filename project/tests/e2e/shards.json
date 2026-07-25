@@ -2,7 +2,7 @@
   "comment": "CI shard map for the e2e job (parallel: 9). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Balanced on measured CI durations: the long single stories ride alone (1, 2) and bound the pipeline wall-clock; the MegaLinter-hungry pair shares shard 7 so its image pull is paid once and both run concurrently. Runner-driven stories register a project-scoped runner on the shard's OWN gitlab-runner service (each CI shard boots its own compose stack), so they need not share a shard — they are spread instead: shard 9 keeps @daily-contribution and @release-window (~18 min together), shard 5 takes @test-discipline. Grouping all three cost 11 extra minutes of wall-clock, because one runner slot serialised their pipelines. A LOCAL full-suite run ignores this map and shares one runner service, which is why the teardown stays surgical.",
   "1": "./features/01-install/first-run-help.feature",
   "2": "./features/01-install/merge-request-safety.feature",
-  "3": "./features/01-install/fresh-machine.feature,./features/03-evolution/version-pins.feature,./features/02-daily-work/agent-harness.feature",
+  "3": "./features/01-install/fresh-machine.feature,./features/03-evolution/version-pins.feature,./features/02-daily-work/tdd-cycle.feature",
   "4": "./features/01-install/install.feature",
   "5": "./features/03-evolution/update.feature,./features/03-evolution/update-conflict.feature,./features/03-evolution/test-discipline.feature",
   "6": "./features/02-daily-work/self-healing.feature,./features/03-evolution/generated-ci.feature",

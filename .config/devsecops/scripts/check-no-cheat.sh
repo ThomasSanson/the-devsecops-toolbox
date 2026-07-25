@@ -62,11 +62,12 @@ NC='\033[0m'
 TEST_PATHS='^(project/tests/|\.config/codeceptjs/)'
 CI_PATHS='^(\.config/gitlab/ci/|\.gitlab-ci\.yml(\.jinja)?$)'
 
-# name | paths | pattern | what it does, in one sentence
+# paths | pattern | what it does, in one sentence | (optional) modified_only
 RULE_PATHS=()
 RULE_RE=()
 RULE_SAYS=()
-add_rule() { RULE_PATHS+=("$1"); RULE_RE+=("$2"); RULE_SAYS+=("$3"); }
+RULE_SCOPE=()
+add_rule() { RULE_PATHS+=("$1"); RULE_RE+=("$2"); RULE_SAYS+=("$3"); RULE_SCOPE+=("${4:-any}"); }
 
 add_rule "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
   'a skipped scenario: the suite reports it without ever running it'
@@ -76,8 +77,14 @@ add_rule "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]
   'a disabled scenario: it never runs again'
 add_rule "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
   'a picture check that accepts a difference: it stops proving anything'
+# MODIFIED files only, and the reason is worth stating: turning an EXISTING job
+# into one that may fail is the cheat. A file that arrives whole — installing
+# the framework, adding a pipeline — carries no job that was ever green, and
+# this framework's own CI ships two legitimate `allow_failure: true` lines that
+# every install re-adds. Read on added files, this rule would refuse the
+# framework's own installation merge request (it did, once).
 add_rule "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
-  'a job allowed to fail: the pipeline goes green whatever the job says'
+  'a job that used to have to pass is now allowed to fail' modified_only
 add_rule "${TEST_PATHS}" '(eslint-disable|shellcheck disable|# ?noqa|# ?nosec)' \
   'a linter silenced inside the tests'
 
@@ -97,6 +104,10 @@ if ! diff_output="$(git diff --unified=0 --diff-filter=ACMR "${diff_range[@]}")"
   echo -e "${RED}❌ Cannot compute the diff against ${BASE} — refusing to pass silently.${NC}" >&2
   exit 1
 fi
+
+# The files this change ADDS whole. A rule marked modified_only skips them: it
+# hunts a check that was turned off, and a brand-new file turned nothing off.
+added_files="$(git diff --name-status --diff-filter=A "${diff_range[@]}" | cut -f2 | tr '\n' ' ')"
 
 findings=()
 file=''
@@ -120,6 +131,7 @@ while IFS= read -r line; do
   [ -n "${file}" ] || continue
   content="${line#+}"
   for i in "${!RULE_RE[@]}"; do
+    if [ "${RULE_SCOPE[$i]}" = "modified_only" ] && [[ " ${added_files} " == *" ${file} "* ]]; then continue; fi
     if [[ "${file}" =~ ${RULE_PATHS[$i]} ]] && [[ "${content}" =~ ${RULE_RE[$i]} ]]; then
       findings+=("${file}:${lineno}|${content}|${RULE_SAYS[$i]}")
     fi

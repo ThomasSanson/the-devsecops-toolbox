@@ -46,17 +46,17 @@ run the validator on top.
 
 For ANY feature, bug fix, or modification, execute these steps IN ORDER:
 
-| Step | Action                         | Command                      | Expected             |
-|------|--------------------------------|------------------------------|----------------------|
-| 1    | Write test (Gherkin, @tag)     | —                            | Feature file created |
-| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"` | FAIL                 |
-| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS |
-| 4    | Implement minimal code         | —                            | Code written         |
-| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"` | PASS                 |
-| 6    | Refactor (DO NOT touch test)   | —                            | Code improved        |
-| 7    | Verify after refactor          | `task test -- --grep "@tag"` | PASS                 |
-| 8    | Quality check                  | `task code`                  | PASS                 |
-| 9    | Full test suite                | `task test`                  | ALL PASS             |
+| Step | Action                         | Command                                         | Expected             |
+|------|--------------------------------|-------------------------------------------------|----------------------|
+| 1    | Write test (Gherkin, @tag)     | —                                               | Feature file created |
+| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"`                    | FAIL                 |
+| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS                 |
+| 4    | Implement minimal code         | —                                               | Code written         |
+| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"`                    | PASS                 |
+| 6    | Refactor (DO NOT touch test)   | —                                               | Code improved        |
+| 7    | Verify after refactor          | `task test -- --grep "@tag"`                    | PASS                 |
+| 8    | Quality check                  | `task code`                                     | PASS                 |
+| 9    | Full test suite                | `task test`                                     | ALL PASS             |
 
 ## Checkpoints
 

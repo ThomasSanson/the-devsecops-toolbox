@@ -1,6 +1,6 @@
 /* global inject Given When Then After */
 /**
- * Storyboard for @agent-harness (see features/02-daily-work/agent-harness.feature).
+ * Storyboard for @tdd-cycle (see features/02-daily-work/tdd-cycle.feature).
  *
  * The method of this repository rests on one fact: the test failed BEFORE the
  * code existed. Until now that fact was taken on trust. This story proves the
@@ -36,7 +36,7 @@ const { I } = inject()
 // Fixed path, not a mkdtemp: it appears verbatim in the error the engine prints
 // (the require stack), so a random directory would move the picture on every
 // run. One scenario owns this file, so two workers never share the directory.
-const FIXTURE = '/tmp/e2e-agent-harness'
+const FIXTURE = '/tmp/e2e-tdd-cycle'
 // The engine's dependencies are baked into the image, never carried in the
 // tree, so the copy borrows the image's — exactly what the runner itself uses.
 const NODE_MODULES = '/app/.config/codeceptjs/node_modules'
@@ -133,15 +133,17 @@ function block (text, from, whileRe) {
 
 // Every card is captured output on a dark <pre> that hugs its own content, with
 // the command that produced it on the first line — the frame is exactly as tall
-// as what it shows, never a mostly-empty viewport.
-async function card (frameName, text, height) {
-  await renderPreFrame(I, frameName, text, height)
+// as what it shows, never a mostly-empty viewport. Colour is on for this story:
+// every frame here is a real terminal transcript, and the red and green of the
+// verdicts is half of what it says.
+async function card (frameName, text, opts = {}) {
+  await renderPreFrame(I, frameName, text, { colour: true, ...opts })
 }
 
 // The runs this story starts load the copy's step files — this one among them —
 // so an unguarded hook would fire inside the nested run and delete the very
 // fixture that run is using. Every hook here answers to its own scenario only.
-const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@agent-harness'))
+const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@tdd-cycle'))
 
 After((test) => {
   if (!ownsScenario(test)) return
@@ -194,7 +196,7 @@ storyboardStep(Given, 'a developer writes the test for a greeting the toolbox ca
     .join('\n')
   // Taller viewport: this card is the whole content of both new files, and an
   // element capture must have the element on screen to shoot it.
-  await card('the-test-comes-first', `$ git add -N . && git diff\n${diff}`, 900)
+  await card('the-test-comes-first', `$ git add -N . && git diff\n${diff}`, { height: 900 })
 })
 
 storyboardStep(Then, 'the run dies on its way to the test, and still exits like a failed test', async () => {
@@ -259,16 +261,17 @@ storyboardStep(Then, 'the toolbox accepts the failure as proof, and quotes the c
 // Chapters 3 and 4 — the cycle itself, driven for real
 // ---------------------------------------------------------------------------
 //
-// The phases are tasks (.config/devsecops/scripts/agent-cycle.sh), the phase
+// The phases are tasks (.config/devsecops/scripts/tdd-cycle.sh), the phase
 // really reached is written on disk, and each phase ends on a gate that answers
-// with an exit code. Driving them needs an AI tool, which the framework
-// deliberately does not ship and does not name: a machine declares the ones it
-// holds, one small file each, under .config/devsecops/agents.d/.
+// with an exit code.
 //
-// The tool this story declares is a stand-in living outside the copy: it reads
-// its instructions on standard input and writes one known file per phase.
-// Nothing reaches the network, no model is called, and the picture stays the
-// same on every run.
+// Chapter 3 runs the cycle with NO AI assistant on the machine at all: the
+// phase checks the work the developer wrote in chapters 1 and 2, against the
+// same gates. Chapter 4 then declares one and hands it a turn — the framework
+// ships none and names none, so the story drops in a stand-in living outside
+// the copy: it reads its instructions on standard input and writes one known
+// file per phase. Nothing reaches the network, no model is called, and the
+// picture stays the same on every run.
 
 const ORACLE_DIR = `${FIXTURE}-bin`
 const ORACLE = `${ORACLE_DIR}/pocket-oracle`
@@ -289,43 +292,27 @@ case "\${prompt}" in
   echo "VERDICT: ACCEPT"
   ;;
 *"the green phase"*) printf 'Hello, {name}\\n' > GREETING ;;
-*"the red phase"*) printf '\\n  # written under the red phase\\n' >> "\${ORACLE_TEST_FILE}" ;;
 esac
 `
 
-const DROP_IN_BODY = `# The AI tool this machine holds. Two lines, per
+const DROP_IN_BODY = `# The AI assistant this machine holds. Two lines, per
 # .config/devsecops/agents.d/README.md.
 AGENT_EXEC_CMD="pocket-oracle --model {{MODEL}}"
 AGENT_MODELS_CMD="pocket-oracle --list-models"
 `
 
-const DOCTOR = 'task devsecops:code:agent:doctor'
-const GREEN = 'task devsecops:code:agent:green -- @greeting'
-const RED = 'task devsecops:code:agent:red -- @greeting'
-const REVIEW_RED = 'task devsecops:code:agent:review:red -- @greeting'
-
-storyboardStep(Then, 'the toolbox reports the AI tools this machine holds and the models each one gives', async () => {
-  fs.mkdirSync(ORACLE_DIR, { recursive: true })
-  fs.writeFileSync(ORACLE, ORACLE_BODY, { mode: 0o755 })
-  fs.writeFileSync(path.join(FIXTURE, DROP_IN), DROP_IN_BODY)
-  // How THIS project runs its tests, declared once where a project declares its
-  // settings. Both are committed: they are the machine's setup, not the work of
-  // a phase, and the red phase's gate reads the working tree for the work.
-  fs.appendFileSync(path.join(FIXTURE, '.env.dev'), `\nTASK_AGENT_TEST_CMD=${RUN}\n`)
-  sh(`git add ${DROP_IN} .env.dev && git commit -qm "chore: declare the pocket oracle and how the tests run"`, FIXTURE)
-  env.PATH = `${ORACLE_DIR}:${env.PATH}`
-  env.ORACLE_TEST_FILE = FEATURE
-
-  const { output, code } = run(DOCTOR, FIXTURE)
-  const seen = stripAnsi(output)
-  if (code !== 0 || !seen.includes('oracle-small') || !seen.includes('oracle-large') ||
-      !seen.includes('pocket-oracle --model')) {
-    throw new Error(`Expected the doctor to find the drop-in and the models it reports, got exit ${code}:\n${seen}`)
-  }
-  await card('tools-this-machine-holds', `$ ${DOCTOR}\n${output.trimEnd()}`)
-})
+const DOCTOR = 'task devsecops:test:tdd:doctor'
+const GREEN = 'task devsecops:test:tdd:green -- @greeting'
+const RED = 'task devsecops:test:tdd:red -- @greeting'
+const REVIEW_RED = 'task devsecops:test:tdd:review:red -- @greeting'
 
 storyboardStep(Then, 'the step that writes the code refuses to start while no failure has been proven', async () => {
+  // How THIS project runs its tests, declared once where a project declares its
+  // settings — and committed, because it is the machine's setup, not the work of
+  // a phase: the red phase reads the working tree for the work.
+  fs.appendFileSync(path.join(FIXTURE, '.env.dev'), `\nTASK_AGENT_TEST_CMD=${RUN}\n`)
+  sh('git add .env.dev && git commit -qm "chore: say how this project runs its tests"', FIXTURE)
+
   const phase = run(`cat ${PHASE_FILE}`, FIXTURE)
   const { output, code } = run(GREEN, FIXTURE)
   const seen = stripAnsi(output)
@@ -335,15 +322,42 @@ storyboardStep(Then, 'the step that writes the code refuses to start while no fa
     throw new Error(`Expected the green phase to refuse out of order, got exit ${code}:\n${seen}`)
   }
   await card('green-refuses-out-of-order',
-    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${output.trimEnd()}`)
+    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${output.trimEnd()}`, { colour: true })
 })
 
-storyboardStep(Then, 'the same step runs once the cycle has recorded the steps before it, and the test finally passes', async () => {
-  // The two steps before it, for real: the tool writes on the test, the failure
-  // is proven against the report on disk, and the review records its verdict.
-  for (const command of [RED, REVIEW_RED]) {
-    const { output, code } = run(command, FIXTURE)
-    if (code !== 0) throw new Error(`The cycle could not reach the green phase — ${command} exited ${code}:\n${stripAnsi(output)}`)
+storyboardStep(Then, 'the step that opens it accepts a test written by hand, with no assistant on this machine', async () => {
+  // No drop-in, no TASK_AGENT_EXEC_CMD: the phase says so and reads this tree.
+  const { output, code } = run(RED, FIXTURE)
+  const seen = stripAnsi(output)
+  if (code !== 0 || !seen.includes('no AI tool declared') ||
+      !seen.includes('The failure is real') || !seen.includes('the cycle now stands at: red')) {
+    throw new Error(`Expected the red phase to accept the hand-written test with no tool, got exit ${code}:\n${seen}`)
+  }
+  await card('red-accepts-work-done-by-hand', `$ ${RED}\n${output.trimEnd()}`, { colour: true })
+})
+
+storyboardStep(Then, 'the toolbox reports the AI assistants this machine holds and the models each one gives', async () => {
+  fs.mkdirSync(ORACLE_DIR, { recursive: true })
+  fs.writeFileSync(ORACLE, ORACLE_BODY, { mode: 0o755 })
+  fs.writeFileSync(path.join(FIXTURE, DROP_IN), DROP_IN_BODY)
+  sh(`git add ${DROP_IN} && git commit -qm "chore: declare the pocket oracle"`, FIXTURE)
+  env.PATH = `${ORACLE_DIR}:${env.PATH}`
+
+  const { output, code } = run(DOCTOR, FIXTURE)
+  const seen = stripAnsi(output)
+  if (code !== 0 || !seen.includes('oracle-small') || !seen.includes('oracle-large') ||
+      !seen.includes('pocket-oracle --model')) {
+    throw new Error(`Expected the doctor to find the drop-in and the models it reports, got exit ${code}:\n${seen}`)
+  }
+  await card('assistants-this-machine-holds', `$ ${DOCTOR}\n${output.trimEnd()}`, { colour: true })
+})
+
+storyboardStep(Then, 'the assistant writes the greeting, and the toolbox sees that test pass for itself', async () => {
+  // The review the cycle asks for between red and green, handed to the same
+  // assistant: it records its verdict where the gate reads it.
+  const review = run(REVIEW_RED, FIXTURE)
+  if (review.code !== 0) {
+    throw new Error(`The review step refused, so green could not start:\n${stripAnsi(review.output)}`)
   }
   const phase = run(`cat ${PHASE_FILE}`, FIXTURE)
   const { output, code } = run(GREEN, FIXTURE)
@@ -354,6 +368,6 @@ storyboardStep(Then, 'the same step runs once the cycle has recorded the steps b
   // Twin: the greeting the test was asking for is really on disk now.
   const greeting = fs.readFileSync(path.join(FIXTURE, 'GREETING'), 'utf8').trim()
   if (greeting !== 'Hello, {name}') throw new Error(`Expected the greeting to be written, got ${JSON.stringify(greeting)}`)
-  await card('green-runs-and-the-test-passes',
-    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${maskDurations(seen)}`, 900)
+  await card('assistant-writes-it-and-the-test-passes',
+    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${maskDurations(seen)}`, { height: 900 })
 })

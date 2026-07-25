@@ -203,6 +203,26 @@ async function waitMrChanges (headers, mustInclude) {
   throw new Error(`The merge request diff never included ${mustInclude.join(', ')}; got ${JSON.stringify(paths)}`)
 }
 
+// GitLab counts the merge request's commits asynchronously too, and that count
+// is printed on the tab bar of every merge-request page. A capture taken while
+// it still reads the previous number is a coin toss between two pictures — the
+// one drift that made this story red in CI and green locally. Wait for the
+// count the story expects before opening the page.
+async function waitMrCommits (headers, expected) {
+  const deadline = Date.now() + 120000
+  let seen = 0
+  while (Date.now() < deadline) {
+    const res = await freshGet(
+      `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/commits`,
+      headers
+    )
+    seen = ((res.data) || []).length
+    if (seen >= expected) return seen
+    await I.wait(3)
+  }
+  throw new Error(`The merge request still reports ${seen} commits, expected ${expected}`)
+}
+
 // The Changes tab of the merge request, with its file tree — the page a
 // reviewer opens to see WHICH files are in play.
 async function captureChangesFrame (waitPath, frameName, height) {
@@ -567,6 +587,8 @@ storyboardStep(When, 'the author switches the test off instead of fixing what it
   if (!paths.includes(PROOF_PNG)) {
     throw new Error(`Expected the picture to still be in the merge request, got ${JSON.stringify(paths)}`)
   }
+  // Four pushes, four commits — and the tab bar must say so before it is shot.
+  await waitMrCommits(rootHeaders, 4)
   await captureChangesFrame(CARD_FILE, 'changes-test-switched-off', 1120)
 })
 

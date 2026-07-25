@@ -27,17 +27,22 @@
 #   The one rule the machinery cannot enforce is the one above it: whoever
 #   drives the loop never judges what an exit code can judge.
 #
-#   The executor is a command, not a product: TASK_AGENT_EXEC_CMD reads the
-#   prompt on standard input and edits the working tree. A run that leaves
-#   `git diff` empty is a failure, not a success. Known tools are declared one
-#   file at a time under .config/devsecops/agents.d/ — see the README there.
-#   The framework holds no model name and no vendor of its own.
+#   The cycle is for whoever drives it. Nothing here is reserved for an AI
+#   assistant: run a phase with no tool declared and it checks the work YOU just
+#   did, against the same gates.
+#
+#   An AI assistant is an OPTION, not a requirement. When one is declared it is
+#   a command, never a product: TASK_AGENT_EXEC_CMD reads the prompt on standard
+#   input and edits the working tree, and a run that leaves `git diff` empty is
+#   a failure. Tools are declared one file at a time under
+#   .config/devsecops/agents.d/ — see the README there. The framework holds no
+#   model name and no vendor of its own.
 #
 # USAGE:
-#   task devsecops:code:agent:doctor
-#   task devsecops:code:agent:red -- @my-tag
-#   task devsecops:code:agent:review:red
-#   task devsecops:code:agent:green -- @my-tag
+#   task devsecops:test:tdd:doctor
+#   task devsecops:test:tdd:red -- @my-tag
+#   task devsecops:test:tdd:review:red
+#   task devsecops:test:tdd:green -- @my-tag
 #   ...
 #
 # ENVIRONMENT VARIABLES:
@@ -50,7 +55,7 @@
 #
 # EXIT CODES:
 #   0  the phase ran and its gate accepted the result
-#   1  out of order, no executor, the executor changed nothing, or a gate refused
+#   1  out of order, no work in the tree, or a gate refused
 #
 # ============================================================================
 
@@ -111,7 +116,7 @@ require_phase() {
   echo -e "${RED}❌ The ${wanted} phase cannot start yet.${NC}"
   echo "   recorded phase : ${current:-(none: the cycle has not started)}"
   echo "   expected phase : ${needed:-(none: this phase opens the cycle)}"
-  echo "   next step      : task devsecops:code:agent:${next}"
+  echo "   next step      : task devsecops:test:tdd:${next}"
   return 1
 }
 
@@ -135,7 +140,7 @@ load_drop_in() {
 }
 
 doctor() {
-  echo -e "${BLUE}🔎 AI tools this machine holds${NC}"
+  echo -e "${BLUE}🔎 AI tools this machine holds (declaring one is optional)${NC}"
   local any=0
   while IFS= read -r drop_in; do
     [ -n "${drop_in}" ] || continue
@@ -163,7 +168,7 @@ doctor() {
   if chosen="$(resolve_executor)"; then
     echo "   the phases would run: ${chosen}"
   else
-    echo "   no executor: set TASK_AGENT_EXEC_CMD, or add a drop-in whose tool is on this machine"
+    echo "   no AI tool: the phases will check the work you do yourself, against the same gates"
   fi
 }
 
@@ -279,6 +284,15 @@ run_tests() {
   eval "${TEST_CMD}"
 }
 
+# The red phase runs them too, and a failure here is the POINT — so the exit
+# code is ignored and the verdict is left to check-red-is-real, which reads the
+# report the run leaves behind. Running them here is what makes that report
+# exist at all: a phase that only reads a report can be handed a stale one.
+run_tests_expecting_failure() {
+  echo -e "${BLUE}▶ ${TEST_CMD}${NC}"
+  eval "${TEST_CMD}" || true
+}
+
 verdict_file() { printf '%s/%s.md' "${STATE_DIR}" "${1//:/-}"; }
 
 require_verdict() {
@@ -302,31 +316,41 @@ run_phase() {
   require_phase "${phase}"
   echo -e "${BLUE}🔁 ${phase} phase${NC}${tag:+ (scenario: ${tag})}"
 
-  local executor
-  if ! executor="$(resolve_executor)"; then
-    echo -e "${RED}❌ No AI tool to drive this phase.${NC}"
-    echo "   Set TASK_AGENT_EXEC_CMD, or declare one in ${DROP_IN_DIR}/ (see its README)."
-    return 1
+  # The AI tool is a convenience, never a requirement. With one, the phase hands
+  # it the prompt and then checks what came back; without one, the phase checks
+  # the work YOU just did. The gates are the point — they do not care who typed.
+  local executor=''
+  if executor="$(resolve_executor)"; then
+    executor="${executor//\{\{MODEL\}\}/${TASK_AGENT_MODEL:-}}"
+    echo -e "   handed to: ${executor}"
+  else
+    executor=''
+    echo -e "   ${YELLOW}no AI tool declared — checking the work in this tree instead.${NC}"
   fi
-  executor="${executor//\{\{MODEL\}\}/${TASK_AGENT_MODEL:-}}"
 
   case "${phase}" in
   review:*)
-    # A review produces a written verdict, not an edit: the executor is asked to
-    # write it where the gate reads it.
+    # A review produces a written verdict, not an edit. With a tool, it writes
+    # it where the gate reads it; without one, you do — the grid is printed.
     mkdir -p "${STATE_DIR}"
-    prompt_for "${phase}" "${tag}" | eval "${executor}" >"$(verdict_file "${phase}")"
+    if [ -n "${executor}" ]; then
+      prompt_for "${phase}" "${tag}" | eval "${executor}" >"$(verdict_file "${phase}")"
+    else
+      echo "   Answer this grid in $(verdict_file "${phase}"), last line 'VERDICT: ACCEPT':"
+      prompt_for "${phase}" "${tag}" | sed 's/^/   /'
+    fi
     require_verdict "${phase}"
     ;;
   red)
-    prompt_for "${phase}" "${tag}" | eval "${executor}"
+    if [ -n "${executor}" ]; then prompt_for "${phase}" "${tag}" | eval "${executor}"; fi
     require_work_done
     require_tests_only
+    run_tests_expecting_failure
     bash "${HERE}/check-red-is-real.sh" "${tag}"
     BASE=HEAD bash "${HERE}/check-no-cheat.sh"
     ;;
   green | refactor)
-    prompt_for "${phase}" "${tag}" | eval "${executor}"
+    if [ -n "${executor}" ]; then prompt_for "${phase}" "${tag}" | eval "${executor}"; fi
     require_work_done
     run_tests
     BASE=HEAD bash "${HERE}/check-no-cheat.sh"
