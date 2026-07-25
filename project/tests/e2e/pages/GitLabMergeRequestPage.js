@@ -176,7 +176,7 @@ class GitLabMergeRequestPage {
   async gotoChangesAndMask (projectPath, iid, projectName, waitPath) {
     await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}/diffs`)
     await I.waitForElement('body', 30)
-    if (waitPath) await I.waitForText(waitPath, 30)
+    if (waitPath) await I.waitForText(waitPath, 60)
     await I.wait(3)
     await maskMergeRequestPage(projectName, { hideMergeWidget: true })
     await I.moveCursorTo('body', 1, 1)

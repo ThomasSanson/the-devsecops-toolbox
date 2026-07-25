@@ -182,6 +182,25 @@ async function captureGateJobFrame (jobId, frameName) {
   I.resizeWindow(1024, 768)
 }
 
+// GitLab recomputes a merge request's diff asynchronously after a push, so the
+// Changes tab can still show the previous version for a few seconds. Wait for
+// the API to report the files before opening the page — the alternative, a
+// longer waitForText, hides the race instead of ending it.
+async function waitMrChanges (headers, mustInclude) {
+  const deadline = Date.now() + 180000
+  let paths = []
+  while (Date.now() < deadline) {
+    const res = await freshGet(
+      `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
+      headers
+    )
+    paths = ((res.data && res.data.changes) || []).map(c => c.new_path)
+    if (mustInclude.every(p => paths.includes(p))) return paths
+    await I.wait(5)
+  }
+  throw new Error(`The merge request diff never included ${mustInclude.join(', ')}; got ${JSON.stringify(paths)}`)
+}
+
 // Everything the gate itself printed: the trace from the guard's command line
 // on. Only useful when something went wrong, so it stays out of the cards.
 function gateSection (trace) {
@@ -317,6 +336,12 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   if (mr.status >= 400) throw new Error(`Failed to open the merge request (status ${mr.status}): ${JSON.stringify(mr.data)}`)
   global.gateMrIid = mr.data.iid
 
+  // Twin FIRST: the merge request really holds product and no storyboard file.
+  const paths = await waitMrChanges(rootHeaders, [PRODUCT_FILE])
+  if (paths.length !== 1) {
+    throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
+  }
+
   // The Changes tab, as its reviewer opens it: one framework file, nothing else.
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   I.resizeWindow(1024, 640)
@@ -325,16 +350,6 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   )
   await addStoryboardFrame(I, await capturePageFrame(I, 'changes-without-card'))
   I.resizeWindow(1024, 768)
-
-  // Twin: the merge request really holds product and no storyboard file.
-  const changes = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
-    rootHeaders
-  )
-  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
-  if (paths.length !== 1 || paths[0] !== PRODUCT_FILE) {
-    throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
-  }
 
   // Cancel every job but the gate BEFORE any runner exists, then give the
   // pipeline its single job slot.
@@ -443,6 +458,10 @@ storyboardStep(When, 'the author adds the proof card beside the same framework c
     'git push --quiet 2>/dev/null'
   ].join(' && '), FIXTURE_DIR)
 
+  // Twin FIRST: both files are in the merge request now, the framework one
+  // untouched since the first push.
+  await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE])
+
   // The same Changes tab, one file richer: the fix is visible, not narrated.
   I.resizeWindow(1024, 640)
   await GitLabMergeRequestPage.gotoChangesAndMask(
@@ -450,17 +469,6 @@ storyboardStep(When, 'the author adds the proof card beside the same framework c
   )
   await addStoryboardFrame(I, await capturePageFrame(I, 'changes-with-card'))
   I.resizeWindow(1024, 768)
-
-  // Twin: both files are in the merge request now, and the framework file is
-  // still the one from the first push.
-  const changes = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.gateMrIid}/changes`,
-    rootHeaders
-  )
-  const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path)
-  if (!paths.includes(PRODUCT_FILE) || !paths.includes(CARD_FILE)) {
-    throw new Error(`Expected both the framework file and the card in the merge request, got ${JSON.stringify(paths)}`)
-  }
 })
 
 storyboardStep(Then, 'the same job turns green and the change can go in', async () => {
