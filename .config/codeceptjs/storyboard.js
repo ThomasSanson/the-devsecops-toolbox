@@ -92,7 +92,9 @@ function parseScenarioLines (featureFile, scenarioTitle) {
       if (mark) {
         const kind = mark[1].toLowerCase()
         if (kind === 'chapter') chapter = mark[2].trim()
-        if (kind === 'note') note = mark[2].trim()
+        // Several `# Note:` lines stack into paragraphs: a long explanation
+        // reads as a few short blocks instead of one dense wall of text.
+        if (kind === 'note') note = note ? `${note}\n${mark[2].trim()}` : mark[2].trim()
         if (kind === 'copy') copy = mark[2].trim()
       }
       continue
@@ -320,17 +322,22 @@ function esc (text) {
 function wrap (text, maxWidth, charWidth) {
   const perLine = Math.max(8, Math.floor(maxWidth / charWidth))
   const lines = []
-  let line = ''
-  for (const word of String(text).split(/\s+/)) {
-    const candidate = line ? line + ' ' + word : word
-    if (candidate.length > perLine && line) {
-      lines.push(line)
-      line = word
-    } else {
-      line = candidate
+  // A newline is a deliberate paragraph break (several `# Note:` lines), kept
+  // as one blank line so the card breathes instead of reading as a wall.
+  String(text).split('\n').forEach((paragraph, index) => {
+    if (index > 0) lines.push('')
+    let line = ''
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? line + ' ' + word : word
+      if (candidate.length > perLine && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = candidate
+      }
     }
-  }
-  if (line) lines.push(line)
+    if (line) lines.push(line)
+  })
   return lines
 }
 

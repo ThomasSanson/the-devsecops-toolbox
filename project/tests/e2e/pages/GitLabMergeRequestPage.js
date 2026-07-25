@@ -16,7 +16,7 @@ const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
  * MR renders it mid-transition (no pipeline yet / checking), while a green or
  * merged MR shows a stable state worth keeping on the card.
  */
-async function maskMergeRequestPage (projectName, { hideMergeWidget = false } = {}) {
+async function maskMergeRequestPage (projectName, { hideMergeWidget = false, keepContext = false } = {}) {
   await I.executeScript((args) => {
     const projectName = args.projectName
     const DATE_RE = [
@@ -25,11 +25,11 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false } = 
       /\b\d+ (second|minute|hour|day|week|month|year)s? ago\b/,
       /\bjust now\b/i,
       /^#\d+$/, //                          pipeline / job id badge (#123)
-      /^!\d+$/, //                          MR reference badge (!1)
       /^[0-9a-f]{7,40}$/i, //               commit SHA
       /^\d{1,2}:\d{2}(:\d{2})?$/, //        duration 0:42 / 00:01:07
       /^\d+ (second|minute|hour)s?$/ //     "42 seconds"
     ]
+    if (!args.keepContext) DATE_RE.push(/^!\d+$/) //  MR reference badge (!1)
     const PLACEHOLDER = '—'
 
     document.querySelectorAll('time, .js-timeago').forEach(el => { el.textContent = PLACEHOLDER })
@@ -87,36 +87,60 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false } = 
     markVolatileRows()
     new MutationObserver(markVolatileRows).observe(document.body, { childList: true, subtree: true })
 
-    // Top app bar: carries the GLOBAL user counters (MRs/todos), polluted by
-    // other parallel scenarios, plus the session state (anonymous vs lambda).
-    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
-      const node = document.querySelector(sel)
-      if (node) node.style.display = 'none'
-    })
+    // Top app bar: carries the project breadcrumb (context the reader needs) but
+    // also the GLOBAL user counters, polluted by other parallel scenarios. With
+    // keepContext the bar stays and only its counters are neutralised.
+    if (args.keepContext) {
+      // Keep the breadcrumb, drop everything else the top bar carries: the
+      // search box, the create menu and the user avatar all belong to the
+      // SESSION, and their counters move whenever a parallel scenario opens a
+      // merge request. Hiding by structure (every top-bar child that does not
+      // contain the breadcrumb) survives GitLab moving its own test ids.
+      const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs, .breadcrumbs'
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        document.querySelectorAll(sel).forEach(bar => {
+          const crumb = bar.querySelector(CRUMB)
+          if (!crumb) { bar.style.visibility = 'hidden'; return }
+          Array.from(bar.children).forEach(child => {
+            if (!child.contains(crumb)) child.style.visibility = 'hidden'
+          })
+        })
+      })
+    } else {
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        const node = document.querySelector(sel)
+        if (node) node.style.display = 'none'
+      })
+    }
 
-    // MR tab bar: GitLab renders the tab counters (Changes N, Commits N)
-    // asynchronously, so masking the numbers races; the counts also embed the
-    // template's file count, which legitimately evolves. Hide the whole bar —
-    // the Overview header above it carries the meaningful content.
-    ;['.merge-request-tabs-container', '[data-testid="merge-request-tabs"]', '.merge-request-tabs-holder'].forEach(sel => {
-      const node = document.querySelector(sel)
-      if (node) node.style.display = 'none'
-    })
+    // MR tab bar and breadcrumb: hidden by default because the tab counters
+    // render asynchronously (they embed the template's file count) and the
+    // breadcrumb carries a per-run RANDOM project name. A story whose project
+    // name and file counts are FIXED asks for keepContext: the reader then sees
+    // where they are — the project path, and which tab is open.
+    if (!args.keepContext) {
+      ;['.merge-request-tabs-container', '[data-testid="merge-request-tabs"]', '.merge-request-tabs-holder'].forEach(sel => {
+        const node = document.querySelector(sel)
+        if (node) node.style.display = 'none'
+      })
+      ;['[data-testid="breadcrumb-links"]', 'nav[aria-label="Breadcrumb"]', '.gl-breadcrumbs', '.breadcrumbs'].forEach(sel => {
+        const node = document.querySelector(sel)
+        if (node) node.style.display = 'none'
+      })
+    }
 
-    // Breadcrumb carries the per-run RANDOM project name + the MR iid.
-    ;['[data-testid="breadcrumb-links"]', 'nav[aria-label="Breadcrumb"]', '.gl-breadcrumbs', '.breadcrumbs'].forEach(sel => {
-      const node = document.querySelector(sel)
-      if (node) node.style.display = 'none'
-    })
-
-    const NAME_RE = projectName
-      ? new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      : /e2e-journey-[0-9a-f]+/
-    document.querySelectorAll('a, span, strong, li, b').forEach(el => {
-      if (el.children.length === 0 && NAME_RE.test(el.textContent.trim())) {
-        el.textContent = 'project'
-      }
-    })
+    // A story whose project name is FIXED keeps it: the breadcrumb then names the
+    // real project, like the sidebar right beside it.
+    if (!args.keepContext) {
+      const NAME_RE = projectName
+        ? new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        : /e2e-journey-[0-9a-f]+/
+      document.querySelectorAll('a, span, strong, li, b').forEach(el => {
+        if (el.children.length === 0 && NAME_RE.test(el.textContent.trim())) {
+          el.textContent = 'project'
+        }
+      })
+    }
 
     document.querySelectorAll('a, span, strong, li, b, div, td, p, dd, dt, code, small').forEach(el => {
       if (el.children.length !== 0) return
@@ -138,7 +162,7 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false } = 
         el.textContent = PLACEHOLDER
       }
     })
-  }, { projectName, hideMergeWidget })
+  }, { projectName, hideMergeWidget, keepContext })
 }
 
 class GitLabMergeRequestPage {
@@ -154,12 +178,12 @@ class GitLabMergeRequestPage {
   // state ("passed", "Merged") is fully rendered when its volatile bits get
   // neutralised — masking a widget that finishes rendering afterwards would
   // leave unmasked ids/SHAs on the card.
-  async gotoAndMask (projectPath, iid, projectName, { hideMergeWidget = true, waitText = null } = {}) {
+  async gotoAndMask (projectPath, iid, projectName, { hideMergeWidget = true, waitText = null, keepContext = false } = {}) {
     await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}`)
     await I.waitForElement('body', 30)
     if (waitText) await I.waitForText(waitText, 30)
     await I.wait(3)
-    await maskMergeRequestPage(projectName, { hideMergeWidget })
+    await maskMergeRequestPage(projectName, { hideMergeWidget, keepContext })
     await I.moveCursorTo('body', 1, 1)
     await I.wait(1)
   }
@@ -173,12 +197,23 @@ class GitLabMergeRequestPage {
   // request touches. Waits for a known path to be rendered (the diff list is
   // built asynchronously) before neutralising the same volatile chrome as the
   // Overview.
-  async gotoChangesAndMask (projectPath, iid, projectName, waitPath) {
+  async gotoChangesAndMask (projectPath, iid, projectName, waitPath, { keepContext = true } = {}) {
     await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}/diffs`)
     await I.waitForElement('body', 30)
     if (waitPath) await I.waitForText(waitPath, 60)
+    // The file-tree panel on the left is part of what the reviewer reads. GitLab
+    // collapses it for a single-file diff, so open it: every Changes card then
+    // shows the same layout, and the tree itself says how many files are in play.
+    await I.executeScript(() => {
+      const open = document.querySelector('[data-testid="file-tree-container"], .diff-tree-list, [class*="tree-list-holder"]')
+      if (open) return
+      const toggle = Array.from(document.querySelectorAll('button')).find(b =>
+        /file browser|file tree|hide files|show files/i.test(`${b.getAttribute('aria-label') || ''} ${b.title || ''}`)
+      )
+      if (toggle) toggle.click()
+    })
     await I.wait(3)
-    await maskMergeRequestPage(projectName, { hideMergeWidget: true })
+    await maskMergeRequestPage(projectName, { hideMergeWidget: true, keepContext })
     await I.moveCursorTo('body', 1, 1)
     await I.wait(1)
   }

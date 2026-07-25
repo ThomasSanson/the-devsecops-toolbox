@@ -58,6 +58,9 @@ const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../
 const PROJECT_NAME = 'e2e-storyboard-gate'
 const GATE_JOB = 'storyboard-coverage'
 const BRANCH = 'ci-release-cleanup-note'
+// Wide enough for GitLab to render the reviewer's context: the file tree beside
+// a diff, the job list beside a job log.
+const WIDE = 1440
 // The framework tree lives in /workspace inside the codeceptjs container (the
 // working branch, tarred in without .git — see project/Taskfile.yml).
 const FRAMEWORK_SRC = '/workspace'
@@ -76,22 +79,6 @@ function sh (cmd, cwd) {
   return execSync(cmd, { cwd, stdio: ['ignore', 'pipe', 'pipe'], timeout: 300000, encoding: 'utf8' }).trimEnd()
 }
 
-// Cancel every job of the merge-request pipeline EXCEPT the gate. Called before
-// the runner exists, so nothing has started and nothing is interrupted.
-async function cancelSiblingJobs (projectName, pid, headers) {
-  const jobs = (await listPipelineJobs(projectName, pid, headers)).data || []
-  let kept = 0
-  for (const job of jobs) {
-    if (job.name === GATE_JOB) { kept += 1; continue }
-    if (['success', 'failed', 'canceled', 'skipped'].includes(job.status)) continue
-    await freshPost(
-      `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/jobs/${job.id}/cancel`, {}, headers
-    )
-  }
-  if (!kept) throw new Error(`The merge-request pipeline has no "${GATE_JOB}" job (${jobs.length} jobs)`)
-  return jobs.length
-}
-
 // The merge request's own pipeline (merge_request_event), as soon as GitLab
 // created it for the push.
 async function waitMrPipelineId (projectName, mrIid, headers, afterId = 0) {
@@ -107,26 +94,12 @@ async function waitMrPipelineId (projectName, mrIid, headers, afterId = 0) {
   throw new Error(`No merge-request pipeline appeared for !${mrIid}`)
 }
 
-// Poll the gate job to a terminal state, cancelling any sibling the runner may
-// have grabbed meanwhile (the second push races the already-registered runner).
-async function waitGateJob (projectName, pid, headers) {
-  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
-  let last = ''
-  while (Date.now() < deadline) {
-    const jobs = (await listPipelineJobs(projectName, pid, headers)).data || []
-    const gate = jobs.find(j => j.name === GATE_JOB)
-    if (gate && gate.status !== last) { console.log(`${GATE_JOB} #${gate.id}: ${gate.status}`); last = gate.status }
-    for (const job of jobs) {
-      if (job.name === GATE_JOB) continue
-      if (['success', 'failed', 'canceled', 'skipped'].includes(job.status)) continue
-      await freshPost(
-        `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/jobs/${job.id}/cancel`, {}, headers
-      )
-    }
-    if (gate && ['success', 'failed', 'canceled'].includes(gate.status)) return gate
-    await I.wait(5)
-  }
-  throw new Error(`The ${GATE_JOB} job never finished on pipeline ${pid}`)
+// The gate job of a pipeline, once that pipeline reached a terminal state.
+async function gateJobOf (projectName, pid, headers) {
+  const jobs = (await listPipelineJobs(projectName, pid, headers)).data || []
+  const gate = jobs.find(j => j.name === GATE_JOB)
+  if (!gate) throw new Error(`No "${GATE_JOB}" job on pipeline ${pid} (${jobs.map(j => j.name).join(', ')})`)
+  return { gate, jobs }
 }
 
 async function waitPipelineTerminal (projectName, pid, headers) {
@@ -145,14 +118,14 @@ async function waitPipelineTerminal (projectName, pid, headers) {
 // The job page, stripped of everything that moves between runs: the log gutter
 // and timestamps, and the commit SHA the gate prints in its header line. Text
 // nodes only — replacing textContent would flatten the log's real colours.
-async function captureGateJobFrame (jobId, frameName) {
-  // Tall enough for the job header and the whole collapsed log, short enough to
-  // leave no dead white space under it.
-  I.resizeWindow(1024, 560)
+async function captureGateJobFrame (jobId, frameName, height) {
+  // Wide, so the card carries where the reader is: the project breadcrumb, the
+  // job's own name and status, and the pipeline's other jobs in the left panel.
+  I.resizeWindow(WIDE, height)
   await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/jobs/${jobId}`)
   await I.waitForElement('[data-testid="job-log-content"]', 60)
   await I.waitForText('Storyboard-coverage gate', 60)
-  await maskPipelinePage(I, PROJECT_NAME)
+  await maskPipelinePage(I, PROJECT_NAME, { keepContext: true })
   await I.executeScript(() => {
     // Collapse the log to the gate's own run, the way a reader clicks past the
     // runner's boilerplate: everything before the command line goes (cache
@@ -199,6 +172,29 @@ async function waitMrChanges (headers, mustInclude) {
     await I.wait(5)
   }
   throw new Error(`The merge request diff never included ${mustInclude.join(', ')}; got ${JSON.stringify(paths)}`)
+}
+
+// The Changes tab of the merge request, with its file tree — the page a
+// reviewer opens to see WHICH files are in play.
+async function captureChangesFrame (waitPath, frameName, height) {
+  I.resizeWindow(WIDE, height)
+  await GitLabMergeRequestPage.gotoChangesAndMask(
+    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME, waitPath
+  )
+  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+  I.resizeWindow(1024, 768)
+}
+
+// The merge request itself, waited into a settled state, with its pipeline row
+// and merge widget kept: they ARE the story here.
+async function captureMergeRequestFrame (waitText, frameName, height) {
+  I.resizeWindow(WIDE, height)
+  await GitLabMergeRequestPage.gotoAndMask(
+    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME,
+    { hideMergeWidget: false, waitText, keepContext: true }
+  )
+  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+  I.resizeWindow(1024, 768)
 }
 
 // Everything the gate itself printed: the trace from the guard's command line
@@ -260,9 +256,44 @@ After(async (test) => {
   try { fs.rmSync(FIXTURE_DIR, { recursive: true, force: true }) } catch (_) {}
 })
 
+// The fixture is the framework tree, because the gate job is framework-only (the
+// generated `test.yml.jinja` twin carries no such job). Two edits, both made on
+// the fixture's MAIN branch and both invisible to the story's diff:
+//   - the pipeline keeps only the jobs a nested GitLab can actually finish
+//     (monitor, operate) plus the gate itself, so the pipeline the cards show is
+//     a REAL one that runs to a real verdict instead of a wall of cancelled jobs;
+//   - the `test` job is dropped, because it IS this very end-to-end suite and
+//     would recurse into itself.
+// The gate job's own definition and script are untouched.
+function trimFixturePipeline () {
+  const ci = `${FIXTURE_DIR}/.gitlab-ci.yml`
+  const kept = [
+    '.config/gitlab/ci/before_script.yml',
+    '.config/gitlab/ci/cache.yml',
+    '.config/gitlab/ci/services.yml',
+    '.config/gitlab/ci/stages.yml',
+    '.config/gitlab/ci/tags.yml',
+    '.config/gitlab/ci/variables.yml',
+    '.config/gitlab/ci/workflow.yml',
+    '.config/gitlab/ci/devsecops/monitor.yml',
+    '.config/gitlab/ci/devsecops/operate.yml',
+    '.config/gitlab/ci/devsecops/test.yml'
+  ]
+  const head = fs.readFileSync(ci, 'utf8').split(/^include:/m)[0]
+  fs.writeFileSync(ci, `${head}include:\n${kept.map(f => `  - local: ${f}\n`).join('')}`)
+
+  const testYml = `${FIXTURE_DIR}/.config/gitlab/ci/devsecops/test.yml`
+  const lines = fs.readFileSync(testYml, 'utf8').split('\n')
+  const from = lines.findIndex(l => /^test:\s*$/.test(l))
+  const to = lines.findIndex((l, i) => i > from && /^[a-zA-Z][\w-]*:\s*$/.test(l))
+  if (from === -1 || to === -1) throw new Error('Could not locate the test job in the fixture CI')
+  lines.splice(from, to - from)
+  fs.writeFileSync(testYml, lines.join('\n'))
+}
+
 // The whole off-camera stage in one sentence, closed by its visual proof: the
-// framework tree on its own GitLab project, and a merge request holding exactly
-// one framework file and no card at all.
+// framework on its own GitLab project, and a merge request holding exactly one
+// framework file and no proof card at all.
 storyboardStep(Given, 'the merge request changes one framework file and brings no proof card', async () => {
   const rootHeaders = await getRootHeaders()
   global.gateProject = PROJECT_NAME
@@ -286,18 +317,18 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   }
   // A merge request may only merge on a green pipeline — the setting the toolbox
   // applies through TASK_GLAB_PIPELINE_MUST_SUCCEED. It is what turns the gate's
-  // red cross into a blocked merge.
+  // red cross into a blocked merge, and its green tick into a merge button.
   await updateProjectSettings(
     PROJECT_NAME, { only_allow_merge_if_pipeline_succeeds: true, merge_method: 'ff' }, rootHeaders
   )
 
-  // The framework tree itself is the fixture (the gate job is framework-only).
   const user = lambdaUser()
   const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
   fs.rmSync(FIXTURE_DIR, { recursive: true, force: true })
   // chown: the tar-extracted /workspace keeps the HOST uid, and git refuses to
   // work in a repository owned by another user (dubious ownership).
   sh(`mkdir -p ${FIXTURE_DIR} && cp -a ${FRAMEWORK_SRC}/. ${FIXTURE_DIR} && chown -R "$(id -u):$(id -g)" ${FIXTURE_DIR}`, '/tmp')
+  trimFixturePipeline()
   sh([
     'git init --quiet --initial-branch=main',
     'git config user.email "lambda@test.local"',
@@ -336,29 +367,10 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   if (mr.status >= 400) throw new Error(`Failed to open the merge request (status ${mr.status}): ${JSON.stringify(mr.data)}`)
   global.gateMrIid = mr.data.iid
 
-  // Twin FIRST: the merge request really holds product and no storyboard file.
-  const paths = await waitMrChanges(rootHeaders, [PRODUCT_FILE])
-  if (paths.length !== 1) {
-    throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
-  }
-
-  // The Changes tab, as its reviewer opens it: one framework file, nothing else.
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  I.resizeWindow(1024, 640)
-  await GitLabMergeRequestPage.gotoChangesAndMask(
-    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME, PRODUCT_FILE
-  )
-  await addStoryboardFrame(I, await capturePageFrame(I, 'changes-without-card'))
-  I.resizeWindow(1024, 768)
-
-  // Cancel every job but the gate BEFORE any runner exists, then give the
-  // pipeline its single job slot.
+  // The push to main spawned its own pipeline; delete it so the merge request's
+  // own pipeline is the only one, on the single job slot and on the tab counter.
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders)
   global.gateFirstPid = pid
-  const total = await cancelSiblingJobs(PROJECT_NAME, pid, rootHeaders)
-  console.log(`gate pipeline ${pid}: kept ${GATE_JOB}, cancelled ${total - 1} sibling jobs`)
-  // The push to main spawned its own pipeline; delete it so it never competes
-  // for the slot.
   try {
     const pipes = await listProjectPipelines(PROJECT_NAME, rootHeaders)
     for (const p of (pipes.data || [])) {
@@ -368,75 +380,42 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
     }
   } catch (_) {}
   global.gateRunner = await registerScopedRunner(I, PROJECT_NAME, rootHeaders)
-})
+  const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
 
-storyboardStep(Then, 'GitLab refuses to merge it, one check failed', async () => {
-  const rootHeaders = await getRootHeaders()
-  const gate = await waitGateJob(PROJECT_NAME, global.gateFirstPid, rootHeaders)
+  // Twin FIRST, never screenshot a state you have not verified: the merge
+  // request holds product and no storyboard file, and the gate stopped it for
+  // the RIGHT reason (a job that fails because it cannot even diff would
+  // otherwise pose as the proof).
+  const paths = await waitMrChanges(rootHeaders, [PRODUCT_FILE])
+  if (paths.length !== 1) {
+    throw new Error(`Expected only ${PRODUCT_FILE} in the merge request, got ${JSON.stringify(paths)}`)
+  }
+  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
   global.gateRedJobId = gate.id
-  // Assert the gate stopped the change FOR THE RIGHT REASON before screenshotting
-  // anything: a job that fails because it cannot even diff would otherwise pose
-  // as the proof.
   const redTrace = jobTrace(gate.id, rootHeaders)
-  if (gate.status !== 'failed' ||
+  const others = jobs.filter(j => j.name !== GATE_JOB)
+  if (gate.status !== 'failed' || status !== 'failed' ||
       !redTrace.includes('Product changed with NO storyboard card changed or added') ||
       !redTrace.includes(PRODUCT_FILE)) {
     console.log(`── ${GATE_JOB} said:\n${gateSection(redTrace)}`)
-    throw new Error(`Expected the ${GATE_JOB} job to stop the unproven change, got status=${gate.status}`)
+    throw new Error(`Expected the ${GATE_JOB} job to stop the unproven change; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
   }
-  await waitPipelineTerminal(PROJECT_NAME, global.gateFirstPid, rootHeaders)
+  if (others.some(j => j.status !== 'success')) {
+    throw new Error(`Expected every other job green, got ${others.map(j => `${j.name}:${j.status}`).join(', ')}`)
+  }
 
-  // The merge request as its author finds it: the pipeline failed, so GitLab
-  // will not let it merge. Cropped to the header and the merge widget — the
-  // activity feed below adds nothing to the story.
-  I.resizeWindow(1024, 585)
-  await GitLabMergeRequestPage.gotoAndMask(
-    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME,
-    { hideMergeWidget: false, waitText: 'Merge blocked' }
-  )
-  // Wait for the pipeline row to EXIST before hiding it: hidden-but-present and
-  // never-rendered are two different layouts, and the widget arrives on its own
-  // polling cycle. Waiting makes the DOM the same shape on every run.
-  await I.waitForText('Merge request pipeline', 60)
-  await I.executeScript(() => {
-    // Persistent CSS + observer, not one-shot inline styles: the merge widget is
-    // a Vue subtree that re-renders on its own polling cycle, so a node styled
-    // once comes back. The pipeline row is doubly volatile — it is absent on
-    // some runs and its mini job graph depends on which sibling job the runner
-    // had grabbed before being cancelled. What the card must show survives:
-    // "Merge blocked: 1 check failed" and "Pipeline must succeed."
-    const style = document.createElement('style')
-    style.textContent = '[data-e2e-hide] { display: none !important }'
-    document.head.appendChild(style)
-    const STABLE = /Merge blocked|Approval|Merged by/
-    const mark = () => {
-      document.querySelectorAll('div, section, li').forEach(el => {
-        const text = el.textContent.trim()
-        if (text.length < 400 && !STABLE.test(text) &&
-            /Checking pipeline status|Merge request pipeline/.test(text)) {
-          el.setAttribute('data-e2e-hide', '')
-          // Climb to the whole row box: its status icon carries its own
-          // visibility and would otherwise stay behind as a lone red cross.
-          let up = el.parentElement
-          while (up && up !== document.body && !STABLE.test(up.textContent)) {
-            up.setAttribute('data-e2e-hide', '')
-            up = up.parentElement
-          }
-        }
-      })
-    }
-    mark()
-    new MutationObserver(mark).observe(document.body, { childList: true, subtree: true })
-  })
-  await I.wait(1)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'merge-blocked'))
-  I.resizeWindow(1024, 768)
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await captureChangesFrame(PRODUCT_FILE, 'changes-without-card', 700)
+})
+
+storyboardStep(Then, 'GitLab refuses to merge it, one check failed', async () => {
+  await captureMergeRequestFrame('Merge blocked', 'merge-blocked', 740)
 })
 
 storyboardStep(Then, 'the failed job names the file left without proof', async () => {
   const rootHeaders = await getRootHeaders()
-  await captureGateJobFrame(global.gateRedJobId, 'gate-names-the-file')
-  // Twin: the gate's own words, read straight from the job trace.
+  await captureGateJobFrame(global.gateRedJobId, 'gate-names-the-file', 690)
+  // Twin: the gate offers its one visible waiver, in its own words.
   const trace = jobTrace(global.gateRedJobId, rootHeaders)
   if (!trace.includes('Storyboard-exempt:')) {
     throw new Error(`Expected the job trace to offer the visible waiver, got:\n${gateSection(trace)}`)
@@ -458,32 +437,27 @@ storyboardStep(When, 'the author adds the proof card beside the same framework c
     'git push --quiet 2>/dev/null'
   ].join(' && '), FIXTURE_DIR)
 
-  // Twin FIRST: both files are in the merge request now, the framework one
-  // untouched since the first push.
+  // Twin FIRST: both files are in the merge request now.
   await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE])
-
-  // The same Changes tab, one file richer: the fix is visible, not narrated.
-  I.resizeWindow(1024, 640)
-  await GitLabMergeRequestPage.gotoChangesAndMask(
-    projectPath(PROJECT_NAME), global.gateMrIid, PROJECT_NAME, CARD_FILE
-  )
-  await addStoryboardFrame(I, await capturePageFrame(I, 'changes-with-card'))
-  I.resizeWindow(1024, 768)
+  await captureChangesFrame(CARD_FILE, 'changes-with-card', 820)
 })
 
-storyboardStep(Then, 'the same job turns green and the change can go in', async () => {
+storyboardStep(Then, 'the same job turns green and names the card that proved the change', async () => {
   const rootHeaders = await getRootHeaders()
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
-  const gate = await waitGateJob(PROJECT_NAME, pid, rootHeaders)
+  global.gateSecondPid = pid
+  const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
+  const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
-  if (gate.status !== 'success' || !greenTrace.includes('Product changed and a storyboard was changed/added')) {
+  if (status !== 'success' || gate.status !== 'success' ||
+      !greenTrace.includes('Product changed and a storyboard was changed/added') ||
+      !greenTrace.includes(CARD_FILE)) {
     console.log(`── ${GATE_JOB} said:\n${gateSection(greenTrace)}`)
-    throw new Error(`Expected the ${GATE_JOB} job to pass once the card is there, got ${gate.status}`)
+    throw new Error(`Expected a green pipeline once the card is there; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
   }
-  await captureGateJobFrame(gate.id, 'gate-names-the-card')
+  await captureGateJobFrame(gate.id, 'gate-names-the-card', 690)
+})
 
-  // Twin: the gate went green BECAUSE of the card.
-  if (!greenTrace.includes(CARD_FILE)) {
-    throw new Error(`Expected the job trace to name ${CARD_FILE}, got:\n${gateSection(greenTrace)}`)
-  }
+storyboardStep(Then, 'the merge request is green from end to end and can be merged', async () => {
+  await captureMergeRequestFrame('Ready to merge', 'merge-allowed', 740)
 })

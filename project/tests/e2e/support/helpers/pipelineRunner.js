@@ -188,11 +188,12 @@ function dumpFailedTraces (projectName, jobs, rootHeaders, svc) {
 // green" graph is the only thing that varies between runs — the REST twin has
 // already proven status=success with each job's real state. Also used for the
 // tags page (same volatile dates/SHAs) and any masked pipeline/tag view.
-async function maskPipelinePage (I, projectName) {
+async function maskPipelinePage (I, projectName, { keepContext = false } = {}) {
   await I.waitForElement('body', 30)
   await I.wait(3)
   await I.executeScript((args) => {
     const projectName = args.projectName
+    const keepContext = args.keepContext
     const PLACEHOLDER = '—'
     const VOLATILE_RE = [
       /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, //           "Jul 20, 2026"
@@ -205,11 +206,31 @@ async function maskPipelinePage (I, projectName) {
       /^\d+ (second|minute|hour)s?$/ //                "42 seconds"
     ]
 
-    // Top app bar (global counters + session state) and every avatar/image.
-    ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
-      const n = document.querySelector(sel)
-      if (n) n.style.visibility = 'hidden'
-    })
+    // Top app bar: it carries the project breadcrumb, which tells the reader
+    // where they are, but also the GLOBAL user counters that other parallel
+    // scenarios move. keepContext keeps the bar and blanks the counters instead.
+    if (keepContext) {
+      // Keep the breadcrumb, drop everything else the top bar carries: the
+      // search box, the create menu and the user avatar all belong to the
+      // SESSION, and their counters move whenever a parallel scenario opens a
+      // merge request. Hiding by structure (every top-bar child that does not
+      // contain the breadcrumb) survives GitLab moving its own test ids.
+      const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs, .breadcrumbs'
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        document.querySelectorAll(sel).forEach(bar => {
+          const crumb = bar.querySelector(CRUMB)
+          if (!crumb) { bar.style.visibility = 'hidden'; return }
+          Array.from(bar.children).forEach(child => {
+            if (!child.contains(crumb)) child.style.visibility = 'hidden'
+          })
+        })
+      })
+    } else {
+      ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
+        const n = document.querySelector(sel)
+        if (n) n.style.visibility = 'hidden'
+      })
+    }
 
     // Action buttons (retry/cancel) on the job graph: controls, not proof,
     // and their icon rendering drifts between environments.
@@ -240,7 +261,10 @@ async function maskPipelinePage (I, projectName) {
       // "8 minutes 4 seconds" is still replaced in one go.
       /\b\d+ minutes?\b/g,
       /\b\d+ seconds?\b/g,
-      /\b\d{2}:\d{2}:\d{2}\b/g //           duration clock (00:01:16) in mixed nodes
+      /\b\d{2}:\d{2}:\d{2}\b/g, //          duration clock (00:01:16) in mixed nodes
+      // The job page names the runner that took the job: "#113 (7ulK8s5G) null".
+      // Both the id and the short token are new on every registration.
+      /#\d+ \([^)]*\)(\s+null)?/g
     ]
     const subWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
     const subNodes = []
@@ -252,6 +276,9 @@ async function maskPipelinePage (I, projectName) {
     })
 
     // The per-run random project name, wherever it appears (breadcrumb, title).
+    // A story whose project name is FIXED keeps it: the reader sees the real
+    // project, and the two page kinds of one storyboard stay consistent.
+    if (keepContext) return
     const NAME_RE = projectName
       ? new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
       : /e2e-journey-[0-9a-f]+/g
@@ -261,7 +288,7 @@ async function maskPipelinePage (I, projectName) {
     textNodes.forEach(n => {
       if (NAME_RE.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(NAME_RE, 'project')
     })
-  }, { projectName })
+  }, { projectName, keepContext })
   await I.moveCursorTo('body', 1, 1)
   await I.wait(0.5)
 }
