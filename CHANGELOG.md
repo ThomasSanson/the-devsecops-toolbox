@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.4 (2026-07-25)
+
+### Fix
+
+- **deps**: open one merge request per dependency, keep the runner's browser
+
 ## 22.9.3 (2026-07-25)
 
 ### Fix
