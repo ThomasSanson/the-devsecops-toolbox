@@ -50,7 +50,8 @@ const { freshGet } = require('../helpers/http')
 const {
   registerScopedRunner,
   teardownScopedRunner,
-  maskPipelinePage
+  maskPipelinePage,
+  PIPELINE_TIMEOUT_MS
 } = require('../helpers/pipelineRunner')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
@@ -107,8 +108,11 @@ async function gateJobOf (projectName, pid, headers) {
   return { gate, jobs }
 }
 
+// The runner has ONE job slot and it is SHARED with the other stories of this
+// shard: a pipeline can sit pending for minutes while a neighbour runs. Wait on
+// the suite's own pipeline budget, never a private short one.
 async function waitPipelineTerminal (projectName, pid, headers) {
-  const deadline = Date.now() + 300000
+  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
   let last = ''
   while (Date.now() < deadline) {
     const pipe = await getPipeline(projectName, pid, headers)
@@ -151,11 +155,13 @@ async function captureGateJobFrame (jobId, frameName, height) {
       const v = n.nodeValue.replace(/\b[0-9a-f]{8,}\b/g, '<sha>')
       if (v !== n.nodeValue) n.nodeValue = v
     })
-    // Back to the top so the card carries the job's own header: its name and
-    // its red or green status, not just the log body.
-    window.scrollTo(0, 0)
   })
   await I.wait(1)
+  // Back to the top LAST: GitLab scrolls the page down on its own once the log
+  // finishes rendering, and a card that starts below the job's name and status
+  // pill no longer says which job the reader is looking at.
+  await I.executeScript(() => { window.scrollTo(0, 0) })
+  await I.wait(0.5)
   await addStoryboardFrame(I, await capturePageFrame(I, frameName))
   I.resizeWindow(1024, 768)
 }
@@ -451,19 +457,22 @@ storyboardStep(When, 'the author pushes only a comment beside the framework chan
   await captureChangesFrame(CARD_FILE, 'changes-comment-only', 820)
 })
 
-storyboardStep(Then, 'the gate is not fooled and the merge request stays blocked', async () => {
+storyboardStep(Then, 'the gate reads that comment and refuses it just the same', async () => {
   const rootHeaders = await getRootHeaders()
   const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
   global.gateSecondPid = pid
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
   const { gate, jobs } = await gateJobOf(PROJECT_NAME, pid, rootHeaders)
   const trace = jobTrace(gate.id, rootHeaders)
+  // Twin: the same red verdict AND the line that names the card file it read —
+  // the gate looked at the comment and refused it, it was not simply unaware.
   if (status !== 'failed' || gate.status !== 'failed' ||
-      !trace.includes('Product changed with NO storyboard picture to prove it')) {
+      !trace.includes('Product changed with NO storyboard picture to prove it') ||
+      !trace.includes('it captured no picture') || !trace.includes(CARD_FILE)) {
     console.log(`── ${GATE_JOB} said:\n${gateSection(trace)}`)
     throw new Error(`Expected the comment to change nothing; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
   }
-  await captureMergeRequestFrame('Merge blocked', 'merge-still-blocked', 740)
+  await captureGateJobFrame(gate.id, 'gate-refuses-the-comment', 690)
 })
 
 storyboardStep(When, 'the author adds the card and the picture it captured', async () => {

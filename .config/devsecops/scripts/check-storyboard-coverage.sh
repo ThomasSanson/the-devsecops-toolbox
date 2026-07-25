@@ -56,6 +56,10 @@ PRODUCT_RE='^(\.config/|copier\.yml$|Taskfile\.yml(\.jinja)?$)'
 # What satisfies the gate: a baseline image, changed or added. Only a real
 # capture run produces one.
 PROOF_RE='^project/tests/e2e/screenshots/base/.+\.png$'
+# Storyboard TEXT touched without capturing anything — a comment typed into a
+# card. Named separately in the refusal so the author sees the gate read it and
+# refused it anyway, instead of wondering whether it was even looked at.
+TEXT_RE='^project/tests/e2e/(features|support/steps|storyboards)/'
 
 BASE="${BASE:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-origin/main}}"
 
@@ -93,9 +97,11 @@ fi
 mapfile -t all_changed < <(printf '%s\n' "${diff_output}" | sed '/^$/d')
 product=()
 proof=()
+text=()
 for f in "${all_changed[@]}"; do
   [[ "$f" =~ $PRODUCT_RE ]] && product+=("$f")
   [[ "$f" =~ $PROOF_RE ]] && proof+=("$f")
+  [[ "$f" =~ $TEXT_RE ]] && text+=("$f")
 done
 
 if [ "${#product[@]}" -eq 0 ]; then
@@ -116,6 +122,10 @@ fi
 
 echo -e "${RED}❌ Product changed with NO storyboard picture to prove it:${NC}"
 printf "   ${RED}~${NC} %s\n" "${product[@]}"
+if [ "${#text[@]}" -gt 0 ]; then
+  echo -e "${YELLOW}   A storyboard file changed, but it captured no picture — text is not proof:${NC}"
+  printf "   ${YELLOW}~${NC} %s\n" "${text[@]}"
+fi
 cat >&2 <<'MSG'
 
 The key principle of this repo: every product change is proven by a visible

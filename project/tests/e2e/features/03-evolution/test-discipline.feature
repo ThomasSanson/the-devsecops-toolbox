@@ -34,10 +34,10 @@ Feature: A framework change without its proof card never reaches the main branch
     # Note: It costs one second, it proves nothing, and a rule written in a document cannot stop it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
     When the author pushes only a comment beside the framework change
-    # Note: The pipeline runs again and lands on exactly the same red. The box still reads "Merge blocked: 1 check failed".
-    # Note: The gate does not count files, it looks for a picture. A comment is text anyone can type; a baseline exists only because the test really ran and photographed the result. That is the whole difference, and it is what makes the rule hold.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    Then the gate is not fooled and the merge request stays blocked
+    # Note: Same job, same page as two cards ago, new push. The verdict has not moved by a word: "Product changed with NO storyboard picture to prove it".
+    # Note: And it now names the file it just read: "A storyboard file changed, but it captured no picture — text is not proof". The gate looked at the comment and refused it. It does not count files, it looks for a photograph, and a comment is text anyone can type in a second.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
+    Then the gate reads that comment and refuses it just the same
     # Note: The author pushes the missing card to the same merge request, and changes nothing else. The Changes tab now lists three files: the framework file from before, untouched, the sentence added to the card, and the picture that sentence captured.
     # Note: That picture is what the gate actually wants. A screenshot only exists because the test really ran and photographed something, so a comment typed next to a card can never stand in for it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs

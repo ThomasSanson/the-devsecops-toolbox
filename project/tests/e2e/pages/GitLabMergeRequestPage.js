@@ -105,11 +105,21 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
       const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs, .breadcrumbs'
       ;['header', '.super-topbar', '[data-testid="top-bar"]', 'nav.navbar'].forEach(sel => {
         document.querySelectorAll(sel).forEach(bar => {
+          // A page has SEVERAL <header> elements and GitLab splits its top area
+          // in two rows: the SESSION row (logo, search, create menu, and the
+          // global counters other scenarios move) and the breadcrumb row. The
+          // job page adds a third one carrying its own name and status pill —
+          // that one must survive. Tell them apart by the search field, which
+          // only the session row has.
           const crumb = bar.querySelector(CRUMB)
-          if (!crumb) { bar.style.visibility = 'hidden'; return }
-          Array.from(bar.children).forEach(child => {
-            if (!child.contains(crumb)) child.style.visibility = 'hidden'
-          })
+          const isSessionBar = bar.querySelector('input[type="search"], [placeholder*="Search"], [data-testid*="search"]')
+          if (crumb) {
+            Array.from(bar.children).forEach(child => {
+              if (!child.contains(crumb)) child.style.visibility = 'hidden'
+            })
+          } else if (isSessionBar) {
+            bar.style.visibility = 'hidden'
+          }
         })
       })
     } else {
