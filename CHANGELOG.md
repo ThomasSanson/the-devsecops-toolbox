@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 22.9.3 (2026-07-25)
+
+### Fix
+
+- **test**: wait for GitLab to recompute the merge-request diff before reading it
+- **test**: mask a pipeline duration that lands on a round minute
+
 ## 22.9.2 (2026-07-24)
 
 ### Fix
