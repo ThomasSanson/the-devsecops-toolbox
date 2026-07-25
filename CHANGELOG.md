@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 22.9.7 (2026-07-25)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v18.11.7
+
 ## 22.9.6 (2026-07-25)
 
 ### Fix
