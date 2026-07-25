@@ -41,7 +41,7 @@ A copy-ready `codecept.conf.sample.js` with this block already in place sits nex
 Attach structured comments to the sentence just below them — the feature file carries the story, the step file only drives and captures:
 
 - `# Chapter: Title` opens a full-width chapter band before that card.
-- `# Note: text` is the card's explanation — what to look at, why it matters (one or two short sentences).
+- `# Note: text` is the card's explanation — what to look at, why it matters (one or two short sentences). Repeat the line to stack paragraphs: each `# Note:` becomes its own block, separated by a blank line, so a longer explanation reads as two or three short blocks instead of one dense wall.
 - `# Copy: command` is the exact command shown one-click-copyable under the card (use placeholders like `http://gitlab/<user>/<project>` for volatile parts).
 
 Precedence for a card's note/copy: a per-frame value wins over a runtime `storyboard.annotate({ note, copy })` call (for a URL known only mid-step), which wins over the `# Note:` / `# Copy:` comment — so the feature comment is the default, JS only overrides when a value is computed at runtime.
