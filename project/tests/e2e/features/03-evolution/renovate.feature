@@ -19,7 +19,9 @@ Feature: Dependency updates flow through the framework, not around it
   # the FRAMEWORK repo's Renovate detects that very same .config drift. Chapter 2
   # — both PLACES a bootstrap tool version is pinned (its .config source AND the
   # install.sh bootstrap line) must be seen by Renovate, or one would silently
-  # drift on the next release.
+  # drift on the next release. Chapter 3 — an update must also arrive in a shape
+  # the repository can merge: one dependency per merge request, and a Playwright
+  # bump that cannot take the test runner's browser away with it.
   @renovate-flow
   Scenario: Renovate centralizes .config updates in the framework and watches every pinned tool at both endpoints
     # Chapter: Updates flow through the framework
@@ -51,3 +53,14 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: The rule made visible: every tracked tool is reported from its canonical .config source AND install.sh, so one Renovate PR touches both files, never only one.
     # Copy: task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract
     And each tool is detected at both its config source and the install.sh pin
+    # Chapter: One dependency, one merge request
+    # Note: Renovate proposes the updates, and it must propose them one at a time. When twenty dependencies ride in the same merge request, one broken package holds the nineteen others hostage and nobody can tell which one broke.
+    # Note: Off-camera: another throwaway copy of the framework, where three dependencies are pinned back to old versions on purpose. One comes from npm, one from the Docker registry, one from Python.
+    # Note: The picture is the framework's own command answering with the branch it would open for each one. Three dependencies, three branches, three merge requests. Version numbers are masked so the picture only changes when the answer does.
+    # Copy: task renovate:dry-run
+    Then Renovate gives every dependency a merge request of its own
+    # Note: The tests drive a real Chromium browser. It used to come from the base image alone, and that image only ever ships the browsers of one exact Playwright release.
+    # Note: Renovate moves the npm package and the image tag apart, because npm publishes first and the image tag follows days later. That gap is what made every scenario die on "Executable doesn't exist".
+    # Note: So the image now installs the browser its own Playwright asks for. The picture reads the runner from the inside: the build line that installs it, and the browser file that is really there.
+    # Copy: node -e "console.log(require('playwright').chromium.executablePath())"
+    And the test runner already holds the browser its own Playwright asks for

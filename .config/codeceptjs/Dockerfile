@@ -54,9 +54,18 @@ RUN npm install -g renovate@43.220.0
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/
 
-# Install dependencies (cached if package files unchanged)
+# Install dependencies (cached if package files unchanged), then the browser
+# THIS playwright asks for. The base image only ever ships the browsers of its
+# own release, while Renovate moves the image tag and the npm package apart:
+# npm publishes first and the image tag follows days later, so the two are
+# routinely a version out of step. Relying on the base image alone then makes
+# every scenario die on "Executable doesn't exist at /ms-playwright/...".
+# When both versions already agree the install is a no-op, so it costs nothing.
+# The local binary, never npx: npx re-resolves from the registry on every call.
 WORKDIR /app/.config/codeceptjs
-RUN npm ci && ln -s /app/.config/codeceptjs/node_modules/.bin/codeceptjs /usr/local/bin/codeceptjs
+RUN npm ci && \
+    ./node_modules/.bin/playwright install chromium && \
+    ln -s /app/.config/codeceptjs/node_modules/.bin/codeceptjs /usr/local/bin/codeceptjs
 
 WORKDIR /app
 

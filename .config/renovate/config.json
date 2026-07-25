@@ -5,7 +5,6 @@
     ":semanticCommits",
     ":semanticCommitTypeAll(fix)"
   ],
-  "ignorePresets": ["monorepo:playwright"],
   "onboarding": false,
   "requireConfig": "optional",
   "automerge": true,
@@ -20,17 +19,6 @@
   "commitBody": "Storyboard-exempt: dependency bump, proven by the whole suite re-running against the new versions rather than by a new card.",
   "dependencyDashboard": true,
   "packageRules": [
-    {
-      "matchManagers": ["npm", "dockerfile"],
-      "matchPackageNames": ["playwright", "mcr.microsoft.com/playwright"],
-      "matchFileNames": [
-        ".config/codeceptjs/package.json",
-        ".config/codeceptjs/package-lock.json",
-        ".config/codeceptjs/Dockerfile"
-      ],
-      "groupName": "Playwright codeceptjs stack",
-      "groupSlug": "playwright-codeceptjs-stack"
-    },
     {
       "description": "Version managed by commitizen, not Renovate",
       "matchDatasources": ["docker"],
