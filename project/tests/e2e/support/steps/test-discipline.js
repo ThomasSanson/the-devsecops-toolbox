@@ -1,4 +1,4 @@
-/* global inject Given When Then Before After NodeFilter MutationObserver */
+/* global inject Given When Then Before After NodeFilter */
 /**
  * Storyboard-coverage gate DOGFOOD — @test-discipline, on the heavy runner shard.
  *
@@ -46,12 +46,11 @@ const {
   cancelPipeline,
   deletePipeline
 } = require('../helpers/gitlabApi')
-const { freshGet, freshPost } = require('../helpers/http')
+const { freshGet } = require('../helpers/http')
 const {
   registerScopedRunner,
   teardownScopedRunner,
-  maskPipelinePage,
-  PIPELINE_TIMEOUT_MS
+  maskPipelinePage
 } = require('../helpers/pipelineRunner')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 

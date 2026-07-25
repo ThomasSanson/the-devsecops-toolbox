@@ -50,6 +50,11 @@ REPOSITORY_GITLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
 REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_KINGFISHER_ARGUMENTS:
+  # Generated storyboards embed their screenshots as base64, and a random chunk
+  # of that payload eventually matches an entropy rule (it matched "crates.io
+  # API Key" on 2026-07-25). Gitleaks still scans these files, so the path keeps
+  # a secret scanner on it.
+  - "--exclude=project/tests/e2e/storyboards"
   - "--exclude=.ansible"
   - "--exclude=.cache"
   - "--exclude=.claude"
