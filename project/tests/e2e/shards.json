@@ -1,12 +1,12 @@
 {
-  "comment": "CI shard map for the e2e job (parallel: 9). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Balanced on measured CI durations: the long single stories ride alone (1, 2) and bound the pipeline wall-clock; the MegaLinter-hungry pair shares shard 7 so its image pull is paid once and both run concurrently. Shard 9 groups the three runner-driven stories — @daily-contribution (an everyday change rides an MR and main releases it, two full pipelines), @release-window (a real release pipeline crashes mid-push) and @test-discipline (a real merge request is stopped by the storyboard-coverage job, every sibling job cancelled so only the gate runs) — because all three register a project-scoped runner on the shared gitlab-runner service; running them in one job keeps every other shard free of a runner.",
+  "comment": "CI shard map for the e2e job (parallel: 9). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Balanced on measured CI durations: the long single stories ride alone (1, 2) and bound the pipeline wall-clock; the MegaLinter-hungry pair shares shard 7 so its image pull is paid once and both run concurrently. Runner-driven stories register a project-scoped runner on the shard's OWN gitlab-runner service (each CI shard boots its own compose stack), so they need not share a shard — they are spread instead: shard 9 keeps @daily-contribution and @release-window (~18 min together), shard 5 takes @test-discipline. Grouping all three cost 11 extra minutes of wall-clock, because one runner slot serialised their pipelines. A LOCAL full-suite run ignores this map and shares one runner service, which is why the teardown stays surgical.",
   "1": "./features/01-install/first-run-help.feature",
   "2": "./features/01-install/merge-request-safety.feature",
   "3": "./features/01-install/fresh-machine.feature,./features/03-evolution/version-pins.feature",
   "4": "./features/01-install/install.feature",
-  "5": "./features/03-evolution/update.feature,./features/03-evolution/update-conflict.feature",
+  "5": "./features/03-evolution/update.feature,./features/03-evolution/update-conflict.feature,./features/03-evolution/test-discipline.feature",
   "6": "./features/02-daily-work/self-healing.feature,./features/03-evolution/generated-ci.feature",
   "7": "./features/02-daily-work/quality-gate.feature,./features/03-evolution/cspell.feature",
   "8": "./features/02-daily-work/protected-commits.feature,./features/03-evolution/matrix.feature,./features/03-evolution/renovate.feature,./features/01-install/agent-mode.feature",
-  "9": "./features/02-daily-work/daily-contribution.feature,./features/02-daily-work/release-window.feature,./features/03-evolution/test-discipline.feature"
+  "9": "./features/02-daily-work/daily-contribution.feature,./features/02-daily-work/release-window.feature"
 }
