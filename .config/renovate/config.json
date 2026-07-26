@@ -12,7 +12,6 @@
   "automergeType": "pr",
   "automergeStrategy": "fast-forward",
   "prCreation": "immediate",
-
   "semanticCommits": "enabled",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
@@ -25,6 +24,12 @@
       "matchPackageNames": [
         "registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
       ],
+      "enabled": false
+    },
+    {
+      "description": "MegaLinter's number is a DOCKER tag, not an npm version. The pipeline runs oxsecurity/megalinter:v<that number>, and the npm runner is published ahead of the image (npm 9.6.0 while the newest image is v9.4.0), so following npm proposes a version no registry can pull: 'manifest unknown', every job dead. The npm datasource is switched off here and the custom manager below follows the image instead \u2014 the artefact that actually has to exist.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["mega-linter-runner"],
       "enabled": false
     }
   ],
@@ -90,6 +95,16 @@
       "matchStrings": [
         "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+const RUNNER_IMAGE = '[^:]+:(?<currentValue>[^']+)'"
       ]
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.config/megalinter/package\\.json$"],
+      "matchStrings": [
+        "\"mega-linter-runner\": \"(?<currentValue>[0-9][^\"]*)\""
+      ],
+      "depNameTemplate": "oxsecurity/megalinter",
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ]
 }

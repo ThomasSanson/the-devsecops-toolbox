@@ -219,6 +219,19 @@ const SPREAD = [
     file: '.config/ansible/requirements.txt',
     pattern: /ansible-core==\S+/,
     pinned: 'ansible-core==2.16.0'
+  },
+  // MegaLinter earns its row by being the trap: one number in a package.json
+  // that is spent as a DOCKER tag (`oxsecurity/megalinter:v<number>`), while npm
+  // publishes the runner ahead of the image. Follow npm and Renovate proposes a
+  // version no registry can pull — `manifest unknown`, the whole pipeline dead.
+  // The branch below must therefore be attributed to `oxsecurity/megalinter`:
+  // if it ever comes back under `mega-linter-runner`, Renovate is reading npm
+  // again and this story says so before a merge request does.
+  {
+    depName: 'oxsecurity/megalinter',
+    file: '.config/megalinter/package.json',
+    pattern: /"mega-linter-runner": "[^"]+"/,
+    pinned: '"mega-linter-runner": "9.1.0"'
   }
 ]
 
@@ -236,6 +249,24 @@ function maskBranchVersion (branch) {
 // Map each pinned-back dependency -> the branches Renovate would open for it.
 // The per-manager package files sit under `config` in the pinned renovate the
 // image carries, and directly under `packageFiles` in newer ones.
+// Renovate nests its findings four deep — manager, package file, dependency,
+// update — and reading that nest is a separate job from finding the one log
+// line that holds it. Split accordingly: this walks the nest, the caller finds
+// the line.
+function collectBranches (packageFiles, byDep) {
+  for (const managerFiles of Object.values(packageFiles)) {
+    if (!Array.isArray(managerFiles)) continue
+    for (const pf of managerFiles) {
+      for (const dep of (pf.deps || [])) {
+        for (const update of (dep.updates || [])) {
+          if (!update.branchName) continue
+          ;(byDep[dep.depName] = byDep[dep.depName] || new Set()).add(update.branchName)
+        }
+      }
+    }
+  }
+}
+
 function branchesByDep (json) {
   const byDep = {}
   for (const line of json.split('\n')) {
@@ -243,18 +274,7 @@ function branchesByDep (json) {
     try { entry = JSON.parse(line) } catch (_) { continue }
     if (!entry || entry.msg !== 'packageFiles with updates') continue
     const packageFiles = entry.packageFiles || entry.config
-    if (!packageFiles) continue
-    for (const managerFiles of Object.values(packageFiles)) {
-      if (!Array.isArray(managerFiles)) continue
-      for (const pf of managerFiles) {
-        for (const dep of (pf.deps || [])) {
-          for (const update of (dep.updates || [])) {
-            if (!update.branchName) continue
-            ;(byDep[dep.depName] = byDep[dep.depName] || new Set()).add(update.branchName)
-          }
-        }
-      }
-    }
+    if (packageFiles) collectBranches(packageFiles, byDep)
   }
   return byDep
 }
