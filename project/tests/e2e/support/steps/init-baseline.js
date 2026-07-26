@@ -52,6 +52,13 @@ function maskCommitOutput (raw) {
   return stripAnsi(raw)
     .replace(/\[[\w./-]+ [0-9a-f]{7,}\]/g, '[<branch> <sha>]')
     .replace(/\(done in [\d.]+ seconds\)/g, '(done in <n>s)')
+    // The hooks echo the command they run, pinned version and all, and lefthook
+    // prints its own banner. Both numbers move whenever Renovate bumps the tool,
+    // and this story is about a commit message being accepted or rejected — not
+    // about which commitizen ran that week. Masked, the picture stops breaking
+    // on updates that change nothing it means to show.
+    .replace(/commitizen==[0-9][\w.]*/g, 'commitizen==<version>')
+    .replace(/lefthook v[0-9][\w.]*/g, 'lefthook v<version>')
     .split('\n')
     .filter(line => {
       const trimmed = line.trim()
