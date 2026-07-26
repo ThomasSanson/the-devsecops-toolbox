@@ -2,6 +2,40 @@
 
 # Changelog
 
+## 23.0.0 (2026-07-26)
+
+### BREAKING CHANGE
+
+- the devsecops:test:tdd:* tasks, the .config/devsecops/agents.d
+drop-in directory and the TASK_AGENT_* variables are removed. Nothing replaces
+them one-for-one: sequencing belongs to whoever drives the work, and what the
+framework owes is the verdict — `task verify`.
+- every generated project's merge-request pipeline gains a
+blocking `no-cheat` job. A merge request that ADDS a skipped or exclusive
+scenario, a non-zero visual tolerance, `allow_failure: true`, or a linter
+suppression under a test path now fails where it used to pass. Deliberate cases
+stay possible, and stay visible, through a `No-cheat-exempt: <reason>` commit
+trailer.
+
+### Feat
+
+- **devsecops**: each phase of the loop certifies itself
+- check the method's own proofs instead of taking them on trust
+
+### Fix
+
+- **devsecops**: see a switched-off test in any language, not only in ours
+- **devsecops**: free the verify name, and align the delegation page
+- **test**: a file that arrives whole silenced nothing
+- **devsecops**: ship the new guards the way a generated project expects them
+- **test**: make the cycle survive a real assistant, and a real project
+
+### Refactor
+
+- **devsecops**: keep the verdict in the phase, not above it
+- one command settles it, instead of a machine that sequences it
+- **test**: the cycle is the repository's method, not the assistant's
+
 ## 22.9.9 (2026-07-25)
 
 ### Fix
