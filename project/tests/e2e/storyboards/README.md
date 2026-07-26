@@ -33,8 +33,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**8. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
-- [**9. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and one command refuses work where a check was switched off.
-  Chapters: A failure that proves nothing · A failure that proves something · One command, one verdict.
+- [**9. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
+  Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
 
 ## Act 3 — Evolution (`03-evolution`)

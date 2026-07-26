@@ -135,15 +135,14 @@ Every code change MUST follow this cycle:
 | 8    | Quality check                               | `task code`                                     | PASS              |
 | 9    | Full test suite                             | `task test`                                     | ALL PASS          |
 
-**`task verify` settles whether the work is done**: nothing switched off, linter clean, tests green — one exit code. Each phase of the loop also certifies itself.
+**Each phase of the loop certifies itself**: one command, one exit code, nothing taken on trust.
 
 ### What certifies each phase
 
-| Phase  | The command that settles it  | It guarantees                                              |
-|--------|------------------------------|------------------------------------------------------------|
-| `code` | `task devsecops:code:verify` | the linter passes, and the change silenced none of it      |
-| `test` | `task devsecops:test:verify` | the tests pass, and no check was switched off              |
-| any    | `task verify`                | both of the above, one exit code — the sentence for "done" |
+| Phase  | The command that settles it  | It guarantees                                         |
+|--------|------------------------------|-------------------------------------------------------|
+| `code` | `task devsecops:code:verify` | the linter passes, and the change silenced none of it |
+| `test` | `task devsecops:test:verify` | the tests pass, and no check was switched off         |
 
 Handing work to an AI assistant? The whole contract — including what an
 orchestrator delegating to a cheaper model must check — is one page:

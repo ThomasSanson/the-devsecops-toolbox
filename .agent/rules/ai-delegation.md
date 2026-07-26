@@ -23,15 +23,9 @@ difference between "I think it works" and "it works".
 | **test**    | the suite runs and passes                                               | `task devsecops:test:verify` |
 | **release** | version, changelog, tag                                                 | a human's, not yours         |
 
-And, before you say the work is done, whatever the phase:
-
-```bash
-task verify
-```
-
-One exit code for all of it: **nothing was switched off, the linter is clean,
-the tests pass.** It runs the cheapest and most damning check first, so a cheat
-is caught in a second rather than after twenty minutes of test suite.
+Each of those commands runs its guard FIRST and the phase second, so a cheat is
+caught in a second rather than after twenty minutes of test suite. Run the one
+for the phase you are in; run both before you say the work is done.
 
 ## Inside the code phase: the order is not decoration
 
@@ -58,8 +52,8 @@ is caught in a second rather than after twenty minutes of test suite.
   you have seen the exit code is the one mistake that cannot be fixed in the
   next commit, because it destroys the only thing anyone was relying on.
 
-These four are read mechanically, so a rushed model cannot step over them:
-`task verify` locally, and the `no-cheat` job on every merge request.
+These four are read mechanically, so a rushed model cannot step over them: the
+phase commands above locally, and the `no-cheat` job on every merge request.
 
 ## If you are the orchestrator
 

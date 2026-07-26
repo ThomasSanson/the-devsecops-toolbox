@@ -116,15 +116,14 @@ Every code change follows RED → GREEN → REFACTOR in strict order; see `.agen
 
 Step 3 is checked, not taken on your word: a run that dies while loading its files exits non-zero and records nothing, and that is a crash, not a failure.
 
-**`task verify` is the one sentence that means "done"**: nothing was switched off, the linter is clean, the tests pass — one exit code. Each phase of the loop also certifies itself, so you can prove one step without running the rest. On a merge request the `no-cheat` job asks the same question again, whatever anyone ran locally.
+**Each phase of the loop certifies itself**: one command, one exit code, so you can prove the step you are in without running the rest. On a merge request the `no-cheat` job asks the same question again, whatever anyone ran locally.
 
 ### What certifies each phase
 
-| Phase  | The command that settles it  | It guarantees                                              |
-|--------|------------------------------|------------------------------------------------------------|
-| `code` | `task devsecops:code:verify` | the linter passes, and the change silenced none of it      |
-| `test` | `task devsecops:test:verify` | the tests pass, and no check was switched off              |
-| any    | `task verify`                | both of the above, one exit code — the sentence for "done" |
+| Phase  | The command that settles it  | It guarantees                                         |
+|--------|------------------------------|-------------------------------------------------------|
+| `code` | `task devsecops:code:verify` | the linter passes, and the change silenced none of it |
+| `test` | `task devsecops:test:verify` | the tests pass, and no check was switched off         |
 
 Handing work to an AI assistant? The whole contract — including what an
 orchestrator delegating to a cheaper model must check — is one page:

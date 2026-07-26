@@ -258,17 +258,19 @@ storyboardStep(Then, 'the toolbox accepts the failure as proof, and quotes the c
 })
 
 // ---------------------------------------------------------------------------
-// Chapter 3 — one command, one verdict
+// Chapter 3 — the phase refuses to certify itself
 // ---------------------------------------------------------------------------
 //
-// `task verify` is what whoever delegates runs instead of believing a report:
-// nothing switched off, linter clean, tests green, one exit code. The guard runs
-// FIRST, so the refusal below arrives in a second rather than after the whole
-// suite — which is the difference between a check people run and one they skip.
+// Each phase of the loop has one command that certifies it, and that is what
+// whoever delegates runs instead of believing a report. The test phase answers
+// with a single exit code: the tests passed, and nothing was switched off to get
+// there. The guard runs FIRST, so the refusal below arrives in a second rather
+// than after the whole suite — the difference between a check people run and one
+// they skip.
 
-const VERIFY = 'task verify'
+const VERIFY = 'task devsecops:test:verify'
 
-storyboardStep(Then, 'one command settles it, and refuses the moment a check is switched off', async () => {
+storyboardStep(Then, 'the test phase refuses to certify itself, the moment a check is switched off', async () => {
   // The cheapest road to green, taken by an assistant that could not satisfy
   // the scenario: switch it off. The test file is otherwise untouched.
   const feature = path.join(FIXTURE, FEATURE)

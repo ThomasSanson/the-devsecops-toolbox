@@ -22,12 +22,13 @@
 - ✅ `git branch` — list branches
 - ✅ `git show` — inspect commits
 
-## ✅ ALLOWED (`task verify`, and only it)
+## ✅ ALLOWED (the phase `verify` tasks, and only them)
 
-`task verify` runs `git add -N` and `git diff` on your behalf: `-N` is how a
-brand-new test file becomes visible to `git diff`, and the diff is how the
-guard sees whether a check was switched off. Running it is allowed, and running
-it is how you know you are done. It commits nothing and pushes nothing.
+`task devsecops:code:verify` and `task devsecops:test:verify` run `git add -N`
+and `git diff` on your behalf: `-N` is how a brand-new test file becomes visible
+to `git diff`, and the diff is how the guard sees whether a check was switched
+off. Running them is allowed, and running them is how you know you are done.
+They commit nothing and push nothing.
 
 The prohibition above is unchanged for everything else: you never run git
 yourself.

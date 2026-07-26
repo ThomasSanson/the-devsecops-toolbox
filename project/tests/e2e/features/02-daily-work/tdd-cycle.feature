@@ -47,9 +47,9 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: It quotes the sentence of the scenario it found in the report, and the failure that scenario recorded. The developer never had to be believed: the proof was on disk, and the toolbox read it.
     # Copy: task devsecops:test:check:red-is-real -- @greeting
     Then the toolbox accepts the failure as proof, and quotes the check that produced it
-    # Chapter: One command, one verdict
+    # Chapter: The phase refuses to certify itself
     # Note: The assistant is asked to make the suite green, and it takes the cheapest road there: one word, @skip, above the scenario it could not satisfy. The suite will now report that scenario without ever running it.
-    # Note: task verify is the one sentence that settles whether work is done — nothing switched off, linter clean, tests green, a single exit code. It runs the cheapest and most damning check first, so this stops in a second instead of after twenty minutes of test suite.
+    # Note: Each phase of the loop has one command that settles it. For the test phase it is this one, and it answers with a single exit code: the tests passed, and nothing was switched off to get there. The guard runs first, so this stops in a second instead of after twenty minutes of test suite.
     # Note: It names the file, the line and what that line does, then offers the only way past it: a visible No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing at it.
-    # Copy: task verify
-    Then one command settles it, and refuses the moment a check is switched off
+    # Copy: task devsecops:test:verify
+    Then the test phase refuses to certify itself, the moment a check is switched off

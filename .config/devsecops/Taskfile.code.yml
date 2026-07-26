@@ -38,7 +38,7 @@ tasks:
         one sentence a linter cannot enforce about itself, so it is enforced
         here.
 
-      🚀 Usage: task devsecops:code:verify — or `task verify` for the whole job
+      🚀 Usage: task devsecops:code:verify
     cmds:
       - task: :devsecops:test:check:no-cheat
         vars: { BASE: HEAD, ONLY: linter }

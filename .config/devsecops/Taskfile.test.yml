@@ -50,7 +50,7 @@ tasks:
         The guard runs FIRST, so a switched-off check is caught in a second
         rather than after the whole suite.
 
-      🚀 Usage: task devsecops:test:verify — or `task verify` for the whole job
+      🚀 Usage: task devsecops:test:verify
     cmds:
       - task: check:no-cheat
         vars: { BASE: HEAD, ONLY: tests }
@@ -492,7 +492,7 @@ tasks:
       🔧 Variables:
         - BASE: diff base (default: CI_MERGE_REQUEST_DIFF_BASE_SHA or origin/main).
           BASE=HEAD reads the WORKING TREE instead of a merge request — the same
-          question, asked before you commit. That is what `task verify` uses.
+          question, asked before you commit.
 
       🚪 Escape hatch:
         A `No-cheat-exempt: <reason>` commit trailer waives the gate, visibly.
@@ -523,7 +523,7 @@ tasks:
       🔧 Variables:
         - BASE: diff base (default: CI_MERGE_REQUEST_DIFF_BASE_SHA or origin/main).
           BASE=HEAD reads the WORKING TREE instead of a merge request — the same
-          question, asked before you commit. That is what `task verify` uses.
+          question, asked before you commit.
 
       🚪 Escape hatch:
         A `Storyboard-exempt: <reason>` commit trailer waives the gate, visibly.
