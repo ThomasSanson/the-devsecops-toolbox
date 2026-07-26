@@ -195,7 +195,10 @@ resolve_executor() {
   while IFS= read -r drop_in; do
     [ -n "${drop_in}" ] || continue
     load_drop_in "${drop_in}"
-    command -v "${AGENT_EXEC_CMD%% *}" >/dev/null 2>&1 && { printf '%s' "${AGENT_EXEC_CMD}"; return 0; }
+    if command -v "${AGENT_EXEC_CMD%% *}" >/dev/null 2>&1; then
+      printf '%s' "${AGENT_EXEC_CMD}"
+      return 0
+    fi
   done <<<"$(drop_ins)"
   return 1
 }
@@ -411,7 +414,10 @@ run_phase() {
 
 case "${1:-}" in
 doctor) doctor ;;
-reset) rm -rf "${STATE_DIR}"; echo "🧹 The cycle is back to its start." ;;
+reset)
+  rm -rf "${STATE_DIR}"
+  echo "🧹 The cycle is back to its start."
+  ;;
 red | review:red | green | review:green | refactor) run_phase "$1" "${2:-}" ;;
 *)
   echo -e "${RED}❌ Unknown phase '${1:-}'. The cycle is: ${ORDER[*]}${NC}" >&2
