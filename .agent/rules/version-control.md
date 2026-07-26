@@ -22,13 +22,12 @@
 - ✅ `git branch` — list branches
 - ✅ `git show` — inspect commits
 
-## ✅ ALLOWED (the phase tasks, and only them)
+## ✅ ALLOWED (`task verify`, and only it)
 
-The tasks of the test-first cycle (`task devsecops:test:tdd:red`, `:green`,
-`:refactor` — see `.agent/workflows/tdd-cycle-tasks.md`) run `git add -N`
-and `git diff` on your behalf: `-N` is how a brand-new test file becomes visible
-to `git diff`, and the diff is how the phase checks the work was really done.
-Running those tasks is allowed. They commit nothing and push nothing.
+`task verify` runs `git add -N` and `git diff` on your behalf: `-N` is how a
+brand-new test file becomes visible to `git diff`, and the diff is how the
+guard sees whether a check was switched off. Running it is allowed, and running
+it is how you know you are done. It commits nothing and pushes nothing.
 
 The prohibition above is unchanged for everything else: you never run git
 yourself.

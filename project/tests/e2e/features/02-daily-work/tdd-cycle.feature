@@ -47,25 +47,9 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: It quotes the sentence of the scenario it found in the report, and the failure that scenario recorded. The developer never had to be believed: the proof was on disk, and the toolbox read it.
     # Copy: task devsecops:test:check:red-is-real -- @greeting
     Then the toolbox accepts the failure as proof, and quotes the check that produced it
-    # Chapter: The cycle checks the work, whoever wrote it
-    # Note: The same three steps are a cycle, and the toolbox now runs them one task at a time. It writes the step it really reached into tmp/agent/phase, and here that file does not exist yet: nothing has been done.
-    # Note: So the step that writes the code refuses to start. It says what it read, what it was waiting for — review:red, the step where the test is written, its failure proven and that failure reviewed — and which command to run next.
-    # Note: Nobody has to remember where the cycle stands. The file decides, and a step out of order is refused before it can do anything.
-    # Copy: task devsecops:test:tdd:red -- @greeting
-    Then the step that writes the code refuses to start while no failure has been proven
-    # Note: The step that opens the cycle, on a machine with no AI assistant at all. It says so — "no AI tool declared" — and checks the work already in this folder: the test written by hand three pictures ago.
-    # Note: Then it runs the gates in order. The change touches test files only. The failure is real, and it quotes it. Nothing was switched off. Only then does it record the step, so the next one may start.
-    # Note: Nothing in this cycle is reserved for an assistant. It is the same method a developer follows by hand, with the parts that can be checked, checked.
-    # Copy: task devsecops:test:tdd:red -- @greeting
-    And the step that opens it accepts a test written by hand, with no assistant on this machine
-    # Chapter: An assistant may take a turn, under the very same gates
-    # Note: An assistant is one small file dropped in .config/devsecops/agents.d/, and this machine now holds one, called pocket-oracle. The toolbox names none of them itself.
-    # Note: It found the command that file declares, then asked the tool which models it offers. It answered two, oracle-small and oracle-large. No model name is written anywhere in the framework, so nothing here can go out of date.
-    # Note: The tool on this machine is a stand-in this story drops in: it reads its instructions on standard input and writes one known file. Nothing reaches the network, and no model is called.
-    # Copy: task devsecops:test:tdd:doctor
-    Then the toolbox reports the AI assistants this machine holds and the models each one gives
-    # Note: The step that writes the code, now that the cycle stands at review:red. This time the work is handed to the assistant, and the line above the verdict says which command received it.
-    # Note: The assistant writes the greeting the test was asking for, and the toolbox runs that test again to see for itself: "OK | 1 passed". The check that was failing five pictures ago passes.
-    # Note: The assistant changed who typed, and nothing else. The same gates ran, in the same order, and the exit code decided — which is the whole point.
-    # Copy: task devsecops:test:tdd:green -- @greeting
-    And the assistant writes the greeting, and the toolbox sees that test pass for itself
+    # Chapter: One command, one verdict
+    # Note: The assistant is asked to make the suite green, and it takes the cheapest road there: one word, @skip, above the scenario it could not satisfy. The suite will now report that scenario without ever running it.
+    # Note: task verify is the one sentence that settles whether work is done — nothing switched off, linter clean, tests green, a single exit code. It runs the cheapest and most damning check first, so this stops in a second instead of after twenty minutes of test suite.
+    # Note: It names the file, the line and what that line does, then offers the only way past it: a visible No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing at it.
+    # Copy: task verify
+    Then one command settles it, and refuses the moment a check is switched off

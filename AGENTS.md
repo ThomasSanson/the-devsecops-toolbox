@@ -135,6 +135,8 @@ Every code change MUST follow this cycle:
 | 8    | Quality check                               | `task code`                                     | PASS              |
 | 9    | Full test suite                             | `task test`                                     | ALL PASS          |
 
+**`task verify` settles whether the work is done**: nothing switched off, linter clean, tests green — one exit code. Whoever hands work to an AI assistant runs it themselves rather than trusting the report (`.agent/rules/ai-delegation.md`).
+
 Test specifications are written in Gherkin, in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) ships under `.config/codeceptjs/`; use its sample config to wire up `project/tests/` if you want visual E2E coverage.
 

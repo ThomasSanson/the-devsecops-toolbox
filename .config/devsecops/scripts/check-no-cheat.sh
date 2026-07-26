@@ -110,7 +110,13 @@ echo -e "${BLUE}🕵 No-cheat gate (base: ${BASE})...${NC}"
 # loop asking the same question before CI does — is what I am about to commit
 # switching a check off?
 diff_range=("${BASE}...HEAD")
-[ "${BASE}" = "HEAD" ] && diff_range=(HEAD)
+if [ "${BASE}" = "HEAD" ]; then
+  diff_range=(HEAD)
+  # `git diff` ignores untracked files, and a brand-new test file carrying a
+  # skipped scenario is precisely what this gate exists to catch. `add -N`
+  # records their existence without staging a single line of content.
+  git add -N . >/dev/null 2>&1 || true
+fi
 if ! diff_output="$(git diff --unified=0 --diff-filter=ACMR "${diff_range[@]}")"; then
   echo -e "${RED}❌ Cannot compute the diff against ${BASE} — refusing to pass silently.${NC}" >&2
   exit 1

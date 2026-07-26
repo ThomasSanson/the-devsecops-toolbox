@@ -119,23 +119,6 @@ function maskDurations (text) {
     .replace(/CodeceptJS v[0-9][0-9.]*/g, 'CodeceptJS v<version>')
 }
 
-// The phase runs the whole suite, and the suite has plenty to say. The card is
-// about the PHASE's verdict, so the nested run's transcript is elided between
-// its own two boundaries — the line that starts it and the gate that reads its
-// result — and the elision says how many lines it stands for. Nothing is
-// cherry-picked: it is one contiguous block, in or out.
-function elideNestedRun (text) {
-  const lines = text.split('\n')
-  const from = lines.findIndex(l => stripAnsi(l).startsWith('▶ '))
-  const to = lines.findIndex((l, i) => i > from && stripAnsi(l).includes('Red-is-real gate'))
-  if (from < 0 || to < 0) return text
-  return [
-    ...lines.slice(0, from + 1),
-    `  … ${to - from - 1} lines of the suite's own output, ending on the failure the gate reads below`,
-    ...lines.slice(to)
-  ].join('\n')
-}
-
 // A verbatim slice with its own boundaries, never a hand-picked set of lines:
 // from the first line matching `from` to the last consecutive line matching
 // `while`.
@@ -275,116 +258,27 @@ storyboardStep(Then, 'the toolbox accepts the failure as proof, and quotes the c
 })
 
 // ---------------------------------------------------------------------------
-// Chapters 3 and 4 — the cycle itself, driven for real
+// Chapter 3 — one command, one verdict
 // ---------------------------------------------------------------------------
 //
-// The phases are tasks (.config/devsecops/scripts/tdd-cycle.sh), the phase
-// really reached is written on disk, and each phase ends on a gate that answers
-// with an exit code.
-//
-// Chapter 3 runs the cycle with NO AI assistant on the machine at all: the
-// phase checks the work the developer wrote in chapters 1 and 2, against the
-// same gates. Chapter 4 then declares one and hands it a turn — the framework
-// ships none and names none, so the story drops in a stand-in living outside
-// the copy: it reads its instructions on standard input and writes one known
-// file per phase. Nothing reaches the network, no model is called, and the
-// picture stays the same on every run.
+// `task verify` is what whoever delegates runs instead of believing a report:
+// nothing switched off, linter clean, tests green, one exit code. The guard runs
+// FIRST, so the refusal below arrives in a second rather than after the whole
+// suite — which is the difference between a check people run and one they skip.
 
-const ORACLE_DIR = `${FIXTURE}-bin`
-const ORACLE = `${ORACLE_DIR}/pocket-oracle`
-const DROP_IN = '.config/devsecops/agents.d/pocket-oracle.sh'
-const PHASE_FILE = 'tmp/agent/phase'
+const VERIFY = 'task verify'
 
-const ORACLE_BODY = `#!/usr/bin/env bash
-# A stand-in for an AI assistant, so the cycle can be driven for real with no
-# network, no key and no model. It reads the prompt on standard input and writes
-# ONE known file per phase, which is all the gates need to have something true
-# to read.
-set -euo pipefail
-[ "\${1:-}" = "--list-models" ] && { printf 'oracle-small\\noracle-large\\n'; exit 0; }
-prompt="$(cat)"
-case "\${prompt}" in
-*"the review:red phase"*)
-  echo "The scenario reads on its own, and it failed on its own check."
-  echo "VERDICT: ACCEPT"
-  ;;
-*"the green phase"*) printf 'Hello, {name}\\n' > GREETING ;;
-esac
-`
+storyboardStep(Then, 'one command settles it, and refuses the moment a check is switched off', async () => {
+  // The cheapest road to green, taken by an assistant that could not satisfy
+  // the scenario: switch it off. The test file is otherwise untouched.
+  const feature = path.join(FIXTURE, FEATURE)
+  fs.writeFileSync(feature, fs.readFileSync(feature, 'utf8').replace(/^(\s*)@greeting$/m, '$1@skip\n$1@greeting'))
 
-const DROP_IN_BODY = `# The AI assistant this machine holds. Two lines, per
-# .config/devsecops/agents.d/README.md.
-AGENT_EXEC_CMD="pocket-oracle --model {{MODEL}}"
-AGENT_MODELS_CMD="pocket-oracle --list-models"
-`
-
-const DOCTOR = 'task devsecops:test:tdd:doctor'
-const GREEN = 'task devsecops:test:tdd:green -- @greeting'
-const RED = 'task devsecops:test:tdd:red -- @greeting'
-const REVIEW_RED = 'task devsecops:test:tdd:review:red -- @greeting'
-
-storyboardStep(Then, 'the step that writes the code refuses to start while no failure has been proven', async () => {
-  // How THIS project runs its tests, declared once where a project declares its
-  // settings — and committed, because it is the machine's setup, not the work of
-  // a phase: the red phase reads the working tree for the work.
-  fs.appendFileSync(path.join(FIXTURE, '.env.dev'), `\nTASK_AGENT_TEST_CMD=${RUN}\n`)
-  sh('git add .env.dev && git commit -qm "chore: say how this project runs its tests"', FIXTURE)
-
-  const phase = run(`cat ${PHASE_FILE}`, FIXTURE)
-  const { output, code } = run(GREEN, FIXTURE)
+  const { output, code } = run(VERIFY, FIXTURE)
   const seen = stripAnsi(output)
-  // A non-zero exit is not enough: the phase must refuse for the recorded
-  // phase, and say which command comes next.
-  if (code === 0 || !seen.includes('cannot start yet') || !seen.includes('expected phase : review:red')) {
-    throw new Error(`Expected the green phase to refuse out of order, got exit ${code}:\n${seen}`)
+  if (code === 0 || !seen.includes('switches a check off') || !seen.includes(FEATURE) ||
+      !seen.includes('without ever running it') || !seen.includes('No-cheat-exempt:')) {
+    throw new Error(`Expected verify to refuse the switched-off scenario, got exit ${code}:\n${seen}`)
   }
-  await card('green-refuses-out-of-order',
-    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${output.trimEnd()}`, { colour: true })
-})
-
-storyboardStep(Then, 'the step that opens it accepts a test written by hand, with no assistant on this machine', async () => {
-  // No drop-in, no TASK_AGENT_EXEC_CMD: the phase says so and reads this tree.
-  const { output, code } = run(RED, FIXTURE)
-  const seen = stripAnsi(output)
-  if (code !== 0 || !seen.includes('no AI tool declared') ||
-      !seen.includes('The failure is real') || !seen.includes('the cycle now stands at: red')) {
-    throw new Error(`Expected the red phase to accept the hand-written test with no tool, got exit ${code}:\n${seen}`)
-  }
-  await card('red-accepts-work-done-by-hand', `$ ${RED}\n${elideNestedRun(output.trimEnd())}`, { colour: true })
-})
-
-storyboardStep(Then, 'the toolbox reports the AI assistants this machine holds and the models each one gives', async () => {
-  fs.mkdirSync(ORACLE_DIR, { recursive: true })
-  fs.writeFileSync(ORACLE, ORACLE_BODY, { mode: 0o755 })
-  fs.writeFileSync(path.join(FIXTURE, DROP_IN), DROP_IN_BODY)
-  sh(`git add ${DROP_IN} && git commit -qm "chore: declare the pocket oracle"`, FIXTURE)
-  env.PATH = `${ORACLE_DIR}:${env.PATH}`
-
-  const { output, code } = run(DOCTOR, FIXTURE)
-  const seen = stripAnsi(output)
-  if (code !== 0 || !seen.includes('oracle-small') || !seen.includes('oracle-large') ||
-      !seen.includes('pocket-oracle --model')) {
-    throw new Error(`Expected the doctor to find the drop-in and the models it reports, got exit ${code}:\n${seen}`)
-  }
-  await card('assistants-this-machine-holds', `$ ${DOCTOR}\n${output.trimEnd()}`, { colour: true })
-})
-
-storyboardStep(Then, 'the assistant writes the greeting, and the toolbox sees that test pass for itself', async () => {
-  // The review the cycle asks for between red and green, handed to the same
-  // assistant: it records its verdict where the gate reads it.
-  const review = run(REVIEW_RED, FIXTURE)
-  if (review.code !== 0) {
-    throw new Error(`The review step refused, so green could not start:\n${stripAnsi(review.output)}`)
-  }
-  const phase = run(`cat ${PHASE_FILE}`, FIXTURE)
-  const { output, code } = run(GREEN, FIXTURE)
-  const seen = stripAnsi(output)
-  if (code !== 0 || !seen.includes('1 passed') || !seen.includes('the cycle now stands at: green')) {
-    throw new Error(`Expected the green phase to run and the test to pass, got exit ${code}:\n${seen}`)
-  }
-  // Twin: the greeting the test was asking for is really on disk now.
-  const greeting = fs.readFileSync(path.join(FIXTURE, 'GREETING'), 'utf8').trim()
-  if (greeting !== 'Hello, {name}') throw new Error(`Expected the greeting to be written, got ${JSON.stringify(greeting)}`)
-  await card('assistant-writes-it-and-the-test-passes',
-    `$ cat ${PHASE_FILE}\n${phase.output.trimEnd()}\n$ ${GREEN}\n${maskDurations(seen)}`, { height: 900 })
+  await card('verify-refuses-a-switched-off-check', `$ ${VERIFY}\n${output.trimEnd()}`, { colour: true })
 })

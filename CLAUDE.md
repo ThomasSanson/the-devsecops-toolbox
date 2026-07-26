@@ -114,7 +114,9 @@ Every code change follows RED → GREEN → REFACTOR in strict order; see `.agen
 
 **Never write code before the test. Never modify a test to make it pass.**
 
-Step 3 is checked, not taken on your word: a run that dies while loading its files exits non-zero and records nothing, and that is a crash, not a failure. On a merge request, the `no-cheat` job refuses any added line that switches a check off (`@skip`, `.only(`, a non-zero `tolerance:`, `allow_failure: true`). The whole cycle can also be driven step by step — see `.agent/workflows/tdd-cycle-tasks.md`.
+Step 3 is checked, not taken on your word: a run that dies while loading its files exits non-zero and records nothing, and that is a crash, not a failure.
+
+**`task verify` is the one sentence that means "done"**: nothing was switched off, the linter is clean, the tests pass — one exit code. Run it before you say the work is finished, and run it yourself when you hand work to an assistant. See `.agent/rules/ai-delegation.md`. On a merge request the `no-cheat` job asks the same question again, whatever anyone ran locally.
 
 Test specifications are written in Gherkin (BDD), in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + storyboard helper) ships under `.config/codeceptjs/`; wire it into `project/tests/` for visual E2E coverage.
