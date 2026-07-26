@@ -1000,9 +1000,12 @@ storyboardStep(Then, 'the framework pipeline passes and the merge request merges
     dumpFailedTraces(global.journeyProjectName, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
     throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
   }
-  // Twin: the WHOLE generated pipeline ran — all 17 jobs, every one green.
-  if (jobs.length !== 17) {
-    throw new Error(`Expected 17 pipeline jobs, got ${jobs.length}: ${jobs.map(j => j.name).join(', ')}`)
+  // Twin: the WHOLE generated pipeline ran — all 18 jobs, every one green.
+  // 18 since the toolbox ships `no-cheat`: a generated project's merge requests
+  // are now read for a switched-off check, and this story is where that count
+  // is felt.
+  if (jobs.length !== 18) {
+    throw new Error(`Expected 18 pipeline jobs, got ${jobs.length}: ${jobs.map(j => j.name).join(', ')}`)
   }
   const notGreen = jobs.filter(j => j.status !== 'success')
   if (notGreen.length) {
@@ -1018,7 +1021,7 @@ storyboardStep(Then, 'the framework pipeline passes and the merge request merges
     const mr = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
     state = mr.data && mr.data.state
   }
-  // Twin FIRST: the green pipeline (17 jobs) unblocked the merge, MR is merged.
+  // Twin FIRST: the green pipeline (18 jobs) unblocked the merge, MR is merged.
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
   // ONE proof: the merged merge-request page, full width — the Merged badge,
   // its pipeline shown passed, the branch joined into main.
