@@ -44,9 +44,11 @@ anyone in a hurry steps over.
   already there and every test is expected to pass.
 - **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
   pipeline green is not to fix the code, it is to switch the test off. This gate
-  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`,
-  a non-zero `tolerance:`, `allow_failure: true`, and a linter silenced under a
-  test path. Every pattern is anchored at the head of its line, so quoting one in
+  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`
+  and a non-zero `tolerance:` anywhere under a test path — and `allow_failure:
+  true` or a silenced linter in files the change MODIFIES, because a file that
+  arrives whole (installing the framework, adding a pipeline) turned nothing
+  off. Every pattern is anchored at the head of its line, so quoting one in
   a sentence or a string trips nothing. It runs as the `no-cheat` merge-request
   job, and locally against `origin/main` — or against the working tree
   (`BASE=HEAD`), which is what the cycle's phases use before you commit.

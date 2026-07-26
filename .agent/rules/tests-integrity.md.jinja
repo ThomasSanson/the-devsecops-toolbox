@@ -31,9 +31,10 @@ two guards read the facts themselves.
   proof, and it is refused. Use it between writing the test and writing the code.
 - **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
   pipeline green is not to fix the code, it is to switch the test off. This gate
-  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`,
-  a non-zero `tolerance:`, `allow_failure: true`, and a linter silenced under a
-  test path. It runs as the `no-cheat` merge-request job, so a switched-off check
+  reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`
+  and a non-zero `tolerance:` anywhere under a test path — and `allow_failure:
+  true` or a silenced linter in files the change MODIFIES, because a file that
+  arrives whole turned nothing off. It runs as the `no-cheat` merge-request job, so a switched-off check
   never reaches the default branch. The only waiver is visible: a
   `No-cheat-exempt: <why>` commit trailer.
 

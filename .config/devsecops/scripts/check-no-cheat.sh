@@ -90,8 +90,14 @@ add_rule "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
 # framework's own installation merge request (it did, once).
 add_rule "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
   'a job that used to have to pass is now allowed to fail' modified_only
+# MODIFIED files only, for the same reason as the rule above and one more: the
+# test engine this framework ships (.config/codeceptjs/storyboard.js) carries a
+# suppression of its own, so EVERY generated project's first merge request adds
+# one — it did, and this gate refused the installation. Silencing a linter is
+# something you ADD to a file that was already there; a file that arrives whole
+# silenced nothing.
 add_rule "${TEST_PATHS}" '(eslint-disable|shellcheck disable|# ?noqa|# ?nosec)' \
-  'a linter silenced inside the tests'
+  'a linter silenced inside the tests' modified_only
 
 BASE="$(resolve_diff_base)"
 
