@@ -15,13 +15,13 @@ difference between "I think it works" and "it works".
 
 ## The loop, and the command that certifies each phase
 
-| Phase       | What happens                                                        | The command that settles it       |
-|-------------|---------------------------------------------------------------------|-----------------------------------|
-| **plan**    | read the issue; if the expected behaviour cannot be written as a test, ask before writing anything | — (judgement, not a command)      |
-| **code**    | the failing test FIRST, then the smallest code that satisfies it     | `task devsecops:code:verify`      |
-| **build**   | whatever this project builds                                         | `task build`                      |
-| **test**    | the suite runs and passes                                            | `task devsecops:test:verify`      |
-| **release** | version, changelog, tag                                              | a human's, not yours              |
+| Phase       | What happens                                                            | The command that settles it  |
+|-------------|-------------------------------------------------------------------------|------------------------------|
+| **plan**    | read the issue; if the behaviour cannot be written as a test, ask first | — (judgement, not a command) |
+| **code**    | the failing test FIRST, then the smallest code that satisfies it        | `task devsecops:code:verify` |
+| **build**   | whatever this project builds                                            | `task build`                 |
+| **test**    | the suite runs and passes                                               | `task devsecops:test:verify` |
+| **release** | version, changelog, tag                                                 | a human's, not yours         |
 
 And, before you say the work is done, whatever the phase:
 
@@ -35,14 +35,14 @@ is caught in a second rather than after twenty minutes of test suite.
 
 ## Inside the code phase: the order is not decoration
 
-1. Write the test. It must fail.
-2. Run it and read the failure. It has to fail on **its own check** — not
-   because a file is missing, a module will not load, or the run died before
-   reaching it. Those exit non-zero too, and they prove nothing.
-3. If your runner writes a JUnit report, that step is checkable:
-   `task devsecops:test:check:red-is-real -- <tag>` accepts only a scenario that
-   was recorded AND failed.
-4. Only then write the code. The smallest thing that turns the test green.
+- **First**, write the test. It must fail.
+- **Then** run it and read the failure. It has to fail on **its own check** —
+  not because a file is missing, a module will not load, or the run died before
+  reaching it. Those exit non-zero too, and they prove nothing.
+- If your runner writes a JUnit report, that step is checkable:
+  `task devsecops:test:check:red-is-real -- <tag>` accepts only a scenario that
+  was recorded AND failed.
+- **Only then** write the code. The smallest thing that turns the test green.
 
 ## ⛔ Four things that are never done here
 
@@ -65,17 +65,17 @@ These four are read mechanically, so a rushed model cannot step over them:
 
 You were asked to take an issue and hand the work to another assistant. Then:
 
-1. **Give it the issue and this page.** Nothing else is needed — the contract is
-   here, and the executor reads it from the repository.
-2. **Do not judge the result yourself.** Run the phase's command and read the
-   exit code. You and the executor share the same bias — to conclude — so the
-   only opinion that is not yours is the one that returns 0 or 1.
-3. **When it refuses, hand the refusal back verbatim.** It names the file, the
-   line and what that line does. An executor that never learns why it was
-   rejected repeats the mistake, and you pay for the same turn twice.
-4. **Three refusals on the same step means the issue is wrong, not the
-   executor.** Stop and re-read what you asked for. An acceptance criterion that
-   cannot be tested cheaply will loop forever.
+- **Give it the issue and this page.** Nothing else is needed — the contract is
+  here, and the executor reads it from the repository.
+- **Do not judge the result yourself.** Run the phase's command and read the
+  exit code. You and the executor share the same bias — to conclude — so the
+  only opinion that is not yours is the one that returns 0 or 1.
+- **When it refuses, hand the refusal back verbatim.** It names the file, the
+  line and what that line does. An executor that never learns why it was
+  rejected repeats the mistake, and you pay for the same turn twice.
+- **Three refusals on the same step means the issue is wrong, not the
+  executor.** Stop and re-read what you asked for. An acceptance criterion that
+  cannot be tested cheaply will loop forever.
 
 ## If you are the executor
 

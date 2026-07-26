@@ -288,11 +288,14 @@ tasks:
       - cmd: echo "🎉 Ansible side effect disruption completed successfully"
         silent: true
 
-  verify:
+  verify:infrastructure:
     desc: |
       ℹ️ Description:
-        Performs verification operations in the following order:
+        Performs infrastructure verification in the following order:
         1. Executes Ansible verification playbooks
+
+        Named `verify:infrastructure` and not `verify`: the bare name now
+        belongs to the phase's own verdict (tests green, nothing switched off).
     cmds:
       - cmd: echo "🔄 Starting verification phase"
         silent: true
@@ -327,7 +330,7 @@ tasks:
       - cmd: echo "🔄 Starting resilience validation phase"
         silent: true
       - task: side-effect
-      - task: verify
+      - task: verify:infrastructure
       - cmd: echo "🎉 Resilience validation phase completed successfully"
         silent: true
 
