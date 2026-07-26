@@ -52,6 +52,22 @@ tasks:
       - cmd: echo "🎉 Tdd phase completed successfully"
         silent: true
 
+  verify:
+    desc: |
+      ℹ️ Description:
+        The test phase, and the cheats that belong to it. Answers with a single
+        exit code: the tests passed, AND this change switched no check off — no
+        `@skip`, no `.only(`, no raised `tolerance:`, no `allow_failure: true`.
+
+        The guard runs FIRST, so a switched-off check is caught in a second
+        rather than after the whole suite.
+
+      🚀 Usage: task devsecops:test:verify — or `task verify` for the whole job
+    cmds:
+      - task: check:no-cheat
+        vars: { BASE: HEAD, ONLY: tests }
+      - task: default
+
   bootstrap:infrastructure:
     desc: |
       ℹ️ Description:
@@ -407,7 +423,7 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting no-cheat check"
         silent: true
-      - BASE={{.BASE | default ""}} bash .config/devsecops/scripts/check-no-cheat.sh
+      - BASE={{.BASE | default ""}} ONLY={{.ONLY | default ""}} bash .config/devsecops/scripts/check-no-cheat.sh
       - cmd: echo "🎉 No-cheat check completed successfully"
         silent: true
 {%- endraw %}

@@ -135,7 +135,20 @@ Every code change MUST follow this cycle:
 | 8    | Quality check                               | `task code`                                     | PASS              |
 | 9    | Full test suite                             | `task test`                                     | ALL PASS          |
 
-**`task verify` settles whether the work is done**: nothing switched off, linter clean, tests green — one exit code. Whoever hands work to an AI assistant runs it themselves rather than trusting the report (`.agent/rules/ai-delegation.md`).
+**`task verify` settles whether the work is done**: nothing switched off, linter clean, tests green — one exit code. Each phase of the loop also certifies itself.
+
+### What certifies each phase
+
+| Phase    | The command that settles it  | It guarantees                                            |
+|----------|------------------------------|----------------------------------------------------------|
+| `code`   | `task devsecops:code:verify` | the linter passes, and the change silenced none of it    |
+| `test`   | `task devsecops:test:verify` | the tests pass, and no check was switched off            |
+| any      | `task verify`                | both of the above, one exit code — the sentence for "done" |
+
+Handing work to an AI assistant? The whole contract — including what an
+orchestrator delegating to a cheaper model must check — is one page:
+[`.agent/rules/ai-delegation.md`](.agent/rules/ai-delegation.md).
+
 
 Test specifications are written in Gherkin, in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) ships under `.config/codeceptjs/`; use its sample config to wire up `project/tests/` if you want visual E2E coverage.

@@ -36,7 +36,9 @@
 #   the reason.
 #
 # USAGE:
-#   BASE=origin/main bash check-no-cheat.sh      # local
+#   BASE=origin/main bash check-no-cheat.sh              # a merge request
+#   BASE=HEAD bash check-no-cheat.sh                     # the working tree
+#   BASE=HEAD ONLY=linter bash check-no-cheat.sh         # one phase's own sins
 #   (CI passes CI_MERGE_REQUEST_DIFF_BASE_SHA automatically)
 #
 # EXIT CODES:
@@ -62,25 +64,38 @@ NC='\033[0m'
 TEST_PATHS='^(project/tests/|\.config/codeceptjs/)'
 CI_PATHS='^(\.config/gitlab/ci/|\.gitlab-ci\.yml(\.jinja)?$)'
 
-# paths | pattern | what it does, in one sentence | (optional) modified_only
+# Each rule belongs to the phase of the loop where its sin is committed, so a
+# phase can ask about its own and nothing else:
+#
+#   tests   a verdict was switched off — the suite reports success without it
+#   linter  the messenger was silenced instead of the message being fixed
+#
+# ONLY=tests / ONLY=linter narrows the read; unset reads everything, which is
+# what the merge-request job does.
+ONLY="${ONLY:-}"
+
+# category | paths | pattern | what it does, in one sentence | (opt) modified_only
+RULE_KIND=()
 RULE_PATHS=()
 RULE_RE=()
 RULE_SAYS=()
 RULE_SCOPE=()
 add_rule() {
-  RULE_PATHS+=("$1")
-  RULE_RE+=("$2")
-  RULE_SAYS+=("$3")
-  RULE_SCOPE+=("${4:-any}")
+  if [ -n "${ONLY}" ] && [ "${ONLY}" != "$1" ]; then return 0; fi
+  RULE_KIND+=("$1")
+  RULE_PATHS+=("$2")
+  RULE_RE+=("$3")
+  RULE_SAYS+=("$4")
+  RULE_SCOPE+=("${5:-any}")
 }
 
-add_rule "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
   'a skipped scenario: the suite reports it without ever running it'
-add_rule "${TEST_PATHS}" '^[[:space:]]*(Scenario|Feature|Data|describe|context|it|test)\.only[[:space:]]*\(' \
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*(Scenario|Feature|Data|describe|context|it|test)\.only[[:space:]]*\(' \
   'only this one runs: every other scenario is silently dropped'
-add_rule "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]]*\(' \
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]]*\(' \
   'a disabled scenario: it never runs again'
-add_rule "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
   'a picture check that accepts a difference: it stops proving anything'
 # MODIFIED files only, and the reason is worth stating: turning an EXISTING job
 # into one that may fail is the cheat. A file that arrives whole — installing
@@ -88,7 +103,7 @@ add_rule "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
 # this framework's own CI ships two legitimate `allow_failure: true` lines that
 # every install re-adds. Read on added files, this rule would refuse the
 # framework's own installation merge request (it did, once).
-add_rule "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
+add_rule tests "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
   'a job that used to have to pass is now allowed to fail' modified_only
 # MODIFIED files only, for the same reason as the rule above and one more: the
 # test engine this framework ships (.config/codeceptjs/storyboard.js) carries a
@@ -96,12 +111,12 @@ add_rule "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
 # one — it did, and this gate refused the installation. Silencing a linter is
 # something you ADD to a file that was already there; a file that arrives whole
 # silenced nothing.
-add_rule "${TEST_PATHS}" '(eslint-disable|shellcheck disable|# ?noqa|# ?nosec)' \
+add_rule linter "${TEST_PATHS}" '(eslint-disable|shellcheck disable|# ?noqa|# ?nosec)' \
   'a linter silenced inside the tests' modified_only
 
 BASE="$(resolve_diff_base)"
 
-echo -e "${BLUE}🕵 No-cheat gate (base: ${BASE})...${NC}"
+echo -e "${BLUE}🕵 No-cheat gate (base: ${BASE}${ONLY:+, ${ONLY} only})...${NC}"
 
 # `mapfile < <(cmd)` SWALLOWS cmd's exit status: a git diff that cannot resolve
 # BASE would leave the list empty and the gate would announce "nothing to read"
@@ -157,7 +172,10 @@ while IFS= read -r line; do
 done <<<"${diff_output}"
 
 if [ "${#findings[@]}" -eq 0 ]; then
-  echo -e "${GREEN}✅ Nothing in this change switches a check off.${NC}"
+  case "${ONLY}" in
+  linter) echo -e "${GREEN}✅ Nothing in this change silences a linter.${NC}" ;;
+  *) echo -e "${GREEN}✅ Nothing in this change switches a check off.${NC}" ;;
+  esac
   exit 0
 fi
 

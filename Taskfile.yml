@@ -139,10 +139,8 @@ tasks:
     cmds:
       - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Verify"
         silent: true
-      - task: devsecops:test:check:no-cheat
-        vars: { BASE: HEAD }
-      - task: code
-      - task: test
+      - task: devsecops:code:verify
+      - task: devsecops:test:verify
       - cmd: echo "{{.TASK_SEPARATOR}}"
         silent: true
 

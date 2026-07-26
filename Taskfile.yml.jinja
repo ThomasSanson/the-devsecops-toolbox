@@ -15,44 +15,6 @@ vars:
 # - Optional includes extras like tests and lint (not needed for Docker builds)
 includes:
   # Essential includes (Required for Docker build and k3s)
-  verify:
-    # ONE verdict for a whole piece of work, and the only sentence that settles
-    # "is it done": nothing was switched off to get there, the linter is clean,
-    # and the tests pass. Cheapest and most damning check first, so a cheat is
-    # caught in a second rather than after twenty minutes of test suite.
-    #
-    # It exists for delegation. Whoever asks an assistant for a change — a
-    # person, or a larger model driving a smaller one — runs THIS and reads the
-    # exit code, instead of believing a report. See .agent/rules/ai-delegation.md
-    desc: ✅ One command, one verdict — nothing switched off, linter clean, tests green
-    cmds:
-      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Verify"
-        silent: true
-      - task: devsecops:test:check:no-cheat
-        vars: { BASE: HEAD }
-      - task: code
-      - task: test
-      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
-        silent: true
-
-  devsecops:plan:
-    taskfile: .config/devsecops/Taskfile.plan.yml
-  devsecops:code:
-    taskfile: .config/devsecops/Taskfile.code.yml
-  devsecops:build:
-    taskfile: .config/devsecops/Taskfile.build.yml
-  devsecops:test:
-    taskfile: .config/devsecops/Taskfile.test.yml
-  devsecops:release:
-    taskfile: .config/devsecops/Taskfile.release.yml
-  devsecops:deploy:
-    taskfile: .config/devsecops/Taskfile.deploy.yml
-  devsecops:operate:
-    taskfile: .config/devsecops/Taskfile.operate.yml
-  devsecops:monitor:
-    taskfile: .config/devsecops/Taskfile.monitor.yml
-  devsecops:feedback:
-    taskfile: .config/devsecops/Taskfile.feedback.yml
   devsecops:init:
     taskfile: .config/devsecops/Taskfile.init.yml
     optional: true
@@ -160,6 +122,42 @@ tasks:
       - task: build
       - task: test:tdd
 
+  verify:
+    # ONE verdict for a whole piece of work, and the only sentence that settles
+    # "is it done": nothing was switched off to get there, the linter is clean,
+    # and the tests pass. Cheapest and most damning check first, so a cheat is
+    # caught in a second rather than after twenty minutes of test suite.
+    #
+    # It exists for delegation. Whoever asks an assistant for a change — a
+    # person, or a larger model driving a smaller one — runs THIS and reads the
+    # exit code, instead of believing a report. See .agent/rules/ai-delegation.md
+    desc: ✅ One command, one verdict — nothing switched off, linter clean, tests green
+    cmds:
+      - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Verify"
+        silent: true
+      - task: devsecops:code:verify
+      - task: devsecops:test:verify
+      - cmd: echo "{{ "{{" }}.TASK_SEPARATOR{{ "}}" }}"
+        silent: true
+
+  devsecops:plan:
+    taskfile: .config/devsecops/Taskfile.plan.yml
+  devsecops:code:
+    taskfile: .config/devsecops/Taskfile.code.yml
+  devsecops:build:
+    taskfile: .config/devsecops/Taskfile.build.yml
+  devsecops:test:
+    taskfile: .config/devsecops/Taskfile.test.yml
+  devsecops:release:
+    taskfile: .config/devsecops/Taskfile.release.yml
+  devsecops:deploy:
+    taskfile: .config/devsecops/Taskfile.deploy.yml
+  devsecops:operate:
+    taskfile: .config/devsecops/Taskfile.operate.yml
+  devsecops:monitor:
+    taskfile: .config/devsecops/Taskfile.monitor.yml
+  devsecops:feedback:
+    taskfile: .config/devsecops/Taskfile.feedback.yml
   devsecops:
     # Orchestrates DevSecOps workflows.
     cmds:

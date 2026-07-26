@@ -33,6 +33,24 @@ tasks:
         silent: true
 {%- endraw %}
 {% raw %}
+  verify:
+    desc: |
+      ℹ️ Description:
+        The code phase, and the one cheat that belongs to it. Answers with a
+        single exit code: the linter passed, AND this change silenced none of
+        it — no `eslint-disable`, `# noqa`, `# nosec` or `shellcheck disable`
+        added to make an error go away.
+
+        A linter error is a thing to correct, not a thing to mute. That is the
+        one sentence a linter cannot enforce about itself, so it is enforced
+        here.
+
+      🚀 Usage: task devsecops:code:verify — or `task verify` for the whole job
+    cmds:
+      - task: :devsecops:test:check:no-cheat
+        vars: { BASE: HEAD, ONLY: linter }
+      - task: default
+
   sync-templates:
     desc: "Syncs the project templates using the specific answers file."
     cmds:
