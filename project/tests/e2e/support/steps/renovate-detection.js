@@ -272,6 +272,14 @@ storyboardStep(Then, 'Renovate gives every dependency a merge request of its own
     }
     fs.writeFileSync(target, after)
   }
+  // The lockfile is not part of the question. Renovate reads it for the version
+  // npm actually installed, so a lockfile still holding the NEWEST release makes
+  // it answer "already up to date" to a package.json this test just pinned back
+  // — and the story fails on the very merge request that brought that release.
+  // Dropping it from the throwaway copy leaves the pin-back as the only truth.
+  for (const lock of ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock']) {
+    fs.rmSync(path.join(spreadDir, '.config/codeceptjs', lock), { force: true })
+  }
 
   // Only these three files are looked up: the framework's other dependencies
   // would drag GitHub releases into the run, and an unauthenticated GitHub is
