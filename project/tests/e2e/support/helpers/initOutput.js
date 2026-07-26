@@ -38,6 +38,13 @@ function filterTaskOutput (raw) {
     // The duplicate-purge healing line carries the revoked token's numeric id,
     // which differs on every run — mask it so the verdict stays pixel-stable.
     .replace(/Revoked duplicate token #\d+/g, 'Revoked duplicate token #<id>')
+    // `glab --version` prints the CLI's version and build hash, and init echoes
+    // it while installing. Both move on every upstream release, so without this
+    // mask the picture breaks on each glab bump — a dependency this framework
+    // updates often — and a baseline is regenerated to say nothing new. What
+    // these frames prove is that init HEALS a broken connection, never which
+    // glab shipped that week.
+    .replace(/^glab \d+\.\d+\.\d+ \(\S+\)$/gm, 'glab <version> (<build>)')
     .split('\n')
     .filter(line => {
       const trimmed = line.trim()
