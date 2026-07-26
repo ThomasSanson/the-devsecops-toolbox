@@ -67,7 +67,12 @@ RULE_PATHS=()
 RULE_RE=()
 RULE_SAYS=()
 RULE_SCOPE=()
-add_rule() { RULE_PATHS+=("$1"); RULE_RE+=("$2"); RULE_SAYS+=("$3"); RULE_SCOPE+=("${4:-any}"); }
+add_rule() {
+  RULE_PATHS+=("$1")
+  RULE_RE+=("$2")
+  RULE_SAYS+=("$3")
+  RULE_SCOPE+=("${4:-any}")
+}
 
 add_rule "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
   'a skipped scenario: the suite reports it without ever running it'

@@ -203,11 +203,20 @@ async function waitMrChanges (headers, mustInclude) {
   throw new Error(`The merge request diff never included ${mustInclude.join(', ')}; got ${JSON.stringify(paths)}`)
 }
 
-// GitLab counts the merge request's commits asynchronously too, and that count
-// is printed on the tab bar of every merge-request page. A capture taken while
-// it still reads the previous number is a coin toss between two pictures — the
-// one drift that made this story red in CI and green locally. Wait for the
-// count the story expects before opening the page.
+// GitLab counts the merge request's commits asynchronously, and that count is
+// printed on the tab bar of every merge-request page. A capture taken while it
+// still reads the previous number is a coin toss between two pictures — worth
+// 0.004% of pixels, which at tolerance 0 is the difference between green and
+// red, and it fell the other way in CI than it did locally. EVERY card that
+// opens a merge-request page waits for the count its own push produced.
+// Both counters, because the tab bar prints both: the commits the push added
+// AND the pipeline GitLab creates for it. Either one caught mid-update is the
+// same coin toss, and the pipeline is the slower of the two.
+async function waitMrSettled (headers, commits, afterPid = 0) {
+  await waitMrCommits(headers, commits)
+  return waitMrPipelineId(PROJECT_NAME, global.gateMrIid, headers, afterPid)
+}
+
 async function waitMrCommits (headers, expected) {
   const deadline = Date.now() + 120000
   let seen = 0
@@ -457,6 +466,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   }
 
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await waitMrCommits(rootHeaders, 1)
   await captureChangesFrame(PRODUCT_FILE, 'changes-without-card', 700)
 })
 
@@ -494,13 +504,13 @@ storyboardStep(When, 'the author pushes only a comment beside the framework chan
   if (paths.some(p => /^project\/tests\/e2e\/screenshots\/base\/.+\.png$/.test(p))) {
     throw new Error(`Expected NO baseline in the merge request yet, got ${JSON.stringify(paths)}`)
   }
+  global.gateSecondPid = await waitMrSettled(rootHeaders, 2, global.gateFirstPid)
   await captureChangesFrame(CARD_FILE, 'changes-comment-only', 820)
 })
 
 storyboardStep(Then, 'the gate reads that comment and refuses it just the same', async () => {
   const rootHeaders = await getRootHeaders()
-  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateFirstPid)
-  global.gateSecondPid = pid
+  const pid = global.gateSecondPid
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
   const { gate, jobs } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   const trace = jobTrace(gate.id, rootHeaders)
@@ -535,13 +545,13 @@ storyboardStep(When, 'the author adds the card and the picture it captured', asy
   // Twin FIRST: the sentence AND the picture it captured are both in the merge
   // request — the gate only accepts the picture.
   await waitMrChanges(rootHeaders, [PRODUCT_FILE, CARD_FILE, PROOF_PNG])
+  global.gateThirdPid = await waitMrSettled(rootHeaders, 3, global.gateSecondPid)
   await captureChangesFrame(PROOF_PNG.split('/').pop(), 'changes-with-card', 1120)
 })
 
 storyboardStep(Then, 'the same job turns green and names the card that proved the change', async () => {
   const rootHeaders = await getRootHeaders()
-  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateSecondPid)
-  global.gateThirdPid = pid
+  const pid = global.gateThirdPid
   const status = await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
   const { gate, jobs } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   const greenTrace = jobTrace(gate.id, rootHeaders)
@@ -587,15 +597,15 @@ storyboardStep(When, 'the author switches the test off instead of fixing what it
   if (!paths.includes(PROOF_PNG)) {
     throw new Error(`Expected the picture to still be in the merge request, got ${JSON.stringify(paths)}`)
   }
-  // Four pushes, four commits — and the tab bar must say so before it is shot.
-  await waitMrCommits(rootHeaders, 4)
+  // Four pushes, four commits, four pipelines — the tab bar must say so before
+  // it is shot.
+  global.gateFourthPid = await waitMrSettled(rootHeaders, 4, global.gateThirdPid)
   await captureChangesFrame(CARD_FILE, 'changes-test-switched-off', 1120)
 })
 
 storyboardStep(Then, 'the picture check is satisfied: the card and its picture are both still there', async () => {
   const rootHeaders = await getRootHeaders()
-  const pid = await waitMrPipelineId(PROJECT_NAME, global.gateMrIid, rootHeaders, global.gateThirdPid)
-  global.gateFourthPid = pid
+  const pid = global.gateFourthPid
   await waitPipelineTerminal(PROJECT_NAME, pid, rootHeaders)
   const { gate } = await jobOf(PROJECT_NAME, pid, rootHeaders)
   const trace = jobTrace(gate.id, rootHeaders)

@@ -84,7 +84,10 @@ ORDER=(red review:red green review:green refactor)
 predecessor() {
   local wanted="$1" previous=''
   for phase in "${ORDER[@]}"; do
-    [ "${phase}" = "${wanted}" ] && { printf '%s' "${previous}"; return 0; }
+    if [ "${phase}" = "${wanted}" ]; then
+      printf '%s' "${previous}"
+      return 0
+    fi
     previous="${phase}"
   done
   printf ''
@@ -93,7 +96,10 @@ predecessor() {
 successor() {
   local after="$1" take=0
   for phase in "${ORDER[@]}"; do
-    [ "${take}" -eq 1 ] && { printf '%s' "${phase}"; return 0; }
+    if [ "${take}" -eq 1 ]; then
+      printf '%s' "${phase}"
+      return 0
+    fi
     [ "${phase}" = "${after}" ] && take=1
   done
   printf ''
