@@ -32,11 +32,15 @@ two guards read the facts themselves.
 - **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
   pipeline green is not to fix the code, it is to switch the test off. This gate
   reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`
-  and a non-zero `tolerance:` anywhere under a test path — and `allow_failure:
-  true` or a silenced linter in files the change MODIFIES, because a file that
-  arrives whole turned nothing off. It runs as the `no-cheat` merge-request job, so a switched-off check
-  never reaches the default branch. The only waiver is visible: a
-  `No-cheat-exempt: <why>` commit trailer.
+  and a non-zero `tolerance:` anywhere under a test path — plus the word your own
+  language uses for the same thing (`@pytest.mark.skip`, `t.Skip(`, `it.skip(`,
+  `@Disabled`) — and `allow_failure: true` or a silenced linter in files the
+  change MODIFIES, because a file that arrives whole turned nothing off. A test
+  path means, under `project/`, any `tests/`, `test/`, `spec/` or `specs/`
+  directory and any file named `*_test.*`, `*_spec.*`, `*.test.*` or `*.spec.*`;
+  set `TEST_PATHS` if this project marks its tests some other way. It runs as the
+  `no-cheat` merge-request job, so a switched-off check never reaches the default
+  branch. The only waiver is visible: a `No-cheat-exempt: <why>` commit trailer.
 
 ## Visual Regression
 

@@ -41,7 +41,9 @@ for the phase you are in; run both before you say the work is done.
 ## ⛔ Four things that are never done here
 
 - **Never switch a check off to get green.** No `@skip`, no `@wip`, no
-  `.only(`, no `xScenario`, no raised `tolerance:`, no `allow_failure: true`.
+  `.only(`, no `xScenario`, no raised `tolerance:`, no `allow_failure: true`,
+  and none of the words your own language uses for the same thing
+  (`@pytest.mark.skip`, `t.Skip(`, `it.skip(`, `@Disabled`).
   If a check caught something, fix what it caught.
 - **Never silence a linter.** No `eslint-disable`, no `# noqa`, no `# nosec`,
   no `shellcheck disable` added to make an error go away. An error the linter

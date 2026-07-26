@@ -17,6 +17,8 @@
 #
 #     @skip / @wip           a scenario the suite reports without running
 #     .only( / xScenario     one scenario kept, every other one dropped
+#     @pytest.mark.skip      the same, in Python — and t.Skip(, @Disabled,
+#     it.skip( / @Ignore     @Ignore, describe.skip(: one word per language
 #     tolerance: <non-zero>  a picture check that accepts a difference
 #     allow_failure: true    a job allowed to fail with no consequence
 #     a silenced linter      inside the tests, where it has no business being
@@ -41,6 +43,13 @@
 #   BASE=HEAD ONLY=linter bash check-no-cheat.sh         # one phase's own sins
 #   (CI passes CI_MERGE_REQUEST_DIFF_BASE_SHA automatically)
 #
+# ENVIRONMENT VARIABLES:
+#   TEST_PATHS   Where this project's tests live, as a regexp on the path
+#                (default: under project/, any tests/, test/, spec/ or specs/
+#                directory at any depth, and any file named *_test.*, *_spec.*,
+#                *.test.* or *.spec.*; plus the shipped .config/codeceptjs/).
+#   CI_PATHS     Where this project's pipeline lives (default: the framework's).
+#
 # EXIT CODES:
 #   0  Nothing switched off (or nothing relevant changed, or exempted)
 #   1  The change switches a check off, with no exemption
@@ -61,8 +70,23 @@ NC='\033[0m'
 # Where the tests live, and where the pipeline lives. A guard that reads the
 # whole repository would flag the honest uses of these words; each rule below
 # picks the paths where its own pattern can only mean one thing.
-TEST_PATHS='^(project/tests/|\.config/codeceptjs/)'
-CI_PATHS='^(\.config/gitlab/ci/|\.gitlab-ci\.yml(\.jinja)?$)'
+#
+# Inside the project workspace, a test is recognised the two ways languages
+# actually mark one, at any depth:
+#
+#   a directory        project/tests/, project/src/tests/, project/apps/web/spec/
+#   a file name        project/pkg/b_test.go, project/web/app.test.js, a_spec.rb
+#
+# Naming `project/tests/` alone was the one thing that made this gate useless
+# outside this repository: it read nothing, said "nothing switches a check off",
+# and exited 0. A gate that fails OPEN is worse than no gate, because the
+# project believes it is covered. Go was the proof — its tests sit beside the
+# code they test, in no test directory at all.
+#
+# A project that marks its tests some third way sets TEST_PATHS to its own
+# regexp; the framework never guesses beyond project/.
+TEST_PATHS="${TEST_PATHS:-^(project/(.*/)?((tests?|specs?)/|[^/]*(_test|_spec|\.test|\.spec)\.)|\.config/codeceptjs/)}"
+CI_PATHS="${CI_PATHS:-^(\.config/gitlab/ci/|\.gitlab-ci\.yml(\.jinja)?$)}"
 
 # Each rule belongs to the phase of the loop where its sin is committed, so a
 # phase can ask about its own and nothing else:
@@ -75,14 +99,15 @@ CI_PATHS='^(\.config/gitlab/ci/|\.gitlab-ci\.yml(\.jinja)?$)'
 ONLY="${ONLY:-}"
 
 # category | paths | pattern | what it does, in one sentence | (opt) modified_only
-RULE_KIND=()
+# The category is read by add_rule and kept nowhere else: a rule the current
+# ONLY does not ask for is never recorded, so the loop below has nothing to
+# filter.
 RULE_PATHS=()
 RULE_RE=()
 RULE_SAYS=()
 RULE_SCOPE=()
 add_rule() {
   if [ -n "${ONLY}" ] && [ "${ONLY}" != "$1" ]; then return 0; fi
-  RULE_KIND+=("$1")
   RULE_PATHS+=("$2")
   RULE_RE+=("$3")
   RULE_SAYS+=("$4")
@@ -91,6 +116,12 @@ add_rule() {
 
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
   'a skipped scenario: the suite reports it without ever running it'
+# The same cheat wears a different word in every language, and a framework
+# handed to projects of any language owes them all the same answer. Note what is
+# absent: @pytest.mark.skipif and its kin. A conditional skip states a condition
+# a reviewer can read ("not on Windows"); a bare skip states nothing.
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*(@pytest\.mark\.skip[[:space:]]*(\(|$)|@unittest\.skip[[:space:]]*(\(|$)|@Disabled|@Ignore|t\.Skip(f)?\(|(describe|context|it|test)\.skip[[:space:]]*\()' \
+  'a skipped test: the suite reports it without ever running it'
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*(Scenario|Feature|Data|describe|context|it|test)\.only[[:space:]]*\(' \
   'only this one runs: every other scenario is silently dropped'
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]]*\(' \

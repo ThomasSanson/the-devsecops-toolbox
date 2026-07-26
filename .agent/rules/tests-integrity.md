@@ -45,13 +45,22 @@ anyone in a hurry steps over.
 - **`task devsecops:test:check:no-cheat`** — the cheapest way to make a red
   pipeline green is not to fix the code, it is to switch the test off. This gate
   reads the lines a change ADDS and refuses `@skip`/`@wip`, `.only(`/`xScenario`
-  and a non-zero `tolerance:` anywhere under a test path — and `allow_failure:
-  true` or a silenced linter in files the change MODIFIES, because a file that
-  arrives whole (installing the framework, adding a pipeline) turned nothing
-  off. Every pattern is anchored at the head of its line, so quoting one in
-  a sentence or a string trips nothing. It runs as the `no-cheat` merge-request
-  job, and locally against `origin/main` — or against the working tree
-  (`BASE=HEAD`), which is what the cycle's phases use before you commit.
+  and a non-zero `tolerance:` anywhere under a test path — plus the word another
+  language uses for the same thing (`@pytest.mark.skip`, `t.Skip(`, `it.skip(`,
+  `@Disabled`), because this framework is handed to projects of any language —
+  and `allow_failure: true` or a silenced linter in files the change MODIFIES,
+  because a file that arrives whole (installing the framework, adding a
+  pipeline) turned nothing off. Every pattern is anchored at the head of its
+  line, so quoting one in a sentence or a string trips nothing. It runs as the
+  `no-cheat` merge-request job, and locally against `origin/main` — or against
+  the working tree (`BASE=HEAD`), which is what the cycle's phases use before
+  you commit.
+- **A test path** means, under `project/`, any `tests/`, `test/`, `spec/` or
+  `specs/` directory at any depth, and any file named `*_test.*`, `*_spec.*`,
+  `*.test.*` or `*.spec.*`. Both, because Go's tests sit beside the code they
+  test in no test directory at all — and a gate that reads nothing says
+  "nothing switches a check off" and exits 0, which is worse than no gate. A
+  project that marks its tests some third way sets `TEST_PATHS`.
 - **The only waiver is visible**, exactly like the storyboard one: a
   `No-cheat-exempt: <why>` commit trailer.
 - **Both gates prove themselves:** `@tdd-cycle`
