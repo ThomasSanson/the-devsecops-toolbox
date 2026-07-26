@@ -557,7 +557,10 @@ tasks:
       ℹ️ Description:
         The devil's advocate on the test that was just written — the one step no
         exit code can replace. Records ACCEPT or REJECT, with the grid that led
-        to it, under tmp/agent/. A REJECT sends the cycle back to the red phase.
+        to it, under tmp/agent/. A REJECT sends the cycle back to the red phase,
+        which then reads that verdict and answers it.
+
+      🚀 Usage: task devsecops:test:tdd:review:red -- @my-tag
     cmds:
       - bash .config/devsecops/scripts/tdd-cycle.sh review:red {{.CLI_ARGS}}
 

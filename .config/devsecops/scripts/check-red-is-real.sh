@@ -15,9 +15,8 @@
 #   non-zero. On a screen that looks exactly like the proof the method asks for.
 #   It is not one.
 #
-#   The discriminator is already on disk. The suite writes one JUnit report per
-#   worker (project/tests/e2e/support/junit-reporter.js), and it writes it only
-#   when at least one scenario was recorded. So:
+#   The discriminator is already on disk. A test runner writes its JUnit report
+#   only for scenarios it actually ran, so:
 #
 #     no report            -> the run died on its way to the test  (refused)
 #     scenario absent      -> that scenario never ran              (refused)
@@ -32,9 +31,14 @@
 #   task devsecops:test:check:red-is-real -- @my-tag
 #   bash .config/devsecops/scripts/check-red-is-real.sh @my-tag
 #
+#   Any runner's JUnit will do — this repository's own reporter, pytest, jest,
+#   go-junit-report. The reader is deliberately indifferent to how the XML is
+#   laid out, because every one of them lays it out differently.
+#
 # ENVIRONMENT VARIABLES:
 #   REPORT_DIR   Where the JUnit reports are (default:
-#                project/tests/e2e/_output/junit)
+#                project/tests/e2e/_output/junit). Point it at your runner's
+#                report directory; the files are read as `results-*.xml`.
 #
 # EXIT CODES:
 #   0  The scenario ran and failed on its own check
@@ -60,26 +64,47 @@ fi
 
 echo -e "${BLUE}🔴 Red-is-real gate (scenario: ${TAG})${NC}"
 
-# Every recorded run of that scenario, one per line: status, name, message.
-# A passed or skipped testcase is one self-closing line; a failed one carries a
-# <failure> on the line below. Nothing else in the file can look like either.
+# Every recorded run of a scenario whose name contains TAG, one per line:
+# status, name, message.
+#
+# Read as a stream of TAGS, never of lines. JUnit is XML, and every runner lays
+# it out differently: this repository's own reporter writes one testcase per
+# line, pytest writes the whole document on one line and lets a failure message
+# span the next thirty. Splitting on `<` makes the reader indifferent to that —
+# which is the point, since the whole reason to read JUnit is that every runner
+# writes it.
+#
+# The leading space in ` name="` is load-bearing twice over: `classname="` also
+# ends in `name="`, and so does the enclosing `<testsuite name="pytest">`.
 records() {
-  # The leading space in ` name="` is load-bearing: `classname="` also ends in
-  # `name="`, and would win an unanchored match.
+  # TAG='' lists every scenario, whatever its name — used by the refusal below.
   awk -v tag="${TAG}" '
-    /<testcase / {
-      if (index($0, tag) == 0) next
-      if (!match($0, / name="[^"]*"/)) next
-      name = substr($0, RSTART + 7, RLENGTH - 8)
-      if (index($0, "</testcase>") > 0) {
-        printf "%s\t%s\t\n", (index($0, "<skipped/>") > 0 ? "skipped" : "passed"), name
-        next
-      }
-      if ((getline next_line) > 0 && index(next_line, "<failure") > 0) {
-        msg = next_line; sub(/.*message="/, "", msg); sub(/"[[:space:]]*\/>.*/, "", msg)
-        printf "failed\t%s\t%s\n", name, msg
-      }
+    BEGIN { RS = "<"; pending = 0 }
+    function attr(record, key,   pattern) {
+      pattern = "[ \t]" key "=\"[^\"]*\""
+      if (!match(record, pattern)) return ""
+      return substr(record, RSTART + length(key) + 3, RLENGTH - length(key) - 4)
     }
+    function flush() {
+      if (!pending) return
+      if (tag == "" || index(name, tag) > 0) {
+        printf "%s\t%s\t%s\n", (failed ? "failed" : (skipped ? "skipped" : "passed")), name, msg
+      }
+      pending = 0; name = ""; msg = ""; failed = 0; skipped = 0
+    }
+    /^testcase[ \t]/ {
+      flush()
+      name = attr($0, "name"); pending = 1
+      next
+    }
+    /^(failure|error)[ \t>\/]/ && pending {
+      failed = 1
+      if (msg == "") msg = attr($0, "message")
+      next
+    }
+    /^skipped[ \t>\/]/ && pending { skipped = 1; next }
+    /^\/testcase/ { flush(); next }
+    END { flush() }
   ' "$@"
 }
 
@@ -107,7 +132,7 @@ found="$(records "${reports[@]}")"
 if [ -z "${found}" ]; then
   echo -e "${RED}❌ No scenario tagged ${TAG} in the report: that scenario never ran.${NC}"
   echo "   Recorded instead:"
-  grep -h '<testcase ' "${reports[@]}" | sed -e 's/.* name="/   ~ /' -e 's/".*//' | unescape
+  TAG='' records "${reports[@]}" | cut -f2 | sed 's/^/   ~ /' | unescape
   exit 1
 fi
 

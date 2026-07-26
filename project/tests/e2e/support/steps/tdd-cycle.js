@@ -119,6 +119,23 @@ function maskDurations (text) {
     .replace(/CodeceptJS v[0-9][0-9.]*/g, 'CodeceptJS v<version>')
 }
 
+// The phase runs the whole suite, and the suite has plenty to say. The card is
+// about the PHASE's verdict, so the nested run's transcript is elided between
+// its own two boundaries — the line that starts it and the gate that reads its
+// result — and the elision says how many lines it stands for. Nothing is
+// cherry-picked: it is one contiguous block, in or out.
+function elideNestedRun (text) {
+  const lines = text.split('\n')
+  const from = lines.findIndex(l => stripAnsi(l).startsWith('▶ '))
+  const to = lines.findIndex((l, i) => i > from && stripAnsi(l).includes('Red-is-real gate'))
+  if (from < 0 || to < 0) return text
+  return [
+    ...lines.slice(0, from + 1),
+    `  … ${to - from - 1} lines of the suite's own output, ending on the failure the gate reads below`,
+    ...lines.slice(to)
+  ].join('\n')
+}
+
 // A verbatim slice with its own boundaries, never a hand-picked set of lines:
 // from the first line matching `from` to the last consecutive line matching
 // `while`.
@@ -333,7 +350,7 @@ storyboardStep(Then, 'the step that opens it accepts a test written by hand, wit
       !seen.includes('The failure is real') || !seen.includes('the cycle now stands at: red')) {
     throw new Error(`Expected the red phase to accept the hand-written test with no tool, got exit ${code}:\n${seen}`)
   }
-  await card('red-accepts-work-done-by-hand', `$ ${RED}\n${output.trimEnd()}`, { colour: true })
+  await card('red-accepts-work-done-by-hand', `$ ${RED}\n${elideNestedRun(output.trimEnd())}`, { colour: true })
 })
 
 storyboardStep(Then, 'the toolbox reports the AI assistants this machine holds and the models each one gives', async () => {

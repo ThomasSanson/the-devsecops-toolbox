@@ -50,6 +50,7 @@
 #                          the working tree ({{MODEL}} is replaced by the model)
 #   TASK_AGENT_MODEL       the model to pass to it
 #   TASK_AGENT_TEST_CMD    how this project runs its tests (default: task test)
+#   TASK_AGENT_BRIEF       the issue to work from (default: tmp/agent/brief.md)
 #   TASK_AGENT_STATE_DIR   where the phase is recorded (default: tmp/agent)
 #   TASK_AGENT_DROP_IN_DIR where the tool drop-ins live
 #
@@ -70,6 +71,9 @@ NC='\033[0m'
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${TASK_AGENT_STATE_DIR:-tmp/agent}"
 PHASE_FILE="${STATE_DIR}/phase"
+# What the work IS, in the words of whoever asked for it. Written once, read by
+# every phase. Without it the phases still run — they just have nothing to say.
+BRIEF_FILE="${TASK_AGENT_BRIEF:-${STATE_DIR}/brief.md}"
 DROP_IN_DIR="${TASK_AGENT_DROP_IN_DIR:-.config/devsecops/agents.d}"
 TEST_CMD="${TASK_AGENT_TEST_CMD:-task test}"
 
@@ -104,13 +108,16 @@ record_phase() {
   printf '%s' "$1" >"${PHASE_FILE}"
 }
 
-# A phase runs only after the one before it. The refusal names what was recorded
-# and what it is waiting for, so the way forward is never a guess.
+# A phase runs after the one before it — or after ITSELF, which is how a
+# rejected phase is redone. The order cannot be skipped; repeating a step is not
+# skipping one, and a review that rejects sends the work straight back here.
+# The refusal names what was recorded and what it is waiting for, so the way
+# forward is never a guess.
 require_phase() {
   local wanted="$1" needed current next
   needed="$(predecessor "${wanted}")"
   current="$(recorded_phase)"
-  [ "${current}" = "${needed}" ] && return 0
+  if [ "${current}" = "${needed}" ] || [ "${current}" = "${wanted}" ]; then return 0; fi
   next="${ORDER[0]}"
   [ -n "${current}" ] && next="$(successor "${current}")"
   echo -e "${RED}❌ The ${wanted} phase cannot start yet.${NC}"
@@ -202,15 +209,21 @@ prompt_for() {
   [ -n "${tag}" ] && echo "The scenario under work is tagged ${tag}."
   echo "Edit the working tree. Do not commit, do not push: the task does that when the gates pass."
   echo
+  # WHAT to build. The gates can check how the work was done; nothing can guess
+  # what the work IS, so it is written down: the brief is the issue, in the words
+  # of whoever opened it, and every phase reads the same one.
+  cat_if "${BRIEF_FILE}"
   case "${phase}" in
   red)
     echo "Write the failing test, and nothing else. Touch test files only."
+    rejected_verdict review:red
     cat_if .agent/workflows/tdd-step1-red.md
     cat_if .agent/rules/tests-integrity.md
     cat_if "$(reference_story)"
     ;;
   green)
     echo "Write the smallest code that makes that test pass. Do not touch the test."
+    rejected_verdict review:green
     cat_if .agent/workflows/tdd-step2-green.md
     ;;
   refactor)
@@ -220,13 +233,26 @@ prompt_for() {
   review:red)
     cat <<'GRID'
 Be the devil's advocate on the test that was just written, and answer each point:
-  - does a stranger reading the .feature alone understand what is tested?
-  - does every sentence map to a storyboard card?
+  - does a stranger reading the test alone understand what is tested?
   - is the vocabulary the business's, or the implementation's?
   - did the run fail on the assertion, or on its way to it?
   - would the test still pass if the rule it claims to protect were broken?
+GRID
+    # Ask the storyboard question only where storyboards exist. A project whose
+    # tests are pytest files cannot answer it, and a grid with an unanswerable
+    # question rejects for ever.
+    [ -d project/tests/e2e/storyboards ] && echo "  - does every sentence map to a storyboard card?"
+    cat <<'GRID'
 End with a line reading exactly `VERDICT: ACCEPT` or `VERDICT: REJECT`.
 GRID
+    # The evidence the gate just read, so the review judges the same facts
+    # instead of guessing at them — it may have no way to run the suite itself.
+    if [ -n "${tag}" ]; then
+      echo
+      echo "The red gate has already run the suite and read its report. Its verdict:"
+      # Informational: a prompt must never fail because a quotation failed.
+      bash "${HERE}/check-red-is-real.sh" "${tag}" 2>&1 | sed 's/\x1b\[[0-9;]*m//g; s/^/  /' || true
+    fi
     ;;
   review:green)
     cat <<'GRID'
@@ -240,6 +266,17 @@ End with a line reading exactly `VERDICT: ACCEPT` or `VERDICT: REJECT`.
 GRID
     ;;
   esac
+}
+
+# A review that REJECTED comes back to the phase that produced the work — with
+# its grid attached. A loop whose executor never reads why it was rejected
+# repeats itself, which is not a loop, it is a stutter.
+rejected_verdict() {
+  local file
+  file="$(verdict_file "$1")"
+  [ -f "${file}" ] && grep -q "VERDICT: REJECT" "${file}" || return 0
+  echo "The previous attempt was REJECTED by the ${1} step. Address EVERY point below."
+  cat_if "${file}"
 }
 
 cat_if() {
@@ -301,6 +338,7 @@ require_verdict() {
   if [ ! -f "${file}" ] || ! grep -q '^VERDICT: ACCEPT' "${file}"; then
     echo -e "${RED}❌ No ACCEPT verdict recorded for the ${1} phase.${NC}"
     echo "   expected a file ${file} ending on a line reading exactly: VERDICT: ACCEPT"
+    echo "   a REJECT is not a dead end: fix what it names, run task devsecops:test:tdd:${1#review:} again, then this step"
     [ -f "${file}" ] && echo "   what it says instead:" && tail -3 "${file}"
     return 1
   fi
@@ -319,6 +357,10 @@ run_phase() {
   # The AI tool is a convenience, never a requirement. With one, the phase hands
   # it the prompt and then checks what came back; without one, the phase checks
   # the work YOU just did. The gates are the point — they do not care who typed.
+  if [ ! -f "${BRIEF_FILE}" ]; then
+    echo -e "   ${YELLOW}no brief at ${BRIEF_FILE} — write the issue there so every phase works from it.${NC}"
+  fi
+
   local executor=''
   if executor="$(resolve_executor)"; then
     executor="${executor//\{\{MODEL\}\}/${TASK_AGENT_MODEL:-}}"
