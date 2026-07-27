@@ -26,6 +26,13 @@ RUN curl -LsSf --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15
 # Install Docker CLI + Compose plugin so the runner can orchestrate ttyd
 # containers from inside the test container via the mounted docker socket.
 # The Playwright base image is Ubuntu, so we pull from the Ubuntu channel.
+#
+# The base image also leaves NodeSource's apt repository configured, and we
+# install nothing from it — the Node it ships is the one the image already
+# baked in. But `apt-get update` still reads it, so the day NodeSource
+# answered 403 Forbidden, every pipeline in the project died on a package
+# nobody here wanted. Dropping that source list makes this build depend only
+# on the archives it actually installs from.
 # hadolint ignore=DL3008
 RUN install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 https://download.docker.com/linux/ubuntu/gpg | \
@@ -34,6 +41,7 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     UBUNTU_CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")" && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
       > /etc/apt/sources.list.d/docker.list && \
+    rm -f /etc/apt/sources.list.d/nodesource.list && \
     apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
       docker-ce-cli docker-compose-plugin \
