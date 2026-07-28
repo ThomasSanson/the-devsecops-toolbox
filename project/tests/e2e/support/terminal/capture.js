@@ -81,7 +81,14 @@ const TERMINAL_NOISE_PATTERNS = [
   // Server-side messages git relays during a push (GitLab's merge-request hint,
   // object/progress counts) — volatile and not part of the story. The push
   // itself runs with -q; this drops whatever the remote still prints.
-  /^remote:/
+  /^remote:/,
+  // go-task echoes the full uvx command line behind `task copier:update`, and
+  // that line spells out the pinned copier — a version Renovate bumps roughly
+  // monthly. The card above it already shows the command the developer typed,
+  // so the echo added nothing but a picture that broke on every copier release.
+  // Both rows go: the echo, and the wrapped tail it spills onto.
+  /^task: \[copier:update\]/,
+  /^\s*\S+ --answers-file /
 ]
 
 async function readTerminalState (I) {

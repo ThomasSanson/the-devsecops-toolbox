@@ -67,13 +67,21 @@ storyboardStep(Given, 'a safe copy of the framework has every bootstrap tool reg
 
   const installSh = path.join(workdir, '.config/devsecops/install.sh')
   let sh = fs.readFileSync(installSh, 'utf8')
+  // What each tool is pinned at TODAY, read before the downgrade. Every one of
+  // these numbers moves whenever Renovate bumps that tool — and each one is
+  // printed on the removed side of the diff below.
+  const current = []
   for (const tool of TOOLS) {
     if (tool.source) {
-      fs.writeFileSync(path.join(workdir, tool.source), tool.old + '\n')
+      const file = path.join(workdir, tool.source)
+      current.push(fs.readFileSync(file, 'utf8').trim())
+      fs.writeFileSync(file, tool.old + '\n')
     }
     if (tool.requirements) {
       const reqPath = path.join(workdir, tool.requirements)
-      fs.writeFileSync(reqPath, fs.readFileSync(reqPath, 'utf8').replace(/copier==[0-9][0-9.]*/, 'copier==' + tool.old))
+      const text = fs.readFileSync(reqPath, 'utf8')
+      current.push(text.match(/copier==([0-9][0-9.]*)/)[1])
+      fs.writeFileSync(reqPath, text.replace(/copier==[0-9][0-9.]*/, 'copier==' + tool.old))
     }
     const value = (tool.pinPrefix || '') + tool.old
     sh = sh.replace(new RegExp(`(${tool.pinVar}=")[^"]+(")`), `$1${value}$2`)
@@ -93,7 +101,16 @@ storyboardStep(Given, 'a safe copy of the framework has every bootstrap tool reg
 
   execSync('git add -A && git commit -qm "regress bootstrap tool versions"', { cwd: workdir, env: gitEnv })
 
-  await renderTextInBrowser(I, `$ git diff\n${diff}`, { columns: 2 })
+  // What this picture proves is that BOTH endpoints of every tool were knocked
+  // back, so Renovate has something to find at each of them. The number they
+  // were knocked back FROM is today's pin, and it changes on every release of
+  // task, copier, gum or glow — four dependencies Renovate moves constantly,
+  // each bump otherwise regenerating a baseline that says nothing new. So the
+  // current pin is masked; the regressed value it moved to is fixed by this
+  // test and stays spelled out, which is the half the reader needs.
+  const shown = current.reduce((text, version) => text.split(version).join('<version>'), diff)
+
+  await renderTextInBrowser(I, `$ git diff\n${shown}`, { columns: 2 })
   await addStoryboardFrame(I, await capturePageFrame(I, 'detection-regressed'))
 })
 

@@ -394,7 +394,16 @@ storyboardStep(When, "GitLab's after_script re-locks the main branch even though
     const idx = lineEls.findIndex(l => /Running after[ _]script/i.test(l.textContent))
     if (idx > 2) lineEls.slice(0, idx - 3).forEach(l => { l.style.display = 'none' })
     document.querySelectorAll('.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(e => { e.style.display = 'none' })
-    document.querySelectorAll('.job-log-line-content').forEach(e => { e.textContent = e.textContent.replace(/\d+\.\d+\.\d+/g, '1.0.0') })
+    // The last line of any failed job is "ERROR: Job failed: exit code N", and
+    // N is whatever the RUNNER decided to report — it moved from 1 to 201 on a
+    // routine gitlab-runner bump, with nothing about this story changing. What
+    // the card proves is that the after_script re-locked the branch on the way
+    // out of a failure, never which number the runner picked for it.
+    document.querySelectorAll('.job-log-line-content').forEach(e => {
+      e.textContent = e.textContent
+        .replace(/\d+\.\d+\.\d+/g, '1.0.0')
+        .replace(/exit code \d+/g, 'exit code <n>')
+    })
   })
   await maskPipelinePage(I, PROJECT_NAME)
   await addStoryboardFrame(I, await capturePageFrame(I, 'after-script-relock'))

@@ -206,6 +206,15 @@ async function maskPipelinePage (I, projectName, { keepContext = false } = {}) {
       /^\d+ (second|minute|hour)s?$/ //                "42 seconds"
     ]
 
+    // GitLab fades its navigation backgrounds in and out over ~100ms, and a
+    // screenshot that lands mid-fade catches an intermediate blend — one RGB
+    // unit off on a handful of rounded-corner pixels, which at tolerance 0 is
+    // the whole difference between green and red. Ending every transition
+    // before the capture takes the timing out of the picture.
+    const stillness = document.createElement('style')
+    stillness.textContent = '*, *::before, *::after { transition: none !important }'
+    document.head.appendChild(stillness)
+
     // Top app bar: it carries the project breadcrumb, which tells the reader
     // where they are, but also the GLOBAL user counters that other parallel
     // scenarios move. keepContext keeps the bar and blanks the counters instead.

@@ -59,9 +59,28 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
       // display, not visibility: children carrying their own visibility:visible
       // (status icons do) would override an inherited hidden.
       '[data-e2e-mask] { display: none !important }',
+      // GitLab fades its sidebar backgrounds in and out over ~100ms. A screenshot
+      // that lands mid-fade catches an intermediate blend, and the rounded corners
+      // of one navigation item then came out one RGB unit off — six pixels, which
+      // at tolerance 0 is the whole difference between green and red. Ending every
+      // transition before the capture removes the timing from the picture.
+      '*, *::before, *::after { transition: none !important }',
       args.hideMergeWidget ? '.mr-state-widget { display: none !important }' : ''
     ].join('\n')
     document.head.appendChild(style)
+
+    // GitLab opens a to-do for the author the moment a merge request's pipeline
+    // fails, and the header button then flips from "Add a to-do item" to "Mark
+    // as done" — a different icon, drawn by a background job whose timing no
+    // story controls. On a story that WANTS its pipeline to fail, that is a coin
+    // toss on every run, so the button never appears on a card. Matched on what
+    // it says rather than on a class name, and hidden rather than removed, so
+    // the header keeps its layout.
+    const TODO_RE = /to-?do|mark as done/i
+    document.querySelectorAll('button, a[role="button"]').forEach(el => {
+      const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('data-testid') || ''} ${el.textContent || ''}`
+      if (TODO_RE.test(label)) el.style.setProperty('visibility', 'hidden', 'important')
+    })
 
     // The post-merge "Pipeline <status> for — on <branch>" row: the fresh
     // pipeline schedules DURING the capture window (created → pending →
@@ -72,6 +91,16 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
     // wider widget ancestor; the "Merge request pipeline" row (a finished,
     // stable state) never matches.
     const markVolatileRows = () => {
+      // GitLab fills the merge widget in pieces, and while the artifacts piece
+      // is still on its way it holds the place with a "Loading artifacts" row
+      // that pushes everything under it down. Landing before or after that row
+      // arrives is pure timing, so it never makes it onto a card. Matching only
+      // elements whose WHOLE text is that message keeps the mark on the row
+      // itself — the widget around it says far more than sixty characters.
+      document.querySelectorAll('div, section, li').forEach(el => {
+        const text = (el.textContent || '').trim()
+        if (/^Loading\b/.test(text) && text.length < 60) el.setAttribute('data-e2e-mask', '')
+      })
       document.querySelectorAll('div, section, li').forEach(el => {
         if (/Pipeline\s+(?:[—#]\S*\s+)?(created|pending|running|waiting)/.test(el.textContent) &&
             !/Merge request pipeline/.test(el.textContent) &&
