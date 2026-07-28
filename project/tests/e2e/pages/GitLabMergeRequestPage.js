@@ -69,18 +69,23 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
     ].join('\n')
     document.head.appendChild(style)
 
-    // GitLab opens a to-do for the author the moment a merge request's pipeline
-    // fails, and the header button then flips from "Add a to-do item" to "Mark
-    // as done" — a different icon, drawn by a background job whose timing no
-    // story controls. On a story that WANTS its pipeline to fail, that is a coin
-    // toss on every run, so the button never appears on a card. Matched on what
-    // it says rather than on a class name, and hidden rather than removed, so
-    // the header keeps its layout.
-    const TODO_RE = /to-?do|mark as done/i
-    document.querySelectorAll('button, a[role="button"]').forEach(el => {
-      const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('data-testid') || ''} ${el.textContent || ''}`
-      if (TODO_RE.test(label)) el.style.setProperty('visibility', 'hidden', 'important')
-    })
+    // The two buttons at the right end of the merge-request header belong to the
+    // READER, not to the merge request: a to-do toggle and a notification bell.
+    // Neither is stable. GitLab opens a to-do for the author the moment the
+    // pipeline fails, flipping that button from "Add a to-do item" to "Mark as
+    // done" — on a story that WANTS its pipeline to fail, which icon shows is a
+    // coin toss, and it broke three unrelated dependency bumps in one night. The
+    // bell is worse: it renders here and not on the CI runner at all, and its
+    // absence nudged the toolbar beside it by a sub-pixel, which at tolerance 0
+    // counts. Both go, by display so the group collapses the same way whether
+    // GitLab drew one button, two, or none.
+    const READER_CHROME_RE = /to-?do|mark as done|notification|subscribe/i
+    const hideReaderChrome = () => {
+      document.querySelectorAll('button, a[role="button"]').forEach(el => {
+        const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('data-testid') || ''} ${el.textContent || ''}`
+        if (READER_CHROME_RE.test(label)) el.setAttribute('data-e2e-mask', '')
+      })
+    }
 
     // The post-merge "Pipeline <status> for — on <branch>" row: the fresh
     // pipeline schedules DURING the capture window (created → pending →
@@ -91,6 +96,7 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
     // wider widget ancestor; the "Merge request pipeline" row (a finished,
     // stable state) never matches.
     const markVolatileRows = () => {
+      hideReaderChrome()
       // GitLab fills the merge widget in pieces, and while the artifacts piece
       // is still on its way it holds the place with a "Loading artifacts" row
       // that pushes everything under it down. Landing before or after that row
