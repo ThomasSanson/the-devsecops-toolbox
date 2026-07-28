@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.2 (2026-07-28)
+
+### Fix
+
+- **deps**: update dependency typescript to v7
+
 ## 23.0.1 (2026-07-26)
 
 ### Fix
