@@ -81,14 +81,7 @@ const TERMINAL_NOISE_PATTERNS = [
   // Server-side messages git relays during a push (GitLab's merge-request hint,
   // object/progress counts) — volatile and not part of the story. The push
   // itself runs with -q; this drops whatever the remote still prints.
-  /^remote:/,
-  // go-task echoes the full uvx command line behind `task copier:update`, and
-  // that line spells out the pinned copier — a version Renovate bumps roughly
-  // monthly. The card above it already shows the command the developer typed,
-  // so the echo added nothing but a picture that broke on every copier release.
-  // Both rows go: the echo, and the wrapped tail it spills onto.
-  /^task: \[copier:update\]/,
-  /^\s*\S+ --answers-file /
+  /^remote:/
 ]
 
 async function readTerminalState (I) {
@@ -239,7 +232,7 @@ async function waitForTerminalText (I, expectedText, timeoutMs = COMMAND_TIMEOUT
   )
 }
 
-async function buildCompactTerminalCapture (I, captureId, patternSources, fromMarker = null, maxRows = 0, beforeRows = 0) {
+async function buildCompactTerminalCapture (I, captureId, patternSources, fromMarker = null, maxRows = 0, beforeRows = 0, masks = []) {
   return I.executeScript(function (args) {
     const id = args.id
     const sources = args.sources
@@ -247,6 +240,20 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     const maxRows = args.maxRows
     const beforeRows = args.beforeRows || 0
     const patterns = sources.map(function (src) { return new RegExp(src) })
+    // Substitutions applied to what a row SAYS, right before it is written into
+    // the capture — the row itself, its colours and its place in the picture are
+    // untouched. Applied after slicing rather than before, so the emit
+    // bookkeeping above still counts the characters the terminal really drew.
+    const substitutions = (args.masks || []).map(function (m) {
+      return { re: new RegExp(m.source, m.flags), to: m.to }
+    })
+    function applyMasks (text) {
+      let out = text
+      for (let i = 0; i < substitutions.length; i++) {
+        out = out.replace(substitutions[i].re, substitutions[i].to)
+      }
+      return out
+    }
     const screen = document.querySelector('.xterm-screen')
     if (!screen) return { kept: 0, error: 'no-xterm-screen' }
 
@@ -398,7 +405,7 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
           const textValue = node.textContent || ''
           const take = Math.min(textValue.length, limit - emitted)
           if (take > 0) {
-            line.appendChild(document.createTextNode(textValue.slice(0, take)))
+            line.appendChild(document.createTextNode(applyMasks(textValue.slice(0, take))))
             emitted += take
           }
           return false
@@ -412,7 +419,7 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
 
         const sourceStyle = window.getComputedStyle(node)
         const span = document.createElement('span')
-        span.textContent = nodeText.slice(0, take)
+        span.textContent = applyMasks(nodeText.slice(0, take))
         span.style.setProperty('color', sourceStyle.color, 'important')
         span.style.setProperty('background-color', sourceStyle.backgroundColor, 'important')
         span.style.setProperty('font-weight', sourceStyle.fontWeight, 'important')
@@ -442,7 +449,14 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     host.style.setProperty('width', finalWidth + 'px', 'important')
 
     return { kept, width: finalWidth, rowHeight, maxChars }
-  }, { id: captureId, sources: patternSources, fromMarker, maxRows, beforeRows })
+  }, {
+    id: captureId,
+    sources: patternSources,
+    fromMarker,
+    maxRows,
+    beforeRows,
+    masks: masks.map(([re, to]) => ({ source: re.source, flags: re.flags, to }))
+  })
 }
 
 async function removeCompactTerminalCapture (I, captureId) {
@@ -517,7 +531,8 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
     TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source }),
     opts.fromMarker || null,
     opts.maxRows || 0,
-    opts.beforeRows || 0
+    opts.beforeRows || 0,
+    opts.mask || []
   )
   if (!info || !info.kept) {
     throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)

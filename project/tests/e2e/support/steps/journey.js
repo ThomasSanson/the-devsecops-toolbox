@@ -240,11 +240,19 @@ function twinExcludes (script, needle) {
 
 // Type a command in the live terminal and snapshot the moment as a storyboard
 // frame, anchored on a unique substring of the command so the non-deterministic
-// scrollback above it is excluded.
-async function updateCard (command, marker, frameName, timeoutMs) {
+// scrollback above it is excluded. `mask` freezes a value the terminal really
+// printed but the card is not about.
+async function updateCard (command, marker, frameName, timeoutMs, mask = []) {
   await typeCommandAndWait(I, command, timeoutMs || COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask }))
 }
+
+// go-task echoes the whole uvx command line behind `task copier:update`, pinned
+// copier and all, and that echo IS part of what the developer sees — it says
+// which tool the update actually ran. Only the number in it moves, roughly
+// monthly, breaking a card about a toolbox release with a copier release. So
+// the line stays and the version freezes.
+const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 
 storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", async () => {
   global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
@@ -282,7 +290,7 @@ storyboardStep(Given, 'the developer has added their own word inside that shared
 storyboardStep(When, 'the developer runs the toolbox update in the terminal', async () => {
   await updateCard(
     `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
-    'task copier:update', 'update-run', 240000
+    'task copier:update', 'update-run', 240000, COPIER_PIN_MASK
   )
 })
 
