@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 23.0.3 (2026-07-29)
+
+### Fix
+
+- **test**: freeze the copier version in the update card instead of dropping the line
+- **test**: drop the reader's own buttons from the merge-request cards
+- **test**: keep GitLab's own timing and to-do list out of the cards
+- **build**: stop the test image build from depending on a repository it installs nothing from
+
 ## 23.0.2 (2026-07-28)
 
 ### Fix
