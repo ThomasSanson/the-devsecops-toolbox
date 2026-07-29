@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.4 (2026-07-29)
+
+### Fix
+
+- **test**: stop baking tool versions into pictures that are not about versions
+- **test**: mask the glab version, so a CLI bump stops breaking a story about tokens
+
 ## 23.0.3 (2026-07-29)
 
 ### Fix
