@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.12 (2026-07-31)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.62.1
+
 ## 23.0.11 (2026-07-31)
 
 ### Fix
