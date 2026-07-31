@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 23.0.11 (2026-07-31)
+
+### Fix
+
+- **deps**: update dependency playwright to v1.62.0
+- **deps**: follow the image MegaLinter actually runs, not the runner npm ships
+- **test**: drop the lockfile from the copy, so a dependency at its newest breaks nothing
+
 ## 23.0.10 (2026-07-31)
 
 ### Fix
