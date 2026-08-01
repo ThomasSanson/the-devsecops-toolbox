@@ -5,3 +5,8 @@ rules:
   body-max-line-length: [2, "always", 200]
   header-max-length: [2, "always", 200]
   body-leading-blank: [2, "always"]
+  # Same 200 as the body above. The repository's own trailers — the visible
+  # waivers the merge-request gates read, `Storyboard-exempt:` and
+  # `No-cheat-exempt:` — carry a written reason and do not fit in the 100
+  # characters commitlint started enforcing on footers in v21.
+  footer-max-line-length: [2, "always", 200]
