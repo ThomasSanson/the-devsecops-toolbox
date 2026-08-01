@@ -221,12 +221,12 @@ const SPREAD = [
     pinned: 'ansible-core==2.16.0'
   },
   // MegaLinter earns its row by being the trap: one number in a package.json
-  // that is spent as a DOCKER tag (`oxsecurity/megalinter:v<number>`), while npm
-  // publishes the runner ahead of the image. Follow npm and Renovate proposes a
-  // version no registry can pull — `manifest unknown`, the whole pipeline dead.
-  // The branch below must therefore be attributed to `oxsecurity/megalinter`:
-  // if it ever comes back under `mega-linter-runner`, Renovate is reading npm
-  // again and this story says so before a merge request does.
+  // that is spent as a DOCKER tag (`oxsecurity/megalinter:v<number>`), never as
+  // an npm version. Follow npm and Renovate proposes a tag Docker Hub cannot
+  // serve — `manifest unknown`, the whole pipeline dead. The branch below must
+  // therefore be attributed to `oxsecurity/megalinter`: if it ever comes back
+  // under `mega-linter-runner`, Renovate is reading npm again and this story
+  // says so before a merge request does.
   {
     depName: 'oxsecurity/megalinter',
     file: '.config/megalinter/package.json',
@@ -234,6 +234,25 @@ const SPREAD = [
     pinned: '"mega-linter-runner": "9.1.0"'
   }
 ]
+
+// MegaLinter left Docker Hub: v9.4.0 (2026-02-28) is the last image published
+// there, while ghcr.io went on to v9.5.0 and v9.6.0. Reading the abandoned
+// registry fails silently — Renovate keeps answering "already up to date" and
+// the framework quietly stops receiving MegaLinter releases forever. So the
+// update it proposes has to be one Docker Hub does not carry.
+const DOCKER_HUB_LAST_MEGALINTER = '9.4.0'
+
+// Numeric compare, no semver dependency for a plain `a > b` on release tags.
+function isNewerThan (version, floor) {
+  const parts = String(version).replace(/^v/, '').split('.').map(Number)
+  const bar = floor.split('.').map(Number)
+  for (let i = 0; i < Math.max(parts.length, bar.length); i++) {
+    const a = parts[i] || 0
+    const b = bar[i] || 0
+    if (a !== b) return a > b
+  }
+  return false
+}
 
 const DRY_RUN = 'task renovate:dry-run'
 
@@ -260,7 +279,12 @@ function collectBranches (packageFiles, byDep) {
       for (const dep of (pf.deps || [])) {
         for (const update of (dep.updates || [])) {
           if (!update.branchName) continue
-          ;(byDep[dep.depName] = byDep[dep.depName] || new Set()).add(update.branchName)
+          ;(byDep[dep.depName] = byDep[dep.depName] || []).push({
+            branch: update.branchName,
+            // The branch name only carries the major (`-9.x`), so the version
+            // actually proposed has to be read from the update itself.
+            version: update.newVersion || update.newValue
+          })
         }
       }
     }
@@ -314,9 +338,20 @@ storyboardStep(Then, 'Renovate gives every dependency a merge request of its own
   const owners = {}
   const rows = []
   for (const dep of SPREAD) {
-    const branches = [...(byDep[dep.depName] || new Set())].sort()
+    const updates = byDep[dep.depName] || []
+    const branches = [...new Set(updates.map(u => u.branch))].sort()
     if (!branches.length) {
       throw new Error(`Renovate proposed no update for ${dep.depName}, pinned back in ${dep.file}`)
+    }
+    if (dep.depName === 'oxsecurity/megalinter') {
+      const proposed = updates.map(u => u.version).filter(Boolean)
+      if (!proposed.some(v => isNewerThan(v, DOCKER_HUB_LAST_MEGALINTER))) {
+        throw new Error(
+          `Renovate offers MegaLinter ${proposed.join(', ') || 'nothing'}, none newer than ` +
+          `${DOCKER_HUB_LAST_MEGALINTER} — it is reading Docker Hub, abandoned since 2026-02-28, ` +
+          'instead of ghcr.io where the releases now land'
+        )
+      }
     }
     for (const branch of branches) {
       const clash = owners[branch]

@@ -27,7 +27,7 @@
       "enabled": false
     },
     {
-      "description": "MegaLinter's number is a DOCKER tag, not an npm version. The pipeline runs oxsecurity/megalinter:v<that number>, and the npm runner is published ahead of the image (npm 9.6.0 while the newest image is v9.4.0), so following npm proposes a version no registry can pull: 'manifest unknown', every job dead. The npm datasource is switched off here and the custom manager below follows the image instead \u2014 the artefact that actually has to exist.",
+      "description": "MegaLinter's number is a DOCKER tag, not an npm version: the pipeline runs oxsecurity/megalinter:v<that number>. Following npm would propose a tag Docker Hub cannot serve \u2014 'manifest unknown', every job dead \u2014 because MegaLinter stopped publishing there after v9.4.0 (2026-02-28) and moved to ghcr.io. The npm datasource is switched off here and the custom manager below follows the image on ghcr.io instead \u2014 the artefact that actually has to exist.",
       "matchManagers": ["npm"],
       "matchPackageNames": ["mega-linter-runner"],
       "enabled": false
@@ -104,6 +104,7 @@
       ],
       "depNameTemplate": "oxsecurity/megalinter",
       "datasourceTemplate": "docker",
+      "registryUrlTemplate": "https://ghcr.io",
       "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ]

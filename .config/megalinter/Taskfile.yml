@@ -14,7 +14,12 @@ vars:
 
   # Docker Advanced Settings
   TASK_MEGALINTER_CONTAINER_NAME: '{{.TASK_MEGALINTER_CONTAINER_NAME | default "megalinter-container"}}'
-  TASK_MEGALINTER_IMAGE_PREFIX: '{{.TASK_MEGALINTER_IMAGE_PREFIX | default ""}}'
+  # MegaLinter published its last Docker Hub image on 2026-02-28 (v9.4.0) and
+  # moved to ghcr.io, which carries v9.5.0 and beyond. Left empty, every run
+  # would ask Docker Hub for a tag that was never pushed there: "manifest
+  # unknown", the whole lint job dead on the next version bump.
+  TASK_MEGALINTER_IMAGE_PREFIX: '{{.TASK_MEGALINTER_IMAGE_PREFIX | default "ghcr.io/"}}'
+  TASK_MEGALINTER_IMAGE: '{{.TASK_MEGALINTER_IMAGE_PREFIX | default "ghcr.io/"}}oxsecurity/megalinter{{if .TASK_MEGALINTER_FLAVOR}}-{{.TASK_MEGALINTER_FLAVOR}}{{end}}:v{{.TASK_MEGALINTER_VERSION}}'
 
   # Proxy forwarding (transparent: only set if proxy env vars exist)
   TASK_MEGALINTER_PROXY_DOCKER_ARGS:
@@ -71,7 +76,7 @@ tasks:
       - docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - rm -rf ./megalinter-reports
       - defer: (docker cp {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint/megalinter-reports ./megalinter-reports && chown -R $(id -u):$(id -g) megalinter-reports) || true; docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
-      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE_PREFIX}}oxsecurity/megalinter:v{{.TASK_MEGALINTER_VERSION}} infinity
+      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE}} infinity
       - docker cp {{.USER_WORKING_DIR}} {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint
       - docker exec {{.TASK_MEGALINTER_CONTAINER_NAME}} /bin/bash /entrypoint.sh
       - cmd: echo "🎉 All files correctly linted with megalinter!"
@@ -136,6 +141,7 @@ tasks:
       - cmd: >-
           npx -y -p mega-linter-runner@{{.TASK_MEGALINTER_VERSION}} mega-linter-runner
           --release v{{.TASK_MEGALINTER_VERSION}}
+          --image {{.TASK_MEGALINTER_IMAGE}}
           --env 'MEGALINTER_CONFIG={{.TASK_MEGALINTER_CONFIG}}'
           {{if .TASK_MEGALINTER_FLAVOR}}--env 'MEGALINTER_FLAVOR={{.TASK_MEGALINTER_FLAVOR}}'{{end}}
           {{.TASK_MEGALINTER_PROXY_NPX_ARGS}}
