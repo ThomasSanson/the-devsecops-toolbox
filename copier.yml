@@ -13,23 +13,39 @@ _min_copier_version: "9.3.0"
 # cspell vocabulary migration (issue #162): when a project crosses into the
 # version that split the cspell config, move any words it kept inline in the
 # (now framework-owned) config.json into its project-owned config.project.json,
-# so config.json stays the framework image and the words survive. before:
-# capture inline words before the refresh empties config.json; after: drop the
-# framework base words, leaving only the project's own. Idempotent afterwards.
+# so config.json stays the framework image and the words survive. before: MOVE
+# the inline words out — copy them to config.project.json and empty the array
+# they came from; after: drop the framework base words, leaving only the
+# project's own. Idempotent afterwards.
 _migrations:
   - version: "22.7.1"
     before:
       # Inlined (not the script): in the BEFORE phase the project still holds the
-      # old version, which does not ship migrate-words.py yet. Capture config.json's
-      # inline words into config.project.json before the refresh empties config.json.
+      # old version, which does not ship migrate-words.py yet.
+      #
+      # Emptying config.json's word list here is what keeps the update mergeable:
+      # the release rewrites that same array, so a project that added a word to it
+      # is editing the very lines the release replaces. Leave the word in place and
+      # copier writes conflict markers into config.json, which stops being valid
+      # JSON and takes cspell down with it (copier < 9.15.2 hid this: the conflict
+      # landed in a gitignored .rej that copier then skipped — copier-org/copier#2668).
+      # Emptied on both sides, the hunk merges clean and the word is already safe
+      # in config.project.json.
       - >-
-        python3 -c 'import json, pathlib;
+        python3 -c 'import json, pathlib, re;
         cfg = pathlib.Path(".config/cspell/config.json");
-        legacy = json.loads(cfg.read_text()).get("words") or [];
+        text = cfg.read_text();
+        legacy = json.loads(text).get("words") or [];
         ov = pathlib.Path(".config/cspell/config.project.json");
         cur = (json.loads(ov.read_text()).get("words") or []) if ov.exists() else [];
         ov.write_text(json.dumps({"version": "0.2", "words": sorted(set(cur + legacy))}, indent=2) + chr(10)) if legacy else None;
-        print("[cspell migration] capturing project words before the framework refresh") if legacy else None'
+        cfg.write_text(re.sub("\"words\": \\[[^]]*\\]", "\"words\": []", text)) if legacy else None;
+        print("[cspell migration] moving the project words out of the shared file") if legacy else None'
+      # Copier reads the project from its Git INDEX (`git write-tree`) and, on a
+      # rejected hunk, restores the file with `git checkout --`. An unstaged edit
+      # is therefore invisible to the merge: stage it, or the line above is undone
+      # before it can be of any use.
+      - "git add -- .config/cspell/config.json"
     after:
       - "python3 .config/cspell/migrate-words.py dedup"
 
