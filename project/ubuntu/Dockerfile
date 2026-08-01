@@ -1,7 +1,7 @@
 # kics-scan disable=b03a748a-542d-44f4-bb86-9199ab4fd2d5,965a08d7-ef86-4f14-8792-4a3b2098937e
 # ↳ b03a748a: healthcheck — test container, not a long-lived service
 # ↳ 965a08d7: apt pin version — ephemeral test container, always uses latest
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
