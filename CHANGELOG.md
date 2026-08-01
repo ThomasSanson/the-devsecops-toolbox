@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.13 (2026-08-01)
+
+### Fix
+
+- **deps**: read MegaLinter from the registry that still publishes it
+- **deps**: update mcr.microsoft.com/playwright docker tag to v1.61.1
+
 ## 23.0.12 (2026-07-31)
 
 ### Fix
