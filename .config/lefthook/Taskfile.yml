@@ -50,6 +50,13 @@ tasks:
     env:
       GOBIN:
         sh: 'echo "$HOME/.local/bin"'
+      # cspell:ignore stdlib -- the C header named in the error quoted below
+      # Lefthook is pure Go, but the toolchain still builds runtime/cgo unless
+      # told otherwise, and that needs the C headers a base image is free not to
+      # ship: Ubuntu 24.04 had them, 26.04 does not, and the install died on
+      # `stdlib.h: No such file or directory`. Asking for a static binary is
+      # cheaper than dragging a C toolchain into every image.
+      CGO_ENABLED: "0"
     status:
       - command -v lefthook &> /dev/null
     preconditions:
