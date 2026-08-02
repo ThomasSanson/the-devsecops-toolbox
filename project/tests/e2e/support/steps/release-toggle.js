@@ -399,10 +399,14 @@ storyboardStep(When, "GitLab's after_script re-locks the main branch even though
     // routine gitlab-runner bump, with nothing about this story changing. What
     // the card proves is that the after_script re-locked the branch on the way
     // out of a failure, never which number the runner picked for it.
+    // Same for the "exit status N" go-task prints above it: the release is
+    // crashed on purpose, mid-push, and the number is whichever error the push
+    // happened to die on (128 and 22 both seen on identical code).
     document.querySelectorAll('.job-log-line-content').forEach(e => {
       e.textContent = e.textContent
         .replace(/\d+\.\d+\.\d+/g, '1.0.0')
         .replace(/exit code \d+/g, 'exit code <n>')
+        .replace(/exit status \d+/g, 'exit status <n>')
     })
   })
   await maskPipelinePage(I, PROJECT_NAME)
