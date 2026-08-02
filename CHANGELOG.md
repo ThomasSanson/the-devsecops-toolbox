@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.19 (2026-08-02)
+
+### Fix
+
+- **deps**: update dependency copier to v9.17.0
+- **update**: move the project's cspell words out, instead of copying them
+
 ## 23.0.18 (2026-08-02)
 
 ### Fix
