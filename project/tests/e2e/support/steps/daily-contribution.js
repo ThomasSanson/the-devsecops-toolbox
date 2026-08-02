@@ -28,6 +28,7 @@ const {
   BASE_URL,
   projectPath,
   encodedProjectPath,
+  curlAuthFlags,
   getRootHeaders,
   createProject,
   deleteProject,
@@ -47,6 +48,7 @@ const {
   createMergeRequest,
   getMergeRequest,
   mergeMergeRequest,
+  listProjectBranches,
   listProjectTags
 } = require('../helpers/gitlabApi')
 const {
@@ -451,6 +453,19 @@ storyboardStep(When, 'the reviewed change merges into main', async () => {
   }
   // Twin FIRST: the green pipeline unblocked the merge, the MR is merged.
   if (state !== 'merged') throw new Error(`Expected the MR merged, got state=${state}`)
+  // The merge answers before the branch is gone: GitLab deletes the source
+  // branch in a background job, and until that job runs the page still offers a
+  // "Delete source branch" button and reads "Did not delete the source branch."
+  // Waiting for the branch to actually disappear is both the honest end of the
+  // merge and what keeps the card from photographing it half-done.
+  let branches = []
+  for (let i = 0; i < 30; i++) {
+    const listed = await listProjectBranches(PROJECT_NAME, rootHeaders)
+    branches = (listed.data || []).map(b => b.name)
+    if (!branches.includes(BRANCH)) break
+    await I.wait(2)
+  }
+  if (branches.includes(BRANCH)) throw new Error(`Expected the source branch ${BRANCH} to be deleted by the merge`)
   I.resizeWindow(1024, 900)
   await GitLabMergeRequestPage.gotoAndMaskMerged(projectPath(PROJECT_NAME), global.dailyMrIid, PROJECT_NAME)
   await addStoryboardFrame(I, await capturePageFrame(I, 'merged-into-main'))
@@ -517,7 +532,7 @@ storyboardStep(Then, "the release job's own log confirms the version move", asyn
   if (!release) throw new Error('Release job disappeared between steps')
   const encoded = encodedProjectPath(PROJECT_NAME)
   const trace = runCommandWithResult(
-    `curl -s -H 'Authorization: ${rootHeaders.Authorization}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${release.id}/trace'`
+    `curl -s ${curlAuthFlags(rootHeaders)} '${BASE_URL}/api/v4/projects/${encoded}/jobs/${release.id}/trace'`
   )
   const lines = stripAnsi(trace.stdout || trace.output || '')
     .split('\n')

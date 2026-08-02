@@ -45,6 +45,7 @@ const {
   BASE_URL,
   projectPath,
   encodedProjectPath,
+  curlAuthFlags,
   getRootHeaders,
   createProject,
   deleteProject,
@@ -266,11 +267,8 @@ function gateSection (trace) {
 }
 
 function jobTrace (jobId, headers) {
-  const auth = headers.Authorization
-    ? `-H 'Authorization: ${headers.Authorization}'`
-    : `-H 'PRIVATE-TOKEN: ${headers['PRIVATE-TOKEN']}'`
   return sh(
-    `curl -s ${auth} '${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/jobs/${jobId}/trace'`,
+    `curl -s ${curlAuthFlags(headers)} '${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/jobs/${jobId}/trace'`,
     '/tmp'
   )
 }

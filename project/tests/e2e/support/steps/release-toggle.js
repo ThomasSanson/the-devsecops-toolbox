@@ -34,6 +34,7 @@ const {
   BASE_URL,
   projectPath,
   encodedProjectPath,
+  curlAuthFlags,
   getRootHeaders,
   createProject,
   deleteProject,
@@ -243,7 +244,7 @@ const TRACE_NOISE = [
 function releaseTraceStory (projectName, jobId, rootHeaders) {
   const encoded = encodedProjectPath(projectName)
   const raw = runCommandWithResult(
-    `curl -s -H 'Authorization: ${rootHeaders.Authorization}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${jobId}/trace'`
+    `curl -s ${curlAuthFlags(rootHeaders)} '${BASE_URL}/api/v4/projects/${encoded}/jobs/${jobId}/trace'`
   )
   return stripAnsi(raw.stdout || raw.output || '')
     .replace(/\r/g, '')

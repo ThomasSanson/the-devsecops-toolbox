@@ -54,6 +54,13 @@ async function getRootHeaders () {
 // whichever scenario would normally have created it first via
 // GitLabUserPage.ensureUserViaApi. Create-if-missing here too, mirroring that
 // same payload, so callers never depend on run order.
+// A few reads (job traces) are plain text, so they go out through curl instead
+// of the JSON helpers. They need the same credentials, whatever shape they take
+// — spell them from the headers object rather than reaching for one named key.
+function curlAuthFlags (headers) {
+  return Object.entries(headers).map(([name, value]) => `-H '${name}: ${value}'`).join(' ')
+}
+
 async function getLambdaUserId (headers) {
   const username = getLambdaUsername()
   const usersResponse = await freshGet(`${BASE_URL}/api/v4/users?username=${username}`, headers)
@@ -314,6 +321,7 @@ module.exports = {
   projectPath,
   encodedProjectPath,
   getRootHeaders,
+  curlAuthFlags,
   createProject,
   deleteProject,
   listProjectBranches,

@@ -20,6 +20,7 @@ const { runCommandWithResult } = require('./docker')
 const {
   BASE_URL,
   encodedProjectPath,
+  curlAuthFlags,
   createProjectRunner,
   deleteRunner,
   getPipeline,
@@ -173,9 +174,8 @@ function dumpFailedTraces (projectName, jobs, rootHeaders, svc) {
   const encoded = encodedProjectPath(projectName)
   for (const j of failed.slice(0, 3)) {
     // The trace endpoint returns raw text, not JSON — curl it directly.
-    const auth = rootHeaders.Authorization
     const tail = runCommandWithResult(
-      `curl -s -H 'Authorization: ${auth}' '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
+      `curl -s ${curlAuthFlags(rootHeaders)} '${BASE_URL}/api/v4/projects/${encoded}/jobs/${j.id}/trace' | tail -40`
     )
     console.log(`── trace tail of ${j.stage}/${j.name} (#${j.id}):\n${tail.stdout || tail.output || tail.stderr || ''}`)
   }
