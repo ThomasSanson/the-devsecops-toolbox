@@ -1,5 +1,6 @@
 /* global inject */
 const { I } = inject()
+const { getRootHeaders } = require('../support/helpers/gitlabApi')
 
 class GitLabProjectPage {
   constructor () {
@@ -8,14 +9,11 @@ class GitLabProjectPage {
     }
   }
 
+  // rootUser / rootPassword are still in the signature for the callers, but the
+  // API no longer takes them: GitLab 19 removed the OAuth password grant this
+  // used to trade them for a token. Admin auth now comes from getRootHeaders().
   async deleteProjectIfExists (baseUrl, rootUser, rootPassword, projectPath) {
-    const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-      grant_type: 'password',
-      username: rootUser,
-      password: rootPassword
-    })
-    const accessToken = tokenResponse.data.access_token
-    const headers = { Authorization: `Bearer ${accessToken}` }
+    const headers = await getRootHeaders()
 
     const encodedPath = encodeURIComponent(projectPath)
     // GitLab 18 deletes projects in two steps: DELETE marks the project for

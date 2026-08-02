@@ -1,4 +1,5 @@
 const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
+const { runCommand } = require('./docker')
 
 const BASE_URL = 'http://gitlab:80'
 
@@ -14,13 +15,38 @@ function encodedProjectPath (projectName) {
   return encodeURIComponent(projectPath(projectName))
 }
 
+// Admin credentials for every API call in this suite. GitLab 19 removed the
+// OAuth password grant, which is how this used to trade the root
+// password for a token over HTTP: the door is closed, and it is not coming
+// back. The one entrance left that needs no credential of its own is the
+// instance itself — mint an admin personal access token with `gitlab-rails
+// runner` inside the GitLab container, and send it as PRIVATE-TOKEN, the header
+// the rest of this suite already speaks (project tokens, CI variables, …).
+//
+// `runCommand`, not `runCommandWithResult`: the latter streams what it captures
+// to the job log, and a token does not belong there.
+//
+// ponytail: memoised per worker process. Booting Rails costs ~30 s, and nearly
+// every step asks for these headers; if that ever needs to be paid once per RUN
+// instead of once per worker, seed the token when the compose stack comes up
+// and read it from the environment here.
+let rootHeadersCache = null
+
 async function getRootHeaders () {
-  const tokenResponse = await freshPost(`${BASE_URL}/oauth/token`, {
-    grant_type: 'password',
-    username: process.env.TASK_GITLAB_ROOT_USER,
-    password: process.env.TASK_GITLAB_ROOT_PASSWORD
-  })
-  return { Authorization: `Bearer ${tokenResponse.data.access_token}` }
+  if (rootHeadersCache) return rootHeadersCache
+  const names = runCommand("docker ps --format '{{.Names}}' --filter 'name=gitlab'")
+  // `<project>-gitlab-1` is the GitLab service; `<project>-gitlab-runner-1` is
+  // its runner, and answers no API.
+  const service = names.split('\n').map(n => n.trim()).filter(n => /-gitlab-\d+$/.test(n))[0]
+  if (!service) throw new Error('the gitlab compose service is not running')
+  const ruby =
+    `puts User.find_by_username('${process.env.TASK_GITLAB_ROOT_USER}')` +
+    ".personal_access_tokens.create!(name: 'e2e-root', scopes: ['api'], expires_at: 30.days.from_now).token"
+  const token = runCommand(`docker exec ${service} gitlab-rails runner "${ruby}"`, { timeout: 300000 })
+    .split('\n').map(l => l.trim()).filter(Boolean).pop()
+  if (!token) throw new Error('could not mint an admin token inside the gitlab container')
+  rootHeadersCache = { 'PRIVATE-TOKEN': token }
+  return rootHeadersCache
 }
 
 // Idempotent: on a virgin GitLab (a fresh CI instance), the scenario asking

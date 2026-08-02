@@ -1,5 +1,6 @@
 /* global inject */
 const { I } = inject()
+const { getRootHeaders } = require('../support/helpers/gitlabApi')
 
 class GitLabUserPage {
   constructor () {
@@ -8,6 +9,9 @@ class GitLabUserPage {
     }
   }
 
+  // rootUser / rootPassword are still in the signature for the callers, but the
+  // API no longer takes them: GitLab 19 removed the OAuth password grant this
+  // used to trade them for a token. Admin auth now comes from getRootHeaders().
   async ensureUserViaApi (baseUrl, rootUser, rootPassword, userData) {
     // The test GitLab transiently answers 5xx under CI load (4-vCPU runner
     // shared with Chromium workers and scenario containers), so the whole
@@ -16,13 +20,7 @@ class GitLabUserPage {
     let lastError = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const tokenResponse = await I.sendPostRequest(`${baseUrl}/oauth/token`, {
-          grant_type: 'password',
-          username: rootUser,
-          password: rootPassword
-        })
-        const accessToken = tokenResponse.data.access_token
-        const headers = { Authorization: `Bearer ${accessToken}` }
+        const headers = await getRootHeaders()
 
         const existingUsers = await I.sendGetRequest(
           `${baseUrl}/api/v4/users?username=${userData.username}`,
