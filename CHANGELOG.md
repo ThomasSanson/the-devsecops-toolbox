@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 23.0.20 (2026-08-02)
+
+### Fix
+
+- **test**: freeze the random project name GitLab 19 now prints on every settings page
+- **test**: read the job traces with whatever header the admin credentials use
+- **test**: mint the suite's admin token inside GitLab, not through a removed grant
+- **deps**: update gitlab/gitlab-ce docker tag to v19
+
 ## 23.0.19 (2026-08-02)
 
 ### Fix
