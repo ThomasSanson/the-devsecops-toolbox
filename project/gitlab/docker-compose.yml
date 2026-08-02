@@ -64,7 +64,7 @@ services:
   # no-new-privileges omitted (it would break the docker CLI flow).
   gitlab-runner:
     # renovate: datasource=docker depName=gitlab/gitlab-runner
-    image: gitlab/gitlab-runner:v18.11.4
+    image: gitlab/gitlab-runner:v19.2.1
     restart: unless-stopped
     profiles: ["debug", "dev", "local", "test"]
     cap_drop:
