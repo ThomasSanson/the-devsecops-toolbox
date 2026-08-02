@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.17 (2026-08-02)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v21
+- **lint**: keep the repository's own waiver trailers readable to commitlint 21
+
 ## 23.0.16 (2026-08-01)
 
 ### Fix
