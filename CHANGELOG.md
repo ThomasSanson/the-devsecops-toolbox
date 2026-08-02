@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.18 (2026-08-02)
+
+### Fix
+
+- **test**: stop the crashed-release card from depending on which error the push died on
+
 ## 23.0.17 (2026-08-02)
 
 ### Fix
