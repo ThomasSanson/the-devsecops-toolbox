@@ -478,6 +478,18 @@ storyboardStep(Then, 'the project home now shows the change on main', async () =
   sh('git fetch origin main', dir)
   const mainReadme = sh('git show origin/main:README.md', dir)
   if (!mainReadme.includes(README_LINE)) throw new Error('Expected README on main to carry the developer line')
+  // The merge starts main's own pipeline, whose release job pushes a
+  // `build: bump version …` commit on top of the developer's. The card was
+  // photographing whichever of the two happened to be there — a coin flip
+  // between two legitimate pages. Wait for main to have finished moving.
+  let tip = ''
+  for (let i = 0; i < 60; i++) {
+    sh('git fetch origin main', dir)
+    tip = sh('git log -1 --format=%s origin/main', dir).trim()
+    if (/^build: bump version/.test(tip)) break
+    await I.wait(5)
+  }
+  if (!/^build: bump version/.test(tip)) throw new Error(`Expected the release to have bumped main, tip is: ${tip}`)
   I.resizeWindow(1024, 640)
   await I.amOnPage(`/${projectPath(PROJECT_NAME)}`)
   await I.waitForText(COMMIT_SUBJECT, 30)

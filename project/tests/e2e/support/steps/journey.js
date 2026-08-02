@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then */
+/* global inject Before After Given When Then NodeFilter */
 // cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
 /**
  * E2E developer-journey scenarios.
@@ -877,8 +877,25 @@ function checkoutFeatureBranch (branch) {
 async function pageFrame (navigate, frameName, opts = {}) {
   I.resizeWindow(1024, opts.height || 640)
   await navigate()
+  await maskProjectName(global.journeyProjectName)
   await addStoryboardFrame(I, await capturePageFrame(I, frameName))
   I.resizeWindow(1024, 768)
+}
+
+// This story generates its project with a random suffix (e2e-journey-<hex>), and
+// GitLab 19 prints the project name in a breadcrumb above EVERY settings page —
+// a different card on every run. The page objects each mask their own volatile
+// bits; the name belongs to the story, so it is neutralised here, on the one
+// road every page card of this story takes.
+async function maskProjectName (projectName) {
+  if (!projectName) return
+  await I.executeScript((name) => {
+    const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    const nodes = []
+    while (walker.nextNode()) nodes.push(walker.currentNode)
+    nodes.forEach(n => { n.nodeValue = n.nodeValue.replace(pattern, 'project') })
+  }, projectName)
 }
 
 // The full masked merge-request overview page — the whole GitLab view a
