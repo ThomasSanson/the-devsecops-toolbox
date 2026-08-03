@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.21 (2026-08-03)
+
+### Fix
+
+- **test**: keep the runner's own cleanup line out of the job-log cards
+- **deps**: update gitlab/gitlab-runner docker tag to v19
+
 ## 23.0.20 (2026-08-02)
 
 ### Fix
