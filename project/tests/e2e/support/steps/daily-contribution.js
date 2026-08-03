@@ -60,6 +60,7 @@ const {
   maskPipelinePage
 } = require('../helpers/pipelineRunner')
 const { runTaskInRepo } = require('../helpers/workspaceRepo')
+const { freshGet } = require('../helpers/http')
 const { runCommandWithResult } = require('../helpers/docker')
 const { renderProject } = require('../helpers/copierRender')
 const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
@@ -315,6 +316,21 @@ storyboardStep(When, 'the developer creates the merge request from the issue and
   )
   if (mr.status >= 400) throw new Error(`Failed to open the merge request (status ${mr.status}): ${JSON.stringify(mr.data)}`)
   global.dailyMrIid = mr.data.iid
+  // GitLab links "Closes #N" to the issue asynchronously: until it has, the
+  // sidebar files the issue under "Mentioned" rather than "Closing", and the
+  // card catches whichever state the page happened to be in. Waiting for the
+  // link is also the plainest proof that this merge request closes the ticket.
+  let closing = []
+  for (let i = 0; i < 30; i++) {
+    const res = await freshGet(
+      `${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/merge_requests/${global.dailyMrIid}/closes_issues`,
+      lambdaHeaders
+    )
+    closing = res.data || []
+    if (closing.length > 0) break
+    await I.wait(2)
+  }
+  if (closing.length === 0) throw new Error('Expected the merge request to be closing the issue')
   // Wide enough for GitLab to unfold the right sidebar — the card must show
   // the Assignee the developer just took.
   I.resizeWindow(1280, 700)

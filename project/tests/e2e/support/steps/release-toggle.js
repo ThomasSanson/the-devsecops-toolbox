@@ -395,6 +395,12 @@ storyboardStep(When, "GitLab's after_script re-locks the main branch even though
     const idx = lineEls.findIndex(l => /Running after[ _]script/i.test(l.textContent))
     if (idx > 2) lineEls.slice(0, idx - 3).forEach(l => { l.style.display = 'none' })
     document.querySelectorAll('.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(e => { e.style.display = 'none' })
+    // Same as the gate's card: gitlab-runner 19 ends the job with "Possibly
+    // zombie container runner-<token>--project-…-docker-0 is disconnected from
+    // network …". Runner housekeeping, named after a token minted per run.
+    lineEls.forEach(l => {
+      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
+    })
     // The last line of any failed job is "ERROR: Job failed: exit code N", and
     // N is whatever the RUNNER decided to report — it moved from 1 to 201 on a
     // routine gitlab-runner bump, with nothing about this story changing. What

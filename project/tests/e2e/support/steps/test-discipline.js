@@ -165,6 +165,14 @@ async function captureGateJobFrame (jobId, frameName, height, opts = {}) {
     document.querySelectorAll(
       '.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]'
     ).forEach(el => { el.style.display = 'none' })
+    // gitlab-runner 19 signs off with a cleanup line of its own — "Possibly
+    // zombie container runner-<token>--project-…-docker-0 is disconnected from
+    // network …" — naming a container built from the runner token this story
+    // registers fresh every run. It is the runner tidying up after itself, not
+    // the gate speaking, and it appears or not depending on the runner version.
+    lines.forEach(l => {
+      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
+    })
     const log = document.querySelector('[data-testid="job-log-content"]')
     if (!log) return
     const walker = document.createTreeWalker(log, NodeFilter.SHOW_TEXT)
