@@ -18,6 +18,10 @@ paths = [
   # Build/cache/vendor trees: no first-party source to scan.
   '''(^|/)\.cache/''',
   '''(^|/)tmp/''',
+  # Test-run artifacts (install logs, diagnostics, screenshots): throwaway
+  # tokens from the disposable GitLab the suite boots, in untracked files.
+  '''(^|/)_output/''',
+  '''(^|/)\.diagnostics/''',
   '''(^|/)megalinter-reports/''',
   '''(^|/)node_modules/''',
   '''(^|/)venv/'''

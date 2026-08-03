@@ -47,6 +47,21 @@ COPYPASTE_JSCPD_CONFIG_FILE: .config/jscpd/config.json
 GHERKIN_GHERKIN_LINT_CONFIG_FILE: .config/gherkin-lint/config.json
 REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
 REPOSITORY_GITLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
+# betterleaks is gitleaks' successor by the same author and reads the same
+# config, so both secret scanners answer to ONE allowlist instead of drifting
+# apart. It differs on one point: `betterleaks dir` walks the working tree,
+# untracked files included, where `gitleaks detect` only sees what git tracks —
+# hence the generated-artifact paths in that allowlist.
+REPOSITORY_BETTERLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
+# osv-scanner reads a lock file as it is, but for a bare requirements.txt
+# it RESOLVES a dependency tree of its own and reports vulnerabilities in it.
+# The pinned CLIs here (copier, lizard, commitizen, yamllint) are one line each
+# and are installed by uv, which resolves at run time — so that invented tree
+# reported CVEs on a pygments nobody installs. Scan what the repository really
+# pins; the lock files (npm, and any future poetry/uv lock) are still read in
+# full.
+REPOSITORY_OSV_SCANNER_ARGUMENTS:
+  - "--no-resolve"
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
 REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_KINGFISHER_ARGUMENTS:
