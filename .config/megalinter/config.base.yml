@@ -19,12 +19,11 @@ APPLY_FIXES:
   - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
-  # betterleaks replaces gitleaks here: same author, same rules, same config,
-  # and MegaLinter deprecated gitleaks in its favour in 9.6. Running both meant
-  # scanning the repository twice for the same secrets and keeping two verdicts
-  # in step forever. The gitleaks BINARY still has its own job — `task
-  # gitleaks:scan-branch` in CI and the pre-commit hook — which is a separate
-  # decision from which scanner MegaLinter runs.
+  # MegaLinter deprecated gitleaks in 9.6 in favour of betterleaks — same author,
+  # same rules, same config format — and this framework followed it everywhere:
+  # the standalone scan (`task betterleaks:scan-branch`, the `code:betterleaks`
+  # job) and the pre-commit hook run betterleaks too. One scanner, one verdict,
+  # one allowlist.
   - REPOSITORY_GITLEAKS
   - JSON_V8R
   - YAML_V8R
@@ -53,12 +52,12 @@ ANSIBLE_ANSIBLE_LINT_CONFIG_FILE: .config/ansible-lint/config.yaml
 COPYPASTE_JSCPD_CONFIG_FILE: .config/jscpd/config.json
 GHERKIN_GHERKIN_LINT_CONFIG_FILE: .config/gherkin-lint/config.json
 REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
-# betterleaks reads gitleaks' config format, so it inherits the allowlist the
-# repository already curated — the file keeps its name as long as the gitleaks
+# betterleaks reads betterleaks' config format, so it inherits the allowlist the
+# repository already curated — the file keeps its name as long as the betterleaks
 # binary uses it too. One difference to know: `betterleaks dir` walks the
-# working tree, untracked files included, where `gitleaks detect` sees only what
+# working tree, untracked files included, where `betterleaks detect` sees only what
 # git tracks — hence the generated-artifact paths in that allowlist.
-REPOSITORY_BETTERLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
+REPOSITORY_BETTERLEAKS_CONFIG_FILE: .config/betterleaks/config.toml
 # osv-scanner reads a lock file as it is, but for a bare requirements.txt
 # it RESOLVES a dependency tree of its own and reports vulnerabilities in it.
 # The pinned CLIs here (copier, lizard, commitizen, yamllint) are one line each
@@ -73,7 +72,7 @@ REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_KINGFISHER_ARGUMENTS:
   # Generated storyboards embed their screenshots as base64, and a random chunk
   # of that payload eventually matches an entropy rule (it matched "crates.io
-  # API Key" on 2026-07-25). Gitleaks still scans these files, so the path keeps
+  # API Key" on 2026-07-25). Betterleaks still scans these files, so the path keeps
   # a secret scanner on it.
   - "--exclude=project/tests/e2e/storyboards"
   - "--exclude=.ansible"

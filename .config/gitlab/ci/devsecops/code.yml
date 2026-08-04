@@ -61,11 +61,11 @@ code:renovate-validate:
     - task renovate:validate
   <<: *code_rules
 
-code:gitleaks:
+code:betterleaks:
   stage: code
   needs: []
   script:
-    - task gitleaks:scan-branch
+    - task betterleaks:scan-branch
   <<: *code_rules
 
 code:megalinter:
@@ -114,7 +114,7 @@ code:all:
     - code:commitizen-bump-dry
     - code:commitizen-check
     - code:commitlint
-    - code:gitleaks
+    - code:betterleaks
     - code:lizard
     - code:megalinter
     - code:project

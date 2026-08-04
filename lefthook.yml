@@ -1,8 +1,8 @@
 ---
 pre-commit:
   commands:
-    gitleaks:
-      run: task gitleaks:protect
+    betterleaks:
+      run: task betterleaks:protect
 
 commit-msg:
   commands:

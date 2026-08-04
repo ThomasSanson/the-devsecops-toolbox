@@ -1,0 +1,206 @@
+---
+version: "3"
+
+vars:
+  TASK_BETTERLEAKS_ENABLED: '{{.TASK_BETTERLEAKS_ENABLED | default "true"}}'
+  TASK_BETTERLEAKS_IMAGE: '{{.TASK_BETTERLEAKS_IMAGE | default "ghcr.io/betterleaks/betterleaks:latest"}}'
+  TASK_BETTERLEAKS_CONFIG: '{{.TASK_BETTERLEAKS_CONFIG | default ".config/betterleaks/config.toml"}}'
+  TASK_BETTERLEAKS_VERBOSE: '{{.TASK_BETTERLEAKS_VERBOSE | default "true"}}'
+  TASK_BETTERLEAKS_CONTAINER_NAME: '{{.TASK_BETTERLEAKS_CONTAINER_NAME | default "betterleaks-container"}}'
+
+  # The repository is copied INTO the container, so its files belong to another
+  # uid than the non-root user betterleaks' image runs as, and git refuses to
+  # read it ("detected dubious ownership"). The exception is injected into the
+  # scanning process itself: `git config --global` would land in whatever HOME
+  # `docker exec` happens to get, which is not the one betterleaks reads.
+  SAFE_DIR_ENV: '-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/path'
+
+  # Proxy forwarding (transparent: only set if proxy env vars exist)
+  TASK_BETTERLEAKS_PROXY_ARGS:
+    sh: |
+      args=""
+      [ -n "${HTTP_PROXY:-}" ] && args="$args -e HTTP_PROXY=$HTTP_PROXY"
+      [ -n "${HTTPS_PROXY:-}" ] && args="$args -e HTTPS_PROXY=$HTTPS_PROXY"
+      [ -n "${NO_PROXY:-}" ] && args="$args -e NO_PROXY=$NO_PROXY"
+      [ -n "${http_proxy:-}" ] && args="$args -e http_proxy=$http_proxy"
+      [ -n "${https_proxy:-}" ] && args="$args -e https_proxy=$https_proxy"
+      [ -n "${no_proxy:-}" ] && args="$args -e no_proxy=$no_proxy"
+      echo "$args"
+
+tasks:
+  default:
+    desc: Scan the repository for secrets using betterleaks (full scan).
+    deps:
+      - scan-full
+    summary: |
+      ℹ️ Description:
+        Runs betterleaks in detect mode to scan the entire repository for secrets.
+
+      🔧 Variables:
+        - TASK_BETTERLEAKS_ENABLED: Enable or disable betterleaks. Default: "true"
+        - TASK_BETTERLEAKS_IMAGE: Docker image for betterleaks. Default: "ghcr.io/betterleaks/betterleaks:latest"
+        - TASK_BETTERLEAKS_CONFIG: Path to betterleaks configuration file. Default: ".config/betterleaks/config.toml"
+        - TASK_BETTERLEAKS_VERBOSE: Enable verbose output. Default: "true"
+
+      🔄 Execution:
+        Runs betterleaks detect on the entire repository.
+
+      📝 Note:
+        This task is part of the CODE phase of DevSecOps.
+
+  scan-full:
+    desc: Scan the entire repository for secrets (full scan).
+    summary: |
+      ℹ️ Description:
+        Performs a full scan of the repository to detect secrets.
+
+      🔄 Execution:
+        Runs betterleaks detect command on the entire repository.
+    status:
+      - test "{{.TASK_BETTERLEAKS_ENABLED}}" = "false"
+    vars:
+      VERBOSE_FLAG: '{{if eq .TASK_BETTERLEAKS_VERBOSE "true"}}-v{{else}}{{end}}'
+      RED: '\033[0;31m'
+      GREEN: '\033[0;32m'
+      YELLOW: '\033[1;33m'
+      NC: '\033[0m' # No Color
+    cmds:
+      - cmd: echo "🔍 Scanning repository for secrets with betterleaks"
+        silent: true
+      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - docker cp {{.ROOT_DIR}}/. {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+      - cmd: |
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+            betterleaks dir "/path" \
+            --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
+            {{.VERBOSE_FLAG}}; then
+            echo -e "{{.RED}}❌ Betterleaks detected secrets in your code!{{.NC}}"
+            echo -e "{{.YELLOW}}⚠️  Please remove any secrets and use environment variables instead.{{.NC}}"
+            exit 1
+          fi
+        silent: true
+      - cmd: echo "🎉 No secrets detected by betterleaks."
+        silent: true
+
+  protect:
+    desc: Scan staged files for secrets (pre-commit hook).
+    summary: |
+      ℹ️ Description:
+        Scans only staged files for secrets before committing.
+        This is optimized for pre-commit hooks.
+
+      🔄 Execution:
+        Runs betterleaks protect command on staged files.
+
+      📝 Note:
+        This task is designed for use with git hooks (pre-commit).
+    status:
+      - test "{{.TASK_BETTERLEAKS_ENABLED}}" = "false"
+    vars:
+      VERBOSE_FLAG: '{{if eq .TASK_BETTERLEAKS_VERBOSE "true"}}-v{{else}}{{end}}'
+      RED: '\033[0;31m'
+      GREEN: '\033[0;32m'
+      YELLOW: '\033[1;33m'
+      NC: '\033[0m' # No Color
+    cmds:
+      - cmd: echo "🔍 Scanning staged files for secrets with betterleaks"
+        silent: true
+      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - docker cp {{.ROOT_DIR}}/. {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+      - cmd: |
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+            betterleaks git "/path" \
+            --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
+            --staged \
+            {{.VERBOSE_FLAG}}; then
+            echo -e "{{.RED}}❌ Betterleaks detected secrets in your staged files!{{.NC}}"
+            echo -e "{{.YELLOW}}⚠️  Please remove any secrets before committing.{{.NC}}"
+            echo -e "To skip this check (NOT RECOMMENDED), use: git commit --no-verify"
+            exit 1
+          fi
+        silent: true
+      - cmd: echo "🎉 No secrets detected in staged files."
+        silent: true
+
+  scan-branch:
+    desc: Scan only branch commits for secrets (incremental scan).
+    summary: |
+      ℹ️ Description:
+        Scans only the commits of the current branch since its divergence from the base branch.
+        This is an incremental scan, optimised for speed (local or CI/CD).
+        Uses pure Git commands to detect the merge-base automatically.
+
+      🔄 Execution:
+        1. Ensures the base branch is fetched (shallow clone support)
+        2. Uses git merge-base to find the divergence point
+        3. Runs betterleaks detect only on branch commits
+
+      🔧 Variables:
+        - TASK_BETTERLEAKS_BASE_BRANCH: Base branch name. Default: "main"
+
+      📝 Note:
+        Useful for local development and CI/CD pipelines.
+        The base branch must exist in the repository.
+    status:
+      - test "{{.TASK_BETTERLEAKS_ENABLED}}" = "false"
+    vars:
+      VERBOSE_FLAG: '{{if eq .TASK_BETTERLEAKS_VERBOSE "true"}}-v{{else}}{{end}}'
+      BASE_BRANCH: '{{.TASK_BETTERLEAKS_BASE_BRANCH | default "main"}}'
+      RED: '\033[0;31m'
+      GREEN: '\033[0;32m'
+      YELLOW: '\033[1;33m'
+      NC: '\033[0m' # No Color
+    cmds:
+      - cmd: echo "🔍 Preparing Git repository for betterleaks scan"
+        silent: true
+      # Ensure we have the base branch (for shallow clones in CI)
+      - cmd: |
+          if ! git rev-parse --verify origin/{{.BASE_BRANCH}} >/dev/null 2>&1; then
+            echo "📥 Fetching base branch: {{.BASE_BRANCH}}"
+            git fetch --depth=100 origin {{.BASE_BRANCH}}:refs/remotes/origin/{{.BASE_BRANCH}} 2>/dev/null || true
+          fi
+        silent: false
+      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
+      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - cmd: |
+          docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} mkdir -p /path
+          (
+            env printf '.git\0'
+            git ls-files -z --cached --others --exclude-standard
+          ) | tar --null -T - -cf - | docker cp - {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+        silent: true
+      # Find merge-base and scan only branch commits
+      - cmd: |
+          MERGE_BASE=$(docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} git merge-base origin/{{.BASE_BRANCH}} HEAD 2>/dev/null || echo "origin/{{.BASE_BRANCH}}")
+          echo "🔍 Scanning commits from ${MERGE_BASE} to HEAD"
+
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+            betterleaks git "/path" \
+            --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
+            --log-opts="${MERGE_BASE}..HEAD" \
+            {{.VERBOSE_FLAG}}; then
+            echo -e "{{.RED}}❌ Betterleaks detected secrets in your branch commits!{{.NC}}"
+            echo -e "{{.YELLOW}}⚠️  Please remove any secrets from the commits.{{.NC}}"
+            exit 1
+          fi
+        silent: true
+      - cmd: echo "🎉 No secrets detected in branch commits."
+        silent: true
+
+  proxy:debug:
+    desc: 🔍 Display resolved proxy arguments for debugging
+    summary: |
+      ℹ️ Description:
+        Displays the proxy arguments that would be passed to Betterleaks Docker containers.
+        Useful for verifying proxy configuration without running Betterleaks.
+
+      🔄 Execution:
+        Echoes resolved TASK_BETTERLEAKS_PROXY_ARGS
+    cmds:
+      - cmd: echo "PROXY_ARGS={{.TASK_BETTERLEAKS_PROXY_ARGS}}"
+        silent: true

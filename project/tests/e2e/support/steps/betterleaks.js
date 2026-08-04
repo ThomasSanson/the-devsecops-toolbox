@@ -1,6 +1,6 @@
 /* global inject Before After Given When Then */
 /**
- * Gitleaks secret-scanning storyboard — the whole security promise as ONE
+ * Betterleaks secret-scanning storyboard — the whole security promise as ONE
  * developer journey: an ordinary branch stays green, a committed secret gets
  * blocked and named, a secret kept out of git's view via .gitignore never
  * reaches the scanner. ONE Gherkin sentence = ONE storyboard card = ONE
@@ -8,10 +8,10 @@
  * card twins its <pre> frame with a programmatic assert of the same fact
  * (exit code / captured output).
  *
- * The gitleaks Taskfile uses the docker run/cp/exec pattern (no bind mounts),
+ * The betterleaks Taskfile uses the docker run/cp/exec pattern (no bind mounts),
  * so the scan works from inside the codeceptjs runner through the mounted
  * docker socket. The container name is randomized per scan because the
- * Taskfile default (gitleaks-container) would collide across parallel
+ * Taskfile default (betterleaks-container) would collide across parallel
  * workers. Three situations share the scenario, each on its OWN fresh
  * rendered project/branch (renderProject + git init): scan-branch scans the
  * WHOLE branch history since main, so a later commit must never bleed into
@@ -42,32 +42,32 @@ const TEST_PRIVATE_KEY_SECRET = [
 const VERDICT_RES = [
   /^🔍 Scanning commits from /,
   /^🎉 No secrets detected in branch commits\.$/,
-  /^❌ Gitleaks detected secrets in your branch commits!$/,
+  /^❌ Betterleaks detected secrets in your branch commits!$/,
   /^⚠️ {2}Please remove any secrets from the commits\.$/
 ]
 
 let projectDir = null
 let scanResult = null
 let cleanupDirs = []
-let gitleaksContainer = null
+let betterleaksContainer = null
 
 Before(() => {
   projectDir = null
   scanResult = null
   cleanupDirs = []
-  gitleaksContainer = null
+  betterleaksContainer = null
 })
 
 After(() => {
   cleanupDirs.forEach(removeRendered)
   cleanupDirs = []
-  if (gitleaksContainer) {
+  if (betterleaksContainer) {
     try {
-      execSync(`docker rm -f ${gitleaksContainer}`, { stdio: 'pipe' })
+      execSync(`docker rm -f ${betterleaksContainer}`, { stdio: 'pipe' })
     } catch (_) {
       // Already removed by the Taskfile defer.
     }
-    gitleaksContainer = null
+    betterleaksContainer = null
   }
 })
 
@@ -93,13 +93,13 @@ function newProject () {
 }
 
 function runScan () {
-  gitleaksContainer = `gitleaks-e2e-${crypto.randomBytes(4).toString('hex')}`
+  betterleaksContainer = `betterleaks-e2e-${crypto.randomBytes(4).toString('hex')}`
   const env = {
     ...process.env,
-    TASK_GITLEAKS_CONTAINER_NAME: gitleaksContainer
+    TASK_BETTERLEAKS_CONTAINER_NAME: betterleaksContainer
   }
   try {
-    const output = execSync('task gitleaks:scan-branch 2>&1', {
+    const output = execSync('task betterleaks:scan-branch 2>&1', {
       cwd: projectDir,
       encoding: 'utf8',
       stdio: 'pipe',
@@ -119,7 +119,7 @@ function runScan () {
 function assertContains (output, expected) {
   const cleaned = stripAnsiEscapeSequences(output)
   if (!cleaned.includes(expected)) {
-    throw new Error(`Expected gitleaks output to contain "${expected}"\n${cleaned}`)
+    throw new Error(`Expected betterleaks output to contain "${expected}"\n${cleaned}`)
   }
 }
 
@@ -173,7 +173,7 @@ function verdictText (output) {
     .filter(line => VERDICT_RES.some(re => re.test(line)))
     .map(line => line.replace(/[0-9a-f]{7,40}/g, '<sha>'))
   if (lines.length === 0) {
-    throw new Error(`No gitleaks verdict lines found in output:\n${output}`)
+    throw new Error(`No betterleaks verdict lines found in output:\n${output}`)
   }
   return lines.join('\n')
 }
@@ -204,7 +204,7 @@ storyboardStep(When, 'the developer commits ordinary tracked, untracked and igno
 storyboardStep(Then, 'the scan finds nothing to report', async () => {
   const res = runScan()
   if (res.exitCode !== 0) {
-    throw new Error(`Expected gitleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)
+    throw new Error(`Expected betterleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)
   }
   assertContains(res.output, 'No secrets detected in branch commits.')
   await renderPreFrame(I, 'verdict-clean', verdictText(res.output))
@@ -226,9 +226,9 @@ storyboardStep(When, 'the developer accidentally commits a private key to the br
 storyboardStep(Then, 'the scan blocks it and names the leak', async () => {
   const res = runScan()
   if (res.exitCode === 0) {
-    throw new Error(`Expected gitleaks scan-branch to fail, but it succeeded\n${res.output}`)
+    throw new Error(`Expected betterleaks scan-branch to fail, but it succeeded\n${res.output}`)
   }
-  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
   await renderPreFrame(I, 'verdict-blocked', verdictText(res.output))
 })
 
@@ -251,9 +251,9 @@ storyboardStep(When, 'the developer commits a secret inside a secrets.yaml the s
 storyboardStep(Then, 'the scan blocks it too, now the allowlist no longer skips secrets files', async () => {
   const res = runScan()
   if (res.exitCode === 0) {
-    throw new Error(`Expected gitleaks to block a secret in secrets.yaml, but the scan passed\n${res.output}`)
+    throw new Error(`Expected betterleaks to block a secret in secrets.yaml, but the scan passed\n${res.output}`)
   }
-  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
   await renderPreFrame(I, 'verdict-secrets-blocked', verdictText(res.output))
 })
 
@@ -275,7 +275,7 @@ storyboardStep(When, 'the developer keeps a second secret out of the scan by git
 storyboardStep(Then, 'the scan passes silently, the ignored secret stays out of sight', async () => {
   const res = runScan()
   if (res.exitCode !== 0) {
-    throw new Error(`Expected gitleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)
+    throw new Error(`Expected betterleaks scan-branch to succeed, exit=${res.exitCode}\n${res.output}`)
   }
   assertContains(res.output, 'No secrets detected in branch commits.')
   await renderPreFrame(I, 'verdict-silent', verdictText(res.output))
@@ -294,7 +294,7 @@ storyboardStep(Given, 'a committed private key is blocking a fresh branch', asyn
   if (res.exitCode === 0) {
     throw new Error(`Expected the committed secret to block the branch, but the scan passed\n${res.output}`)
   }
-  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
   await renderPreFrame(I, 'block-recall', verdictText(res.output))
 })
 
@@ -316,7 +316,7 @@ storyboardStep(Then, 'the scan still refuses the branch because the secret stays
   if (res.exitCode === 0) {
     throw new Error(`Expected the scan to still fail after a naive delete, but it passed\n${res.output}`)
   }
-  assertContains(res.output, 'Gitleaks detected secrets in your branch commits!')
+  assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
   await renderPreFrame(I, 'trap-still-blocked', verdictText(res.output))
 })
 

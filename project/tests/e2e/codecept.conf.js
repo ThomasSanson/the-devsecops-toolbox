@@ -84,7 +84,7 @@ exports.config = {
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/update-conflict.js',
-      './support/steps/gitleaks.js',
+      './support/steps/betterleaks.js',
       './support/steps/installer-prereqs.js',
       './support/steps/installer-refusals.js',
       './support/steps/guidance-variants.js',

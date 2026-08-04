@@ -18,6 +18,6 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The developer runs the project's whole linter suite (task megalinter, the same command the CI code stage runs) on the untouched scaffold. It comes back green: MegaLinter exits 0, so the gate passes.
     # Copy: task megalinter
     When the developer runs the whole linter suite on it
-    # Note: The secret and dependency scanners (gitleaks, trivy, trufflehog, grype) all report zero findings, so the scaffold has nothing leaking and no known-vulnerable dependency out of the box.
+    # Note: The secret and dependency scanners (betterleaks, trivy, trufflehog, grype) all report zero findings, so the scaffold has nothing leaking and no known-vulnerable dependency out of the box.
     # Copy: task megalinter
     Then the secret and dependency scanners all come back clean

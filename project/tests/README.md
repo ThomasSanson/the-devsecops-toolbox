@@ -113,7 +113,7 @@ This writes the element-cropped actuals over `screenshots/base/` instead of asse
 
 ## Former legacy suites — `bootstrap/`, `gitlab/`, `template/`
 
-The legacy suites were DELETED after their load-bearing coverage was ported into `e2e/` (template rendering matrix, copier update, gitleaks detection, installer prerequisite paths, init-guidance and auth scenarios). They remain recoverable from git history if a reference is ever needed.
+The legacy suites were DELETED after their load-bearing coverage was ported into `e2e/` (template rendering matrix, copier update, betterleaks detection, installer prerequisite paths, init-guidance and auth scenarios). They remain recoverable from git history if a reference is ever needed.
 
 ## Operational helpers
 

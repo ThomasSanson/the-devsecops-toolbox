@@ -13,7 +13,7 @@ tasks:
       - cmd: echo "🔄 Starting code phase"
         silent: true
       - task: :project:code
-      - task: :gitleaks:scan-branch
+      - task: :betterleaks:scan-branch
       - task: :commitlint
       - task: :commitizen:check
       - task: :commitizen:bump

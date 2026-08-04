@@ -54,7 +54,7 @@
 │   │   ├── Taskfile.monitor.yml
 │   │   └── Taskfile.feedback.yml
 │   ├── docker-ce/             # Docker build/push
-│   ├── gitleaks/              # Secret scanning
+│   ├── betterleaks/              # Secret scanning
 │   ├── gitlab/ci/             # GitLab CI configuration
 │   ├── helm/                  # Helm chart management
 │   ├── k3d/                   # Local Kubernetes cluster
@@ -89,8 +89,8 @@ task devsecops:plan            # DevSecOps plan phase
 ### 💻 Code
 ```bash
 task code                      # Run all code tasks
-task gitleaks:scan-branch      # Scan branch for secrets
-task gitleaks:protect          # Pre-commit secret scan
+task betterleaks:scan-branch      # Scan branch for secrets
+task betterleaks:protect          # Pre-commit secret scan
 task commitlint                # Validate commit messages
 task commitizen:check          # Check commitizen compliance
 task commitizen:bump           # Bump version (dry-run)
@@ -206,7 +206,7 @@ Features are organized by journey act: `01-install/` (installer, agent-mode, fre
 | `release-toggle.js`    | task release protection-window steps        |
 | `glab-auth-ensure.js`  | glab auth guidance steps                    |
 | `template-matrix.js`   | Copier rendering matrix + update steps      |
-| `gitleaks.js`          | Secret-scanning steps                       |
+| `betterleaks.js`          | Secret-scanning steps                       |
 | `installer-prereqs.js` | Bare-machine prerequisite steps             |
 
 **Helpers**: `project/tests/e2e/support/helpers/`
@@ -266,7 +266,7 @@ task project:test:e2e -- --grep "@render-matrix"
 ### Naming
 - **Task prefix**: `TASK_` for all environment variables
 - **Phase tasks**: `devsecops:{phase}` (e.g., `devsecops:code`)
-- **Tool tasks**: `{tool}:{action}` (e.g., `gitleaks:protect`)
+- **Tool tasks**: `{tool}:{action}` (e.g., `betterleaks:protect`)
 - **Project tasks**: `project:{phase}` (e.g., `project:build`)
 
 ### Paths
@@ -303,7 +303,7 @@ Files ending in `.jinja` are Copier templates:
 
 | Tool           | Purpose            | Config                          |
 |----------------|--------------------|---------------------------------|
-| **Gitleaks**   | Secret scanning    | `.config/gitleaks/config.toml`  |
+| **Betterleaks**   | Secret scanning    | `.config/betterleaks/config.toml`  |
 | **MegaLinter** | Multi-linter       | `.config/megalinter/config.yml` |
 | **Grype**      | Vulnerability scan | `.config/grype/config.yml`      |
 | **Trivy**      | Container security | `.config/trivy/config.yml`      |

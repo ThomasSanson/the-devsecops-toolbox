@@ -64,8 +64,8 @@ includes:
   git:
     taskfile: .config/git/Taskfile.yml
     optional: true
-  gitleaks:
-    taskfile: .config/gitleaks/Taskfile.yml
+  betterleaks:
+    taskfile: .config/betterleaks/Taskfile.yml
     optional: true
   glab:
     taskfile: .config/glab/Taskfile.yml

@@ -50,13 +50,13 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Copy: git status --short --ignored
     When the developer commits ordinary tracked, untracked and ignored files
     # Note: scan-branch runs clean and prints "No secrets detected in branch commits."
-    # Copy: task gitleaks:scan-branch
+    # Copy: task betterleaks:scan-branch
     Then the scan finds nothing to report
     # Note: A fresh project (its own branch history): a fake RSA private key lands in a tracked file and gets committed like any other change.
     # Copy: cat tracked-secret.pem
     When the developer accidentally commits a private key to the branch
-    # Note: scan-branch fails and prints "Gitleaks detected secrets in your branch commits!"
-    # Copy: task gitleaks:scan-branch
+    # Note: scan-branch fails and prints "Betterleaks detected secrets in your branch commits!"
+    # Copy: task betterleaks:scan-branch
     Then the scan blocks it and names the leak
     # Note: A different trap the scanner used to fall into: its allowlist told it to skip every .env file AND secrets.yaml, exactly the files where a real key or token is most likely to sit. Here a private key is force-committed inside a file literally named secrets.yaml.
     When the developer commits a secret inside a secrets.yaml the scanner used to ignore
@@ -66,21 +66,21 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Copy: git diff -- .gitignore
     When the developer keeps a second secret out of the scan by gitignoring the file it lives in
     # Note: scan-branch runs clean again and prints the same "No secrets detected in branch commits." line — the gitignored key was never part of what it scanned.
-    # Copy: task gitleaks:scan-branch
+    # Copy: task betterleaks:scan-branch
     Then the scan passes silently, the ignored secret stays out of sight
     # Chapter: Getting out of a secret block
     # Note: A fresh project on its own branch with a private key already committed: the scan already refuses the branch. This is where a stuck developer starts.
-    # Copy: task gitleaks:scan-branch
+    # Copy: task betterleaks:scan-branch
     Given a committed private key is blocking a fresh branch
     # Note: The obvious first reflex: delete the file and commit the deletion. It removes the key from the latest version, but the earlier commit that added it is still in the branch history.
     # Copy: git rm tracked-secret.pem && git commit -m "chore: remove the secret file"
     When the developer deletes the secret file and commits the removal
     # Note: The scan reads the whole branch history since main, not just the latest files. It still finds the key in the commit that added it, so deleting the file did not help. This is the trap.
-    # Copy: task gitleaks:scan-branch
+    # Copy: task betterleaks:scan-branch
     Then the scan still refuses the branch because the secret stays in its history
     # Note: task git:clean-secrets removes the file from every commit in the branch history, not just the latest one, and rewrites the branch. The destructive-operation prompt is answered with yes.
     # Copy: task git:clean-secrets -- tracked-secret.pem
     When the developer rewrites the history with the framework's clean-secrets task
     # Note: With the key gone from every commit, the scan passes: "No secrets detected in branch commits." The branch the scan was blocking is safe to push now.
-    # Copy: task gitleaks:scan-branch
+    # Copy: task betterleaks:scan-branch
     Then the scan comes back clean and the branch is safe to push
