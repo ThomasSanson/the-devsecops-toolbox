@@ -20,6 +20,13 @@ APPLY_FIXES:
   - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
+  # betterleaks replaces gitleaks here: same author, same rules, same config,
+  # and MegaLinter deprecated gitleaks in its favour in 9.6. Running both meant
+  # scanning the repository twice for the same secrets and keeping two verdicts
+  # in step forever. The gitleaks BINARY still has its own job — `task
+  # gitleaks:scan-branch` in CI and the pre-commit hook — which is a separate
+  # decision from which scanner MegaLinter runs.
+  - REPOSITORY_GITLEAKS
   - JSON_V8R
   - YAML_V8R
   - COPYPASTE_JSCPD
@@ -47,11 +54,9 @@ ANSIBLE_ANSIBLE_LINT_CONFIG_FILE: .config/ansible-lint/config.yaml
 COPYPASTE_JSCPD_CONFIG_FILE: .config/jscpd/config.json
 GHERKIN_GHERKIN_LINT_CONFIG_FILE: .config/gherkin-lint/config.json
 REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
-REPOSITORY_GITLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
-# betterleaks is gitleaks' successor by the same author and reads the same
-# config, so both secret scanners answer to ONE allowlist instead of drifting
-# apart. It differs on one point: `betterleaks dir` walks the working tree,
-# untracked files included, where `gitleaks detect` only sees what git tracks.
+# betterleaks reads gitleaks' config format, so it inherits the allowlist the
+# project already curated — the file keeps its name as long as the gitleaks
+# binary uses it too.
 REPOSITORY_BETTERLEAKS_CONFIG_FILE: .config/gitleaks/config.toml
 # osv-scanner reads a lock file as it is, but for a bare requirements.txt it
 # RESOLVES a dependency tree of its own and reports vulnerabilities in it. The
