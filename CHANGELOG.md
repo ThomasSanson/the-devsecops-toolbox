@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 23.0.23 (2026-08-04)
+
+### Fix
+
+- **lint**: let betterleaks replace gitleaks inside MegaLinter, not stand beside it
+- **lint**: ship the new scanners' policy to generated projects too
+- **lint**: give MegaLinter 9.6's two new scanners the policy the others follow
+- **deps**: stop shipping the vulnerable halves of the test toolchain
+- **deps**: update oxsecurity/megalinter docker tag to v9.6.0
+
 ## 23.0.22 (2026-08-03)
 
 ### Fix
