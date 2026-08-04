@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.25 (2026-08-04)
+
+### Fix
+
+- **deps**: update dependency uuid to v14
+
 ## 23.0.24 (2026-08-04)
 
 ### Fix
