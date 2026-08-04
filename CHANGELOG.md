@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.27 (2026-08-04)
+
+### Fix
+
+- **deps**: update dependency diff to v9
+
 ## 23.0.26 (2026-08-04)
 
 ### Fix
