@@ -19,7 +19,7 @@ const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard
 const MEGALINTER_TIMEOUT = 900000
 const VERDICT_MARKER = 'correctly linted with megalinter'
 // The secret + dependency scanners whose green verdict this story asserts.
-const SECURITY_LINTERS = ['gitleaks', 'trivy', 'trufflehog', 'grype']
+const SECURITY_LINTERS = ['betterleaks', 'trivy', 'trufflehog', 'grype']
 
 let project
 let lintRun
