@@ -29,14 +29,14 @@ errors=0
 # codecept dir, i.e. the features/ parent).
 declare -A shard_files
 for entry in "${shard_entries[@]}"; do
-  IFS=',' read -ra paths <<< "$entry"
+  IFS=',' read -ra paths <<<"$entry"
   for p in "${paths[@]}"; do
     resolved="${FEATURES_DIR%/features}/${p#./}"
     if [ ! -f "$resolved" ]; then
       echo "❌ shard lists a missing file: $p"
       errors=$((errors + 1))
     fi
-    shard_files["$p"]=$(( ${shard_files["$p"]:-0} + 1 ))
+    shard_files["$p"]=$((${shard_files["$p"]:-0} + 1))
   done
 done
 

@@ -206,7 +206,7 @@ Features are organized by journey act: `01-install/` (installer, agent-mode, fre
 | `release-toggle.js`    | task release protection-window steps        |
 | `glab-auth-ensure.js`  | glab auth guidance steps                    |
 | `template-matrix.js`   | Copier rendering matrix + update steps      |
-| `betterleaks.js`          | Secret-scanning steps                       |
+| `betterleaks.js`       | Secret-scanning steps                       |
 | `installer-prereqs.js` | Bare-machine prerequisite steps             |
 
 **Helpers**: `project/tests/e2e/support/helpers/`
@@ -301,15 +301,15 @@ Files ending in `.jinja` are Copier templates:
 
 ## Security Tools Integrated
 
-| Tool           | Purpose            | Config                          |
-|----------------|--------------------|---------------------------------|
-| **Betterleaks**   | Secret scanning    | `.config/betterleaks/config.toml`  |
-| **MegaLinter** | Multi-linter       | `.config/megalinter/config.yml` |
-| **Grype**      | Vulnerability scan | `.config/grype/config.yml`      |
-| **Trivy**      | Container security | `.config/trivy/config.yml`      |
-| **KICS**       | IaC security       | `.config/kics/config.yml`       |
-| **DevSkim**    | Security linter    | `.config/devskim/config.json`   |
-| **Lefthook**   | Git hooks          | `lefthook.yml`                  |
+| Tool            | Purpose            | Config                            |
+|-----------------|--------------------|-----------------------------------|
+| **Betterleaks** | Secret scanning    | `.config/betterleaks/config.toml` |
+| **MegaLinter**  | Multi-linter       | `.config/megalinter/config.yml`   |
+| **Grype**       | Vulnerability scan | `.config/grype/config.yml`        |
+| **Trivy**       | Container security | `.config/trivy/config.yml`        |
+| **KICS**        | IaC security       | `.config/kics/config.yml`         |
+| **DevSkim**     | Security linter    | `.config/devskim/config.json`     |
+| **Lefthook**    | Git hooks          | `lefthook.yml`                    |
 
 ---
 

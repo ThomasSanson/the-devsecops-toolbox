@@ -13,7 +13,7 @@ vars:
   # read it ("detected dubious ownership"). The exception is injected into the
   # scanning process itself: `git config --global` would land in whatever HOME
   # `docker exec` happens to get, which is not the one betterleaks reads.
-  SAFE_DIR_ENV: '-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/path'
+  SAFE_DIR_ENV: "-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/path"
 
   # Proxy forwarding (transparent: only set if proxy env vars exist)
   TASK_BETTERLEAKS_PROXY_ARGS:
