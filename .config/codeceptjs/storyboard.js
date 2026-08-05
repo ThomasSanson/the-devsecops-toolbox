@@ -46,6 +46,7 @@
 
 const fs = require('fs')
 const path = require('path')
+const { tryTo } = require('codeceptjs/effects')
 
 let board = null
 
@@ -255,9 +256,11 @@ async function assertOrUpdateBaseline (I, baselineName) {
   }
   if (process.env.TASK_E2E_UPDATE_BASELINES) {
     // tryTo: the recorder marks the test failed on a plain try/catch around
-    // an actor call; the global tryTo (enabled plugin) is the supported way
-    // to probe an assert.
-    // eslint-disable-next-line no-undef
+    // an actor call; tryTo is the supported way to probe an assert. Since
+    // CodeceptJS 4 it is no longer a plugin exposing a global — it is an
+    // effect imported from the package, and only this directory can resolve
+    // it (node_modules lives here, not in the test tree), which is why the
+    // module re-exports it below.
     const matches = await tryTo(() => I.assertVisualMatch(baselineName, { captureActual: false }))
     if (!matches) {
       const actualPath = path.join(e2eDir(), '_output', baselineName + '.png')
@@ -880,3 +883,4 @@ module.exports.frameOutputPath = frameOutputPath
 module.exports.assertOrUpdateBaseline = assertOrUpdateBaseline
 module.exports.addStoryboardFrame = addStoryboardFrame
 module.exports.render = render
+module.exports.tryTo = tryTo

@@ -8,15 +8,16 @@
  * Every baseline written this way MUST be inspected by a human, which is why
  * the mode is refused in CI.
  */
-/* global tryTo */
 const fs = require('fs')
 const path = require('path')
 
 // tryTo: a plain try/catch around an actor call is NOT enough — the CodeceptJS
 // recorder still marks the step (and thus the test) failed even when the
-// awaiting code swallows the rejection. tryTo (exposed as a global by the
-// enabled plugin — `codeceptjs` itself is not resolvable from the test tree)
-// is the supported escape hatch.
+// awaiting code swallows the rejection. tryTo is the supported escape hatch;
+// it comes from the storyboard module because `codeceptjs` itself is not
+// resolvable from the test tree (node_modules lives under .config/codeceptjs).
+const { tryTo } = require('../../../../../.config/codeceptjs/storyboard')
+
 const E2E_DIR = path.resolve(__dirname, '..', '..')
 
 async function assertPageVisualMatch (I, baselineName) {

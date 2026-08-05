@@ -22,6 +22,10 @@
 
 exports.config = {
   output: './_output',
+  // CodeceptJS 4's default: nothing but the runner's own DSL is global.
+  // Given/When/Then stay scope-injected while the step files load, and
+  // inject()/codecept_dir/output_dir survive — the rest is imported.
+  noGlobals: true,
   include: {
     I: '../../../.config/codeceptjs/steps_file.js',
     GitLabUserPage: './pages/GitLabUserPage.js',
@@ -52,7 +56,7 @@ exports.config = {
       }
     },
     VisualHelper: {
-      require: '@digital-commons-official/codeceptjs-visual-helper',
+      require: '../../../.config/codeceptjs/visual-helper.js',
       baselineDir: './screenshots/base/',
       diffDir: './screenshots/diff/',
       actualDir: './_output/',
@@ -96,8 +100,7 @@ exports.config = {
     ]
   },
   plugins: {
-    screenshotOnFail: { enabled: true },
-    tryTo: { enabled: true },
+    screenshot: { enabled: true },
     // Fills the storyboard header (feature/scenario titles, feature file,
     // re-run command) from each scenario's Gherkin metadata — see the module.
     storyboard: {

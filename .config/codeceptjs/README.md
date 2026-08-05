@@ -25,7 +25,6 @@ gherkin: {
   ]
 },
 plugins: {
-  tryTo: { enabled: true },
   storyboard: {
     require: '../../../.config/codeceptjs/storyboard.js',
     enabled: true
@@ -33,7 +32,7 @@ plugins: {
 }
 ```
 
-`tryTo` must be enabled: baseline-update mode uses it to probe the visual assert before writing.
+No companion plugin to enable: baseline-update mode probes the visual assert with `tryTo`, which since CodeceptJS 4 is an effect the engine imports itself (`codeceptjs/effects`) rather than a plugin exposing a global.
 A copy-ready `codecept.conf.sample.js` with this block already in place sits next to this file.
 
 ## The `.feature` is the single human-authored source

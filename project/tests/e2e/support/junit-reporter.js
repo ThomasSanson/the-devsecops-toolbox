@@ -1,6 +1,11 @@
 /**
  * Minimal JUnit reporter (CodeceptJS plugin).
  *
+ * CodeceptJS 4 does ship a `junitReporter` plugin, but switching to it changes
+ * the XML this suite emits, and two gates read that XML (`red-is-real` and
+ * GitLab's "Test summary" widget). Kept as-is deliberately; swapping it is its
+ * own change, with its own proof.
+ *
  * Why hand-rolled instead of mocha-junit-reporter: CodeceptJS 3.7's
  * run-workers path only wires mocha-junit-reporter if you ALSO pull in
  * mochawesome — lib/workers.js reads `reporterOptions.mochawesome.options`
