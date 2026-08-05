@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 23.0.29 (2026-08-05)
+
+### Fix
+
+- **deps**: clear the 12 undici advisories codeceptjs 4 brought in
+- **e2e**: run the storyboard engine on codeceptjs 4
+- **deps**: update dependency codeceptjs to v4
+
 ## 23.0.28 (2026-08-05)
 
 ### Fix
