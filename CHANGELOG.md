@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.30 (2026-08-05)
+
+### Fix
+
+- **deps**: update dependency undici to v8
+
 ## 23.0.29 (2026-08-05)
 
 ### Fix
