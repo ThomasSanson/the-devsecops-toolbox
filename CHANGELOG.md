@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 23.0.28 (2026-08-05)
+
+### Fix
+
+- **lint**: clear the two ignored errors, so the gate card is green all the way
+
+### Refactor
+
+- **security**: replace gitleaks by betterleaks everywhere, not just in MegaLinter
+
 ## 23.0.27 (2026-08-04)
 
 ### Fix
