@@ -96,7 +96,7 @@ RUN bash -lc "set -euo pipefail; \
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD task --version || exit 1
+  CMD ["task", "--version"]
 
 # Set default command to start a login shell
 CMD ["/bin/bash", "-l"]
