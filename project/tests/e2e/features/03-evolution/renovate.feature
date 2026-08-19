@@ -55,8 +55,8 @@ Feature: Dependency updates flow through the framework, not around it
     And each tool is detected at both its config source and the install.sh pin
     # Chapter: One dependency, one merge request
     # Note: Renovate proposes the updates, and it must propose them one at a time. When twenty dependencies ride in the same merge request, one broken package holds the nineteen others hostage and nobody can tell which one broke.
-    # Note: Off-camera: another throwaway copy of the framework, where three dependencies are pinned back to old versions on purpose. One comes from npm, one from the Docker registry, one from Python.
-    # Note: The picture is the framework's own command answering with the branch it would open for each one. Three dependencies, three branches, three merge requests. Version numbers are masked so the picture only changes when the answer does.
+    # Note: Off-camera: another throwaway copy of the framework, where four dependencies are pinned back to old versions on purpose. One comes from npm, one from the Docker registry, one from Python, and one is the linter whose number is spent as a Docker tag.
+    # Note: The picture is the framework's own command answering with the branch it would open for each one. Four dependencies, four branch names, none of them shared. Version numbers are masked so the picture only changes when the answer does, and when upstream opens a new major that major travels in a merge request of its own, under the same branch name.
     # Copy: task renovate:dry-run
     Then Renovate gives every dependency a merge request of its own
     # Note: The tests drive a real Chromium browser. It used to come from the base image alone, and that image only ever ships the browsers of one exact Playwright release.

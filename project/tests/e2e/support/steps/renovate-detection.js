@@ -196,11 +196,11 @@ storyboardStep(Then, 'each tool is detected at both its config source and the in
 // independently of the npm package — so a Playwright bump could leave the
 // runner with no browser at all.
 
-// Three dependencies from three different ecosystems, each pinned back to a
-// genuinely old version so Renovate always has something to propose. Each one
-// sits on a major upstream is not about to leave (Playwright 1.x, ansible-core
-// 2.x), so exactly ONE update bucket — and therefore exactly one branch — comes
-// back per dependency, which keeps the picture readable.
+// Four dependencies from four different ecosystems, each pinned back to a
+// genuinely old version so Renovate always has something to propose. A
+// dependency whose upstream has just moved to a new major comes back in two
+// buckets (the minor one and the major one) — both under the same masked
+// branch name, so the picture stays one row per dependency either way.
 const SPREAD = [
   {
     depName: 'playwright',
@@ -359,7 +359,16 @@ storyboardStep(Then, 'Renovate gives every dependency a merge request of its own
         throw new Error(`${dep.depName} and ${clash} share the merge request branch ${branch} — one dependency, one merge request`)
       }
       owners[branch] = dep.depName
-      rows.push(`${dep.depName.padEnd(30)} ${dep.file.padEnd(35)} ${maskBranchVersion(branch)}`)
+    }
+    // The day upstream publishes a new major, one dependency comes back in two
+    // update buckets — `renovate/oxsecurity-megalinter-9.x` AND `-10.x` — and
+    // that is Renovate working as designed: a major travels in its own merge
+    // request, never grafted onto the minor one. Both branches carry the same
+    // masked name, so the row is written once. What this picture answers is
+    // WHICH dependency owns a branch name; how many majors upstream happens to
+    // offer this month is not the question, and must not move the baseline.
+    for (const name of [...new Set(branches.map(maskBranchVersion))]) {
+      rows.push(`${dep.depName.padEnd(30)} ${dep.file.padEnd(35)} ${name}`)
     }
   }
 
@@ -368,7 +377,7 @@ storyboardStep(Then, 'Renovate gives every dependency a merge request of its own
     `${'dependency'.padEnd(30)} ${'pinned in'.padEnd(35)} merge request branch`,
     ...rows,
     '',
-    `${SPREAD.length} dependencies, ${Object.keys(owners).length} merge requests, none shared`
+    `${SPREAD.length} dependencies, no two sharing a merge request branch`
   ].join('\n'))
 })
 
