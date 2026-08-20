@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 23.0.31 (2026-08-20)
+
+### Fix
+
+- **devcontainer**: give the healthcheck its command as a JSON array
+- **test**: draw one merge request branch per dependency, majors included
+- **deps**: update oxsecurity/megalinter docker tag to v10
+
 ## 23.0.30 (2026-08-05)
 
 ### Fix
