@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.34 (2026-08-21)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v19.2.4
+
 ## 23.0.33 (2026-08-21)
 
 ### Fix
