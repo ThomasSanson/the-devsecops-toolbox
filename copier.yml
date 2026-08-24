@@ -103,6 +103,16 @@ project_enabled:
     custom tasks (build, test, deploy) and project/docker-compose.yml.
   default: true
 
+# Questions — Source publication
+source_publication:
+  type: bool
+  help: |
+    Publish this project's source to a second, PUBLIC repository at every
+    release? Only for projects that must live in a private repository and
+    publish their source all the same. Adds .config/publication/ — an
+    allowlist, a denylist and the owners who approve what becomes public.
+  default: false
+
 # Questions — Maintenance
 devsecops_automerge:
   type: bool
@@ -118,6 +128,21 @@ gherkin_language:
   default: en
 
 # Internal
+# Which scope the installer rendered at. Never asked: the installer passes it
+# with --data when a developer picks a single component from the checklist, and
+# copier records it in the answers file so every later `task copier:update`
+# renders the same shape. Its only job is to keep the framework's
+# `_skip_if_exists` files out of a component-only project: without it, copier
+# creates VERSION and the cspell word list on the first update, in a project
+# that has neither a version to bump nor a spell checker to feed.
+install_scope:
+  type: str
+  choices:
+    - everything
+    - publication
+  default: everything
+  when: false
+
 project_slug:
   type: str
   default: "{{ _copier_conf.dst_path | realpath | basename | lower | replace(' ', '-') | replace('_', '-') }}"
@@ -140,13 +165,20 @@ _exclude:
   - copier.yml
   - megalinter-reports
   - node_modules
-  - README.md
+  # Anchored: the bare pattern matched a README.md at ANY depth, so a component
+  # that ships its own manual (.config/publication/, .config/codeceptjs/) had it
+  # silently dropped from every generated project. Only the toolbox's OWN root
+  # README is meant to stay behind. See #199.
+  - /README.md
   - project/gitlab
   - project/tests
   - project/ubuntu
   - tmp
   - venv
   - "{% if not project_enabled %}project{% endif %}"
+  - "{% if not source_publication %}.config/publication{% endif %}"
+  - "{% if install_scope == 'publication' %}VERSION{% endif %}"
+  - "{% if install_scope == 'publication' %}.config/cspell{% endif %}"
   - "{% if container_runtime != 'docker' %}.config/docker-ce{% endif %}"
   - "{% if container_runtime != 'podman' %}.config/podman{% endif %}"
   - "{% if not use_docker_compose or container_runtime != 'docker' %}project/docker-compose.yml{% endif %}"

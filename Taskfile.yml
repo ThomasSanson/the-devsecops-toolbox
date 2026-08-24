@@ -106,6 +106,9 @@ includes:
   podman:
     taskfile: .config/podman/Taskfile.yml
     optional: true
+  publication:
+    taskfile: .config/publication/Taskfile.yml
+    optional: true
   renovate:
     taskfile: .config/renovate/Taskfile.yml
     optional: true

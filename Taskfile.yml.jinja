@@ -15,6 +15,11 @@ vars:
 # - Optional includes extras like tests and lint (not needed for Docker builds)
 includes:
   # Essential includes (Required for Docker build and k3s)
+{#- A project that installed a single component has no use for the nine phase
+    orchestrators: it publishes, and it updates itself. They are the only
+    REQUIRED includes, so leaving them out is what keeps such a project down to
+    the two commands it actually runs. #}
+{%- if install_scope != 'publication' %}
   devsecops:plan:
     taskfile: .config/devsecops/Taskfile.plan.yml
   devsecops:code:
@@ -33,6 +38,7 @@ includes:
     taskfile: .config/devsecops/Taskfile.monitor.yml
   devsecops:feedback:
     taskfile: .config/devsecops/Taskfile.feedback.yml
+{%- endif %}
   devsecops:init:
     taskfile: .config/devsecops/Taskfile.init.yml
     optional: true
@@ -120,6 +126,9 @@ includes:
     taskfile: .config/podman/Taskfile.yml
     optional: true
 {%- endif %}
+  publication:
+    taskfile: .config/publication/Taskfile.yml
+    optional: true
   renovate:
     taskfile: .config/renovate/Taskfile.yml
     optional: true

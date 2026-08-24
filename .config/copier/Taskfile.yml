@@ -75,12 +75,26 @@ tasks:
 
       📝 Note:
         Provide the answers file path via 'task update TASK_COPIER_ANSWER_FILE=path/to/answers.yml'
+    vars:
+      # Copier never reads back the answer to a question it does not ask, and the
+      # scope a component-only install was rendered at is exactly such a question.
+      # Left alone, every update would re-render at the default scope and conjure
+      # into the project the files a full one gets. Hand the recorded scope back —
+      # and only when it is not the default, so a full project's command line is
+      # exactly what it always was.
+      TASK_COPIER_SCOPE_OPT:
+        sh: |
+          answers="{{.TASK_COPIER_ANSWER_FILE}}"
+          [ -n "${answers}" ] && [ -f "${answers}" ] || exit 0
+          scope="$(sed -n 's/^install_scope: //p' "${answers}" | head -n 1)"
+          [ -n "${scope}" ] && [ "${scope}" != "everything" ] || exit 0
+          printf ' --data install_scope=%s' "${scope}"
     preconditions:
       - sh: test -n "{{.TASK_COPIER_ANSWER_FILE}}"
         msg: "❌ Error: TASK_COPIER_ANSWER_FILE variable is required. Usage: task update TASK_COPIER_ANSWER_FILE=path/to/answers.yml"
     cmds:
       - cmd: echo "🔄 Updating Copier project using {{.TASK_COPIER_ANSWER_FILE}}"
         silent: true
-      - "{{.TASK_COPIER_COMMAND}} update --trust {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
+      - "{{.TASK_COPIER_COMMAND}} update --trust {{.TASK_COPIER_CLI_OPTS}}{{.TASK_COPIER_SCOPE_OPT}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
       - cmd: echo "🎉 Copier update completed successfully."
         silent: true

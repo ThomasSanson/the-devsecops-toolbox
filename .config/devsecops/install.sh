@@ -34,9 +34,13 @@ GUM_VERSION="0.17.0"
 GLOW_VERSION="2.1.1"
 
 # Selectable components offered when NOT installing the complete framework.
-# This list is designed to grow (plan/code phases, etc.); today it holds a
-# single entry. Keep "Agent mode" as the stable match prefix.
-AGENT_COMPONENT_LABEL="Agent mode — AI agent guardrails (.agent/, CLAUDE.md, AGENTS.md)"
+# This list is designed to grow (plan/code phases, etc.). Keep "Agent mode" and
+# "Source publication" as the stable match prefixes.
+# NO COMMA in a label: gum reads --selected as a COMMA-SEPARATED list, so a
+# label containing one is split into fragments that match no option, nothing
+# starts ticked, and a plain Enter then installs nothing at all.
+AGENT_COMPONENT_LABEL="Agent mode — AI agent guardrails: .agent/ AGENTS.md CLAUDE.md"
+PUBLICATION_COMPONENT_LABEL="Source publication — publish this repository's source to a public one"
 DEFAULT_TEMPLATE_URL="https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
 TEMPLATE_URL="${DEVSECOPS_TEMPLATE_URL:-$DEFAULT_TEMPLATE_URL}"
 TEMPLATE_VCS_REF="${DEVSECOPS_TEMPLATE_VCS_REF:-}"
@@ -412,6 +416,8 @@ scaffold_project() {
 # ---------------------------------------------------------------------------
 select_install_scope() {
   INSTALL_SCOPE="everything"
+  INSTALL_AGENT=0
+  INSTALL_PUBLICATION=0
 
   # No interactive terminal (CI, piped without a tty): keep the default and
   # install the complete framework, exactly as before this prompt existed.
@@ -435,7 +441,9 @@ select_install_scope_gum() {
       echo "Choose what to install:"
       echo ""
       echo "- **Complete framework** — the full DevSecOps pipeline (CI/CD, security scanning, tasks)"
-      echo "- **Pick components** — choose individual parts (today: the AI agent guardrails)"
+      echo "- **Pick components** — choose individual parts:"
+      echo "  - the AI agent guardrails"
+      echo "  - source publication, to publish a private project's source to a public one"
     } >"$scope_card"
     echo
     glow -s dark -w 76 "$scope_card"
@@ -450,24 +458,40 @@ select_install_scope_gum() {
     return 0
   fi
 
-  # Component selection. One component today (the AI agent guardrails); it is
-  # presented as a single-select list, so the developer SEES the choice and just
-  # presses Enter to take the highlighted item.
+  # Component selection, as a checklist: several components can be installed in
+  # one go, so this is a --no-limit multi-select.
   #
-  # Single-select (gum's default --limit 1) is deliberate, not a --no-limit
-  # multi-select: a multi-select springs a trap on a lone item — it is NOT
-  # selected until the user presses Space, so a natural Enter picks NOTHING, gum
-  # returns empty, INSTALL_SCOPE stays "none", and the installer exits "Nothing
-  # selected" having installed no files. When a second component is added, revisit
-  # this as a --no-limit multi-select with a default item already selected.
-  selected_components="$(gum choose --no-show-help \
-    --header "Select the component to install (↑/↓ to choose, enter to confirm):" \
-    "$AGENT_COMPONENT_LABEL")" || selected_components=""
+  # --selected is not decoration, it is the trap-avoidance: in a multi-select an
+  # item is NOT picked until the user presses Space, so a natural Enter on an
+  # untouched list returns EMPTY and the installer would exit "Nothing selected"
+  # having installed no files. Starting with the first component ticked means
+  # Enter always installs something, and Space still unticks it.
+  selected_components="$(gum choose --no-show-help --no-limit \
+    --selected "$AGENT_COMPONENT_LABEL" \
+    --header "Select what to install (↑/↓ to move, space to tick, enter to confirm):" \
+    "$AGENT_COMPONENT_LABEL" \
+    "$PUBLICATION_COMPONENT_LABEL")" || selected_components=""
 
-  INSTALL_SCOPE="none"
-  case "$selected_components" in
-  *"Agent mode"*) INSTALL_SCOPE="agent" ;;
+  read_component_selection "$selected_components"
+}
+
+# Turn gum's answer (one label per line) into the install flags. Matching on the
+# stable label prefix keeps the wording free to change.
+read_component_selection() {
+  INSTALL_AGENT=0
+  INSTALL_PUBLICATION=0
+  case "$1" in
+  *"Agent mode"*) INSTALL_AGENT=1 ;;
   esac
+  case "$1" in
+  *"Source publication"*) INSTALL_PUBLICATION=1 ;;
+  esac
+
+  if [ "$INSTALL_AGENT" -eq 0 ] && [ "$INSTALL_PUBLICATION" -eq 0 ]; then
+    INSTALL_SCOPE="none"
+  else
+    INSTALL_SCOPE="components"
+  fi
 }
 
 select_install_scope_plain() {
@@ -475,33 +499,66 @@ select_install_scope_plain() {
     INSTALL_SCOPE="everything"
     return 0
   fi
+
+  INSTALL_AGENT=0
+  INSTALL_PUBLICATION=0
   if prompt_yes_no_default_yes "Install the AI agent guardrails (.agent/, CLAUDE.md, AGENTS.md)? [Y/n]: "; then
-    INSTALL_SCOPE="agent"
-    return 0
+    INSTALL_AGENT=1
   fi
-  INSTALL_SCOPE="none"
+  if prompt_yes_no_default_yes "Install source publication (.config/publication/)? [Y/n]: "; then
+    INSTALL_PUBLICATION=1
+  fi
+
+  INSTALL_SCOPE="components"
+  if [ "$INSTALL_AGENT" -eq 0 ] && [ "$INSTALL_PUBLICATION" -eq 0 ]; then
+    INSTALL_SCOPE="none"
+  fi
 }
 
 # ---------------------------------------------------------------------------
-# Agent mode — render ONLY the AI agent context into the project.
-# Copier always writes its answers file and the full tree, so we render to a
-# scratch directory with defaults and copy out only .agent/, CLAUDE.md and
-# AGENTS.md. The result is a working tree carrying nothing but the agent
-# context (no Taskfile, no .config, no Copier bookkeeping).
+# Component installs — render the template into a SCRATCH directory and copy out
+# only the parts the developer picked. Copier always writes its answers file and
+# the full tree, so the scratch render is what makes a partial install possible:
+# the project ends up carrying the component and nothing else (no Taskfile, no
+# other .config, no Copier bookkeeping).
 # ---------------------------------------------------------------------------
+render_template_to_scratch() {
+  render_dir="$1"
+  extra_data="$2"
+  render_log="$(mktemp)"
+  if [ -n "${TEMPLATE_VCS_REF}" ]; then
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet ${extra_data} --vcs-ref \"${TEMPLATE_VCS_REF}\" >\"${render_log}\" 2>&1"
+  else
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet ${extra_data} >\"${render_log}\" 2>&1"
+  fi
+  run_with_interactive_input "$copier_command" || true
+}
+
+# Normalise permissions to be umask-independent. Copier renders under the
+# container umask and `cp -a` preserves it: CI runners use umask 000, which
+# leaves the copied dirs world-writable (0777). That is a security smell AND a
+# visual drift — `tree` colours world-writable dirs green-on-green instead of the
+# plain blue a 0755 dir gets, so a tree baseline captured under a 022 umask fails
+# on CI. Force 0755 dirs / 0644 files.
+normalise_permissions() {
+  for target in "$@"; do
+    if [ -d "$target" ]; then
+      find "$target" -type d -exec chmod 755 {} + 2>/dev/null || true
+      find "$target" -type f -exec chmod 644 {} + 2>/dev/null || true
+    elif [ -f "$target" ]; then
+      chmod 644 "$target" 2>/dev/null || true
+    fi
+  done
+}
+
+# Agent mode — render ONLY the AI agent context into the project.
 scaffold_agent_only() {
   echo ""
   echo "📋 Installing agent mode..."
   log_action "Rendering the AI agent context (.agent/, CLAUDE.md, AGENTS.md)..."
 
   render_dir="$(mktemp -d)"
-  render_log="$(mktemp)"
-  if [ -n "${TEMPLATE_VCS_REF}" ]; then
-    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet --vcs-ref \"${TEMPLATE_VCS_REF}\" >\"${render_log}\" 2>&1"
-  else
-    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" \"${render_dir}\" --trust --skip-tasks --defaults --quiet >\"${render_log}\" 2>&1"
-  fi
-  run_with_interactive_input "$copier_command" || true
+  render_template_to_scratch "${render_dir}" ""
 
   agent_installed=0
   for item in .agent AGENTS.md CLAUDE.md; do
@@ -511,18 +568,7 @@ scaffold_agent_only() {
     fi
   done
   rm -rf "${render_dir}"
-
-  # Normalise permissions to be umask-independent. Copier renders under the
-  # container umask and `cp -a` preserves it: CI runners use umask 000, which
-  # leaves the copied .agent/ dirs world-writable (0777). That is a security
-  # smell AND a visual drift — `tree` colours world-writable dirs green-on-green
-  # instead of the plain blue a 0755 dir gets, so the agent-mode tree baseline
-  # (captured under a 022 umask) fails on CI. Force 0755 dirs / 0644 files.
-  if [ -d .agent ]; then
-    find .agent -type d -exec chmod 755 {} + 2>/dev/null || true
-    find .agent -type f -exec chmod 644 {} + 2>/dev/null || true
-  fi
-  chmod 644 AGENTS.md CLAUDE.md 2>/dev/null || true
+  normalise_permissions .agent AGENTS.md CLAUDE.md
 
   if [ "$agent_installed" -ne 1 ] || [ ! -d ".agent" ]; then
     log_error "Agent mode installation failed — the AI agent context was not found in the template."
@@ -533,6 +579,141 @@ scaffold_agent_only() {
   rm -f "${render_log}"
 
   log_ok "Agent mode installed."
+}
+
+# Source publication — the component, plus the spine that keeps it up to date.
+#
+# The component alone would be a dead copy: no version, no way to learn that a
+# new release exists, no way to apply it. So the install keeps the framework's
+# OWN update machinery instead of inventing a second one: the copier answers
+# file (which records the template and the version), the handful of files
+# `task copier:update` needs to run, and the Renovate config that watches that
+# answers file. Renovate then maintains this project exactly as it maintains a
+# full one, and copier's three-way merge is what protects the four files the
+# project owns (allowlist, denylist, owners, manifest) when a release lands.
+#
+# Measured: 16 files and ~100 KB, against 199 files and 1.7 MB for a full
+# install. What it leaves out is every tool — no linter, no container runtime,
+# no forge CLI.
+#
+# The render answers no to the project workspace and to docker compose: without
+# that, copier's `_skip_if_exists` entries (VERSION, project/docker-compose.yml,
+# .config/cspell/config.project.json) are recreated on the first update, and a
+# project that installed one component would watch files it never asked for
+# appear out of nowhere.
+# .env.dist is where the publication settings live (enabled, target, branch),
+# and the root Taskfile loads it. Nothing else at the root has a reason to be in
+# a project that took one component.
+PUBLICATION_SPINE_DIRS=".config/publication"
+
+copy_spine_file() {
+  src="$1"
+  dst="$2"
+  [ -e "${src}" ] || return 0
+  mkdir -p "$(dirname "${dst}")"
+  cp -a "${src}" "${dst}"
+}
+
+# A project can already have a root Taskfile or a .env.dist of its own, and
+# overwriting either would destroy work that has nothing to do with this
+# component. Those two are copied only when they are absent; when they are
+# there, the installer says what to add instead of deciding for you.
+PUBLICATION_MANUAL_STEPS=""
+
+copy_or_report() {
+  src="$1"
+  dst="$2"
+  advice="$3"
+  [ -e "${src}" ] || return 0
+  if [ -e "${dst}" ]; then
+    PUBLICATION_MANUAL_STEPS="${PUBLICATION_MANUAL_STEPS}${advice}
+"
+    return 0
+  fi
+  mkdir -p "$(dirname "${dst}")"
+  cp -a "${src}" "${dst}"
+}
+
+scaffold_publication_only() {
+  echo ""
+  echo "📋 Installing source publication..."
+  log_action "Rendering the publication component and its update spine..."
+
+  render_dir="$(mktemp -d)"
+  render_template_to_scratch "${render_dir}" \
+    "--data install_scope=publication --data source_publication=true --data project_enabled=false --data use_docker_compose=false --data ansible_enabled=false"
+
+  if [ ! -d "${render_dir}/.config/publication" ]; then
+    log_error "Source publication installation failed — the component was not found in the template."
+    sed 's/^/    /' "${render_log}" 2>/dev/null | tail -n 20
+    rm -f "${render_log}"
+    rm -rf "${render_dir}"
+    exit 1
+  fi
+
+  PUBLICATION_MANUAL_STEPS=""
+  copy_or_report "${render_dir}/Taskfile.yml" "./Taskfile.yml" \
+    "Taskfile.yml is yours already — add these includes to it:
+  publication:
+    taskfile: .config/publication/Taskfile.yml
+    optional: true
+  copier:
+    taskfile: .config/copier/Taskfile.yml
+    optional: true"
+  copy_or_report "${render_dir}/.env.dist" "./.env.dist" \
+    ".env.dist is yours already — add these settings to it:
+  TASK_PUBLICATION_ENABLED=false
+  TASK_PUBLICATION_TARGET_URL=
+  TASK_PUBLICATION_TARGET_BRANCH=main"
+  # The update machinery, and only it: the answers file that records the
+  # template and the release, copier, and the Renovate config that opens the
+  # framework-evolution merge request. The nine phase orchestrators stay behind —
+  # a project that publishes has no build, deploy or monitor phase to run.
+  copy_spine_file "${render_dir}/.config/devsecops/.copier-answers.yml" ".config/devsecops/.copier-answers.yml"
+  copy_spine_file "${render_dir}/.config/copier/Taskfile.yml" ".config/copier/Taskfile.yml"
+  copy_spine_file "${render_dir}/.config/copier/requirements.txt" ".config/copier/requirements.txt"
+  copy_spine_file "${render_dir}/.config/python/.python-version" ".config/python/.python-version"
+  copy_spine_file "${render_dir}/.config/renovate/config.json" ".config/renovate/config.json"
+
+  # `cp -a src dst` copies src INSIDE dst when dst already exists, which on a
+  # second install would bury the new component in .config/publication/publication.
+  # Copy the CONTENTS, and never over a file the project owns.
+  for item in ${PUBLICATION_SPINE_DIRS}; do
+    mkdir -p "./${item}"
+    for file in "${render_dir}/${item}"/*; do
+      [ -e "${file}" ] || continue
+      target="./${item}/$(basename "${file}")"
+      case "$(basename "${file}")" in
+      allowlist | denylist | owners | manifest)
+        # The project's own decisions: never overwritten by a re-install. A
+        # toolbox release reaches them through `task copier:update`, which
+        # merges instead of replacing.
+        [ -e "${target}" ] && continue
+        ;;
+      esac
+      cp -a "${file}" "${target}"
+    done
+  done
+
+  rm -rf "${render_dir}"
+  rm -f "${render_log}"
+  normalise_permissions .config Taskfile.yml .env.dist
+  chmod 755 .config .config/publication 2>/dev/null || true
+  chmod 755 .config/publication/publish.sh 2>/dev/null || true
+
+  log_ok "Source publication installed, with the spine that keeps it up to date."
+  if [ -n "${PUBLICATION_MANUAL_STEPS}" ]; then
+    echo ""
+    log_info "Two files were left exactly as you had them. To wire the component in:"
+    printf '%s' "${PUBLICATION_MANUAL_STEPS}" | while IFS= read -r line; do
+      [ -n "${line}" ] && printf '     %s\n' "${line}"
+    done
+    echo ""
+  fi
+  log_info "Next: name the people who approve in .config/publication/owners,"
+  log_info "say what may leave in .config/publication/allowlist and denylist,"
+  log_info "then run: task publication:check"
+  log_info "Toolbox releases reach this project through: task copier:update"
 }
 
 # ---------------------------------------------------------------------------
@@ -584,13 +765,20 @@ main() {
     return 0
   fi
 
-  if [ "${INSTALL_SCOPE}" = "agent" ]; then
-    scaffold_agent_only
+  if [ "${INSTALL_SCOPE}" = "components" ]; then
+    [ "${INSTALL_AGENT:-0}" -eq 1 ] && scaffold_agent_only
+    [ "${INSTALL_PUBLICATION:-0}" -eq 1 ] && scaffold_publication_only
 
     echo ""
     log_ok "Installation complete!"
-    log_info "Installed the AI agent context only: .agent/, CLAUDE.md, AGENTS.md."
-    log_info "See AGENTS.md to get started."
+    if [ "${INSTALL_AGENT:-0}" -eq 1 ]; then
+      log_info "Installed the AI agent context: .agent/, CLAUDE.md, AGENTS.md."
+      log_info "See AGENTS.md to get started."
+    fi
+    if [ "${INSTALL_PUBLICATION:-0}" -eq 1 ]; then
+      log_info "Installed source publication: .config/publication/."
+      log_info "See .config/publication/README.md to get started."
+    fi
     echo ""
     return 0
   fi
