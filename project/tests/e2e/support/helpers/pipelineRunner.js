@@ -28,6 +28,10 @@ const {
 } = require('./gitlabApi')
 const { freshGet } = require('./http')
 
+// project/docker-compose.yml pins this name; every container of the suite's
+// own stack is prefixed with it.
+const COMPOSE_PROJECT = 'the-devsecops-toolbox'
+
 const RUNNER_TAG = 'saas-linux-medium-amd64'
 const RUNNER_NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
 // The full generated pipeline runs ~17 jobs on ONE runner (megalinter pulls its
@@ -56,7 +60,14 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   const runnerId = runner.data.id
   const glrt = runner.data.token
   const found = runCommandWithResult('docker ps --format "{{.Names}}" --filter "name=gitlab-runner"')
-  const svc = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)[0]
+  const candidates = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)
+  // A developer machine happily runs a SECOND stack whose runner is also called
+  // "<something>-gitlab-runner-1" — another checkout of this template, for
+  // instance. Registering OUR project's runner inside THAT container hands the
+  // token to a runner on another network, which cannot reach this GitLab and
+  // answers "Verifying runner... is not valid". Ours is the one under this
+  // compose project (same reason as getRootHeaders in helpers/gitlabApi.js).
+  const svc = candidates.find(n => n.startsWith(`${COMPOSE_PROJECT}-`)) || candidates[0]
   if (!svc) throw new Error('gitlab-runner compose service is not running')
   // ONE job slot, deliberately: every docker-using job spawns a dind service
   // named 'docker' on the SHARED network, so two concurrent services collide (a

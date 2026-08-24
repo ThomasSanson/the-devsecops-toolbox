@@ -2,6 +2,9 @@ const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
 const { runCommand } = require('./docker')
 
 const BASE_URL = 'http://gitlab:80'
+// project/docker-compose.yml pins this name; every container of the suite's own
+// stack is prefixed with it.
+const COMPOSE_PROJECT = 'the-devsecops-toolbox'
 
 function getLambdaUsername () {
   return process.env.TASK_GITLAB_LAMBDA_USER
@@ -37,7 +40,13 @@ async function getRootHeaders () {
   const names = runCommand("docker ps --format '{{.Names}}' --filter 'name=gitlab'")
   // `<project>-gitlab-1` is the GitLab service; `<project>-gitlab-runner-1` is
   // its runner, and answers no API.
-  const service = names.split('\n').map(n => n.trim()).filter(n => /-gitlab-\d+$/.test(n))[0]
+  const candidates = names.split('\n').map(n => n.trim()).filter(n => /-gitlab-\d+$/.test(n))
+  // A developer machine happily runs a SECOND stack whose GitLab is also called
+  // "<something>-gitlab-1" — another checkout of this template, for instance.
+  // Minting the admin token inside that one and sending it to ours answers 401
+  // on every call, intermittently, depending on the order docker happens to
+  // list containers in. Ours is the one under this compose project.
+  const service = candidates.find(n => n.startsWith(`${COMPOSE_PROJECT}-`)) || candidates[0]
   if (!service) throw new Error('the gitlab compose service is not running')
   const ruby =
     `puts User.find_by_username('${process.env.TASK_GITLAB_ROOT_USER}')` +
