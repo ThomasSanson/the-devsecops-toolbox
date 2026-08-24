@@ -29,7 +29,7 @@ project/tests/e2e/
 
 1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm session is captured via `support/terminal/capture.js` (`assertTerminalVisualMatch`), optionally anchored from a marker row (`fromMarker`) or bounded (`maxRows`) to isolate deterministic blocks.
 2. **Filtered `<pre>` render** (init-effects/guidance/release scenarios): the captured command output is noise-filtered, rendered as a `<pre>` block in the browser and screenshotted.
-3. **Storyboard** (the 11 journeys): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
+3. **Storyboard** (the 16 journeys): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
 
 ### Storyboards — the default for whole-journey proofs
 
@@ -39,7 +39,7 @@ Open the SVG locally in a browser: the chrome around the frames is real selectab
 
 Prefer FEW, BIG stories over many small ones: merge overlapping scenarios into one end-to-end journey (20+ cards is fine) and show the failure AND its fix in the same story.
 Split a long story into chapters with a `# Chapter: Title` comment on its own line inside the Scenario body, between two sentences — the engine draws a full-width "Chapter N — Title" band before the next card.
-The whole film (3 acts, 11 stories in reading order) is indexed in [storyboards/README.md](e2e/storyboards/README.md).
+The whole film (3 acts, 16 stories in reading order) is indexed in [storyboards/README.md](e2e/storyboards/README.md).
 
 Layout is flat: baselines land in `screenshots/base/<act>/<story-tag>/` and the committed SVG in `storyboards/<act>/<story-tag>.svg` (e.g. `storyboards/01-install/install-complete.svg`) — one level, no per-feature subfolder.
 

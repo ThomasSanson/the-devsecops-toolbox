@@ -12,45 +12,54 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**2. agent-mode-only**](01-install/agent-mode-only.svg) — Saying no to the full framework installs only the AI agent files, nothing else.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@agent-mode-only"`
-- [**3. fresh-machine**](01-install/fresh-machine.svg) — The installer adds its own missing tools and stays interactive even when piped from curl.
+- [**3. publication-only**](01-install/publication-only.svg) — Ticking source publication on the same checklist installs it alone, and it runs with nothing but a shell and git.
+  One continuous scene (no chapters).
+  Replay: `task project:test:e2e -- --grep "@publication-only"`
+- [**4. fresh-machine**](01-install/fresh-machine.svg) — The installer adds its own missing tools and stays interactive even when piped from curl.
   Chapters: A bare machine sets itself up · The one-line install stays interactive.
   Replay: `task project:test:e2e -- --grep "@fresh-machine"`
-- [**4. first-run-help**](01-install/first-run-help.svg) — On the first run, every check stops and names the exact fix, then finishes cleanly once nothing is missing.
+- [**5. first-run-help**](01-install/first-run-help.svg) — On the first run, every check stops and names the exact fix, then finishes cleanly once nothing is missing.
   Chapters: The check names each missing tool · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
   Replay: `task project:test:e2e -- --grep "@first-run-help"`
-- [**5. merge-request-safety**](01-install/merge-request-safety.svg) — init always reaches main through a review you can see, from any branch — unless you opt out on purpose.
+- [**6. merge-request-safety**](01-install/merge-request-safety.svg) — init always reaches main through a review you can see, from any branch — unless you opt out on purpose.
   Chapters: main already exists · you started on an experiment branch · the opt-out you ask for on purpose.
   Replay: `task project:test:e2e -- --grep "@merge-request-safety"`
 
 ## Act 2 — Daily work (`02-daily-work`)
 
-- [**6. protected-commits**](02-daily-work/protected-commits.svg) — The commit checks accept clean work and secrets never reach the repository.
+- [**7. protected-commits**](02-daily-work/protected-commits.svg) — The commit checks accept clean work and secrets never reach the repository.
   Chapters: The commit message is checked · Secrets never reach the repository.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`
-- [**7. self-healing**](02-daily-work/self-healing.svg) — init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed.
+- [**8. self-healing**](02-daily-work/self-healing.svg) — init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed.
   Chapters: A revoked token is rebuilt · A tampered variable and a duplicate token are repaired.
   Replay: `task project:test:e2e -- --grep "@self-healing"`
-- [**8. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
+- [**9. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
-- [**9. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
+- [**10. source-publication**](02-daily-work/source-publication.svg) — A private project publishes its source to a public one, minus the files that never leave, and only after an owner approved the exact list.
+  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through.
+  Replay: `task project:test:e2e -- --grep "@source-publication"`
+- [**11. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
   Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
 
 ## Act 3 — Evolution (`03-evolution`)
 
-- [**10. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
+- [**12. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
   Chapters: The update splits the dictionary and keeps my word · A flipped answer delivers new tools and spares my edits.
   Replay: `task project:test:e2e -- --grep "@toolbox-update"`
-- [**11. render-matrix**](03-evolution/render-matrix.svg) — The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
+- [**13. render-matrix**](03-evolution/render-matrix.svg) — The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
   Chapters: What the default project looks like · Each answer changes exactly what it promises.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`
-- [**12. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
+- [**14. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
   Chapters: Updates flow through the framework · Every pinned tool is watched in both places.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
-- [**13. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
+- [**15. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
   Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.
   Replay: `task project:test:e2e -- --grep "@test-discipline"`
+- [**16. publication-update**](03-evolution/publication-update.svg) — A toolbox release reaches a project that installed only source publication: its component and its spine move, the team's own rules do not, and nothing it never installed arrives.
+  One continuous scene (no chapters).
+  Replay: `task project:test:e2e -- --grep "@publication-update"`
 
 ## The two tests with no story to tell
 

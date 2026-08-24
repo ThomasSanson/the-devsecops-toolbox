@@ -96,7 +96,9 @@ exports.config = {
       './support/steps/version-pins.js',
       './support/steps/renovate-detection.js',
       './support/steps/generated-ci.js',
-      './support/steps/test-discipline.js'
+      './support/steps/test-discipline.js',
+      './support/steps/source-publication.js',
+      './support/steps/publication-update.js'
     ]
   },
   plugins: {

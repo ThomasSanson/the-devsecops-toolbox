@@ -44,6 +44,8 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     And the developer keeps the generated docker-compose file
     # Note: The next question turns the project workspace on or off (it adds project/Taskfile.yml and docker-compose.yml); the developer keeps it on.
     And the developer keeps the project workspace enabled
+    # Note: The next question is for projects that must live in a private repository and publish their source all the same; it defaults to no, because a project that is already public has nothing to publish anywhere else.
+    And the developer leaves source publication switched off
     # Note: The next question asks whether Renovate — the bot that proposes dependency updates — should merge toolbox updates on its own; the developer keeps it on.
     And the developer keeps Renovate auto-merge enabled
     # Note: The last question sets the language for the test descriptions; the developer keeps the default, en.

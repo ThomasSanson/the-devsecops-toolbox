@@ -7,10 +7,9 @@ Feature: Installing only the AI agent files (agent mode)
   (.agent/, CLAUDE.md, AGENTS.md) — without the rest of the framework
 
   # The choice is driven by the gum/glow menu layer. Say no to the full install
-  # and a component list opens. With one component on offer it is a single-select
-  # list, so pressing Enter takes the highlighted component — never the empty
-  # "Nothing selected" trap a bare multi-select would spring on a lone item the
-  # user never toggled.
+  # and a checklist opens, one line per component. The first line starts already
+  # ticked, so a plain Enter always installs something — never the empty "Nothing
+  # selected" trap a checklist springs on items the user never toggled.
   #
   # Storyboard contract: ONE sentence = ONE card = ONE pixel baseline, asserted
   # inside the step (tolerance: 0), so a visual regression fails on the exact
@@ -32,7 +31,7 @@ Feature: Installing only the AI agent files (agent mode)
     # Note: The installer asks whether to install everything; the cursor is moved onto "Choose components" before answering.
     # Copy: bash /tmp/devsecops-install.sh
     And the developer starts the installer and chooses to pick what to install
-    # Note: A single-choice list: pressing Enter picks the highlighted AI agent option, so you never end up with nothing selected.
+    # Note: A checklist of the parts that can be installed on their own. The AI agent line starts ticked, so pressing Enter installs it and nothing else; space would tick source publication as well.
     And the developer picks the AI agent option from the checklist
     # Note: The installer confirms what it installed: the AI agent files only.
     And the installer installs only the AI agent files

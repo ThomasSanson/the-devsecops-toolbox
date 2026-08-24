@@ -380,6 +380,7 @@ const COPIER_PROMPTS = [
   'Which container runtime would you like to use?',
   'Generate a docker-compose.yml file',
   'Enable the project workspace?',
+  "Publish this project's source",
   'Auto-merge Renovate merge requests',
   'Language for Gherkin test specifications'
 ]
@@ -547,12 +548,13 @@ storyboardStep(When, 'the developer starts the installer and chooses to pick wha
 
 // Submit the focused "Choose components" -> the live checklist, captured while
 // it is on screen (it erases itself on answer), then take the highlighted
-// component with the natural Enter.
+// component with the natural Enter — the checklist opens with the AI agent line
+// already ticked, so Enter takes it and leaves the rest alone.
 storyboardStep(When, 'the developer picks the AI agent option from the checklist', async () => {
   I.pressKey('Enter')
-  await waitForTerminalText(I, 'Select the component to install', COMMAND_TIMEOUT_MS)
+  await waitForTerminalText(I, 'Select what to install', COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select the component to install' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select what to install' }))
   I.pressKey('Enter')
 })
 
@@ -1265,6 +1267,7 @@ storyboardStep(When, 'the developer keeps the generated docker-compose file', ()
 
 storyboardStep(When, 'the developer keeps the project workspace enabled', () => captureCopierQuestion('Enter', 'Enable the project workspace?', 'copier-workspace'))
 
+storyboardStep(When, 'the developer leaves source publication switched off', () => captureCopierQuestion('Enter', "Publish this project's source", 'copier-publication'))
 storyboardStep(When, 'the developer keeps Renovate auto-merge enabled', () => captureCopierQuestion('Enter', 'Auto-merge Renovate merge requests', 'copier-automerge'))
 
 storyboardStep(When, 'the developer keeps English as the Gherkin language', () => captureCopierQuestion('Enter', 'Language for Gherkin test specifications', 'copier-gherkin'))
