@@ -1,0 +1,33 @@
+---
+# Source publication as a STANDALONE job, for a project that installed only the
+# publication component (no root Taskfile, no framework). Add one line to your
+# .gitlab-ci.yml:
+#
+#   include:
+#     - local: .config/publication/gitlab-ci.yml
+#
+# A project running the complete DevSecOps Toolbox needs none of this: there,
+# `task release` runs the publication itself, on the default branch, after the
+# tag.
+#
+# The publication belongs to the RELEASE phase, so this declares that stage. A
+# pipeline that already declares its own `stages:` overrides this one — add
+# `release` to that list, or the job fails with "chosen stage does not exist".
+#
+# Set TASK_PUBLICATION_TOKEN as a masked, protected CI/CD variable, and
+# TASK_PUBLICATION_SOURCE_TOKEN (or GITLAB_TOKEN) so the job can open the
+# approval merge request and read who answered it.
+stages:
+  - release
+
+publish-source:
+  stage: release
+  image: alpine:latest
+  variables:
+    GIT_DEPTH: 0
+  before_script:
+    - apk add --no-cache git curl jq
+  script:
+    - sh .config/publication/publish.sh publish
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,6 @@
+# What may be published, in gitignore syntax: a path (README.md), a folder
+# (docs/), or a glob (src/**). Anything this file does not match never leaves.
+#
+# The line below publishes everything that is tracked and not denied. Replace it
+# with explicit paths when only part of the project may be published.
+**

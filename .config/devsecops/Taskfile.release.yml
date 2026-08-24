@@ -37,6 +37,16 @@ tasks:
       - cmd: echo "🔄 Starting release phase"
         silent: true
       - task: push-release
+      # Source publication, when the project switched it on: a filtered snapshot
+      # of the approved files, pushed to the public repository. On the default
+      # branch, after the tag, and identical from a developer's machine. Guarded
+      # rather than declared as a task dependency: a project that answered "no"
+      # to the copier question carries no .config/publication at all.
+      - cmd: |
+          if [ -f .config/publication/publish.sh ] && [ "${TASK_PUBLICATION_ENABLED:-false}" = "true" ]; then
+            task publication:publish
+          fi
+        silent: true
       - task: :project:release
       - cmd: echo "🎉 Release phase completed successfully"
         silent: true

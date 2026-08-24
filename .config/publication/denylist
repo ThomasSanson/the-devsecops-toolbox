@@ -1,0 +1,5 @@
+# What must never be published, even when the allowlist matched it. This file
+# always wins, and it is where a project adds its own rules.
+#
+# The floor every project gets for free lives in denylist.base next to this
+# file: it is owned by the toolbox and applied whatever this file says.

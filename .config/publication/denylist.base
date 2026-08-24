@@ -1,0 +1,22 @@
+# The framework floor: never published, whatever the allowlist says.
+#
+# Owned by The DevSecOps Toolbox and upgraded by `task copier:update`. A project
+# extends it in denylist; it cannot empty it. Two files are named back in
+# because they are documentation, not secrets.
+.env
+.env.*
+!.env.dist
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+.netrc
+*.tfstate
+*.tfstate.backup

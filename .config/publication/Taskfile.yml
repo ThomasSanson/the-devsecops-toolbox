@@ -1,0 +1,77 @@
+---
+version: "3"
+
+vars:
+  TASK_PUBLICATION_CONFIG_DIR: '{{.TASK_PUBLICATION_CONFIG_DIR | default ".config/publication"}}'
+
+tasks:
+  default:
+    desc: 📄 Show what source publication would publish
+    summary: |
+      ℹ️ Description:
+        Source publication pushes a FILTERED snapshot of this repository's
+        tracked files to a second, public repository — one commit per release.
+        It exists for projects that must live in a private repository and
+        publish their source all the same.
+
+      🔧 Files (in .config/publication/):
+        - allowlist      what may be published (gitignore syntax)
+        - denylist       what must never be, even when the allowlist matched
+        - denylist.base  the framework floor, applied always, never edited here
+        - owners         who may approve what becomes public
+        - manifest       the exact list of paths somebody approved
+
+      📝 Note:
+        This task is part of the RELEASE phase of DevSecOps.
+    deps:
+      - check
+
+  check:
+    desc: 🔍 List what would be published, and what is held back
+    summary: |
+      ℹ️ Description:
+        The dry run. Needs no token and touches nothing: it prints the exact
+        files that would become public, the ones a rule holds back and why,
+        and whether an owner has approved the current list.
+
+      🔄 Execution:
+        Runs publish.sh in check mode.
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh check
+        silent: true
+
+  approve:
+    desc: 🙋 Ask the owners to approve what becomes public
+    summary: |
+      ℹ️ Description:
+        Opens (or refreshes) the merge request that writes the new manifest,
+        mentions the owners and leaves one thread for them to answer. The forge
+        blocks the merge while that thread is open, and the publication checks
+        WHO answered it.
+
+      🔄 Execution:
+        Runs publish.sh in approve mode.
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh approve
+        silent: true
+
+  publish:
+    desc: 🚀 Publish the approved source to the public repository
+    summary: |
+      ℹ️ Description:
+        Publishes the approved snapshot. Refuses when a path is not in the
+        manifest, when no owner signed the manifest off, or when the working
+        tree is dirty. Chained into `task release` on the default branch, and
+        runnable on its own from a developer's machine.
+
+      🔧 Variables:
+        - TASK_PUBLICATION_ENABLED: off unless "true"
+        - TASK_PUBLICATION_TARGET_URL: the public repository's git URL
+        - TASK_PUBLICATION_TOKEN: a token that may push to it
+        See .config/publication/README.md for the full list.
+
+      🔄 Execution:
+        Runs publish.sh in publish mode.
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh publish
+        silent: true
