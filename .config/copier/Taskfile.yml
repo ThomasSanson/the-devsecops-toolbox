@@ -76,6 +76,12 @@ tasks:
       📝 Note:
         Provide the answers file path via 'task update TASK_COPIER_ANSWER_FILE=path/to/answers.yml'
     vars:
+      # Every project this framework generates keeps its answers in the same
+      # place, and the update that Renovate triggers runs with no environment to
+      # speak of behind it. Without a default here that update stops on a missing
+      # variable, which is how a project ends up carrying a release it never
+      # applied. An explicit value still wins.
+      TASK_COPIER_ANSWER_FILE: '{{.TASK_COPIER_ANSWER_FILE | default ".config/devsecops/.copier-answers.yml"}}'
       # Copier never reads back the answer to a question it does not ask, and the
       # scope a component-only install was rendered at is exactly such a question.
       # Left alone, every update would re-render at the default scope and conjure

@@ -9,6 +9,18 @@
   dependencies. Adding per-tool customManagers / .config/<tool> includePaths here
   would make every generated project open duplicate per-tool MRs (snowball).
   Proven by features/template/renovate.feature (@e2e-template-renovate-downstream).
+
+  Two things about the update itself, both learned the hard way:
+
+  - the release is applied by `postUpgradeTasks`, and it names a SCRIPT. Renovate
+    runs a post-upgrade command as a command, not as a shell line: an
+    `a && b && c` written here reaches `a` with "&&" among its arguments and dies
+    there, leaving a merge request that bumps a version and changes nothing else;
+  - `allowScripts` stays OFF on purpose. With it on, Renovate's own copier
+    manager runs `copier update` from the directory holding the answers file —
+    .config/devsecops/ — and regenerates the whole project INSIDE it. Off, that
+    attempt fails harmlessly with "unsafe feature: tasks" and the script above
+    does the real update, from the root, where it belongs.
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -25,7 +37,7 @@
   "dependencyDashboard": true,
   "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"],
   "allowedCommands": [
-    "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
+    "^sh \\.config/copier/renovate-update\\.sh \\S+$"
   ],
   "packageRules": [
     {
@@ -37,7 +49,7 @@
       "commitMessageTopic": "DevSecOps Toolbox",
       "postUpgradeTasks": {
         "commands": [
-          "git checkout -- . && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref {% raw %}{{{newVersion}}}{% endraw %}'"
+          "sh .config/copier/renovate-update.sh {% raw %}{{{newVersion}}}{% endraw %}"
         ],
         "fileFilters": ["**/*"],
         "executionMode": "branch"
