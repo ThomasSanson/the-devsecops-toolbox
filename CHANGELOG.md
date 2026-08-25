@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.40 (2026-08-25)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.115.0
+
 ## 23.0.39 (2026-08-23)
 
 ### Fix
