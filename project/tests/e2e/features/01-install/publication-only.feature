@@ -28,8 +28,8 @@ Feature: Installing only the source publication component
     # Copy: bash /tmp/devsecops-install.sh
     When the developer ticks source publication on the checklist
     # Note: The installer says what it installed and what to do next: name the people who approve, say what may leave, then run the check.
-    # Note: The installer's last question, and the only one that needs GitLab: where the source goes, and the two tokens to get it there. Both are typed blind, neither is echoed, and neither is written to a file.
-    # Note: What it does with them is the whole GitLab side. It stores the push token as a masked variable, creates a project token so that Renovate and the approval never need a person's own, and schedules the nightly check that brings the next toolbox release in. The same three questions are task publication:init on any later day.
+    # Note: The installer's last questions: where the source goes, the two tokens to get it there, and how strict to be. Both tokens are typed blind, neither is echoed, and neither is written to a file.
+    # Note: What it does with them is the whole GitLab side. It stores the push token as a masked variable, creates a project token so that Renovate and the approval never need a person's own, and schedules the nightly check that brings the next toolbox release in. The last answer decides what happens when the secret scan cannot run at all: enter keeps the strict one, no publication. The same four questions are task publication:init on any later day.
     # Copy: bash /tmp/devsecops-install.sh
     And the developer says where the source goes and hands over the tokens
     # Note: Beside the README it started with, the install added four things: .config, .env.dist, .gitlab-ci.yml and Taskfile.yml. Taskfile.yml runs the publication, .env.dist holds its settings, and .gitlab-ci.yml was written because there was none — a project that already has a pipeline keeps it, and is told the one line to add. Under .config, publication is the component itself, and copier, devsecops, python and renovate are the spine that will bring the next toolbox release in.

@@ -37,7 +37,7 @@ Read the acts in order and you follow one developer from an empty project all th
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
 - [**10. source-publication**](02-daily-work/source-publication.svg) — A private project publishes its source to a public one, minus the files that never leave, and only after an owner approved the exact list.
-  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through · The pipeline is what publishes, not a person.
+  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through · The pipeline is what publishes, not a person · A secret in a published file stops everything.
   Replay: `task project:test:e2e -- --grep "@source-publication"`
 - [**11. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
   Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.

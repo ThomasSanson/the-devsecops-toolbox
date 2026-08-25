@@ -108,3 +108,12 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: And the two files that never leave are still not here. Same rules, same result, whether the publication runs on a laptop or in CI.
     # Copy: http://gitlab/<lambda-user>/<project>-public/-/tree/main/src
     And the public project carries exactly what the owner approved
+    # Chapter: A secret in a published file stops everything
+    # Note: A developer commits staging mailer credentials into src/app.js, a file that has been public for two releases. No list changes: the file was already allowed, and its new content would go out with the next publication.
+    # Note: The pipeline's first job is the one that reads what would become public. It found the password, and it says where — file, line, and the rule that caught it. This is betterleaks, the same scanner the code phase runs, pointed at the snapshot instead of at the repository.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
+    When a secret is committed into a file that is already published
+    # Note: The pipeline, seen whole. The scan is red and the publication below it never started: it waits on the scan, so a secret cannot be published by a job that simply ran next.
+    # Note: That is the point of a separate job. Approval answers "may this file be public"; the scan answers "is there a secret in it", and both have to be yes.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines/<id>
+    Then the publication never ran, and the public project still holds what it held

@@ -25,13 +25,16 @@
  */
 const crypto = require('crypto')
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const { execSync } = require('child_process')
 const { I, GitLabRepositoryPage, GitLabMergeRequestPage, GitLabUserPage } = inject()
 const {
   ttydPort,
   shellEscape,
+  execInContainer,
   execInContainerAsUser,
+  runCommand,
   stripAnsiEscapeSequences
 } = require('../helpers/docker')
 const {
@@ -85,6 +88,29 @@ const {
   capturePageFrame,
   captureElementFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
+
+// The scanner the publication runs before anything leaves. Installed as a binary
+// rather than reached through docker: the journey container is a developer's
+// machine, and this is the shape that machine has — publish.sh prefers a binary
+// and falls back to the image, so the local path is the one this story proves.
+// renovate: datasource=github-releases depName=betterleaks/betterleaks extractVersion=^v(?<version>.*)$
+const BETTERLEAKS_VERSION = '1.8.1'
+
+function installBetterleaks (container) {
+  const url =
+    `https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}` +
+    `/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz`
+  const res = execInContainerAsUser(container, 'bootstrap', [
+    'set -e',
+    'mkdir -p "$HOME/.local/bin"',
+    `curl -fsSL --retry 5 --retry-all-errors ${shellEscape(url)} -o /tmp/betterleaks.tgz`,
+    'tar -xzf /tmp/betterleaks.tgz -C "$HOME/.local/bin" betterleaks',
+    'chmod 755 "$HOME/.local/bin/betterleaks"'
+  ].join('\n'), { timeout: 300000 })
+  if (res.exitCode !== 0) {
+    throw new Error(`Failed to install betterleaks in the journey container:\n${res.output}`)
+  }
+}
 
 // The owner: a SECOND real GitLab user, so "signed off by someone who is not an
 // owner" and "signed off by an owner" are two different people, not a fiction.
@@ -577,6 +603,7 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
   // stays off camera.
   prepareWorkingBranchInstaller(global.pubContainer)
   preinstallToolchain(global.pubContainer)
+  installBetterleaks(global.pubContainer)
   writeLocalEnv(global.pubContainer, global.pubLambdaToken)
   // A token-free origin backed by a credential store: the publication reads the
   // remote to find its own forge, and no token ever renders in a frame.
@@ -819,7 +846,7 @@ const STORY_PIPELINE = [
  * (image pull, clone, cache) is folded away exactly as a reader scrolls past it,
  * and the log gutter and timestamps go with it — they move on every run.
  */
-async function publicationJobCard (jobId, frameName, height = 760) {
+async function publicationJobCard (jobId, frameName, height = 760, marker = 'publish.sh publish') {
   I.resizeWindow(1400, height)
   await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/jobs/${jobId}`)
   await I.waitForElement('[data-testid="job-log-content"]', 60)
@@ -835,7 +862,19 @@ async function publicationJobCard (jobId, frameName, height = 760) {
     lines.forEach(l => {
       if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
     })
-  }, 'publish.sh publish')
+    // The scanner stamps its own clock and duration inside the text — the wall
+    // clock of the run, which is never the same twice.
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    const nodes = []
+    while (walk.nextNode()) nodes.push(walk.currentNode)
+    nodes.forEach(n => {
+      if (/\d{1,2}:\d{2}(AM|PM)|scanned ~|in \d+(\.\d+)?m?s/.test(n.nodeValue)) {
+        n.nodeValue = n.nodeValue
+          .replace(/\d{1,2}:\d{2}(AM|PM)/g, '<time>')
+          .replace(/in \d+(\.\d+)?m?s/g, 'in <ms>')
+      }
+    })
+  }, marker)
   await maskProjectName()
   await settlePageChrome()
   await addStoryboardFrame(I, await capturePageFrame(I, frameName))
@@ -860,7 +899,7 @@ function jobTrace (jobId, headers) {
  * GitLab starts the next pipeline itself, so the wait has to be for a NEW one
  * rather than for a terminal state the old one already has.
  */
-async function publicationJob (headers, after = 0) {
+async function publicationJob (headers, after = 0, jobName = 'publish-source') {
   const encoded = encodedProjectPath(global.pubPrivate)
   const deadline = Date.now() + PIPELINE_TIMEOUT_MS
   let pid = null
@@ -893,9 +932,19 @@ async function publicationJob (headers, after = 0) {
   }
   if (!pid) throw new Error(`No pipeline newer than ${after} ever ran on main`)
   const jobs = await listPipelineJobs(global.pubPrivate, pid, headers)
-  const job = (jobs.data || []).find(j => j.name === 'publish-source')
+  const job = (jobs.data || []).find(j => j.name === jobName)
   if (!job) {
-    throw new Error(`Pipeline ${pid} carried no publish-source job: ${JSON.stringify((jobs.data || []).map(j => j.name))}`)
+    throw new Error(`Pipeline ${pid} carried no ${jobName} job: ${JSON.stringify((jobs.data || []).map(j => j.name))}`)
+  }
+  // A job that never ran has no log to photograph, and the reason is always in
+  // another job of the same pipeline. Say which, and what it printed: the
+  // project is deleted at teardown, so this is the only moment the evidence
+  // exists.
+  if (!['success', 'failed'].includes(job.status)) {
+    for (const other of (jobs.data || []).filter(j => j.name !== jobName)) {
+      console.log(`── ${other.name}: ${other.status}\n${jobTrace(other.id, headers)}`)
+    }
+    throw new Error(`${jobName} is "${job.status}" — it never ran; the traces above say why.`)
   }
   return { pid, status, job }
 }
@@ -970,8 +1019,10 @@ storyboardStep(Then, 'the pipeline publishes the source on its own, once an owne
   }
 
   // No second command anywhere: the merge landed on main, and that is what
-  // starts the pipeline again.
-  const { status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
+  // starts the pipeline again. The id is kept: the next chapter waits for a
+  // pipeline NEWER than this one, and would otherwise read this one's verdict.
+  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
+  global.pubCiPid = pid
   if (status !== 'success') {
     throw new Error(`The pipeline must publish once an owner approved, it was "${status}"`)
   }
@@ -991,6 +1042,109 @@ storyboardStep(Then, 'the public project carries exactly what the owner approved
     if (paths.includes(withheld)) {
       throw new Error(`"${withheld}" must never leave, found in ${JSON.stringify(paths)}`)
     }
+  }
+})
+
+// ===========================================================================
+// Chapter 6 — A secret in a published file stops everything
+//
+// The approval answers "may this file be public". It cannot answer "is there a
+// secret in it", because the file was approved long before the line was written.
+// So the pipeline reads what would become public and scans it, and the
+// publication waits on that answer.
+// ===========================================================================
+
+// Credentials a developer would plausibly paste into a service file, in the file
+// that has been published since the first chapter. Nothing here is a real
+// secret; what matters is that a scanner recognises the shape.
+const LEAKED_FILE = 'src/app.js'
+const LEAKED_SECRET = [
+  "const { serve } = require('./server/http')",
+  '',
+  '// Temporary: staging mailer credentials, to be moved to the vault.',
+  'const mailer = {',
+  "  host: 'smtp.internal',",
+  "  user: 'reporting-bot',",
+  // No shell metacharacter in it: this travels through docker exec, a bash -lc
+  // and a heredoc before it reaches the file, and a "$" would arrive expanded —
+  // leaving a shorter, harmless string and a scan that finds nothing.
+  "  password: 'Zt7kQ2mV9pL4xR8w'",
+  '}',
+  '',
+  'serve(process.env.PORT || 8080, mailer)',
+  ''
+].join('\n')
+
+storyboardStep(When, 'a secret is committed into a file that is already published', async () => {
+  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  await backToTerminal()
+  // The approval merge request went in on GitLab two cards ago, so this clone is
+  // a merge commit behind: without that, the push below is rejected.
+  pullMain()
+  // Copied in, never typed: the content travels through docker exec, a shell and
+  // a heredoc otherwise, and a password is exactly the kind of string those
+  // layers rewrite on the way. A shorter, harmless string would then reach the
+  // file and the scan would have nothing to find.
+  const local = `${os.tmpdir()}/publication-leak-${crypto.randomBytes(4).toString('hex')}.js`
+  fs.writeFileSync(local, LEAKED_SECRET)
+  runCommand(`docker cp ${shellEscape(local)} ${shellEscape(`${global.pubContainer}:${PROJECT_DIR}/${LEAKED_FILE}`)}`)
+  fs.unlinkSync(local)
+  const owned = execInContainer(
+    global.pubContainer, `chown bootstrap:bootstrap ${PROJECT_DIR}/${LEAKED_FILE}`, { user: 'root' }
+  )
+  if (owned.exitCode !== 0) {
+    throw new Error(`Failed to hand ${LEAKED_FILE} back to the bootstrap user:\n${owned.output}`)
+  }
+  mustContain(inProjectOrThrow(`cat ${LEAKED_FILE}`), ["password: 'Zt7kQ2mV9pL4xR8w'"],
+    'the fixture secret must reach the file intact, or the scan proves nothing')
+  inProjectOrThrow(`git add ${LEAKED_FILE} && git commit -q --no-verify -m "feat: send the daily report by mail"`)
+  inProjectOrThrow('git push --quiet origin main')
+
+  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid, 'publication:scan')
+  global.pubCiPid = pid
+  if (status !== 'failed') {
+    console.log(`── publication:scan (${job.status})\n${jobTrace(job.id, lambdaHeaders)}`)
+    throw new Error(`The pipeline must stop on the secret, it was "${status}"`)
+  }
+  mustContain(jobTrace(job.id, lambdaHeaders), [LEAKED_FILE, 'generic-password'],
+    'the scan must name the file it found the secret in')
+  await publicationJobCard(job.id, 'publication-ci-secret', 820, 'publish.sh scan')
+})
+
+storyboardStep(Then, 'the publication never ran, and the public project still holds what it held', async () => {
+  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  const jobs = await listPipelineJobs(global.pubPrivate, global.pubCiPid, lambdaHeaders)
+  const publish = (jobs.data || []).find(j => j.name === 'publish-source')
+  if (!publish) {
+    throw new Error(`Pipeline ${global.pubCiPid} carried no publish-source job`)
+  }
+  if (publish.status === 'success') {
+    throw new Error('The publication must not have run after a failed scan')
+  }
+
+  I.resizeWindow(1280, 620)
+  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/pipelines/${global.pubCiPid}`)
+  await I.waitForText('publish-source', 60)
+  await maskPipelinePage(I, global.pubPrivate, { keepContext: true })
+  await maskProjectName()
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-ci-blocked'))
+  I.resizeWindow(1024, 768)
+
+  const paths = await publicTreePaths()
+  // Raw file content is plain text, not JSON: curl, like every other raw read in
+  // this suite.
+  const published = sh(
+    `curl -s ${curlAuthFlags(await getRootHeaders())} ` +
+    `'${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPublic)}` +
+    `/repository/files/${encodeURIComponent(LEAKED_FILE)}/raw?ref=main'`,
+    '/tmp'
+  )
+  if (published.includes('Zt7')) {
+    throw new Error('The secret reached the public project')
+  }
+  if (!paths.includes(LEAKED_FILE)) {
+    throw new Error(`The public project must still hold the previous ${LEAKED_FILE}`)
   }
 })
 
@@ -1132,10 +1286,15 @@ storyboardStep(When, 'the developer says where the source goes and hands over th
   I.type(global.pubLambdaToken)
   I.pressKey('Enter')
 
+  // The one question that is not a credential: enter keeps the strict answer,
+  // which is that a publication stops when the secret scan cannot run.
+  await waitForTerminalText(I, 'Refuse to publish when the secret scan', COMMAND_TIMEOUT_MS)
+  I.pressKey('Enter')
+
   await waitInstallerLog(WIRING_DONE)
   await waitForTerminalSettle(I)
   const screen = await terminalText()
-  mustContain(screen, ['TASK_RENOVATE_TOKEN created', 'nightly schedule'],
+  mustContain(screen, ['TASK_RENOVATE_TOKEN created', 'nightly schedule', 'scanned for secrets first'],
     'the install must do the GitLab side, not just ask about it')
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'publication-only-wiring', {
     fromMarker: 'This repository needs to be told', mask: TERMINAL_MASKS
