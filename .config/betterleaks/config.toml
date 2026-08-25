@@ -26,3 +26,10 @@ paths = [
   '''(^|/)node_modules/''',
   '''(^|/)venv/'''
 ]
+# The fake credentials the publication story plants on purpose: its whole point
+# is that the scanner catches them BEFORE they become public, so the scanner has
+# to tolerate them here. Matched on the value, not on the file: a fixture is
+# still a file that must be read.
+regexes = [
+  '''Zt7kQ2mV9pL4xR8w'''
+]

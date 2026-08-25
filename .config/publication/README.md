@@ -134,11 +134,11 @@ public repository from a laptop that happened to have the switch on.
 
 `TASK_PUBLICATION_ON` says when it happens by itself:
 
-| Value     | What happens                                                          |
-|-----------|-----------------------------------------------------------------------|
-| `release` | default. `task release` publishes after the tag, and the pipeline publishes on the default branch. |
-| `tag`     | only a tag pipeline publishes, and it publishes that tag.             |
-| `manual`  | nothing publishes by itself: the job waits for a click.               |
+| Value     | What happens                                                     |
+|-----------|------------------------------------------------------------------|
+| `release` | default. After the tag on the default branch, task and pipeline. |
+| `tag`     | only a tag pipeline publishes, and it publishes that tag.        |
+| `manual`  | nothing publishes by itself: the job waits for a click.          |
 
 `task publication:publish` run by hand always publishes, whatever `ON` says.
 That is what "manual" means.

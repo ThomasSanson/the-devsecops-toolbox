@@ -3,6 +3,7 @@
   "words": [
     "baselined",
     "charmbracelet",
+    "metacharacter",
     "quotepath",
     "prereqs",
     "rawfile",
@@ -13,6 +14,7 @@
     "tfstate",
     "timeago",
     "topbar",
+    "unscanned",
     "uvx",
     "ACMR",
     "BUILDKIT",
@@ -251,6 +253,7 @@
     "vuepress",
     "webassets",
     "webui",
+    "worktree",
     "wscript",
     "xtrace",
     "xunit",
