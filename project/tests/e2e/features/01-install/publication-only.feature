@@ -32,7 +32,11 @@ Feature: Installing only the source publication component
     # Note: No megalinter, no docker, no glab: not one tool came along, and nothing that a project taking a single component has no use for.
     # Copy: ls -A1 && ls .config
     Then the project holds the publication component and the spine that carries it
-    # Note: It runs. The lists that were just installed answer the only question that matters, what would become public, and right now that is the README, because the shipped allowlist publishes everything tracked and the README is all there is.
-    # Note: The last line is what makes this maintainable: the project records which toolbox release it came from, so a later release can be brought in with task copier:update, and Renovate can open the merge request that offers it.
-    # Copy: task publication:check && grep _commit .config/devsecops/.copier-answers.yml
-    And it runs, and it records the release it came from
+    # Note: It runs, with nothing else installed. The lists that just landed answer the only question that matters, what would become public, and right now that is the README, because the shipped allowlist publishes everything tracked and the README is all there is.
+    # Note: The target and the approved list are still empty, and it says so: a human has decided neither yet.
+    # Copy: task publication:check
+    And it runs, and says what would become public
+    # Note: And it knows where it came from. One line in the answers file records the toolbox release that rendered it.
+    # Note: That line is what makes the component maintainable rather than a dead copy: a later release comes in with task copier:update, and Renovate opens the merge request that offers it.
+    # Copy: grep _commit .config/devsecops/.copier-answers.yml
+    And it records the toolbox release it came from

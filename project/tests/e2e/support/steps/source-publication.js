@@ -890,12 +890,21 @@ storyboardStep(Then, 'the project holds the publication component and the spine 
     'a component-only install must bring no tooling')
 })
 
-storyboardStep(Then, 'it runs, and it records the release it came from', async () => {
+storyboardStep(Then, 'it runs, and says what would become public', async () => {
+  // Cleared first: the installer's own hint above prints the very command this
+  // card is about, and an anchor that appears twice frames the wrong one.
+  await typeCommandAndWait(I, 'clear')
+  const screen = await terminalCard('task publication:check', 'task publication:check', 'publication-only-check')
+  mustContain(screen, ['Source publication', 'README.md', 'not configured'],
+    'the component must answer on its own, with no framework around it')
+})
+
+storyboardStep(Then, 'it records the toolbox release it came from', async () => {
+  await typeCommandAndWait(I, 'clear')
   const screen = await terminalCard(
-    'task publication:check && grep _commit .config/devsecops/.copier-answers.yml',
-    'task publication:check',
-    'publication-only-check'
+    'grep _commit .config/devsecops/.copier-answers.yml',
+    'grep _commit',
+    'publication-only-release'
   )
-  mustContain(screen, ['Source publication', 'README.md', 'not configured', '_commit:'],
-    'the component must answer, and the project must record the release it came from')
+  mustContain(screen, '_commit:', 'the project must record the release that rendered it')
 })
