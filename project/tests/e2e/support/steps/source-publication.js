@@ -82,7 +82,8 @@ const {
 const {
   storyboardStep,
   addStoryboardFrame,
-  capturePageFrame
+  capturePageFrame,
+  captureElementFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
 
 // The owner: a SECOND real GitLab user, so "signed off by someone who is not an
@@ -1173,7 +1174,7 @@ storyboardStep(Then, 'the project holds the publication component and the spine 
  * reader clicks it, and frame the variables themselves.
  */
 async function variablesCard () {
-  I.resizeWindow(1024, 430)
+  I.resizeWindow(1024, 900)
   await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/settings/ci_cd`)
   await I.waitForElement('body', 30)
   await I.executeScript(() => {
@@ -1186,20 +1187,19 @@ async function variablesCard () {
   })
   await I.waitForElement('[data-testid="ci-variable-table"]', 30)
   await I.wait(2)
-  // The table sits well below the section's own settings, so the heading is the
-  // wrong anchor: scroll to the variables themselves, and a little above them so
-  // their own title comes into frame.
-  await I.executeScript(() => {
-    const table = document.querySelector('[data-testid="ci-variable-table"]')
-    if (table) {
-      table.scrollIntoView({ block: 'start' })
-      window.scrollBy(0, -90)
-    }
-  })
-  await I.wait(1)
   await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
   await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-only-variables'))
+  // The table itself is the frame, not the viewport around it: the section sits
+  // at a different height depending on what GitLab decides to show above it, and
+  // a scrolled page crop would drift by those pixels between two machines.
+  await I.executeScript(() => {
+    const table = document.querySelector('[data-testid="ci-variable-table"]')
+    if (table) table.scrollIntoView({ block: 'center' })
+  })
+  await I.wait(1)
+  await addStoryboardFrame(
+    I, await captureElementFrame(I, 'publication-only-variables', '[data-testid="ci-variable-table"]')
+  )
   I.resizeWindow(1024, 768)
 }
 

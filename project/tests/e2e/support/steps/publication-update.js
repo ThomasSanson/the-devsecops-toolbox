@@ -357,6 +357,10 @@ function maskFeedback (output) {
     .replace(/e2e-component-[0-9a-f]+/g, 'project')
     .replace(/("renovateVersion":\s*)"[^"]+"/g, '$1"<version>"')
     .replace(/("durationMs":\s*)\d+/g, '$1<ms>')
+    // The commit Renovate just made, and any other object name in the log: a new
+    // one every run, and the card is about what happened, not about which sha it
+    // happened at.
+    .replace(/\b[0-9a-f]{40}\b/g, '<sha>')
     .replace(/[ \t]+$/gm, '')
     .trim()
 }
