@@ -664,7 +664,10 @@ scaffold_publication_only() {
     ".env.dist is yours already — add these settings to it:
   TASK_PUBLICATION_ENABLED=false
   TASK_PUBLICATION_TARGET_URL=
-  TASK_PUBLICATION_TARGET_BRANCH=main"
+  TASK_PUBLICATION_TARGET_BRANCH=main
+  TASK_PUBLICATION_SOURCE_REF=
+  TASK_PUBLICATION_ON=release
+  TASK_PUBLICATION_SCAN=required"
   # A pipeline is the project's own, and clobbering it would be the rudest thing
   # this installer could do. The component ships its jobs in a file of its own;
   # the root pipeline only ever gains one include line, and only when there is

@@ -42,6 +42,14 @@
 #   TASK_PUBLICATION_API_URL          default: derived from the origin remote
 #   TASK_PUBLICATION_PROJECT_PATH     default: derived from the origin remote
 #   TASK_PUBLICATION_APPROVAL_BRANCH  default: publication-approval
+#   TASK_PUBLICATION_SOURCE_REF       what gets published: a branch or a tag.
+#                                     default: the repository's default branch
+#   TASK_PUBLICATION_ON               when it happens by itself: release (default),
+#                                     tag, or manual
+#   TASK_PUBLICATION_SCAN             required (default), off, or done — whether
+#                                     the snapshot is scanned for secrets first
+#   TASK_PUBLICATION_SCAN_IMAGE       default: ghcr.io/betterleaks/betterleaks:latest
+#   TASK_PUBLICATION_SCAN_CONFIG      default: .config/betterleaks/config.toml
 #
 # EXIT CODES:
 #   0  published, or nothing to do
@@ -82,6 +90,16 @@ dotenv_value() {
 TARGET_URL="${TASK_PUBLICATION_TARGET_URL:-$(dotenv_value TASK_PUBLICATION_TARGET_URL)}"
 TARGET_BRANCH="${TASK_PUBLICATION_TARGET_BRANCH:-$(dotenv_value TASK_PUBLICATION_TARGET_BRANCH)}"
 TARGET_BRANCH="${TARGET_BRANCH:-main}"
+# What gets published. Empty means the repository's default branch, resolved at
+# run time: publishing "whatever is checked out" is how a feature branch reaches
+# a public repository from a laptop that happened to have the switch on.
+SOURCE_REF="${TASK_PUBLICATION_SOURCE_REF:-$(dotenv_value TASK_PUBLICATION_SOURCE_REF)}"
+PUBLICATION_ON="${TASK_PUBLICATION_ON:-$(dotenv_value TASK_PUBLICATION_ON)}"
+PUBLICATION_ON="${PUBLICATION_ON:-release}"
+SCAN_MODE="${TASK_PUBLICATION_SCAN:-$(dotenv_value TASK_PUBLICATION_SCAN)}"
+SCAN_MODE="${SCAN_MODE:-required}"
+SCAN_IMAGE="${TASK_PUBLICATION_SCAN_IMAGE:-ghcr.io/betterleaks/betterleaks:latest}"
+SCAN_CONFIG="${TASK_PUBLICATION_SCAN_CONFIG:-.config/betterleaks/config.toml}"
 TOKEN="${TASK_PUBLICATION_TOKEN:-}"
 TOKEN_USERNAME="${TASK_PUBLICATION_TOKEN_USERNAME:-oauth2}"
 SOURCE_TOKEN="${TASK_PUBLICATION_SOURCE_TOKEN:-${GITLAB_TOKEN:-${TASK_COMMITIZEN_TOKEN:-}}}"
@@ -162,10 +180,55 @@ url_encode_path() { printf '%s' "$1" | sed 's#/#%2F#g'; }
 # is not an edge case.
 git_paths() { git -c core.quotepath=off "$@"; }
 
+# Every path decision reads ONE index: the working copy's when the answer is
+# about the working copy, a throwaway one built from the published ref when the
+# answer is about what leaves. Never both in the same run, and never the
+# destination's — `git -C <dest> add` must not inherit this one, which is why it
+# travels in a wrapper rather than in the environment.
+SOURCE_INDEX=""
+git_src() {
+  if [ -n "${SOURCE_INDEX}" ]; then
+    GIT_INDEX_FILE="${SOURCE_INDEX}" git -c core.quotepath=off "$@"
+  else
+    git -c core.quotepath=off "$@"
+  fi
+}
+
 matching() {
   _file="$1"
   [ -f "${_file}" ] || return 0
-  git_paths ls-files --cached --ignored --exclude-from="${_file}" 2>/dev/null || true
+  git_src ls-files --cached --ignored --exclude-from="${_file}" 2>/dev/null || true
+}
+
+# The branch a project publishes unless it says otherwise. CI knows it; outside
+# CI the remote's HEAD does; a repository with neither is on main.
+default_branch() {
+  if [ -n "${CI_DEFAULT_BRANCH:-}" ]; then printf '%s' "${CI_DEFAULT_BRANCH}"; return; fi
+  _head="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [ -n "${_head}" ]; then printf '%s' "${_head#origin/}"; return; fi
+  printf '%s' "${TASK_GIT_DEFAULT_BRANCH:-main}"
+}
+
+# A ref is a name here and a commit everywhere after. In CI the ref being built
+# is usually not a local branch at all — the runner leaves a detached HEAD with
+# one ref fetched — so the commit it checked out counts as an answer, and a
+# fetch is the last resort rather than the first move.
+resolve_source_sha() {
+  _ref="$1"
+  # CI first, and not as a fallback: the runner reuses its build directory, so a
+  # remote-tracking ref there can be older than the commit the job was started
+  # for. What the pipeline checked out is what the pipeline is about.
+  _sha=""
+  if [ "${CI_COMMIT_REF_NAME:-}" = "${_ref}" ]; then
+    _sha="${CI_COMMIT_SHA:-}"
+  fi
+  [ -n "${_sha}" ] || _sha="$(git rev-parse --verify --quiet "${_ref}"'^{commit}' 2>/dev/null || true)"
+  [ -n "${_sha}" ] || _sha="$(git rev-parse --verify --quiet "origin/${_ref}"'^{commit}' 2>/dev/null || true)"
+  if [ -z "${_sha}" ]; then
+    git fetch --quiet origin "${_ref}" 2>/dev/null &&
+      _sha="$(git rev-parse --verify --quiet 'FETCH_HEAD^{commit}' 2>/dev/null || true)"
+  fi
+  printf '%s' "${_sha}"
 }
 
 # A list file: comments are lines that START with #, blank lines are dropped.
@@ -176,17 +239,52 @@ read_list() {
   sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]*$//' "$1" | sed '/^$/d'
 }
 
+# Two ways to answer, and the caller says which. "worktree" is the dry run a
+# developer reads while editing a list. "ref" is what actually leaves: the files
+# AND the four files that decide, taken from the published ref, so nothing
+# uncommitted can widen what becomes public.
 compute_lists() {
+  _mode="${1:-worktree}"
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     head_line
     refuse "This is not a git repository." \
       "Source publication reads the tracked files, so it runs inside the project."
   }
   WORK="$(mktemp -d)"
-  git_paths ls-files | LC_ALL=C sort >"${WORK}/tracked"
-  matching "${ALLOWLIST}" | LC_ALL=C sort -u >"${WORK}/allowed"
-  matching "${DENY_BASE}" | LC_ALL=C sort -u >"${WORK}/floor"
-  matching "${DENYLIST}" | LC_ALL=C sort -u >"${WORK}/denied"
+  ALLOWLIST_F="${ALLOWLIST}"
+  DENYLIST_F="${DENYLIST}"
+  DENY_BASE_F="${DENY_BASE}"
+  OWNERS_F="${OWNERS}"
+  MANIFEST_F="${MANIFEST}"
+
+  if [ "${_mode}" = "ref" ] || [ -n "${SOURCE_REF}" ]; then
+    SOURCE_LABEL="${SOURCE_REF:-$(default_branch)}"
+    SOURCE_SHA="$(resolve_source_sha "${SOURCE_LABEL}")"
+    if [ -z "${SOURCE_SHA}" ]; then
+      head_line
+      refuse "No such ref: \"${SOURCE_LABEL}\"." \
+        "TASK_PUBLICATION_SOURCE_REF names the branch or tag that gets published."
+    fi
+    SOURCE_INDEX="${WORK}/index"
+    GIT_INDEX_FILE="${SOURCE_INDEX}" git read-tree "${SOURCE_SHA}"
+    for _name in allowlist denylist denylist.base owners manifest; do
+      git show "${SOURCE_SHA}:${PUB_DIR}/${_name}" >"${WORK}/list-${_name}" 2>/dev/null ||
+        : >"${WORK}/list-${_name}"
+    done
+    ALLOWLIST_F="${WORK}/list-allowlist"
+    DENYLIST_F="${WORK}/list-denylist"
+    DENY_BASE_F="${WORK}/list-denylist.base"
+    OWNERS_F="${WORK}/list-owners"
+    MANIFEST_F="${WORK}/list-manifest"
+  else
+    SOURCE_LABEL="working copy"
+    SOURCE_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+  fi
+
+  git_src ls-files | LC_ALL=C sort >"${WORK}/tracked"
+  matching "${ALLOWLIST_F}" | LC_ALL=C sort -u >"${WORK}/allowed"
+  matching "${DENY_BASE_F}" | LC_ALL=C sort -u >"${WORK}/floor"
+  matching "${DENYLIST_F}" | LC_ALL=C sort -u >"${WORK}/denied"
 
   # Held back by the framework floor, then by the project's own denylist. A file
   # caught by both is reported once, under the floor: that is the rule a project
@@ -199,7 +297,7 @@ compute_lists() {
   LC_ALL=C comm -23 "${WORK}/allowed" "${WORK}/held" >"${WORK}/published"
 
   # The approved list, comments and blank lines stripped.
-  read_list "${MANIFEST}" | LC_ALL=C sort -u >"${WORK}/manifest"
+  read_list "${MANIFEST_F}" | LC_ALL=C sort -u >"${WORK}/manifest"
   LC_ALL=C comm -23 "${WORK}/published" "${WORK}/manifest" >"${WORK}/unapproved"
 
   OUTSIDE_COUNT="$(LC_ALL=C comm -23 "${WORK}/tracked" "${WORK}/allowed" | wc -l | tr -d ' ')"
@@ -208,7 +306,7 @@ compute_lists() {
   UNAPPROVED_COUNT="$(wc -l <"${WORK}/unapproved" | tr -d ' ')"
 }
 
-owner_list() { read_list "${OWNERS}"; }
+owner_list() { read_list "${OWNERS_F}"; }
 
 owners_inline() { owner_list | tr '\n' ' ' | sed 's/ *$//'; }
 
@@ -221,9 +319,119 @@ plural() {
 # made one, otherwise the most recent tag that is reachable, otherwise the
 # commit itself. A project with no tags at all still publishes.
 release_name() {
-  git describe --tags --exact-match HEAD 2>/dev/null ||
-    git describe --tags --abbrev=0 2>/dev/null ||
-    git rev-parse --short HEAD
+  _at="${SOURCE_SHA:-HEAD}"
+  git describe --tags --exact-match "${_at}" 2>/dev/null ||
+    git describe --tags --abbrev=0 "${_at}" 2>/dev/null ||
+    git rev-parse --short "${_at}"
+}
+
+# ---------------------------------------------------------------------------
+# The secret scan. What is scanned is the SNAPSHOT — the files that are about to
+# become public — and not the repository around them: a secret in a file that
+# never leaves is the code phase's business, and this one's whole job is that
+# nothing secret goes out. The snapshot carries no history either, so scanning
+# its contents covers everything the public repository will ever hold.
+# ---------------------------------------------------------------------------
+export_snapshot() {
+  _dir="$1"
+  mkdir -p "${_dir}"
+  git_src checkout-index --prefix="${_dir}/" --force --stdin <"${WORK}/published"
+}
+
+# Prefer an installed binary, fall back to the container, and say so when there
+# is neither: "no scanner" is not "no secret", so the publication stops there
+# unless a human has said otherwise.
+scan_snapshot() {
+  case "${SCAN_MODE}" in
+  off)
+    say "⚠️  Secret scan skipped (TASK_PUBLICATION_SCAN=off)."
+    return 0
+    ;;
+  done)
+    return 0
+    ;;
+  esac
+
+  _snap="${WORK}/snapshot"
+  export_snapshot "${_snap}"
+
+  # Scanned from INSIDE the snapshot, as ".", so every path the scanner tests is
+  # the path that file has in the repository. It matters: a project allowlist
+  # naming `tmp/` (a real one does) would otherwise match the whole snapshot,
+  # since a temporary directory lives under /tmp — and a scan that skips
+  # everything reports no secret at all.
+  # -v so the report names the file and the line: a verdict nobody can act on is
+  # not a verdict.
+  if command -v betterleaks >/dev/null 2>&1; then
+    _cfg=""
+    [ -f "${SCAN_CONFIG}" ] && _cfg="$(cd "$(dirname "${SCAN_CONFIG}")" && pwd)/$(basename "${SCAN_CONFIG}")"
+    if [ -n "${_cfg}" ]; then
+      (cd "${_snap}" && betterleaks dir . --config="${_cfg}" -v) >"${WORK}/scan.log" 2>&1 || return 1
+    else
+      (cd "${_snap}" && betterleaks dir . -v) >"${WORK}/scan.log" 2>&1 || return 1
+    fi
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    _name="publication-scan-$$"
+    docker rm -f "${_name}" >/dev/null 2>&1 || true
+    docker run --rm -d --name "${_name}" --entrypoint sleep "${SCAN_IMAGE}" infinity >/dev/null 2>&1 || {
+      say "❌ Could not start ${SCAN_IMAGE}."
+      return 1
+    }
+    # Copied in rather than mounted: a bind mount hands the container the host's
+    # ownership, and the framework's own betterleaks task learned that the hard
+    # way.
+    docker cp "${_snap}/." "${_name}:/snapshot" >/dev/null 2>&1
+    _flags=""
+    if [ -f "${SCAN_CONFIG}" ]; then
+      docker cp "${SCAN_CONFIG}" "${_name}:/betterleaks.toml" >/dev/null 2>&1 &&
+        _flags="--config=/betterleaks.toml"
+    fi
+    # shellcheck disable=SC2086
+    docker exec -w /snapshot "${_name}" betterleaks dir . ${_flags} -v >"${WORK}/scan.log" 2>&1
+    _rc=$?
+    docker rm -f "${_name}" >/dev/null 2>&1 || true
+    return ${_rc}
+  fi
+
+  head_line
+  refuse "The secret scan cannot run here: no betterleaks, no docker." \
+    "What becomes public is scanned before it leaves, and a scanner that is" \
+    "missing is not a scanner that passed." \
+    "Install docker, or set TASK_PUBLICATION_SCAN=off to publish without it."
+}
+
+cmd_scan() {
+  compute_lists ref
+  head_line
+  say "Source      ${SOURCE_LABEL} ($(git rev-parse --short "${SOURCE_SHA}"))"
+  say "Scanning    ${PUBLISHED_COUNT} $(plural "${PUBLISHED_COUNT}" file files) for secrets"
+  printf '\n'
+  if scan_snapshot; then
+    # The scanner's own summary, kept: "no secret found" over an empty directory
+    # reads exactly like "no secret found" over the real thing.
+    grep -E "scanned" "${WORK}/scan.log" 2>/dev/null | tail -n 1 | sed -e 's/^/     /'
+    say "✅ No secret found in what would become public."
+    printf '\n'
+    return 0
+  fi
+  sed -e 's/^/     /' "${WORK}/scan.log" 2>/dev/null | tail -n 30
+  printf '\n'
+  refuse "A secret was found in a file that was about to become public." \
+    "Nothing was published. Remove it, or exclude the file in ${DENYLIST}."
+}
+
+cmd_export() {
+  _dir="${1:-}"
+  [ -n "${_dir}" ] || {
+    printf 'usage: %s export <directory>\n' "$0" >&2
+    exit 2
+  }
+  compute_lists ref
+  export_snapshot "${_dir}"
+  printf '%s\n' "${PUBLISHED_COUNT}"
 }
 
 # ---------------------------------------------------------------------------
@@ -234,6 +442,7 @@ release_name() {
 cmd_check() {
   compute_lists
   head_line
+  say "Source      ${SOURCE_LABEL}, published on ${PUBLICATION_ON}"
   if [ -n "${TARGET_URL}" ]; then
     say "Target      ${TARGET_URL} (branch ${TARGET_BRANCH})"
   else
@@ -287,8 +496,12 @@ approval_summary() {
 # ---------------------------------------------------------------------------
 cmd_publish() {
   require git
-  compute_lists
+  # The ref, never the working copy: a laptop sitting on a feature branch with
+  # the switch on would otherwise publish that branch.
+  compute_lists ref
   head_line
+  say "Source      ${SOURCE_LABEL} ($(git rev-parse --short "${SOURCE_SHA}"))"
+
 
   [ -n "${TARGET_URL}" ] || refuse \
     "No public repository configured." \
@@ -299,13 +512,6 @@ cmd_publish() {
   [ -n "$(owner_list)" ] || refuse \
     "${OWNERS} is empty, so nobody can approve what becomes public." \
     "List the people who decide, one username per line, before switching publication on."
-  # Tracked changes only. What gets published comes from the index, so a staged
-  # or modified file WOULD go out and must stop the run; an untracked scratch
-  # file cannot go out at all, and refusing because of one would be pointless.
-  [ -z "$(git status --porcelain --untracked-files=no)" ] || refuse \
-    "Tracked files have uncommitted changes." \
-    "A publication is a snapshot of what is committed; commit or stash first."
-
   if [ "${PUBLISHED_COUNT}" -eq 0 ]; then
     refuse "The allowlist matches nothing, so there is nothing to publish." \
       "Check ${ALLOWLIST}: an empty or unmatched allowlist publishes nothing."
@@ -334,13 +540,21 @@ cmd_publish() {
       "Run \`task publication:approve\` and let an owner answer the thread it opens."
   fi
 
+  if ! scan_snapshot; then
+    printf '\n'
+    sed -e 's/^/     /' "${WORK}/scan.log" 2>/dev/null | tail -n 30
+    printf '\n'
+    refuse "A secret was found in a file that was about to become public." \
+      "Nothing was published. Remove it, or exclude the file in ${DENYLIST}."
+  fi
+
   push_snapshot "${APPROVAL_SIGNER}"
 }
 
 push_snapshot() {
   _who="$1"
   _version="$(release_name)"
-  _sha="$(git rev-parse HEAD)"
+  _sha="${SOURCE_SHA}"
   _dest="${WORK}/destination"
 
   _credential_file="${WORK}/credential-store"
@@ -385,7 +599,7 @@ push_snapshot() {
   # the destination while rm would resolve them against the CURRENT directory,
   # which is the private project — it deletes the source instead of the copy.
   find "${_dest}" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
-  git_paths checkout-index --prefix="${_dest}/" --force --stdin <"${WORK}/published"
+  git_src checkout-index --prefix="${_dest}/" --force --stdin <"${WORK}/published"
 
   git -C "${_dest}" add -A
   if git -C "${_dest}" diff --cached --quiet; then
@@ -407,14 +621,14 @@ push_snapshot() {
 
   # Mirror the release tag when this snapshot is one. A project with no tag
   # publishes all the same — the commit message carries the source commit.
-  if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+  if git describe --tags --exact-match "${SOURCE_SHA}" >/dev/null 2>&1; then
     git -C "${_dest}" tag -f "${_version}" >/dev/null 2>&1 || true
     git -C "${_dest}" push --quiet origin "refs/tags/${_version}" 2>/dev/null || true
   fi
 
   say "Approved by \"${_who}\" in merge request !${APPROVAL_MR_IID}"
   say "Publishing ${PUBLISHED_COUNT} files, withholding ${HELD_COUNT}"
-  say "Pushed ${_version} to ${TARGET_URL} (branch ${TARGET_BRANCH})"
+  say "Pushed ${SOURCE_LABEL} as ${_version} to ${TARGET_URL} (branch ${TARGET_BRANCH})"
   printf '\n'
 }
 
@@ -461,7 +675,7 @@ resolve_approval() {
   forge_ready || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
-  _commit="$(git log -1 --format=%H -- "${MANIFEST}" 2>/dev/null || true)"
+  _commit="$(git log -1 --format=%H "${SOURCE_SHA:-HEAD}" -- "${MANIFEST}" 2>/dev/null || true)"
   [ -n "${_commit}" ] || return 0
 
   _mr="$(api GET "/projects/${PROJECT_ENC}/repository/commits/${_commit}/merge_requests" |
@@ -577,7 +791,9 @@ cmd_approve_quiet() {
 }
 
 cmd_approve() {
-  compute_lists
+  # What will be published, not what is on this machine: approving a list the
+  # publication would not use is worse than not approving at all.
+  compute_lists ref
   head_line
   if [ "${UNAPPROVED_COUNT}" -eq 0 ]; then
     say "The approved list is already up to date — nothing to ask."
@@ -736,7 +952,7 @@ cmd_init() {
   # token, and its only job is to create the project token that CI will use.
   if [ -z "${SOURCE_TOKEN}" ] && [ -t 0 ]; then
     say "This repository needs to be told where its source goes, and given the"
-    say "tokens to get it there. Three answers, once."
+    say "tokens to get it there. Four answers, once."
     printf '\n'
     SOURCE_TOKEN="$(ask_secret "Your token for THIS repository (api scope, Maintainer), not shown: ")"
   fi
@@ -764,6 +980,23 @@ cmd_init() {
     fi
   fi
 
+  # The one question that is not about a credential: what to do when the secret
+  # scan cannot run at all. Asked here because this is the moment somebody is
+  # deciding how strict the project is, not the moment a publication is refused.
+  if [ -t 0 ]; then
+    _strict="$(ask_line "Refuse to publish when the secret scan cannot run? [Y/n]: ")"
+    case "${_strict}" in
+    [nN]*)
+      set_env_value "TASK_PUBLICATION_SCAN" "off"
+      say "⚠️  ${ENV_FILE} publishes without scanning. Turn it back on with TASK_PUBLICATION_SCAN=required."
+      ;;
+    *)
+      set_env_value "TASK_PUBLICATION_SCAN" "required"
+      say "✅ What becomes public is scanned for secrets first, and no scanner means no publication."
+      ;;
+    esac
+  fi
+
   init_token || {
     printf '\n'
     exit 1
@@ -784,9 +1017,14 @@ case "${1:-check}" in
 check) cmd_check ;;
 publish) cmd_publish ;;
 approve) cmd_approve ;;
+scan) cmd_scan ;;
+export)
+  shift
+  cmd_export "$@"
+  ;;
 init) cmd_init ;;
 *)
-  printf 'usage: %s check|approve|publish|init\n' "$0" >&2
+  printf 'usage: %s check|scan|approve|publish|export <dir>|init\n' "$0" >&2
   exit 2
   ;;
 esac

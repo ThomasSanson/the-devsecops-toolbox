@@ -114,12 +114,51 @@ off. Fill it before switching publication on.
 ```bash
 task publication:init      # once: where the source goes, the tokens, the nightly check
 task publication:check     # dry run: what would leave, what is held back, who approved
+task publication:scan      # what would leave, scanned for secrets
 task publication:approve   # open the merge request that asks the owners
 task publication:publish   # the real thing (also chained into `task release`)
 ```
 
 `publication:check` needs no token and touches nothing. Run it before switching
-publication on, and run it again whenever you wonder what is public.
+publication on, and run it again whenever you wonder what is public. It answers
+for your **working copy**, so a list you are editing right now shows its effect;
+`approve` and `publish` answer for the **ref that gets published**, so nothing
+uncommitted can widen what becomes public.
+
+## What gets published, and when
+
+`TASK_PUBLICATION_SOURCE_REF` names it — a branch or a tag. Left empty, it is
+the repository's default branch, resolved at run time. That default is the
+point: publishing "whatever is checked out" is how a feature branch reaches a
+public repository from a laptop that happened to have the switch on.
+
+`TASK_PUBLICATION_ON` says when it happens by itself:
+
+| Value     | What happens                                                          |
+|-----------|-----------------------------------------------------------------------|
+| `release` | default. `task release` publishes after the tag, and the pipeline publishes on the default branch. |
+| `tag`     | only a tag pipeline publishes, and it publishes that tag.             |
+| `manual`  | nothing publishes by itself: the job waits for a click.               |
+
+`task publication:publish` run by hand always publishes, whatever `ON` says.
+That is what "manual" means.
+
+## Nothing leaves unscanned
+
+The files that would become public are scanned for secrets **before** the push,
+with betterleaks — the scanner the code phase uses. What is scanned is the
+snapshot, not the repository around it: the publication pushes one commit with
+no history, so its contents are everything the public repository will ever hold,
+and a secret in a file that never leaves is the code phase's business rather
+than this one's.
+
+In CI it is a job of its own, `publication:scan`, and `publish-source` needs it:
+a red scan locks the pipeline and nothing is pushed. On a machine it runs from
+an installed `betterleaks` if there is one, from the container image otherwise.
+
+With neither, the publication **stops**: a scanner that is missing is not a
+scanner that passed. `TASK_PUBLICATION_SCAN=off` waives it, and the installer
+asks the question so that choice is made once, in the open.
 
 The publication is a **task**, not a CI job: the same command behaves the same
 way from a developer's machine and from the pipeline. On the default branch,
@@ -146,6 +185,10 @@ its own `stages:` has to list both names.
 | `TASK_PUBLICATION_API_URL`         | from `origin`          | The forge API.                                   |
 | `TASK_PUBLICATION_PROJECT_PATH`    | from `origin`          | This project's path on the forge.                |
 | `TASK_PUBLICATION_APPROVAL_BRANCH` | `publication-approval` | The branch the approval merge request uses.      |
+| `TASK_PUBLICATION_SOURCE_REF`      | the default branch     | The branch or tag that gets published.           |
+| `TASK_PUBLICATION_ON`              | `release`              | `release`, `tag` or `manual`.                    |
+| `TASK_PUBLICATION_SCAN`            | `required`             | `required`, `off`, or `done` (a CI job did it).  |
+| `TASK_PUBLICATION_SCAN_IMAGE`      | betterleaks image      | The scanner, when no binary is installed.        |
 | `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.   |
 
 The two tokens point at two different projects, which is why there are two. Keep
@@ -158,15 +201,17 @@ never puts one in a command line and never writes one into the destination's
 1. Create the public repository, empty. Disable its CI so the published pipeline
     does not try to run there.
 2. Create a token on it that may push.
-3. Run `task publication:init`. It asks for three things — a token for THIS
-    repository (used once, never stored), the public repository's URL, and the
-    token from step 2 — then writes the URL into `.env.dist`, stores the push
-    token as a masked, protected CI/CD variable, creates the project token
-    Renovate and the sign-off both use, and schedules the nightly check that
-    brings the next toolbox release in. The installer offers to run it for you.
+3. Run `task publication:init`. It asks four things — a token for THIS
+    repository (used once, never stored), the public repository's URL, the token
+    from step 2, and whether a missing secret scanner should stop a publication
+    — then writes the URL into `.env.dist`, stores the push token as a masked,
+    protected CI/CD variable, creates the project token Renovate and the
+    sign-off both use, and schedules the nightly check that brings the next
+    toolbox release in. The installer offers to run it for you.
 4. Fill `owners`, then `allowlist` and `denylist`.
 5. Run `task publication:check` and **read the list**.
-6. Run `task publication:approve`, and have an owner answer the thread.
+6. Run `task publication:scan` and read the verdict.
+7. Run `task publication:approve`, and have an owner answer the thread.
 
 ## What it deliberately does not do
 

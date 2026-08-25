@@ -44,7 +44,9 @@ tasks:
       # rather than declared as a task dependency: a project that answered "no"
       # to the copier question carries no .config/publication at all.
       - cmd: |
-          if [ -f .config/publication/publish.sh ] && [ "${TASK_PUBLICATION_ENABLED:-false}" = "true" ]; then
+          if [ -f .config/publication/publish.sh ] &&
+            [ "${TASK_PUBLICATION_ENABLED:-false}" = "true" ] &&
+            [ "${TASK_PUBLICATION_ON:-release}" = "release" ]; then
             task publication:publish
           fi
         silent: true

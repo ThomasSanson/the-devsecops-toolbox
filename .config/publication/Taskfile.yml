@@ -60,6 +60,25 @@ tasks:
       - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh init
         silent: true
 
+  scan:
+    desc: 🔍 Scan what would become public for secrets
+    summary: |
+      ℹ️ Description:
+        Exports the exact files that would be published and runs betterleaks on
+        them. What is scanned is the snapshot, not the repository around it: the
+        publication pushes one commit with no history, so its contents are
+        everything the public repository will ever hold.
+
+        Uses an installed `betterleaks` if there is one, the container image
+        otherwise. With neither, the publication stops rather than pushing
+        unscanned — set TASK_PUBLICATION_SCAN=off to waive that.
+
+      🔄 Execution:
+        Runs publish.sh in scan mode.
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh scan
+        silent: true
+
   approve:
     desc: 🙋 Ask the owners to approve what becomes public
     summary: |
@@ -88,6 +107,10 @@ tasks:
         - TASK_PUBLICATION_ENABLED: off unless "true"
         - TASK_PUBLICATION_TARGET_URL: the public repository's git URL
         - TASK_PUBLICATION_TOKEN: a token that may push to it
+        - TASK_PUBLICATION_SOURCE_REF: what gets published (default: the
+          default branch), a branch or a tag
+        - TASK_PUBLICATION_ON: release (default), tag or manual
+        - TASK_PUBLICATION_SCAN: required (default), off or done
         See .config/publication/README.md for the full list.
 
       🔄 Execution:
