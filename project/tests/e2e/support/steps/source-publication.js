@@ -39,15 +39,29 @@ const {
   projectPath,
   encodedProjectPath,
   getRootHeaders,
+  curlAuthFlags,
   createProject,
   deleteProject,
   listRepositoryTree,
   listProjectMergeRequests,
   mergeMergeRequest,
   updateProjectSettings,
-  revokePersonalAccessToken
+  revokePersonalAccessToken,
+  readProjectVariable,
+  listProjectAccessTokens,
+  listPipelineSchedules,
+  createProjectVariable,
+  listPipelineJobs,
+  getPipeline
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshPut } = require('../helpers/http')
+const {
+  registerScopedRunner,
+  teardownScopedRunner,
+  cancelRedundantPipelines,
+  maskPipelinePage,
+  PIPELINE_TIMEOUT_MS
+} = require('../helpers/pipelineRunner')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const {
   PROJECT_DIR,
@@ -116,11 +130,24 @@ Before(() => {
   global.pubLambdaToken = null
   global.pubOwnerToken = null
   global.pubMrIid = null
+  global.pubRunner = null
+  global.pubCiPid = 0
 })
 
 After(async () => {
   teardownJourneyTerminal(global.pubContainer)
   global.pubContainer = null
+
+  // Surgical: only this scenario's runner, so a full local run does not pull the
+  // rug from under the other stories sharing the gitlab-runner service.
+  if (global.pubRunner) {
+    try {
+      await teardownScopedRunner(global.pubRunner)
+    } catch (_) {
+      // Best-effort: the project is deleted just below anyway.
+    }
+    global.pubRunner = null
+  }
 
   removeRendered(global.pubRendered)
   global.pubRendered = null
@@ -762,6 +789,211 @@ storyboardStep(Then, 'the public project has not moved', async () => {
 })
 
 // ===========================================================================
+// Chapter 5 — The pipeline is what publishes, not a person
+//
+// Everything so far ran in a terminal, which is where a developer proves the
+// rules. This chapter hands the same script to GitLab: the job the component
+// ships, on the main branch, in the release stage. It refuses for the same
+// reason and publishes under the same condition, and the token that may push
+// lives in CI rather than on a laptop.
+// ===========================================================================
+
+// The one line the installer writes into a project that has no pipeline. The
+// feedback job travels in the same shipped file and is switched off here: it
+// runs Renovate, which is the update story's subject, and waiting on it would
+// only make this card slower.
+const STORY_PIPELINE = [
+  '---',
+  'include:',
+  '  - local: .config/publication/gitlab-ci.yml',
+  '',
+  'feedback:',
+  '  rules:',
+  '    - when: never',
+  ''
+].join('\n')
+
+/**
+ * A job page, collapsed to the publication's own output: the runner's boilerplate
+ * (image pull, clone, cache) is folded away exactly as a reader scrolls past it,
+ * and the log gutter and timestamps go with it — they move on every run.
+ */
+async function publicationJobCard (jobId, frameName, height = 760) {
+  I.resizeWindow(1400, height)
+  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/jobs/${jobId}`)
+  await I.waitForElement('[data-testid="job-log-content"]', 60)
+  await I.waitForText('Source publication', 60)
+  await maskPipelinePage(I, global.pubPrivate, { keepContext: true })
+  await I.executeScript((marker) => {
+    const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+    const start = lines.findIndex(l => l.textContent.includes(marker))
+    if (start > 0) lines.slice(0, start).forEach(l => { l.style.display = 'none' })
+    document.querySelectorAll(
+      '.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]'
+    ).forEach(el => { el.style.display = 'none' })
+    lines.forEach(l => {
+      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
+    })
+  }, 'publish.sh publish')
+  await maskProjectName()
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+  I.resizeWindow(1024, 768)
+}
+
+/**
+ * A job log is plain text, not JSON: it goes out through curl, like every other
+ * trace read in this suite.
+ */
+function jobTrace (jobId, headers) {
+  return sh(
+    `curl -s ${curlAuthFlags(headers)} ` +
+    `'${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}/jobs/${jobId}/trace'`,
+    '/tmp'
+  )
+}
+
+/**
+ * The publish-source job of the newest pipeline on main, whatever its verdict.
+ * `after` is the pipeline this story already read: a merge lands on main and
+ * GitLab starts the next pipeline itself, so the wait has to be for a NEW one
+ * rather than for a terminal state the old one already has.
+ */
+async function publicationJob (headers, after = 0) {
+  const encoded = encodedProjectPath(global.pubPrivate)
+  const deadline = Date.now() + PIPELINE_TIMEOUT_MS
+  let pid = null
+  let status = null
+  let last = ''
+  let tidied = false
+  while (Date.now() < deadline) {
+    if (!pid) {
+      const list = await freshGet(
+        `${BASE_URL}/api/v4/projects/${encoded}/pipelines?ref=main&order_by=id&sort=desc`, headers
+      )
+      const newest = (list.data || []).find(p => p.id > after)
+      if (newest) pid = newest.id
+    }
+    // The approval merge request carries the framework's own pipeline, and
+    // merging it starts one. On a single-slot runner that pipeline would run its
+    // linter for minutes while the publication waits behind it, so it goes as
+    // soon as the pipeline this story is about exists.
+    if (pid && !tidied) {
+      tidied = true
+      await cancelRedundantPipelines(global.pubPrivate, pid, await getRootHeaders())
+    }
+    if (pid) {
+      const pipe = await getPipeline(global.pubPrivate, pid, headers)
+      status = pipe.data.status
+      if (status !== last) { console.log(`main pipeline ${pid}: ${status}`); last = status }
+      if (['success', 'failed', 'canceled', 'skipped'].includes(status)) break
+    }
+    await I.wait(5)
+  }
+  if (!pid) throw new Error(`No pipeline newer than ${after} ever ran on main`)
+  const jobs = await listPipelineJobs(global.pubPrivate, pid, headers)
+  const job = (jobs.data || []).find(j => j.name === 'publish-source')
+  if (!job) {
+    throw new Error(`Pipeline ${pid} carried no publish-source job: ${JSON.stringify((jobs.data || []).map(j => j.name))}`)
+  }
+  return { pid, status, job }
+}
+
+storyboardStep(When, 'the branch is pushed and GitLab runs the publication itself', async () => {
+  const rootHeaders = await getRootHeaders()
+  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+
+  // Switched on here, not at the start: the earlier chapters photograph merge
+  // request pages, and a pipeline running behind them repaints the merge widget
+  // under the camera.
+  await updateProjectSettings(global.pubPrivate, { jobs_enabled: true }, lambdaHeaders)
+
+  // What a laptop keeps in .env, CI keeps in its own variables. Not masked here
+  // only because this GitLab is thrown away with the scenario; the install story
+  // is the one that proves the masking.
+  for (const [key, value] of [
+    ['TASK_PUBLICATION_TOKEN', global.pubLambdaToken],
+    ['TASK_PUBLICATION_SOURCE_TOKEN', global.pubLambdaToken],
+    ['TASK_PUBLICATION_TOKEN_USERNAME', lambdaUser()]
+  ]) {
+    const res = await createProjectVariable(
+      global.pubPrivate, { key, value, masked: false, protected: false }, lambdaHeaders
+    )
+    if (res.status >= 400) {
+      throw new Error(`Failed to create ${key}: ${res.status} ${JSON.stringify(res.data)}`)
+    }
+  }
+
+  await backToTerminal()
+  // Where the source goes is not a secret, so it travels in the versioned
+  // defaults — which is also how the job finds it, having no task runner to load
+  // the dotenv files for it.
+  // Filled in, not appended: the file ships both keys empty, and a project fills
+  // them in where they already are.
+  const targetUrl = `http://gitlab/${lambdaUser()}/${global.pubPublic}.git`
+  inProjectOrThrow(
+    "sed -i -e 's|^TASK_PUBLICATION_ENABLED=.*|TASK_PUBLICATION_ENABLED=true|' " +
+    `-e 's|^TASK_PUBLICATION_TARGET_URL=.*|TASK_PUBLICATION_TARGET_URL=${targetUrl}|' .env.dist`
+  )
+  const written = inProjectOrThrow('grep TASK_PUBLICATION .env.dist')
+  mustContain(written, targetUrl, 'the pipeline reads the destination from the versioned defaults')
+  inProjectOrThrow(`cat > .gitlab-ci.yml <<'STORY_CI'\n${STORY_PIPELINE}STORY_CI`)
+  inProjectOrThrow('git add .env.dist .gitlab-ci.yml && git commit -q --no-verify -m "ci: let the pipeline publish the source"')
+
+  global.pubRunner = await registerScopedRunner(I, global.pubPrivate, rootHeaders)
+  inProjectOrThrow('git push --quiet origin main')
+
+  const { pid, status, job } = await publicationJob(lambdaHeaders)
+  global.pubCiPid = pid
+  if (status !== 'failed') {
+    throw new Error(`The pipeline must refuse to publish an unapproved file, it was "${status}"`)
+  }
+  await publicationJobCard(job.id, 'publication-ci-refused')
+
+  mustContain(jobTrace(job.id, lambdaHeaders), [LATE_ARRIVAL, 'Nobody has approved that list'],
+    'the job must refuse for the same reason, and name the same file')
+})
+
+storyboardStep(Then, 'the pipeline publishes the source on its own, once an owner has approved', async () => {
+  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  const ownerHeaders = { 'PRIVATE-TOKEN': global.pubOwnerToken }
+
+  // The owner answers the question on the merge request the refusal left behind,
+  // and it goes in. Off camera: chapter 3 is where that page is photographed.
+  const mr = await openApprovalMergeRequest(lambdaHeaders)
+  const thread = await approvalThread(mr.iid, ownerHeaders)
+  await setThreadResolved(mr.iid, thread.id, true, ownerHeaders)
+  const merged = await mergeMergeRequest(global.pubPrivate, mr.iid, lambdaHeaders)
+  if (merged.status >= 400) {
+    throw new Error(`The approval merge request must go in: ${merged.status} ${JSON.stringify(merged.data)}`)
+  }
+
+  // No second command anywhere: the merge landed on main, and that is what
+  // starts the pipeline again.
+  const { status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
+  if (status !== 'success') {
+    throw new Error(`The pipeline must publish once an owner approved, it was "${status}"`)
+  }
+  await publicationJobCard(job.id, 'publication-ci-published')
+
+  mustContain(jobTrace(job.id, lambdaHeaders), ['Publishing 4 files', 'Pushed', OWNER_USERNAME],
+    'the job must say what it published and who approved it')
+})
+
+storyboardStep(Then, 'the public project carries exactly what the owner approved', async () => {
+  await gitlabCard(`/${projectPath(global.pubPublic)}/-/tree/main/src`, 'publication-public-ci', 560)
+  const paths = await publicTreePaths()
+  if (!paths.includes(LATE_ARRIVAL)) {
+    throw new Error(`"${LATE_ARRIVAL}" was approved and must now be public, found ${JSON.stringify(paths)}`)
+  }
+  for (const withheld of [WITHHELD_BY_FLOOR, WITHHELD_BY_DENYLIST]) {
+    if (paths.includes(withheld)) {
+      throw new Error(`"${withheld}" must never leave, found in ${JSON.stringify(paths)}`)
+    }
+  }
+})
+
+// ===========================================================================
 // @publication-only — the component installed on its own.
 //
 // The same journey engine as agent mode: a real clone of a real test-GitLab
@@ -774,6 +1006,8 @@ storyboardStep(Then, 'the public project has not moved', async () => {
 const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
 const CHECKLIST_HEADER = 'Select what to install'
 const PUBLICATION_DONE = 'Source publication installed.'
+const WIRING_PROMPT = 'Say where the source goes'
+const WIRING_DONE = 'nightly schedule'
 
 async function waitInstallerLog (needle, timeoutMs = 300000) {
   const deadline = Date.now() + timeoutMs
@@ -807,6 +1041,17 @@ storyboardStep(Given, 'a project that carries no framework at all', async () => 
   )
   if (created.status >= 400) {
     throw new Error(`Failed to create the project: ${created.status} ${JSON.stringify(created.data)}`)
+  }
+  // Where the source will go. Empty, and never touched by this story: what the
+  // install has to prove is that the project can be TOLD where to publish, not
+  // that it publishes — that is the daily-work story's job.
+  global.pubPublic = `${global.pubPrivate}-public`
+  const createdPublic = await createProject(
+    { name: global.pubPublic, visibility: 'public' },
+    { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  )
+  if (createdPublic.status >= 400) {
+    throw new Error(`Failed to create the public project: ${createdPublic.status} ${JSON.stringify(createdPublic.data)}`)
   }
 
   global.pubContainer = setupClonedProjectTerminal(global.pubPrivate, global.pubLambdaToken)
@@ -865,15 +1110,47 @@ storyboardStep(When, 'the developer ticks source publication on the checklist', 
   I.pressKey('Enter')
 })
 
+// The installer's last act, and the only one that needs a forge: it asks where
+// the source goes and for the two tokens that get it there, then does the whole
+// GitLab side with them. The tokens are typed into a terminal with echo off, so
+// this card can be a picture of the real thing without a secret in it.
+storyboardStep(When, 'the developer says where the source goes and hands over the tokens', async () => {
+  await waitForTerminalText(I, WIRING_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  I.pressKey('Enter')
+
+  await waitForTerminalText(I, 'Your token for THIS repository', COMMAND_TIMEOUT_MS)
+  I.type(global.pubLambdaToken)
+  I.pressKey('Enter')
+
+  await waitForTerminalText(I, 'The PUBLIC repository', COMMAND_TIMEOUT_MS)
+  I.type(`http://gitlab/${lambdaUser()}/${global.pubPublic}.git`)
+  I.pressKey('Enter')
+
+  await waitForTerminalText(I, 'A token that may push to it', COMMAND_TIMEOUT_MS)
+  I.type(global.pubLambdaToken)
+  I.pressKey('Enter')
+
+  await waitInstallerLog(WIRING_DONE)
+  await waitForTerminalSettle(I)
+  const screen = await terminalText()
+  mustContain(screen, ['TASK_RENOVATE_TOKEN created', 'nightly schedule'],
+    'the install must do the GitLab side, not just ask about it')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'publication-only-wiring', {
+    fromMarker: 'This repository needs to be told', mask: TERMINAL_MASKS
+  }))
+})
+
 storyboardStep(Then, 'the project holds the publication component and the spine that carries it', async () => {
   await waitInstallerLog(PUBLICATION_DONE)
   await waitForTerminalSettle(I)
-  await terminalCard('ls -A1 && ls .config', 'Installing source publication', 'publication-only-installed')
+  await typeCommandAndWait(I, 'clear')
+  await terminalCard('ls -A1 && ls .config', 'ls -A1', 'publication-only-installed')
 
   const entries = stripAnsiEscapeSequences(
     inProjectOrThrow("ls -A1 | grep -v '^.git$' | sort")
   ).split('\n').map(l => l.trim()).filter(Boolean).sort()
-  const expected = ['.config', '.env.dist', 'README.md', 'Taskfile.yml'].sort()
+  const expected = ['.config', '.env.dist', '.gitlab-ci.yml', 'README.md', 'Taskfile.yml'].sort()
   if (JSON.stringify(entries) !== JSON.stringify(expected)) {
     throw new Error(`The project must hold exactly ${JSON.stringify(expected)} (plus .git), found ${JSON.stringify(entries)}`)
   }
@@ -890,12 +1167,88 @@ storyboardStep(Then, 'the project holds the publication component and the spine 
     'a component-only install must bring no tooling')
 })
 
+/**
+ * The CI/CD settings page opens with every section folded, so a plain capture
+ * photographs a table of contents. Open the one this card is about, the way a
+ * reader clicks it, and frame the variables themselves.
+ */
+async function variablesCard () {
+  I.resizeWindow(1024, 430)
+  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/settings/ci_cd`)
+  await I.waitForElement('body', 30)
+  await I.executeScript(() => {
+    const heading = Array.from(document.querySelectorAll('h2, h4'))
+      .find(h => h.textContent.trim() === 'Variables')
+    if (!heading) return
+    const section = heading.closest('section') || heading.parentElement
+    const toggle = section && section.querySelector('button')
+    if (toggle) toggle.click()
+  })
+  await I.waitForElement('[data-testid="ci-variable-table"]', 30)
+  await I.wait(2)
+  // The table sits well below the section's own settings, so the heading is the
+  // wrong anchor: scroll to the variables themselves, and a little above them so
+  // their own title comes into frame.
+  await I.executeScript(() => {
+    const table = document.querySelector('[data-testid="ci-variable-table"]')
+    if (table) {
+      table.scrollIntoView({ block: 'start' })
+      window.scrollBy(0, -90)
+    }
+  })
+  await I.wait(1)
+  await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-only-variables'))
+  I.resizeWindow(1024, 768)
+}
+
+storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () => {
+  // The settings the install just wrote are private to the project: an anonymous
+  // browser is answered with a 404, not with a sign-in page. The developer who
+  // ran the installer is the one who gets to look.
+  await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  const headers = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  for (const name of ['TASK_PUBLICATION_TOKEN', 'TASK_RENOVATE_TOKEN', 'TASK_PUBLICATION_SOURCE_TOKEN']) {
+    const variable = await readProjectVariable(global.pubPrivate, name, headers)
+    if (variable.status >= 400) {
+      throw new Error(`${name} must exist as a CI/CD variable, got ${variable.status}`)
+    }
+    if (variable.data.masked !== true || variable.data.protected !== true) {
+      throw new Error(`${name} must be masked and protected, got ${JSON.stringify(variable.data)}`)
+    }
+  }
+  // The project token is the one the install created, so that no human's own
+  // token ever has to be handed to CI.
+  const tokens = await listProjectAccessTokens(global.pubPrivate, headers)
+  const renovateToken = (tokens.data || []).find(t => t.name === 'TASK_RENOVATE_TOKEN' && !t.revoked)
+  if (!renovateToken) {
+    throw new Error(`No project access token named TASK_RENOVATE_TOKEN: ${JSON.stringify(tokens.data)}`)
+  }
+  if (renovateToken.access_level !== 40 || !(renovateToken.scopes || []).includes('api')) {
+    throw new Error(`The Renovate token must be api/Maintainer, got ${JSON.stringify(renovateToken)}`)
+  }
+  await variablesCard()
+})
+
+storyboardStep(Then, 'a nightly check will bring the next toolbox release in', async () => {
+  const schedules = await listPipelineSchedules(global.pubPrivate, { 'PRIVATE-TOKEN': global.pubLambdaToken })
+  const nightly = (schedules.data || []).find(s => s.description.startsWith('Source publication'))
+  if (!nightly) {
+    throw new Error(`No pipeline schedule was created: ${JSON.stringify(schedules.data)}`)
+  }
+  if (nightly.ref !== 'main' && nightly.ref !== 'refs/heads/main') {
+    throw new Error(`The schedule must run on main, got ${nightly.ref}`)
+  }
+  await gitlabCard(`/${projectPath(global.pubPrivate)}/-/pipeline_schedules`, 'publication-only-schedule', 330)
+})
+
 storyboardStep(Then, 'it runs, and says what would become public', async () => {
   // Cleared first: the installer's own hint above prints the very command this
   // card is about, and an anchor that appears twice frames the wrong one.
-  await typeCommandAndWait(I, 'clear')
+  await backToTerminal()
   const screen = await terminalCard('task publication:check', 'task publication:check', 'publication-only-check')
-  mustContain(screen, ['Source publication', 'README.md', 'not configured'],
+  mustContain(screen, ['Source publication', 'README.md', 'no approved list yet'],
     'the component must answer on its own, with no framework around it')
 })
 

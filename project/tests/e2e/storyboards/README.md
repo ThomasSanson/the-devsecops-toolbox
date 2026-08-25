@@ -12,7 +12,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**2. agent-mode-only**](01-install/agent-mode-only.svg) — Saying no to the full framework installs only the AI agent files, nothing else.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@agent-mode-only"`
-- [**3. publication-only**](01-install/publication-only.svg) — Ticking source publication on the same checklist installs it alone, and it runs with nothing but a shell and git.
+- [**3. publication-only**](01-install/publication-only.svg) — Ticking source publication on the same checklist installs it alone, wires GitLab for it, and it runs with nothing but a shell and git.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@publication-only"`
 - [**4. fresh-machine**](01-install/fresh-machine.svg) — The installer adds its own missing tools and stays interactive even when piped from curl.
@@ -37,7 +37,7 @@ Read the acts in order and you follow one developer from an empty project all th
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@release-window"`
 - [**10. source-publication**](02-daily-work/source-publication.svg) — A private project publishes its source to a public one, minus the files that never leave, and only after an owner approved the exact list.
-  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through.
+  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through · The pipeline is what publishes, not a person.
   Replay: `task project:test:e2e -- --grep "@source-publication"`
 - [**11. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
   Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.
@@ -57,7 +57,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**15. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
   Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.
   Replay: `task project:test:e2e -- --grep "@test-discipline"`
-- [**16. publication-update**](03-evolution/publication-update.svg) — A toolbox release reaches a project that installed only source publication: its component and its spine move, the team's own rules do not, and nothing it never installed arrives.
+- [**16. publication-update**](03-evolution/publication-update.svg) — Renovate brings a toolbox release to a project that installed only source publication: its component and its spine move, the team's own rules do not, and nothing it never installed arrives.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@publication-update"`
 

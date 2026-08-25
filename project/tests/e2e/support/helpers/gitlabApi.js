@@ -325,6 +325,13 @@ async function listProjectTags (projectName, headers) {
   )
 }
 
+async function listPipelineSchedules (projectName, headers) {
+  return freshGet(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipeline_schedules`,
+    headers
+  )
+}
+
 module.exports = {
   BASE_URL,
   projectPath,
@@ -361,5 +368,6 @@ module.exports = {
   createProjectIssue,
   createRepositoryBranch,
   createMergeRequest,
-  listProjectTags
+  listProjectTags,
+  listPipelineSchedules
 }

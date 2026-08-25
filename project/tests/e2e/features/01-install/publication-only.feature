@@ -15,7 +15,7 @@ Feature: Installing only the source publication component
   # What lands is the component AND the spine that keeps it up to date: the
   # copier answers file that records the template and the release, the handful of
   # files `task copier:update` needs, and the Renovate config that watches that
-  # answers file. 16 files against 199 for a full install, and not one tool: no
+  # answers file. 20 files against 199 for a full install, and not one tool: no
   # linter, no container runtime, no forge CLI. A component nobody can update
   # would be worse than no component, which is why the spine travels with it.
   @publication-only
@@ -28,12 +28,24 @@ Feature: Installing only the source publication component
     # Copy: bash /tmp/devsecops-install.sh
     When the developer ticks source publication on the checklist
     # Note: The installer says what it installed and what to do next: name the people who approve, say what may leave, then run the check.
-    # Note: Beside the README it started with, the install added three things: .config, .env.dist and Taskfile.yml. Taskfile.yml runs the publication and .env.dist holds its settings; under .config, publication is the component itself, and copier, devsecops, python and renovate are the spine that will bring the next toolbox release in.
+    # Note: The installer's last question, and the only one that needs GitLab: where the source goes, and the two tokens to get it there. Both are typed blind, neither is echoed, and neither is written to a file.
+    # Note: What it does with them is the whole GitLab side. It stores the push token as a masked variable, creates a project token so that Renovate and the approval never need a person's own, and schedules the nightly check that brings the next toolbox release in. The same three questions are task publication:init on any later day.
+    # Copy: bash /tmp/devsecops-install.sh
+    And the developer says where the source goes and hands over the tokens
+    # Note: Beside the README it started with, the install added four things: .config, .env.dist, .gitlab-ci.yml and Taskfile.yml. Taskfile.yml runs the publication, .env.dist holds its settings, and .gitlab-ci.yml was written because there was none — a project that already has a pipeline keeps it, and is told the one line to add. Under .config, publication is the component itself, and copier, devsecops, python and renovate are the spine that will bring the next toolbox release in.
     # Note: No megalinter, no docker, no glab: not one tool came along, and nothing that a project taking a single component has no use for.
     # Copy: ls -A1 && ls .config
     Then the project holds the publication component and the spine that carries it
+    # Note: The project's CI/CD variables, as GitLab holds them. The one that was typed is there, the token that may push to the public repository; the other two are the project token the install created, under the two names that use it — Renovate, and the sign-off that reads who approved.
+    # Note: All three are masked and protected, so none can be printed by a job or read back by anyone, including the developer who just typed one. Nobody's personal token ever reaches CI.
+    # Copy: Settings > CI/CD > Variables
+    And GitLab holds the tokens, masked and protected
+    # Note: And the schedule that runs it. Every night at four, this project asks whether a new toolbox release exists, and Renovate opens the merge request when one does.
+    # Note: A repository can be quiet for a month; the rules deciding what becomes public still cannot be allowed to go stale for a month.
+    # Copy: Build > Pipeline schedules
+    And a nightly check will bring the next toolbox release in
     # Note: It runs, with nothing else installed. The lists that just landed answer the only question that matters, what would become public, and right now that is the README, because the shipped allowlist publishes everything tracked and the README is all there is.
-    # Note: The target and the approved list are still empty, and it says so: a human has decided neither yet.
+    # Note: The destination it was just given is on the first line, and under it the only thing still missing: nobody has approved a list yet, so nothing has ever been published from here.
     # Copy: task publication:check
     And it runs, and says what would become public
     # Note: And it knows where it came from. One line in the answers file records the toolbox release that rendered it.

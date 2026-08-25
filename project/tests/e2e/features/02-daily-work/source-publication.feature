@@ -94,3 +94,17 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: Which closes the story back on its first rule: what gets published is what an owner approved, file by file, and never what a pattern happened to match.
     # Copy: http://gitlab/<lambda-user>/<project>-public
     Then the public project has not moved
+    # Chapter: The pipeline is what publishes, not a person
+    # Note: The developer pushes, and GitLab takes it from there. This project's pipeline carries the publication job the toolbox ships, on the main branch, in the release stage: the source leaves from CI, not from somebody's laptop.
+    # Note: The job failed, and the reason is the one from three cards ago, word for word. GitLab runs the same script a developer runs, so it stops at the same place: src/server/token-store.js is on nobody's approved list, and nothing was pushed.
+    # Note: Which is what makes the rule real. A developer can be talked into skipping a step; the pipeline cannot, and it is the pipeline that holds the token.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
+    When the branch is pushed and GitLab runs the publication itself
+    # Note: An owner answered the thread on the merge request the job left behind, and it went in. The same pipeline runs again on the same branch, and this time the job is green: four files published, two withheld.
+    # Note: Nobody typed a command to publish. The approval is what changed, and the pipeline noticed on its own.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
+    Then the pipeline publishes the source on its own, once an owner has approved
+    # Note: The published src/server folder, with the file that was held back until an owner said yes. It is here now, and it got here without anybody being able to push it by hand.
+    # Note: And the two files that never leave are still not here. Same rules, same result, whether the publication runs on a laptop or in CI.
+    # Copy: http://gitlab/<lambda-user>/<project>-public/-/tree/main/src
+    And the public project carries exactly what the owner approved
