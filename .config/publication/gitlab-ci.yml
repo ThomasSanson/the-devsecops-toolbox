@@ -1,24 +1,31 @@
 ---
-# Source publication as a STANDALONE job, for a project that installed only the
-# publication component (no root Taskfile, no framework). Add one line to your
+# The two jobs a project needs when it installed ONLY the source publication
+# component (no root pipeline, no framework). Add one line to your
 # .gitlab-ci.yml:
 #
 #   include:
 #     - local: .config/publication/gitlab-ci.yml
 #
 # A project running the complete DevSecOps Toolbox needs none of this: there,
-# `task release` runs the publication itself, on the default branch, after the
-# tag.
+# `task release` runs the publication itself and the framework pipeline already
+# carries the feedback job.
 #
-# The publication belongs to the RELEASE phase, so this declares that stage. A
-# pipeline that already declares its own `stages:` overrides this one — add
-# `release` to that list, or the job fails with "chosen stage does not exist".
+# Two stages are declared because the two jobs answer to different phases: the
+# publication belongs to RELEASE, Renovate to FEEDBACK. A pipeline that already
+# declares its own `stages:` overrides this one — add both names to that list,
+# or the jobs fail with "chosen stage does not exist".
 #
-# Set TASK_PUBLICATION_TOKEN as a masked, protected CI/CD variable, and
-# TASK_PUBLICATION_SOURCE_TOKEN (or GITLAB_TOKEN) so the job can open the
-# approval merge request and read who answered it.
+# What to set, once, with `task publication:init`:
+#   TASK_RENOVATE_TOKEN           created and stored for you, so Renovate can
+#                                 open the merge request that brings the next
+#                                 toolbox release in
+# What to set by hand, as masked and protected CI/CD variables:
+#   TASK_PUBLICATION_TOKEN        may push to the public repository
+#   TASK_PUBLICATION_SOURCE_TOKEN may read this one's merge requests (or
+#                                 GITLAB_TOKEN)
 stages:
   - release
+  - feedback
 
 publish-source:
   stage: release
@@ -30,4 +37,31 @@ publish-source:
   script:
     - sh .config/publication/publish.sh publish
   rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Renovate reads .config/renovate/config.json, sees the toolbox release recorded
+# in .config/devsecops/.copier-answers.yml, and opens the merge request that
+# updates the component. It runs on the toolbox image because that is where
+# `task` and copier already live.
+feedback:
+  stage: feedback
+  image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:23.0.39
+  variables:
+    RENOVATE_TOKEN: $TASK_RENOVATE_TOKEN
+    # The complete framework sets these three in its own CI variables file, which
+    # a project that took one component does not have. Without them Renovate
+    # runs against the repository named "." and finds nothing.
+    TASK_RENOVATE_PLATFORM: gitlab
+    TASK_RENOVATE_REPOSITORY: $CI_PROJECT_PATH
+    TASK_RENOVATE_ENDPOINT: $CI_API_V4_URL
+  before_script:
+    # Renovate's copier manager applies the release by running `copier` itself,
+    # so the binary has to be on PATH — the same line the complete framework's
+    # feedback job runs, for the same reason. Without it the merge request
+    # carries the version bump and none of the files it should have brought.
+    - pipx install copier
+  script:
+    - task feedback
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -112,6 +112,7 @@ off. Fill it before switching publication on.
 ## Commands
 
 ```bash
+task publication:init      # once: where the source goes, the tokens, the nightly check
 task publication:check     # dry run: what would leave, what is held back, who approved
 task publication:approve   # open the merge request that asks the owners
 task publication:publish   # the real thing (also chained into `task release`)
@@ -125,10 +126,12 @@ way from a developer's machine and from the pipeline. On the default branch,
 `task release` runs it after the tag.
 
 A project that installed **only this component** has no `task release` to hook
-into, so it gets a standalone job instead: add
-`- local: .config/publication/gitlab-ci.yml` to its `include:`. That job sits in
-the **release** stage, like the task it replaces; a pipeline that declares its
-own `stages:` has to list `release` among them.
+into, so it gets standalone jobs instead: add
+`- local: .config/publication/gitlab-ci.yml` to its `include:` (the installer
+writes that line for you when the project has no pipeline of its own). The
+publication job sits in the **release** stage, like the task it replaces, and the
+feedback job that runs Renovate sits in **feedback**; a pipeline that declares
+its own `stages:` has to list both names.
 
 ## Settings
 
@@ -143,6 +146,7 @@ own `stages:` has to list `release` among them.
 | `TASK_PUBLICATION_API_URL`         | from `origin`          | The forge API.                                   |
 | `TASK_PUBLICATION_PROJECT_PATH`    | from `origin`          | This project's path on the forge.                |
 | `TASK_PUBLICATION_APPROVAL_BRANCH` | `publication-approval` | The branch the approval merge request uses.      |
+| `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.   |
 
 The two tokens point at two different projects, which is why there are two. Keep
 them as **masked, protected** CI/CD variables; the publication never prints one,
@@ -153,12 +157,16 @@ never puts one in a command line and never writes one into the destination's
 
 1. Create the public repository, empty. Disable its CI so the published pipeline
     does not try to run there.
-2. Create a token on it that may push, and store it as
-    `TASK_PUBLICATION_TOKEN`.
-3. Fill `owners`, then `allowlist` and `denylist`.
-4. Run `task publication:check` and **read the list**.
-5. Run `task publication:approve`, and have an owner answer the thread.
-6. Set `TASK_PUBLICATION_ENABLED=true`.
+2. Create a token on it that may push.
+3. Run `task publication:init`. It asks for three things — a token for THIS
+    repository (used once, never stored), the public repository's URL, and the
+    token from step 2 — then writes the URL into `.env.dist`, stores the push
+    token as a masked, protected CI/CD variable, creates the project token
+    Renovate and the sign-off both use, and schedules the nightly check that
+    brings the next toolbox release in. The installer offers to run it for you.
+4. Fill `owners`, then `allowlist` and `denylist`.
+5. Run `task publication:check` and **read the list**.
+6. Run `task publication:approve`, and have an owner answer the thread.
 
 ## What it deliberately does not do
 
@@ -179,34 +187,45 @@ it up to date**: the copier answers file (which records the template and the
 release it came from), the handful of files `task copier:update` needs to run,
 and the Renovate config that watches that answers file.
 
-Measured: **16 files, about 100 KB**, against 199 files and 1.7 MB for a full
-install. Nine of them are the component; the other seven are the spine:
+Measured: **20 files, about 110 KB**, against 199 files and 1.7 MB for a full
+install. Nine of them are the component; the other eleven are the spine:
 
 ```text
-Taskfile.yml                            runs the two commands below
+Taskfile.yml                            runs the commands below
 .env.dist                               where the publication settings live
+.gitlab-ci.yml                          written only if the project had none
 .config/devsecops/.copier-answers.yml   the template and the release it came from
+.config/devsecops/Taskfile.feedback.yml the feedback phase, which runs Renovate
 .config/copier/Taskfile.yml             the update itself
+.config/copier/renovate-update.sh       what Renovate runs to apply a release
 .config/copier/requirements.txt         the copier version it runs
 .config/python/.python-version          the python version it runs on
 .config/renovate/config.json            what watches the answers file
+.config/renovate/Taskfile.yml           how Renovate is run
 ```
 
 What it leaves out is every tool (no linter, no container runtime, no forge CLI)
-and the nine phase orchestrators a full project gets: a project that publishes
-has no build, deploy or monitor phase to run, so it is down to two commands,
-`task publication:*` and `task copier:update`.
+and eight of the nine phase orchestrators: a project that publishes has no
+build, deploy or monitor phase to run. Feedback is the one it keeps, because
+that is the phase that runs Renovate, and Renovate is what offers it the next
+toolbox release.
+
+`task publication:init` does the forge side once: it asks where the source goes
+and for the token that may push there, stores that token masked, creates the
+project token Renovate authenticates with, and schedules the nightly run that
+looks for a new release.
 
 Nothing you already have is overwritten. If the project already has a root
-`Taskfile.yml` or a `.env.dist`, the installer keeps yours and prints the two
-includes and the three settings to add.
+`Taskfile.yml`, a `.env.dist` or a `.gitlab-ci.yml`, the installer keeps yours
+and prints the includes, the settings and the one pipeline line to add.
 
 That is deliberate. A component with no upgrade path rots, and rotted rules
 about what becomes public are worse than none. With the answers file, a toolbox
 release reaches the project the same way it reaches a full one:
 
 ```bash
-task copier:update      # the command Renovate runs on the release merge request
+task feedback           # runs Renovate, which opens the merge request
+task copier:update      # what that merge request runs to apply the release
 ```
 
 Copier's three-way merge is what protects you: a release edits the files the

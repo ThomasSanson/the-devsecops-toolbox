@@ -58,8 +58,30 @@ DENY_BASE="${PUB_DIR}/denylist.base"
 OWNERS="${PUB_DIR}/owners"
 MANIFEST="${PUB_DIR}/manifest"
 
-TARGET_URL="${TASK_PUBLICATION_TARGET_URL:-}"
-TARGET_BRANCH="${TASK_PUBLICATION_TARGET_BRANCH:-main}"
+# The settings live in the dotenv files the root Taskfile loads, and `task
+# publication:publish` therefore has them. A CI job runs THIS script directly —
+# no task, no dotenv — so it would see none of them. Read them here, in the same
+# priority the Taskfile uses, and only for a variable the environment did not
+# already set: a CI/CD variable must always beat a file in the repository.
+dotenv_value() {
+  for _file in .env .env.dev .env.dist; do
+    [ -f "${_file}" ] || continue
+    # The LAST assignment wins, the way every dotenv reader resolves a key that
+    # appears twice — and a file that ships the key empty and has it filled in
+    # further down is exactly that case.
+    _found="$(sed -n "s/^[[:space:]]*$1=//p" "${_file}" | sed '/^$/d' | tail -n 1 |
+      sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+    if [ -n "${_found}" ]; then
+      printf '%s' "${_found}"
+      return 0
+    fi
+  done
+  printf ''
+}
+
+TARGET_URL="${TASK_PUBLICATION_TARGET_URL:-$(dotenv_value TASK_PUBLICATION_TARGET_URL)}"
+TARGET_BRANCH="${TASK_PUBLICATION_TARGET_BRANCH:-$(dotenv_value TASK_PUBLICATION_TARGET_BRANCH)}"
+TARGET_BRANCH="${TARGET_BRANCH:-main}"
 TOKEN="${TASK_PUBLICATION_TOKEN:-}"
 TOKEN_USERNAME="${TASK_PUBLICATION_TOKEN_USERNAME:-oauth2}"
 SOURCE_TOKEN="${TASK_PUBLICATION_SOURCE_TOKEN:-${GITLAB_TOKEN:-${TASK_COMMITIZEN_TOKEN:-}}}"
@@ -566,12 +588,205 @@ cmd_approve() {
   printf '\n'
 }
 
+# ---------------------------------------------------------------------------
+# init — the forge setup a project needs ONCE, when it installed only this
+# component. Two things stand between such a project and staying up to date: a
+# token Renovate can authenticate with, and something that runs it. The complete
+# framework does this with `task glab:renovate-token`, which needs the glab CLI;
+# a project that took one component has no glab, so the same calls live here in
+# curl. The name, the scope and the access level are the framework's, to the
+# letter — a project that later installs the whole toolbox finds its token
+# already correct instead of a second one beside it.
+# ---------------------------------------------------------------------------
+RENOVATE_TOKEN_NAME="${TASK_PUBLICATION_RENOVATE_TOKEN_NAME:-TASK_RENOVATE_TOKEN}"
+SCHEDULE_CRON="${TASK_PUBLICATION_SCHEDULE_CRON:-0 4 * * *}"
+ENV_FILE="${TASK_PUBLICATION_ENV_FILE:-.env.dist}"
+
+# A token is typed, never echoed and never written to a file. `read -s` is bash,
+# not POSIX sh: turning the terminal echo off around a plain read is what works
+# in every shell this script runs under.
+ask_secret() {
+  printf '   %s' "$1" >&2
+  if [ -t 0 ]; then
+    stty -echo 2>/dev/null || true
+    read -r _secret
+    stty echo 2>/dev/null || true
+    printf '\n' >&2
+  else
+    read -r _secret
+  fi
+  printf '%s' "${_secret}"
+}
+
+ask_line() {
+  printf '   %s' "$1" >&2
+  read -r _line
+  printf '%s' "${_line}"
+}
+
+# The destination and the on/off switch are settings, not secrets: they belong
+# in the versioned defaults file, where the whole team can see where the source
+# goes. Replace the line if it is there, append it if it is not.
+set_env_value() {
+  _key="$1"
+  _value="$2"
+  [ -f "${ENV_FILE}" ] || : >"${ENV_FILE}"
+  if grep -q "^${_key}=" "${ENV_FILE}" 2>/dev/null; then
+    _tmp="${ENV_FILE}.publication-tmp"
+    _v="${_value}" awk -v key="${_key}" \
+      'BEGIN{v=ENVIRON["_v"]} $0 ~ "^" key "=" {print key "=" v; next} {print}' \
+      "${ENV_FILE}" >"${_tmp}" && mv "${_tmp}" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${_key}" "${_value}" >>"${ENV_FILE}"
+  fi
+}
+
+# Masking is a promise to the person who typed a secret, so a variable GitLab
+# refused to mask must not be stored unmasked behind their back: it is reported
+# instead, with the reason GitLab gave.
+put_ci_variable() {
+  _key="$1"
+  _value="$2"
+  api DELETE "/projects/${PROJECT_ENC}/variables/${_key}" >/dev/null 2>&1 || true
+  _res="$(api POST "/projects/${PROJECT_ENC}/variables" --data "$(jq -n \
+    --arg key "${_key}" --arg value "${_value}" \
+    '{key: $key, value: $value, masked: true, protected: true}')")"
+  if [ -z "$(printf '%s' "${_res}" | jq -r '.key? // empty' 2>/dev/null)" ]; then
+    say "❌ ${_key} was not stored: $(printf '%s' "${_res}" |
+      jq -r '(.message | if type=="object" then (to_entries[] | "\(.key) \(.value|join(", "))") else . end)? // "the API refused the call"' 2>/dev/null)"
+    return 1
+  fi
+  return 0
+}
+
+# The token is created, read once, and stored. GitLab never shows its value
+# again, so a token whose CI variable is missing is a token nobody can use: when
+# one exists already, it is replaced rather than trusted.
+#
+# It is stored under two names on purpose. Renovate reads one, the publication
+# reads the other, and they want the same thing: the api scope on THIS
+# repository. One project token doing both jobs is what keeps a human's personal
+# token out of CI entirely.
+init_token() {
+  _existing="$(api GET "/projects/${PROJECT_ENC}/access_tokens?per_page=100" |
+    jq -r --arg n "${RENOVATE_TOKEN_NAME}" \
+      '[.[]? | select(.name == $n and (.revoked | not))] | .[0].id // empty' 2>/dev/null || true)"
+  if [ -n "${_existing}" ]; then
+    api DELETE "/projects/${PROJECT_ENC}/access_tokens/${_existing}" >/dev/null 2>&1 || true
+  fi
+
+  # An expiry is not optional: a GitLab that enforces one refuses the call
+  # outright ("expires_at is missing"). Ninety days is the framework's own figure
+  # for this token, in .config/glab/project-token.sh, and rerunning this command
+  # is what renews it. BSD date first, GNU date second: the same two-step the
+  # framework uses, so a laptop and a runner agree.
+  if _expires="$(date -v +90d +%Y-%m-%d 2>/dev/null)"; then
+    :
+  else
+    _expires="$(date -d '+90 days' +%Y-%m-%d)"
+  fi
+  _created="$(api POST "/projects/${PROJECT_ENC}/access_tokens" --data "$(jq -n \
+    --arg name "${RENOVATE_TOKEN_NAME}" --arg exp "${_expires}" \
+    '{name: $name, scopes: ["api"], access_level: 40, expires_at: $exp}')")"
+  _value="$(printf '%s' "${_created}" | jq -r '.token // empty' 2>/dev/null || true)"
+  if [ -z "${_value}" ]; then
+    say "❌ Could not create the project access token ${RENOVATE_TOKEN_NAME}."
+    say "   $(printf '%s' "${_created}" | jq -r '.message? // .error? // "the API refused the call"' 2>/dev/null)"
+    say "   The token you gave needs the api scope and Maintainer on this repository."
+    return 1
+  fi
+
+  # protected: the token only reaches pipelines on protected branches, which is
+  # where the release and Renovate run. masked: it never appears in a job log.
+  put_ci_variable "${RENOVATE_TOKEN_NAME}" "${_value}" || return 1
+  put_ci_variable "TASK_PUBLICATION_SOURCE_TOKEN" "${_value}" || return 1
+  say "✅ ${RENOVATE_TOKEN_NAME} created, and stored masked for Renovate and for the approval."
+  return 0
+}
+
+# Something has to start the pipeline that runs Renovate. On the default branch
+# every push already does; a repository that is quiet for a month would hear
+# about no release at all, so a nightly schedule is what makes it automatic.
+init_schedule() {
+  _branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'main')"
+  _found="$(api GET "/projects/${PROJECT_ENC}/pipeline_schedules?per_page=100" |
+    jq -r '[.[]? | select(.description == "Source publication — check for toolbox releases")] | .[0].id // empty' 2>/dev/null || true)"
+  if [ -n "${_found}" ]; then
+    say "✅ The nightly schedule is already there."
+    return 0
+  fi
+  _res="$(api POST "/projects/${PROJECT_ENC}/pipeline_schedules" --data "$(jq -n \
+    --arg desc "Source publication — check for toolbox releases" \
+    --arg ref "${_branch}" --arg cron "${SCHEDULE_CRON}" \
+    '{description: $desc, ref: $ref, cron: $cron}')")"
+  if [ -n "$(printf '%s' "${_res}" | jq -r '.id // empty' 2>/dev/null)" ]; then
+    say "✅ A nightly schedule runs it on ${_branch}, at ${SCHEDULE_CRON}."
+  else
+    say "⚠️  Could not create the schedule: $(printf '%s' "${_res}" | jq -r '.message? // "the API refused the call"' 2>/dev/null)"
+  fi
+  return 0
+}
+
+cmd_init() {
+  head_line
+  require jq
+  require curl
+
+  # Asked once, kept in memory, never written anywhere: it is a human's own
+  # token, and its only job is to create the project token that CI will use.
+  if [ -z "${SOURCE_TOKEN}" ] && [ -t 0 ]; then
+    say "This repository needs to be told where its source goes, and given the"
+    say "tokens to get it there. Three answers, once."
+    printf '\n'
+    SOURCE_TOKEN="$(ask_secret "Your token for THIS repository (api scope, Maintainer), not shown: ")"
+  fi
+  if ! forge_ready; then
+    refuse "Nothing to talk to: run this inside the repository, with a token for it." \
+      "Set TASK_PUBLICATION_SOURCE_TOKEN, or answer the question when asked."
+  fi
+
+  if [ -z "${TARGET_URL}" ] && [ -t 0 ]; then
+    TARGET_URL="$(ask_line "The PUBLIC repository the source goes to (https://…): ")"
+  fi
+  if [ -n "${TARGET_URL}" ]; then
+    set_env_value "TASK_PUBLICATION_TARGET_URL" "${TARGET_URL}"
+    set_env_value "TASK_PUBLICATION_ENABLED" "true"
+    say "✅ ${ENV_FILE} sends the source to ${TARGET_URL}, and the publication is on."
+  fi
+
+  # The push token belongs to the OTHER repository, so nothing here can create
+  # it. It is typed, sent straight to the forge as a masked variable, and
+  # forgotten: it never reaches the disk.
+  if [ -t 0 ]; then
+    _push="$(ask_secret "A token that may push to it, not shown (enter to skip): ")"
+    if [ -n "${_push}" ] && put_ci_variable "TASK_PUBLICATION_TOKEN" "${_push}"; then
+      say "✅ TASK_PUBLICATION_TOKEN stored as a masked CI/CD variable, and nowhere else."
+    fi
+  fi
+
+  init_token || {
+    printf '\n'
+    exit 1
+  }
+  init_schedule
+
+  if [ -f .gitlab-ci.yml ] && ! grep -q '.config/publication/gitlab-ci.yml' .gitlab-ci.yml; then
+    printf '\n'
+    say "One line is still missing from your .gitlab-ci.yml:"
+    say "  include:"
+    say "    - local: .config/publication/gitlab-ci.yml"
+  fi
+  printf '\n'
+  return 0
+}
+
 case "${1:-check}" in
 check) cmd_check ;;
 publish) cmd_publish ;;
 approve) cmd_approve ;;
+init) cmd_init ;;
 *)
-  printf 'usage: %s check|approve|publish\n' "$0" >&2
+  printf 'usage: %s check|approve|publish|init\n' "$0" >&2
   exit 2
   ;;
 esac

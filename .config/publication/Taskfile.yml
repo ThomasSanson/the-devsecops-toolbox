@@ -40,6 +40,26 @@ tasks:
       - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh check
         silent: true
 
+  init:
+    desc: "🔧 Wire this repository: destination, tokens, and the nightly check"
+    summary: |
+      ℹ️ Description:
+        The one-time setup. Asks where the source goes and for the tokens that
+        get it there, then does the forge side: stores them masked, creates the
+        project token Renovate and the approval share, and schedules the nightly
+        run that brings the next toolbox release in.
+
+      🔐 Preconditions:
+        - a token for THIS repository, api scope, Maintainer (asked, never stored)
+        - a token that may push to the PUBLIC repository (asked, stored masked)
+
+      🔄 Execution:
+        Runs publish.sh in init mode.
+    interactive: true
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh init
+        silent: true
+
   approve:
     desc: 🙋 Ask the owners to approve what becomes public
     summary: |

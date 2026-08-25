@@ -592,7 +592,7 @@ scaffold_agent_only() {
 # full one, and copier's three-way merge is what protects the four files the
 # project owns (allowlist, denylist, owners, manifest) when a release lands.
 #
-# Measured: 16 files and ~100 KB, against 199 files and 1.7 MB for a full
+# Measured: 20 files and ~110 KB, against 199 files and 1.7 MB for a full
 # install. What it leaves out is every tool — no linter, no container runtime,
 # no forge CLI.
 #
@@ -665,15 +665,40 @@ scaffold_publication_only() {
   TASK_PUBLICATION_ENABLED=false
   TASK_PUBLICATION_TARGET_URL=
   TASK_PUBLICATION_TARGET_BRANCH=main"
+  # A pipeline is the project's own, and clobbering it would be the rudest thing
+  # this installer could do. The component ships its jobs in a file of its own;
+  # the root pipeline only ever gains one include line, and only when there is
+  # no root pipeline to break.
+  if [ -e ./.gitlab-ci.yml ]; then
+    PUBLICATION_MANUAL_STEPS="${PUBLICATION_MANUAL_STEPS}.gitlab-ci.yml is yours already — add this include to it:
+  include:
+    - local: .config/publication/gitlab-ci.yml
+"
+  else
+    cat >./.gitlab-ci.yml <<'CI_EOF'
+---
+# Source publication: the release job that publishes, and the feedback job that
+# lets Renovate bring the next toolbox release in.
+include:
+  - local: .config/publication/gitlab-ci.yml
+CI_EOF
+  fi
   # The update machinery, and only it: the answers file that records the
   # template and the release, copier, and the Renovate config that opens the
   # framework-evolution merge request. The nine phase orchestrators stay behind —
   # a project that publishes has no build, deploy or monitor phase to run.
   copy_spine_file "${render_dir}/.config/devsecops/.copier-answers.yml" ".config/devsecops/.copier-answers.yml"
   copy_spine_file "${render_dir}/.config/copier/Taskfile.yml" ".config/copier/Taskfile.yml"
+  copy_spine_file "${render_dir}/.config/copier/renovate-update.sh" ".config/copier/renovate-update.sh"
   copy_spine_file "${render_dir}/.config/copier/requirements.txt" ".config/copier/requirements.txt"
   copy_spine_file "${render_dir}/.config/python/.python-version" ".config/python/.python-version"
   copy_spine_file "${render_dir}/.config/renovate/config.json" ".config/renovate/config.json"
+  # The feedback phase and Renovate's own taskfile: `task feedback` is what runs
+  # Renovate, and Renovate is what opens the merge request carrying the next
+  # toolbox release. The other eight phase orchestrators stay behind — a project
+  # that publishes has no build, deploy or monitor phase to run.
+  copy_spine_file "${render_dir}/.config/devsecops/Taskfile.feedback.yml" ".config/devsecops/Taskfile.feedback.yml"
+  copy_spine_file "${render_dir}/.config/renovate/Taskfile.yml" ".config/renovate/Taskfile.yml"
 
   # `cp -a src dst` copies src INSIDE dst when dst already exists, which on a
   # second install would bury the new component in .config/publication/publication.
@@ -697,9 +722,10 @@ scaffold_publication_only() {
 
   rm -rf "${render_dir}"
   rm -f "${render_log}"
-  normalise_permissions .config Taskfile.yml .env.dist
+  normalise_permissions .config Taskfile.yml .env.dist .gitlab-ci.yml
   chmod 755 .config .config/publication 2>/dev/null || true
   chmod 755 .config/publication/publish.sh 2>/dev/null || true
+  chmod 755 .config/copier/renovate-update.sh 2>/dev/null || true
 
   log_ok "Source publication installed, with the spine that keeps it up to date."
   if [ -n "${PUBLICATION_MANUAL_STEPS}" ]; then
@@ -713,7 +739,16 @@ scaffold_publication_only() {
   log_info "Next: name the people who approve in .config/publication/owners,"
   log_info "say what may leave in .config/publication/allowlist and denylist,"
   log_info "then run: task publication:check"
-  log_info "Toolbox releases reach this project through: task copier:update"
+  echo ""
+
+  # Where the source goes, and the tokens to get it there. Asked here because
+  # this is the moment somebody is sitting in front of the terminal; the same
+  # questions are `task publication:init` on any later day.
+  if prompt_yes_no_default_yes "Say where the source goes and store the tokens now? [Y/n]: "; then
+    sh .config/publication/publish.sh init || log_info "Run \`task publication:init\` when you are ready."
+  else
+    log_info "When you are: task publication:init"
+  fi
 }
 
 # ---------------------------------------------------------------------------

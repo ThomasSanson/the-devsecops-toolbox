@@ -15,10 +15,10 @@ vars:
 # - Optional includes extras like tests and lint (not needed for Docker builds)
 includes:
   # Essential includes (Required for Docker build and k3s)
-{#- A project that installed a single component has no use for the nine phase
-    orchestrators: it publishes, and it updates itself. They are the only
-    REQUIRED includes, so leaving them out is what keeps such a project down to
-    the two commands it actually runs. #}
+{#- A project that installed a single component has no build, deploy or monitor
+    phase to run. The phase orchestrators are the only REQUIRED includes, so
+    leaving eight of the nine out is what keeps such a project down to the few
+    commands it actually runs. #}
 {%- if install_scope != 'publication' %}
   devsecops:plan:
     taskfile: .config/devsecops/Taskfile.plan.yml
@@ -36,9 +36,13 @@ includes:
     taskfile: .config/devsecops/Taskfile.operate.yml
   devsecops:monitor:
     taskfile: .config/devsecops/Taskfile.monitor.yml
+{%- endif %}
+{#- The feedback phase is the one orchestrator a single-component project keeps:
+    it is what runs Renovate, and Renovate is what brings the next toolbox
+    release in. Without it the component would still be updatable by hand, and
+    updated by nobody. #}
   devsecops:feedback:
     taskfile: .config/devsecops/Taskfile.feedback.yml
-{%- endif %}
   devsecops:init:
     taskfile: .config/devsecops/Taskfile.init.yml
     optional: true

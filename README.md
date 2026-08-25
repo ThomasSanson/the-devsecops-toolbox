@@ -149,7 +149,7 @@ That's it. The installer sets up `task`, `uv`, scaffolds your project with Copie
 Say **no** to the complete framework and a checklist opens, one line per part you can install on its own:
 
 - **Agent mode** — the AI agent guardrails (`.agent/`, `CLAUDE.md`, `AGENTS.md`) and nothing else.
-- **Source publication** — publish a private project's source to a public repository, minus the files that must stay private. Comes with the spine that keeps it up to date (16 files, no tooling), so a toolbox release reaches it like any other project; see [`.config/publication/README.md`](.config/publication/README.md).
+- **Source publication** — publish a private project's source to a public repository, minus the files that must stay private. Comes with the spine that keeps it up to date (20 files, no tooling), so a toolbox release reaches it like any other project; see [`.config/publication/README.md`](.config/publication/README.md).
 
 > **Trying it locally, without GitLab?** The initial configuration targets GitLab (auth, protected branches, project access tokens, the init merge request), so on a bare local repo it will otherwise drop into an interactive `glab` login. Disable that step to scaffold and explore the project offline:
 >
