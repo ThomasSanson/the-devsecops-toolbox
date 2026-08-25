@@ -145,7 +145,11 @@ const LATE_ARRIVAL = 'src/server/token-store.js'
 // Masked at capture time, so the row keeps its colours and its place.
 const TERMINAL_MASKS = [
   [/e2e-journey-[0-9a-f]+/g, 'project'],
-  [/\b\d+ other tracked files\b/g, '<n> other tracked files']
+  [/\b\d+ other tracked files\b/g, '<n> other tracked files'],
+  // The commit the publication reads its files from: a new one every run, and
+  // the card is about which ref was published, not about which commit that ref
+  // happened to be at.
+  [/\(([0-9a-f]{7,40})\)/g, '(<sha>)']
 ]
 
 Before(() => {
@@ -868,10 +872,11 @@ async function publicationJobCard (jobId, frameName, height = 760, marker = 'pub
     const nodes = []
     while (walk.nextNode()) nodes.push(walk.currentNode)
     nodes.forEach(n => {
-      if (/\d{1,2}:\d{2}(AM|PM)|scanned ~|in \d+(\.\d+)?m?s/.test(n.nodeValue)) {
+      if (/\d{1,2}:\d{2}(AM|PM)|scanned ~|in \d+(\.\d+)?m?s|\([0-9a-f]{7,40}\)/.test(n.nodeValue)) {
         n.nodeValue = n.nodeValue
           .replace(/\d{1,2}:\d{2}(AM|PM)/g, '<time>')
           .replace(/in \d+(\.\d+)?m?s/g, 'in <ms>')
+          .replace(/\(([0-9a-f]{7,40})\)/g, '(<sha>)')
       }
     })
   }, marker)

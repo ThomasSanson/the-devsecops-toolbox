@@ -24,12 +24,10 @@ paths = [
   '''(^|/)\.diagnostics/''',
   '''(^|/)megalinter-reports/''',
   '''(^|/)node_modules/''',
-  '''(^|/)venv/'''
-]
-# The fake credentials the publication story plants on purpose: its whole point
-# is that the scanner catches them BEFORE they become public, so the scanner has
-# to tolerate them here. Matched on the value, not on the file: a fixture is
-# still a file that must be read.
-regexes = [
-  '''Zt7kQ2mV9pL4xR8w'''
+  '''(^|/)venv/''',
+  # The publication story plants fake credentials on purpose: its whole point is
+  # that the scan catches them before they become public. The file that CARRIES
+  # the fixture is skipped here — never the value, because the value has to stay
+  # detectable for the story to prove anything.
+  '''(^|/)project/tests/e2e/support/steps/source-publication\.js$'''
 ]
