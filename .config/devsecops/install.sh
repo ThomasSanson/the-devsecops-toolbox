@@ -592,7 +592,7 @@ scaffold_agent_only() {
 # full one, and copier's three-way merge is what protects the four files the
 # project owns (allowlist, denylist, owners, manifest) when a release lands.
 #
-# Measured: 20 files and ~110 KB, against 199 files and 1.7 MB for a full
+# Measured: 22 files and ~120 KB, against 199 files and 1.7 MB for a full
 # install. What it leaves out is every tool — no linter, no container runtime,
 # no forge CLI.
 #
@@ -695,6 +695,12 @@ CI_EOF
   copy_spine_file "${render_dir}/.config/copier/renovate-update.sh" ".config/copier/renovate-update.sh"
   copy_spine_file "${render_dir}/.config/copier/requirements.txt" ".config/copier/requirements.txt"
   copy_spine_file "${render_dir}/.config/python/.python-version" ".config/python/.python-version"
+  # The task runner's own installer, pinned. Everything here runs through
+  # `task`, CI included, and a pipeline job whose image was chosen for its
+  # scanner installs the runner from this file rather than from the internet at
+  # large.
+  copy_spine_file "${render_dir}/.config/task/install.sh" ".config/task/install.sh"
+  copy_spine_file "${render_dir}/.config/task/version" ".config/task/version"
   copy_spine_file "${render_dir}/.config/renovate/config.json" ".config/renovate/config.json"
   # The feedback phase and Renovate's own taskfile: `task feedback` is what runs
   # Renovate, and Renovate is what opens the merge request carrying the next
@@ -729,6 +735,7 @@ CI_EOF
   chmod 755 .config .config/publication 2>/dev/null || true
   chmod 755 .config/publication/publish.sh 2>/dev/null || true
   chmod 755 .config/copier/renovate-update.sh 2>/dev/null || true
+  chmod 755 .config/task/install.sh 2>/dev/null || true
 
   log_ok "Source publication installed, with the spine that keeps it up to date."
   if [ -n "${PUBLICATION_MANUAL_STEPS}" ]; then
@@ -748,7 +755,14 @@ CI_EOF
   # this is the moment somebody is sitting in front of the terminal; the same
   # questions are `task publication:init` on any later day.
   if prompt_yes_no_default_yes "Say where the source goes and store the tokens now? [Y/n]: "; then
-    sh .config/publication/publish.sh init || log_info "Run \`task publication:init\` when you are ready."
+    # Through the task runner, like every other command this framework offers.
+    # A project that already had its own root Taskfile keeps it, and there the
+    # include is a line it has yet to add, so the script answers directly.
+    if [ -f ./Taskfile.yml ] && grep -q 'publication/Taskfile.yml' ./Taskfile.yml 2>/dev/null; then
+      task publication:init || log_info "Run \`task publication:init\` when you are ready."
+    else
+      sh .config/publication/publish.sh init || log_info "Run \`task publication:init\` when you are ready."
+    fi
   else
     log_info "When you are: task publication:init"
   fi

@@ -15,7 +15,7 @@ Feature: Installing only the source publication component
   # What lands is the component AND the spine that keeps it up to date: the
   # copier answers file that records the template and the release, the handful of
   # files `task copier:update` needs, and the Renovate config that watches that
-  # answers file. 20 files against 199 for a full install, and not one tool: no
+  # answers file. 22 files against 199 for a full install, and not one tool: no
   # linter, no container runtime, no forge CLI. A component nobody can update
   # would be worse than no component, which is why the spine travels with it.
   @publication-only

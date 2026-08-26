@@ -9,7 +9,7 @@ Feature: A toolbox release reaches a project that installed only source publicat
   # A component installed on its own would be a dead copy: no version, no way to
   # learn a new release exists, no way to apply it. So the install keeps the
   # framework's OWN update machinery rather than inventing a second one. It is
-  # 20 files against 199 for a full install: the copier answers file that records
+  # 22 files against 199 for a full install: the copier answers file that records
   # the template and the version, the handful of files `task copier:update` needs
   # to run, the Renovate config that watches that answers file, and the component.
   #

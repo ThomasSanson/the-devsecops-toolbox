@@ -153,7 +153,9 @@ and a secret in a file that never leaves is the code phase's business rather
 than this one's.
 
 In CI it is a job of its own, `publication:scan`, and `publish-source` needs it:
-a red scan locks the pipeline and nothing is pushed. On a machine it runs from
+a red scan locks the pipeline and nothing is pushed. Both jobs run `task`, like
+everything else here; they install the pinned runner first because their images
+are chosen for what they scan with, not for what they run with. On a machine it runs from
 an installed `betterleaks` if there is one, from the container image otherwise.
 
 With neither, the publication **stops**: a scanner that is missing is not a
@@ -232,8 +234,8 @@ it up to date**: the copier answers file (which records the template and the
 release it came from), the handful of files `task copier:update` needs to run,
 and the Renovate config that watches that answers file.
 
-Measured: **20 files, about 110 KB**, against 199 files and 1.7 MB for a full
-install. Nine of them are the component; the other eleven are the spine:
+Measured: **22 files, about 120 KB**, against 199 files and 1.7 MB for a full
+install. Nine of them are the component; the other thirteen are the spine:
 
 ```text
 Taskfile.yml                            runs the commands below
@@ -245,6 +247,8 @@ Taskfile.yml                            runs the commands below
 .config/copier/renovate-update.sh       what Renovate runs to apply a release
 .config/copier/requirements.txt         the copier version it runs
 .config/python/.python-version          the python version it runs on
+.config/task/install.sh                 the task runner, pinned, for CI jobs
+.config/task/version                    the version it pins
 .config/renovate/config.json            what watches the answers file
 .config/renovate/Taskfile.yml           how Renovate is run
 ```
