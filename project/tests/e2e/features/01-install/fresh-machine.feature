@@ -53,8 +53,12 @@ Feature: Trusting the installer on a fresh machine
     # Note: The empty copy, with the installer ready to run the documented way — piped into bash (the output of one command fed straight into the next). Set up off-screen: the test user, the tools, and the GitLab login.
     # Copy: curl -fsSL http://gitlab/<toolbox>/install.sh | bash
     Given a developer follows the README and pipes the installer into bash
+    # Note: Before anything lands on the machine, the installer says what it is about to install and what it is for, and asks. task and uv are already here, so it only asks about the two it is missing.
+    # Note: The question is a plain shell prompt, because the tool that would make it pretty is the one being asked about. Answer no and the installer keeps going with prompts exactly like this one.
+    # Copy: bash /tmp/devsecops-install.sh
+    When the installer says what it is about to install, and asks first
     # Note: Even when piped into bash, the installer still reaches its first question: it reads your keystrokes through /dev/tty, so the documented one-line command still lets you answer.
     # Copy: bash /tmp/devsecops-install.sh
-    When the installer still asks what to install, even when piped into bash
+    And the installer still asks what to install, even when piped into bash
     # Note: Answering through the pipe builds and finishes exactly like typing the command by hand.
     Then the piped install finishes and opens the framework merge request

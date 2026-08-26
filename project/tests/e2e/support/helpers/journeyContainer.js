@@ -249,12 +249,16 @@ function setupCspellUpdateTerminal (projectWord) {
  * duplicated download logic and no version drift. Requires the installer to be
  * staged first (prepareWorkingBranchInstaller).
  */
-function preinstallToolchain (name) {
+function preinstallToolchain (name, { ui = true } = {}) {
+  // `ui: false` leaves gum and glow out on purpose: the installer then has to
+  // ask for them, in plain shell, which is the one story that photographs that
+  // question.
+  const tools = ui ? 'install_task; install_uv; install_ui_tools' : 'install_task; install_uv'
   const result = execInContainerAsUser(name, 'bootstrap', [
     'export PATH="$HOME/.local/bin:$PATH"',
     'mkdir -p "$HOME/.local/bin"',
     `grep -v '^main "' ${INSTALLER_PATH} > /tmp/toolchain-lib.sh`,
-    'sh -c ". /tmp/toolchain-lib.sh; install_task; install_uv; install_ui_tools"'
+    `sh -c ". /tmp/toolchain-lib.sh; ${tools}"`
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (result.exitCode !== 0) {
     removeContainer(name)

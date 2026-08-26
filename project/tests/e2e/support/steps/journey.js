@@ -368,6 +368,7 @@ Then('the terminal from {string} should visually match {string}', async (marker,
 
 // The first decision the installer asks (gum/glow layer), before any Copier
 // question. The full-framework journey accepts it (default affirmative).
+const TOOLCHAIN_PROMPT = 'Install gum and glow?'
 const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
 const AGENT_DONE_MARKER = 'Installed the AI agent context only'
 // install.sh prints this when the scope resolves to "none" — the exact symptom
@@ -415,14 +416,14 @@ async function openReadmeProjectTerminal () {
 // Re-open the live terminal (a GitLab-page capture may have navigated away),
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
-async function launchWorkingBranchInstaller () {
+async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT) {
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
   I.waitForElement('.xterm-screen', 10)
   I.wait(2)
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
-  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalText(I, stopAt, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
 }
 
@@ -1324,16 +1325,29 @@ storyboardStep(Given, 'a developer follows the README and pipes the installer in
   await ensureLambdaUser()
   await openBlankProjectTerminal()
   prepareWorkingBranchInstaller(global.journeyContainer, { piped: true })
-  preinstallToolchain(global.journeyContainer)
+  // task and uv only: gum and glow are left out so the installer has to ask for
+  // them, which is what the next card is about.
+  preinstallToolchain(global.journeyContainer, { ui: false })
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'git status')
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
 })
 
+storyboardStep(When, 'the installer says what it is about to install, and asks first', async () => {
+  await launchWorkingBranchInstaller(TOOLCHAIN_PROMPT)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-toolchain-consent', {
+    fromMarker: 'Installing toolchain'
+  }))
+  // Enter keeps the default, which is yes: the prompt is plain shell because the
+  // tool that would make it pretty is the one being asked about.
+  I.pressKey('Enter')
+})
+
 storyboardStep(When, 'the installer still asks what to install, even when piped into bash', async () => {
-  await launchWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-scope', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-scope', { fromMarker: SCOPE_PROMPT }))
 })
 
 storyboardStep(Then, 'the piped install finishes and opens the framework merge request', async () => {
