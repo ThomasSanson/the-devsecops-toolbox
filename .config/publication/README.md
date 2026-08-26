@@ -175,6 +175,65 @@ publication job sits in the **release** stage, like the task it replaces, and th
 feedback job that runs Renovate sits in **feedback**; a pipeline that declares
 its own `stages:` has to list both names.
 
+## What it touches, and what it never touches
+
+It writes into `.config/publication/` and adds three files at the root when the
+project has none of its own: `Taskfile.yml`, `.env.dist`, `.gitlab-ci.yml`. That
+is all, and a project that already has any of those keeps its own and is told
+what to add.
+
+It never touches your source, never rewrites your pipeline, and never pushes to
+your repository except the one merge request you asked for by running
+`task publication:approve` (or by letting the publication ask for you). The dry
+run, `task publication:check`, needs no token and writes nothing at all.
+
+On your machine it needs `task`, and `uv` for the updates. Both are asked for by
+the installer, which says what each is for, and both can stay in a container
+instead: see "Installing without putting anything on your machine" in the root
+README.
+
+## Publishing a tag, by hand
+
+A project that publishes twice a year, from a version that is not the tip of the
+default branch, does not want any of this to happen on its own. Two settings and
+four commands:
+
+```bash
+# in .env.dist
+TASK_PUBLICATION_ON=manual
+TASK_PUBLICATION_SOURCE_REF=2026.06.0
+```
+
+```bash
+task publication:doctor    # is everything in place?
+task publication:check     # what would leave, from that tag
+task publication:approve   # the merge request an owner answers
+task publication:publish   # once they have
+```
+
+Nothing publishes by itself in that mode: the pipeline job waits for a click,
+and `task publication:publish` is the click on a machine. The approval merge
+request targets the default branch, because a tag cannot receive one — approve
+the list there, then publish the tag.
+
+## Taking something back
+
+Publishing does not retract, and the reason is not laziness: once a file is
+public it has been cloned, forked and indexed, so removing it from the public
+repository is housekeeping rather than a fix. What the toolbox does is stop the
+next publication from carrying it.
+
+1. Add the path to `.config/publication/denylist` (or take it out of the
+    allowlist) and merge that change.
+2. Remove the approved line from `.config/publication/manifest`, through the
+    same merge request, so the two agree.
+3. Empty the public repository's branch of that file and push, or delete the
+    public repository and let the next publication rebuild it from the approved
+    list. The publication only ever adds the files it is told to; it does not
+    delete history it did not write.
+4. If the file held a secret, rotate it. That is the only step that actually
+    undoes anything.
+
 ## Settings
 
 | Variable                           | Default                | What it is                                       |
