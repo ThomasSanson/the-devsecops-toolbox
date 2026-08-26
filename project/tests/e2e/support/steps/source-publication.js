@@ -529,10 +529,23 @@ function inSource (cmd) {
   return sh(cmd, global.pubRendered)
 }
 
+function sourceUrl (token) {
+  return `http://${lambdaUser()}:${encodeURIComponent(token)}@gitlab/${lambdaUser()}/${global.pubPrivate}.git`
+}
+
+/**
+ * Bring the tree back in step with GitLab before committing on top of it: the
+ * approval merge request went in on the forge, so main is a merge commit ahead
+ * of this copy and a push would be rejected.
+ */
+function syncSource (token) {
+  sh(`git fetch --quiet ${shellEscape(sourceUrl(token))} main`, global.pubRendered)
+  sh('git reset --hard --quiet FETCH_HEAD', global.pubRendered)
+}
+
 /** Push it, with the token in the URL and nowhere else. */
 function pushSource (token) {
-  const url = `http://${lambdaUser()}:${encodeURIComponent(token)}@gitlab/${lambdaUser()}/${global.pubPrivate}.git`
-  sh(`git push --quiet ${shellEscape(url)} main`, global.pubRendered)
+  sh(`git push --quiet ${shellEscape(sourceUrl(token))} main`, global.pubRendered)
 }
 
 /**
@@ -791,11 +804,15 @@ storyboardStep(Then, 'the job opens a merge request asking the owners to approve
   mustContain(asked.body, 'Resolve this thread', 'the toolbox must leave a question, not a note')
   mustContain(mr.description, OWNER_USERNAME, 'the merge request must name the owners it is asking')
 
-  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/merge_requests/${mr.iid}`)
-  await GitLabMergeRequestPage.maskVolatile(global.pubPrivate)
+  I.resizeWindow(1024, 690)
+  await GitLabMergeRequestPage.gotoAndMask(
+    projectPath(global.pubPrivate), mr.iid, global.pubPrivate,
+    { hideMergeWidget: false, keepContext: true, waitText: 'Merge blocked' }
+  )
   await maskProjectName()
   await settlePageChrome()
   await addStoryboardFrame(I, await capturePageFrame(I, 'publication-approval-mr'))
+  I.resizeWindow(1024, 768)
 })
 
 storyboardStep(Then, 'that merge request shows the exact list of paths that would become public', async () => {
@@ -807,10 +824,14 @@ storyboardStep(Then, 'that merge request shows the exact list of paths that woul
       throw new Error(`The manifest diff must add "${path}":\n${manifest.diff}`)
     }
   }
-  await gitlabCard(
-    `/${projectPath(global.pubPrivate)}/-/merge_requests/${global.pubMrIid}/diffs`,
-    'publication-approval-diff', 700
+  I.resizeWindow(1440, 470)
+  await GitLabMergeRequestPage.gotoChangesAndMask(
+    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate, MANIFEST_PATH
   )
+  await maskProjectName()
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-approval-diff'))
+  I.resizeWindow(1024, 768)
 })
 
 // ===========================================================================
@@ -831,10 +852,14 @@ storyboardStep(When, 'the developer answers the question themselves and merges i
     throw new Error(`The merge must go through once the thread is answered: ${merged.status} ${JSON.stringify(merged.data)}`)
   }
 
-  await gitlabCard(
-    `/${projectPath(global.pubPrivate)}/-/merge_requests/${global.pubMrIid}`,
-    'publication-mr-merged', 700
+  I.resizeWindow(1024, 680)
+  await GitLabMergeRequestPage.gotoAndMaskMerged(
+    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate
   )
+  await maskProjectName()
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-mr-merged'))
+  I.resizeWindow(1024, 768)
 })
 
 storyboardStep(Then, 'the pipeline still refuses, and names the person who answered', async () => {
@@ -860,10 +885,14 @@ storyboardStep(When, 'an owner reopens the question and answers it instead', asy
   if (!signer || signer.resolved_by.username !== OWNER_USERNAME) {
     throw new Error(`The thread must now be resolved by ${OWNER_USERNAME}, got ${JSON.stringify(signer && signer.resolved_by)}`)
   }
-  await gitlabCard(
-    `/${projectPath(global.pubPrivate)}/-/merge_requests/${global.pubMrIid}`,
-    'publication-owner-answered', 700
+  I.resizeWindow(1024, 680)
+  await GitLabMergeRequestPage.gotoAndMaskMerged(
+    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate
   )
+  await maskProjectName()
+  await settlePageChrome()
+  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-owner-answered'))
+  I.resizeWindow(1024, 768)
 })
 
 storyboardStep(Then, 'the pipeline publishes the approved files, and only them', async () => {
@@ -920,6 +949,7 @@ storyboardStep(Then, 'the published history is one commit for that release', asy
 
 storyboardStep(When, 'a developer pushes a new file inside a folder that is already published', async () => {
   const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  syncSource(global.pubLambdaToken)
   writeFixtureFile(global.pubRendered, LATE_ARRIVAL, 'exports.store = new Map()\n')
   inSource(`git add ${LATE_ARRIVAL}`)
   inSource('git commit --quiet --no-verify -m "feat: remember the tokens between requests"')
@@ -957,6 +987,7 @@ storyboardStep(Then, 'the public project has not moved', async () => {
 
 storyboardStep(When, 'a secret is committed into a file that is already published', async () => {
   const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  syncSource(global.pubLambdaToken)
   writeFixtureFile(global.pubRendered, LEAKED_FILE, LEAKED_SECRET)
   inSource(`git add ${LEAKED_FILE}`)
   inSource('git commit --quiet --no-verify -m "feat: send the daily report by mail"')
