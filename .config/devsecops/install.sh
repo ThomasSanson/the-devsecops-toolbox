@@ -792,6 +792,48 @@ run_init() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+# Nothing lands on a machine without saying what it is and what it is for. The
+# first questions are asked in plain shell, because the tool that makes them
+# pretty is itself one of the things being asked about; once it is there, it asks
+# the rest. Without a terminal (CI, curl piped into sh with no tty) nothing is
+# asked and everything is installed, exactly as before this existed.
+confirm_install() {
+  _tool="$1"
+  _why="$2"
+  has_interactive_tty || return 0
+  if command_exists gum; then
+    gum confirm --default=yes "Install ${_tool}? ${_why}" && return 0
+    return 1
+  fi
+  prompt_yes_no_default_yes "Install ${_tool}? ${_why} [Y/n]: "
+}
+
+install_toolchain() {
+  echo ""
+  echo "📦 Installing toolchain..."
+  ensure_git
+
+  if confirm_install "task" "the task runner every command in this framework goes through"; then
+    install_task
+  else
+    log_error "task is required: every command this framework installs runs through it."
+    exit 1
+  fi
+
+  if confirm_install "uv" "it installs copier, which renders the framework and applies its updates"; then
+    install_uv
+  else
+    log_error "uv is required: copier renders the framework and brings its updates in."
+    exit 1
+  fi
+
+  # The only optional ones. Without them the installer asks its questions in
+  # plain shell, which is exactly what a machine that refuses them gets.
+  if confirm_install "gum and glow" "they make the questions below readable; plain prompts are used without them"; then
+    install_ui_tools
+  fi
+}
+
 main() {
   echo ""
   echo "🚀 DevSecOps Toolbox Installer"
@@ -799,12 +841,7 @@ main() {
 
   preflight
 
-  echo ""
-  echo "📦 Installing toolchain..."
-  ensure_git
-  install_task
-  install_uv
-  install_ui_tools
+  install_toolchain
 
   echo ""
   select_install_scope
