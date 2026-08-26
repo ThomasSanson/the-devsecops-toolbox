@@ -1336,6 +1336,9 @@ storyboardStep(Given, 'a developer follows the README and pipes the installer in
 
 storyboardStep(When, 'the installer says what it is about to install, and asks first', async () => {
   await launchWorkingBranchInstaller(TOOLCHAIN_PROMPT)
+  // Anchored on the question itself, not on the command above it: the lines in
+  // between name the versions of task and uv, which Renovate bumps, and a card
+  // that carries a version number changes every time one of them moves.
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-toolchain-consent', {
     fromMarker: 'Installing toolchain'
   }))
