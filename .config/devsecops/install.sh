@@ -799,7 +799,10 @@ run_init() {
 # asked and everything is installed, exactly as before this existed.
 confirm_install() {
   _tool="$1"
-  _why="$2"
+  _command="$2"
+  _why="$3"
+  # Already there: nothing is about to land, so there is nothing to ask.
+  command_exists "${_command}" && return 0
   has_interactive_tty || return 0
   if command_exists gum; then
     gum confirm --default=yes "Install ${_tool}? ${_why}" && return 0
@@ -813,14 +816,14 @@ install_toolchain() {
   echo "📦 Installing toolchain..."
   ensure_git
 
-  if confirm_install "task" "the task runner every command in this framework goes through"; then
+  if confirm_install "task" "task" "the task runner every command in this framework goes through"; then
     install_task
   else
     log_error "task is required: every command this framework installs runs through it."
     exit 1
   fi
 
-  if confirm_install "uv" "it installs copier, which renders the framework and applies its updates"; then
+  if confirm_install "uv" "uv" "it installs copier, which renders the framework and applies its updates"; then
     install_uv
   else
     log_error "uv is required: copier renders the framework and brings its updates in."
@@ -829,7 +832,7 @@ install_toolchain() {
 
   # The only optional ones. Without them the installer asks its questions in
   # plain shell, which is exactly what a machine that refuses them gets.
-  if confirm_install "gum and glow" "they make the questions below readable; plain prompts are used without them"; then
+  if confirm_install "gum and glow" "gum" "they make the questions below readable; plain prompts are used without them"; then
     install_ui_tools
   fi
 }
