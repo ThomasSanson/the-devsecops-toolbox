@@ -1097,6 +1097,10 @@ storyboardStep(Given, 'a developer has cloned a project that already has a main 
   await ensureLambdaUser()
   await openReadmeProjectTerminal()
   prepareWorkingBranchInstaller(global.journeyContainer)
+  // The toolchain comes from the installer's own installers, off camera: what
+  // this story is about starts at the scope question, and a machine that has to
+  // be asked about every tool first would never get there.
+  preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'git branch -a')
@@ -1130,6 +1134,9 @@ storyboardStep(Given, 'a developer is working on an experiment branch instead of
   await openReadmeProjectTerminal()
   checkoutFeatureBranch('spike/poc')
   prepareWorkingBranchInstaller(global.journeyContainer)
+  // Off camera, like the story above it: this one is about where the framework
+  // is delivered, not about which tools a bare machine still has to fetch.
+  preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'git branch')
@@ -1163,6 +1170,9 @@ storyboardStep(Given, 'a developer has set the installer to deliver straight to 
   await ensureLambdaUser()
   await openBlankProjectTerminal()
   prepareWorkingBranchInstaller(global.journeyContainer, { direct: true })
+  // Off camera, like the story above it: this one is about where the framework
+  // is delivered, not about which tools a bare machine still has to fetch.
+  preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
   await typeCommandAndWait(I, 'clear')
   await typeCommandAndWait(I, 'git status')
