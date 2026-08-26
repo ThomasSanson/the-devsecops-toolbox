@@ -22,7 +22,7 @@ Feature: A toolbox release reaches a project that installed only source publicat
   # wrote themselves are still theirs.
   @publication-update
   Scenario: the release updates the component and its spine, spares the team's rules, and brings nothing else
-    # Note: A project that ticked source publication on the installer's checklist and nothing else. Its own README and src are there; the install added four things beside them, .config, .env.dist, .gitlab-ci.yml and Taskfile.yml, and five entries under .config. Twenty files in all, and the last line is the release they came from.
+    # Note: A project that ticked source publication on the installer's checklist and nothing else. Its own README and src are there; the install added four things beside them, .config, .env.dist, .gitlab-ci.yml and Taskfile.yml, and six entries under .config. Twenty-two files in all, and the last line is the release they came from.
     # Note: What is NOT there is the point: no linter, no container runtime, no forge tooling, and not even the phase orchestrators a full project gets. Only what runs the publication and what keeps it up to date.
     # Copy: ls -A1 && ls .config && grep _commit .config/devsecops/.copier-answers.yml
     Given a project that installed source publication and nothing else
