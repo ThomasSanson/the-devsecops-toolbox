@@ -162,6 +162,31 @@ Say **no** to the complete framework and a checklist opens, one line per part yo
 > ```bash
 > curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh | less
 > ```
+
+#### Installing without putting anything on your machine
+
+The installer asks before it installs anything, and says what each tool is for.
+If the answer is "nothing, thanks", run it in a container instead: the tools live
+there and die with it, while the files it writes land in your project, which is
+the only thing you wanted from it.
+
+```bash
+curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh
+# read it — this is also the answer to "I would rather not pipe a remote script into a shell"
+docker run --rm -it \
+  -v "$PWD:/src" -w /src \
+  -v /tmp/devsecops-install.sh:/install.sh:ro \
+  -u "$(id -u):$(id -g)" -e HOME=/tmp \
+  registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:23.0.39 \
+  sh /install.sh
+```
+
+The image is the framework's own, so `task`, `uv`, `gum` and `glow` are already
+in it and nothing is downloaded onto your machine. It only carries those tools:
+what lands in your project comes from the template's current release, so an
+older image tag than the one above still installs today's framework. `-u` keeps the files it
+writes yours rather than root's, and `-w /src` is your project, mounted. On
+Windows this runs from WSL2, like the rest.
 >
 > **New project?** Create a git repository first:
 >
