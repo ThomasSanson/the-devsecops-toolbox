@@ -958,6 +958,116 @@ init_schedule() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# doctor — everything this component needs, checked one by one, with the fix
+# beside each answer. Written because "it did not publish" is a bad way to find
+# out that a token was never stored, and because somebody setting this up for
+# the first time should be able to see the whole list before the first attempt.
+# ---------------------------------------------------------------------------
+DOCTOR_MISSING=0
+
+verdict() {
+  _ok="$1"
+  _label="$2"
+  _fix="$3"
+  if [ "${_ok}" -eq 0 ]; then
+    say "✅ ${_label}"
+    return 0
+  fi
+  say "❌ ${_label}"
+  [ -n "${_fix}" ] && say "   ${_fix}"
+  DOCTOR_MISSING=$((DOCTOR_MISSING + 1))
+  return 0
+}
+
+# A CI/CD variable, seen from the forge. GitLab never gives a masked value back,
+# so what is checked is that the variable exists, which is what a job needs.
+has_ci_variable() {
+  forge_ready || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  _found="$(api GET "/projects/${PROJECT_ENC}/variables/$1" | jq -r '.key? // empty' 2>/dev/null || true)"
+  [ -n "${_found}" ]
+}
+
+cmd_doctor() {
+  compute_lists
+  head_line
+  say "Checking what source publication needs, one thing at a time."
+  printf '\n'
+
+  verdict "$([ -f "${OWNERS}" ] && [ -n "$(owner_list)" ] && echo 0 || echo 1)" \
+    "Someone can approve what becomes public" \
+    "Write one username per line in ${OWNERS}. An empty file means nobody can sign off."
+
+  verdict "$([ "${PUBLISHED_COUNT}" -gt 0 ] && echo 0 || echo 1)" \
+    "${PUBLISHED_COUNT} $(plural "${PUBLISHED_COUNT}" file files) would be published" \
+    "Nothing matches ${ALLOWLIST}. Name what may leave, then run \`task publication:check\`."
+
+  verdict "$([ -n "${TARGET_URL}" ] && echo 0 || echo 1)" \
+    "The public repository is known${TARGET_URL:+: ${TARGET_URL}}" \
+    "Nobody has said where the source goes. \`task publication:init\` asks."
+
+  if forge_ready; then
+    verdict "$(has_ci_variable TASK_PUBLICATION_TOKEN && echo 0 || echo 1)" \
+      "A token that may push to it is stored, masked" \
+      "Create it on the public repository, then \`task publication:init\` stores it."
+    verdict "$(has_ci_variable TASK_PUBLICATION_SOURCE_TOKEN && echo 0 || echo 1)" \
+      "A token that may read this repository's merge requests is stored" \
+      "\`task publication:init\` creates one project token and stores it under both names."
+    _schedule="$(api GET "/projects/${PROJECT_ENC}/pipeline_schedules?per_page=100" |
+      jq -r '[.[]? | select(.description | startswith("Source publication"))] | length' 2>/dev/null || echo 0)"
+    verdict "$([ "${_schedule:-0}" -gt 0 ] && echo 0 || echo 1)" \
+      "A nightly check looks for the next toolbox release" \
+      "\`task publication:init\` schedules it."
+  else
+    say "⏭️  The forge was not asked: no token for this repository in the environment."
+    say "   \`task publication:init\` asks for one, uses it once, and stores nothing."
+  fi
+
+  verdict "$(grep -q 'publication/gitlab-ci.yml' .gitlab-ci.yml 2>/dev/null && echo 0 || echo 1)" \
+    "The pipeline includes the publication jobs" \
+    "Add to .gitlab-ci.yml:  include:  - local: .config/publication/gitlab-ci.yml"
+
+  if [ "${SCAN_MODE}" = "off" ]; then
+    say "⚠️  The secret scan is switched off (TASK_PUBLICATION_SCAN=off)."
+  else
+    verdict "$(command -v betterleaks >/dev/null 2>&1 || { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; } && echo 0 || echo 1)" \
+      "A secret scanner can run here" \
+      "Install betterleaks or docker. In CI the scan job carries its own; on this machine the publication refuses without one."
+  fi
+
+  verdict "$([ "${TASK_PUBLICATION_ENABLED:-$(dotenv_value TASK_PUBLICATION_ENABLED)}" = "true" ] && echo 0 || echo 1)" \
+    "The publication is switched on" \
+    "Set TASK_PUBLICATION_ENABLED=true in ${ENV_FILE} when the rest is ready."
+
+  printf '\n'
+  if [ "${DOCTOR_MISSING}" -eq 0 ]; then
+    say "Nothing missing. \`task publication:check\` says what would leave today."
+    printf '\n'
+    return 0
+  fi
+
+  say "${DOCTOR_MISSING} $(plural "${DOCTOR_MISSING}" thing things) to settle."
+  if [ -t 0 ] && prompt_yes "Answer the setup questions now? [Y/n]: "; then
+    printf '\n'
+    cmd_init
+    return 0
+  fi
+  say "When you are ready: task publication:init"
+  printf '\n'
+  return 0
+}
+
+# The installer has its own; this script is on its own, so it carries one.
+prompt_yes() {
+  printf '   %s' "$1"
+  read -r _answer
+  case "${_answer}" in
+  [nN]*) return 1 ;;
+  *) return 0 ;;
+  esac
+}
+
 cmd_init() {
   head_line
   require jq
@@ -1030,6 +1140,7 @@ cmd_init() {
 
 case "${1:-check}" in
 check) cmd_check ;;
+doctor) cmd_doctor ;;
 publish) cmd_publish ;;
 approve) cmd_approve ;;
 scan) cmd_scan ;;
@@ -1039,7 +1150,7 @@ export)
   ;;
 init) cmd_init ;;
 *)
-  printf 'usage: %s check|scan|approve|publish|export <dir>|init\n' "$0" >&2
+  printf 'usage: %s check|doctor|scan|approve|publish|export <dir>|init\n' "$0" >&2
   exit 2
   ;;
 esac

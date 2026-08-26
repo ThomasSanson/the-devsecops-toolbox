@@ -112,6 +112,7 @@ off. Fill it before switching publication on.
 ## Commands
 
 ```bash
+task publication:doctor    # what is missing, with the fix beside each answer
 task publication:init      # once: where the source goes, the tokens, the nightly check
 task publication:check     # dry run: what would leave, what is held back, who approved
 task publication:scan      # what would leave, scanned for secrets
@@ -199,6 +200,9 @@ never puts one in a command line and never writes one into the destination's
 `.git/config`.
 
 ## Setting it up once
+
+Run `task publication:doctor` at any point: it goes through the whole list below
+and says what is still missing, with the fix beside each answer.
 
 1. Create the public repository, empty. Disable its CI so the published pipeline
     does not try to run there.

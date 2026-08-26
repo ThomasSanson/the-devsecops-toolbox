@@ -60,6 +60,22 @@ tasks:
       - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh init
         silent: true
 
+  doctor:
+    desc: 🩺 Check everything the publication needs, and offer to settle it
+    summary: |
+      ℹ️ Description:
+        Goes through what this component needs one thing at a time — who
+        approves, where the source goes, the two tokens, the pipeline include,
+        a scanner, the nightly check — and prints the fix beside each answer.
+        Offers to run the setup questions for whatever is missing.
+
+      🔄 Execution:
+        Runs publish.sh in doctor mode.
+    interactive: true
+    cmds:
+      - cmd: sh {{.TASK_PUBLICATION_CONFIG_DIR}}/publish.sh doctor
+        silent: true
+
   scan:
     desc: 🔍 Scan what would become public for secrets
     summary: |
