@@ -723,7 +723,15 @@ open_approval_request() {
 # is none, and leave ONE resolvable thread on it: GitLab refuses the merge while
 # that thread is unanswered, so the question cannot be skipped by accident.
 cmd_approve_quiet() {
-  _default="$(git rev-parse --abbrev-ref HEAD)"
+  # The branch the approval lands on: the one being published when that is a
+  # branch here, the repository's default branch otherwise. Never
+  # `git rev-parse --abbrev-ref HEAD`: a CI checkout is detached, that call
+  # answers "HEAD", and a merge request cannot target a branch by that name.
+  _default="$(default_branch)"
+  if [ "${SOURCE_LABEL:-}" != "working copy" ] && [ -n "${SOURCE_LABEL:-}" ] &&
+    git show-ref --verify --quiet "refs/heads/${SOURCE_LABEL}"; then
+    _default="${SOURCE_LABEL}"
+  fi
   # Byte-identical to the header the shipped manifest carries, so the approval
   # merge request's diff is the paths and nothing else. Written to a file and
   # read back with jq's --rawfile: a command substitution eats trailing
@@ -773,15 +781,22 @@ cmd_approve_quiet() {
     "Owners: $(owner_list | sed 's/^/@/' | tr '\n' ' ')" \
     '' \
     'Answering the thread below is the sign-off. The publication checks **who** answered it, so it has to be one of the owners above.')"
-  _mr="$(api POST "/projects/${PROJECT_ENC}/merge_requests" --data "$(jq -n \
+  _created="$(api POST "/projects/${PROJECT_ENC}/merge_requests" --data "$(jq -n \
     --arg source "${APPROVAL_BRANCH}" \
     --arg target "${_default}" \
     --arg title "chore(publication): approve what becomes public" \
     --arg description "${_desc}" \
     '{source_branch: $source, target_branch: $target, title: $title,
-      description: $description, remove_source_branch: true}')" |
-    jq -r '.iid // empty' 2>/dev/null || true)"
-  [ -n "${_mr}" ] || return 0
+      description: $description, remove_source_branch: true}')")"
+  _mr="$(printf '%s' "${_created}" | jq -r '.iid // empty' 2>/dev/null || true)"
+  if [ -z "${_mr}" ]; then
+    # Silence here is how a refusal looks like a bug: the publication stopped and
+    # nobody was asked anything, with no reason on screen.
+    say "❌ Could not open the approval merge request onto \"${_default}\"."
+    say "   $(printf '%s' "${_created}" |
+      jq -r '(.message | if type=="object" then (to_entries[] | "\(.key) \(.value|join(", "))") elif type=="array" then join(", ") else . end)? // "the API refused the call"' 2>/dev/null)"
+    return 0
+  fi
 
   api POST "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions" --data "$(jq -n \
     --arg body "Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does." \
