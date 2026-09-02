@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.44 (2026-09-02)
+
+### Fix
+
+- **test**: stop racing GitLab's own default-branch protection
+- **deps**: raise qs, fast-uri and xmldom past their advisories
+
 ## 23.0.43 (2026-09-02)
 
 ### Fix
