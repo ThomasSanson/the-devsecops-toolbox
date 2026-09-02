@@ -21,6 +21,7 @@
     "joi": "^18.2.1",
     "diff": "^9.0.0",
     "serialize-javascript": "^7.0.5",
-    "undici": "^8.0.0"
+    "undici": "^8.0.0",
+    "@xmldom/xmldom": "^0.9.12"
   }
 }
