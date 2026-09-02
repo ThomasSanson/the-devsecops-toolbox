@@ -69,6 +69,10 @@ const PROJECT_NAME = 'e2e-release-crash'
 // pinned tool versions drift on every bump, so leaving them bare rots the
 // baseline. It is display only, so a concrete 1.0.0 reads better than x.y.z.
 const DISPLAY_VERSION = '1.0.0'
+// How long lockMainToNoOne keeps racing GitLab's own default-branch
+// protection worker. Seconds in practice; the ceiling is only there so a
+// genuinely broken API fails loud instead of spinning.
+const LOCK_MAIN_TIMEOUT_MS = 30000
 
 function lambdaUser () {
   return process.env.TASK_GITLAB_LAMBDA_USER
@@ -159,14 +163,31 @@ function pushFeatToMain (repoDir, token) {
 // (push=No one/0), Maintainers may merge (40). A fresh GitLab project defaults
 // its default branch to push=Maintainers(40), so WITHOUT this the release
 // "opening the door" (0 -> 40) would be invisible — main would already read 40.
+// GitLab protects the default branch ITSELF, from a background worker, a beat
+// after the first push to main. A single DELETE+POST races that worker: the
+// protection reappears between the two calls and the POST answers 422 "Name has
+// already been taken" — on a loaded runner, often enough to redden the shard.
+// So retry the pair until main really reads push=0, and let the DELETE speak.
 async function lockMainToNoOne (projectName, headers) {
   const enc = encodedProjectPath(projectName)
-  try { await freshDelete(`${BASE_URL}/api/v4/projects/${enc}/protected_branches/main`, headers) } catch (_) {}
-  const res = await freshPost(
-    `${BASE_URL}/api/v4/projects/${enc}/protected_branches?name=main&merge_access_level=40&push_access_level=0`,
-    {}, headers
-  )
-  if (res.status >= 400) throw new Error(`Failed to lock main to No one (status ${res.status}): ${JSON.stringify(res.data)}`)
+  const deadline = Date.now() + LOCK_MAIN_TIMEOUT_MS
+  let last = { status: 0, data: 'never attempted' }
+  while (Date.now() < deadline) {
+    const gone = await freshDelete(`${BASE_URL}/api/v4/projects/${enc}/protected_branches/main`, headers)
+    if (gone.status >= 400 && gone.status !== 404) {
+      last = gone
+      await sleep(1000)
+      continue
+    }
+    const res = await freshPost(
+      `${BASE_URL}/api/v4/projects/${enc}/protected_branches?name=main&merge_access_level=40&push_access_level=0`,
+      {}, headers
+    )
+    if (res.status < 400) return
+    last = res
+    await sleep(1000)
+  }
+  throw new Error(`Failed to lock main to No one (status ${last.status}): ${JSON.stringify(last.data)}`)
 }
 
 // Wait for the feat push's bootstrap pipeline to actually exist (GitLab creates
