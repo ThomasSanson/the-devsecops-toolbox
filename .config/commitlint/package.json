@@ -3,5 +3,8 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.0",
     "@commitlint/config-conventional": "^21.0.0"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.6"
   }
 }
