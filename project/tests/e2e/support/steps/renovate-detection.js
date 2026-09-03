@@ -397,14 +397,18 @@ storyboardStep(Then, 'the test runner already holds the browser its own Playwrig
   const executable = execSync(RESOLVE, { cwd: '/app/.config/codeceptjs', encoding: 'utf8' }).trim()
   fs.accessSync(executable, fs.constants.X_OK)
 
-  // The browser build number moves with every Playwright release; masking it
-  // keeps the picture stable while still showing the file is really there.
+  // Browser build numbers and platform directories differ between runners.
+  // Mask them so the baseline proves availability, not the host architecture.
+  const displayedExecutable = executable
+    .replace(/-\d+\//, '-<build>/')
+    .replace(/\/chrome-[^/]+\//, '/chrome-<platform>/')
+
   await renderPreFrame(I, 'browser-inside-the-runner', [
     "$ grep 'playwright install' .config/codeceptjs/Dockerfile",
     buildLine.trim(),
     '',
     `$ ${RESOLVE}`,
-    executable.replace(/-\d+\//, '-<build>/'),
+    displayedExecutable,
     '',
     'present and executable inside the test runner'
   ].join('\n'))
