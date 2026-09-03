@@ -159,6 +159,7 @@ task devsecops:init            # Full project initialization (local)
 task devsecops:init:prerequisites  # Check and install required prerequisites
 task devsecops:init:template       # Scaffold or update project from template
 task devsecops:init:configure      # Configure GitLab project settings
+task devsecops:update          # Apply the latest toolbox release, as a merge request
 task lefthook:install          # Install git hooks
 ```
 

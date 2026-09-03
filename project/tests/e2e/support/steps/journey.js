@@ -60,6 +60,7 @@ const {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupCspellUpdateTerminal,
+  setupManualUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
   authenticateGlab,
@@ -154,7 +155,10 @@ After(async () => {
 // GIVEN — environment setup
 // ============================================
 
-async function openBlankProjectTerminal () {
+// `setupTerminal(projectName, lambdaToken)` decides what the container starts
+// from: the plain clone of the blank project (the installer journeys), or a
+// project already generated from an older release and pushed (manual update).
+async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTerminal) {
   const rootHeaders = await getRootHeaders()
   const projectName = `e2e-journey-${crypto.randomBytes(4).toString('hex')}`
   global.journeyProjectName = projectName
@@ -176,7 +180,7 @@ async function openBlankProjectTerminal () {
     throw new Error(`Failed to create blank project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
 
-  global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
+  global.journeyContainer = setupTerminal(projectName, lambdaToken)
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
@@ -339,6 +343,92 @@ storyboardStep(Then, 'the shared file itself is now empty — it only imports th
     'empty now, only imports', 'after-config-image'
   )
   twinExcludes('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
+})
+
+// ============================================
+// Toolbox-update storyboard — @toolbox-update (chapter 3).
+// The same upgrade asked for BY HAND on a REAL GitLab project: a project
+// generated at release 1.0.0 sits on main, the developer runs
+// `task devsecops:update`, and the new release arrives as a merge request
+// instead of a push to main. ONE sentence = ONE card = ONE pixel baseline;
+// every GitLab card twins its page with the REST fact behind it.
+// ============================================
+
+const UPDATE_BRANCH = 'update-framework-devsecops'
+const MANUAL_UPDATE_VERSION = '1.0.1'
+const GENERATED_COMMIT = 'chore: project generated from an earlier toolbox release'
+
+// The branches page, masked, as one card — the "before" and the "after" of the
+// manual update are shot from the SAME page so the reader compares two panels.
+async function branchesFrame (frameName) {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, frameName)
+}
+
+async function branchCommitTitle (branch) {
+  const headers = await getRootHeaders()
+  const res = await listProjectBranches(global.journeyProjectName, headers)
+  const found = (res.data || []).find(b => b.name === branch)
+  if (!found) {
+    throw new Error(`Branch "${branch}" not found for ${global.journeyProjectName}`)
+  }
+  return (found.commit && found.commit.title) || ''
+}
+
+storyboardStep(Given, 'a project generated from an earlier toolbox release sits on its main branch', async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal(setupManualUpdateTerminal)
+  await typeCommandAndWait(I, 'clear')
+  // No trailing `# comment` marker on this one: the prompt plus the command
+  // already fill the terminal's width, and a wrapped card reads badly. The
+  // command itself is unique enough to anchor on, right after a `clear`.
+  await updateCard(
+    'git branch --show-current && grep _commit .config/devsecops/.copier-answers.yml',
+    'git branch --show-current', 'review-before-main'
+  )
+  twinContains('git branch --show-current', 'main')
+  twinContains('grep _commit .config/devsecops/.copier-answers.yml', '1.0.0')
+})
+
+storyboardStep(Given, 'GitLab holds that main branch on its own', async () => {
+  await branchesFrame('review-branches-before')
+  await assertBranchExists('main')
+  await assertBranchAbsent(UPDATE_BRANCH)
+  await assertNoOpenMr()
+})
+
+storyboardStep(When, 'the developer asks for the new toolbox release from the main branch', async () => {
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.waitForElement('.xterm-screen', 10)
+  I.wait(3)
+  await typeCommandAndWait(I, 'clear')
+  // The remote URL and the merge-request link the push prints carry this run's
+  // project name (e2e-journey-<hex>), like every GitLab card of this story.
+  await updateCard('task devsecops:update', 'task devsecops:update', 'review-update-run', 240000, [
+    ...COPIER_PIN_MASK,
+    [new RegExp(global.journeyProjectName, 'g'), 'project']
+  ])
+})
+
+storyboardStep(Then, 'GitLab now holds a merge request carrying the new release', async () => {
+  const mr = await findOpenMr(UPDATE_BRANCH, 'main')
+  if (!mr.title.includes(MANUAL_UPDATE_VERSION)) {
+    throw new Error(`Expected the merge request title to name release ${MANUAL_UPDATE_VERSION}, got: ${mr.title}`)
+  }
+  await assertMrChangedFiles()
+  await mrPageFrame('review-mr-page')
+})
+
+storyboardStep(Then, 'the update branch stands next to a main nobody pushed to', async () => {
+  await branchesFrame('review-branches-after')
+  await assertBranchExists('main')
+  await assertBranchExists(UPDATE_BRANCH)
+  const mainTitle = await branchCommitTitle('main')
+  if (mainTitle !== GENERATED_COMMIT) {
+    throw new Error(`Expected main to still point at the generated commit, found: "${mainTitle}"`)
+  }
 })
 
 // The installer WHEN bindings (type command / launch / accept-default-and-wait

@@ -8,6 +8,10 @@ vars:
   # default; set TASK_DEVSECOPS_INIT_DIRECT=true to apply directly instead.
   TASK_DEVSECOPS_INIT_DIRECT: '{{.TASK_DEVSECOPS_INIT_DIRECT | default "false"}}'
   TASK_DEVSECOPS_INIT_BRANCH: '{{.TASK_DEVSECOPS_INIT_BRANCH | default "init-framework-devsecops"}}'
+  # devsecops:update delivers a toolbox release on its own branch, so a release
+  # never lands on the default branch without a review.
+  TASK_DEVSECOPS_UPDATE_BRANCH: '{{.TASK_DEVSECOPS_UPDATE_BRANCH | default "update-framework-devsecops"}}'
+  TASK_COPIER_ANSWER_FILE: '{{.TASK_COPIER_ANSWER_FILE | default ".config/devsecops/.copier-answers.yml"}}'
 
 tasks:
   default:
@@ -781,6 +785,47 @@ tasks:
           TASK_GIT_DEFAULT_BRANCH="{{.TASK_GIT_DEFAULT_BRANCH}}" \
           TASK_DEVSECOPS_INIT_BRANCH="{{.TASK_DEVSECOPS_INIT_BRANCH}}" \
           bash {{.TASK_GLAB_CONFIG_DIR}}/init-merge-request.sh
+        silent: true
+
+  update-merge-request:
+    desc: 🔀 Open the update-framework-devsecops merge request
+    summary: |
+      ℹ️ Description:
+        Delivers a toolbox release the same way init delivers the framework:
+        branches update-framework-devsecops from the default branch, commits
+        what the update changed, pushes, and opens a merge request (left open
+        for review). The release number comes from the answers file the update
+        just rewrote, so it names itself.
+
+        Run from a working branch instead, the change is committed there and no
+        merge request is opened — a developer who updated from their own branch
+        expects the change on it.
+
+        Idempotent: re-uses the branch and does not open a duplicate MR.
+
+      🔧 Variables:
+        - TASK_DEVSECOPS_UPDATE_BRANCH: delivery branch (default: update-framework-devsecops)
+        - TASK_COPIER_ANSWER_FILE: answers file naming the release (default: .config/devsecops/.copier-answers.yml)
+    vars:
+      TASK_GIT_DEFAULT_BRANCH: '{{.TASK_GIT_DEFAULT_BRANCH | default "main"}}'
+    preconditions:
+      - sh: command -v glab >/dev/null 2>&1
+        msg: "❌ glab is not installed. Run 'task glab:install' first."
+      - sh: git remote get-url origin >/dev/null 2>&1
+        msg: "❌ No 'origin' remote configured. Add a GitLab remote, then re-run."
+      - sh: test -f {{.TASK_COPIER_ANSWER_FILE}}
+        msg: "❌ No answers file at {{.TASK_COPIER_ANSWER_FILE}} — this project was not generated from the toolbox."
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: |
+          release="$(sed -n 's/^_commit: *//p' {{.TASK_COPIER_ANSWER_FILE}} | tr -d '"')"
+          TASK_GIT_DEFAULT_BRANCH="{{.TASK_GIT_DEFAULT_BRANCH}}" \
+          bash {{.TASK_GLAB_CONFIG_DIR}}/init-merge-request.sh \
+            "{{.TASK_DEVSECOPS_UPDATE_BRANCH}}" \
+            "chore(deps): update devsecops toolbox to ${release}" \
+            "Toolbox release ${release}, applied with the answers already stored in {{.TASK_COPIER_ANSWER_FILE}}. Review the diff and merge to adopt it." \
+            "true"
         silent: true
 
   release:lock-default-branch:

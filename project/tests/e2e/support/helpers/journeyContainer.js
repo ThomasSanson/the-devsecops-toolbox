@@ -22,6 +22,7 @@ const {
   removeContainer,
   waitForTtyd
 } = require('./docker')
+const { prepareCspellMigrationTemplate, prepareVersionedTemplate } = require('./copierRender')
 
 const CONTAINER_WORKDIR = '/workspace'
 const PROJECT_DIR = '/workspace/my-project'
@@ -172,17 +173,14 @@ function authenticateGlab (name, token) {
 const CSPELL_TEMPLATE_DIR = '/tmp/toolbox-template'
 
 /**
- * Live terminal for the cspell-vocabulary-survives-update scenario: a generated
- * project that PREDATES the cspell split (rendered at the old release, with its
- * own word inline in the single-file config.json), served in a real ttyd shell.
- * The scenario then runs the EXACT command Renovate triggers in a real repo —
- * `task copier:update` — live, with colours, so the migration is shown happening
- * under real conditions, not reconstructed. Reuses the journey terminal engine.
+ * Live terminal on a project GENERATED from a versioned template, the way a real
+ * repository sits just before a toolbox update: the template is docker-cp'd in
+ * with its tags, rendered at `vcsRef`, and committed. `afterRender` runs inside
+ * the project between the render and the commit; `push` (a credentialed remote
+ * URL) publishes the result to the test GitLab so a scenario can prove what the
+ * update does on the forge. Returns the container name (caller tears it down).
  */
-function setupCspellUpdateTerminal (projectWord) {
-  // eslint-disable-next-line global-require
-  const { prepareCspellMigrationTemplate } = require('./copierRender')
-  const template = prepareCspellMigrationTemplate()
+function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, afterRender = [], push = null }) {
   const name = containerName()
 
   runCommand(
@@ -209,16 +207,17 @@ function setupCspellUpdateTerminal (projectWord) {
     // it safe so Copier can read its tags and honour --vcs-ref (else it falls back
     // to the working tree, i.e. the NEW layout, and the "before" would be wrong).
     "git config --global --add safe.directory '*'",
-    // render the project at the OLD release (single-file cspell) from the versioned
-    // template, exactly where a real repo would sit before a toolbox update.
-    `uvx --python 3.14 --from copier==9.14.3 copier copy ${CSPELL_TEMPLATE_DIR} ${PROJECT_DIR} --vcs-ref 22.0.0 --defaults --trust --skip-tasks --quiet`,
+    // render the project at the OLD release from the versioned template, exactly
+    // where a real repo would sit before a toolbox update.
+    `uvx --python 3.14 --from copier==9.14.3 copier copy ${CSPELL_TEMPLATE_DIR} ${PROJECT_DIR} --vcs-ref ${vcsRef} --defaults --trust --skip-tasks --quiet`,
     `cd ${PROJECT_DIR}`,
-    `tmp=$(mktemp) && jq --arg w ${shellEscape(projectWord)} '.words = ((.words // []) + [$w])' .config/cspell/config.json > "$tmp" && mv "$tmp" .config/cspell/config.json`,
-    'git init -q && git add -A && git commit -q --no-verify -m "chore: project generated from an earlier toolbox version"'
+    ...afterRender,
+    `git init -q && git add -A && git commit -q --no-verify -m ${shellEscape(commitMessage)}`,
+    ...(push ? [`git remote add origin ${shellEscape(push)}`, 'git push -q -u origin main'] : [])
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (setup.exitCode !== 0) {
     removeContainer(name)
-    throw new Error(`Failed to set up the cspell-update terminal:\n${setup.output}`)
+    throw new Error(`Failed to set up the generated-project terminal:\n${setup.output}`)
   }
 
   // No TASK_COPIER_ANSWER_FILE export here, on purpose. Exporting it used to
@@ -232,10 +231,50 @@ function setupCspellUpdateTerminal (projectWord) {
   ].join('\n'))
   if (ttydStart.exitCode !== 0) {
     removeContainer(name)
-    throw new Error(`Failed to start ttyd in the cspell-update terminal:\n${ttydStart.output}`)
+    throw new Error(`Failed to start ttyd in the generated-project terminal:\n${ttydStart.output}`)
   }
 
   waitForTtyd(name, TTYD_READY_TIMEOUT)
+  return name
+}
+
+/**
+ * Live terminal for the cspell-vocabulary-survives-update scenario: a generated
+ * project that PREDATES the cspell split (rendered at the old release, with its
+ * own word inline in the single-file config.json), served in a real ttyd shell.
+ * The scenario then runs the EXACT command Renovate triggers in a real repo —
+ * `task copier:update` — live, with colours, so the migration is shown happening
+ * under real conditions, not reconstructed. Reuses the journey terminal engine.
+ */
+function setupCspellUpdateTerminal (projectWord) {
+  return setupGeneratedProjectTerminal({
+    template: prepareCspellMigrationTemplate(),
+    vcsRef: '22.0.0',
+    commitMessage: 'chore: project generated from an earlier toolbox version',
+    afterRender: [
+      `tmp=$(mktemp) && jq --arg w ${shellEscape(projectWord)} '.words = ((.words // []) + [$w])' .config/cspell/config.json > "$tmp" && mv "$tmp" .config/cspell/config.json`
+    ]
+  })
+}
+
+/**
+ * Live terminal for the manual-update chapter: a project generated at release
+ * 1.0.0 of a two-release template and PUSHED to its test-GitLab project, sitting
+ * on main with glab authenticated — the state a developer is in when a new
+ * toolbox release is out and they ask for it themselves instead of waiting for
+ * Renovate. Nothing is exported into the session: `task devsecops:update` has to
+ * find the answers file on its own, like it does in a real repository.
+ */
+function setupManualUpdateTerminal (projectName, pushToken) {
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const encodedToken = encodeURIComponent(pushToken)
+  const name = setupGeneratedProjectTerminal({
+    template: prepareVersionedTemplate(),
+    vcsRef: '1.0.0',
+    commitMessage: 'chore: project generated from an earlier toolbox release',
+    push: `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git`
+  })
+  authenticateGlab(name, pushToken)
   return name
 }
 
@@ -277,6 +316,7 @@ module.exports = {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupCspellUpdateTerminal,
+  setupManualUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
   authenticateGlab,

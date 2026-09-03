@@ -177,6 +177,21 @@ tasks:
       - cmd: echo "♻️ Framework reloaded"
         silent: true
 
+  devsecops:update:
+    # Move the project to the latest toolbox release, delivered as a merge
+    # request instead of a push to the default branch — the manual equivalent
+    # of the update merge request Renovate opens on its own.
+    desc: 🔄 Apply the latest toolbox release, through a merge request
+    preconditions:
+      - sh: test -z "$(git status --porcelain)"
+        msg: "❌ Uncommitted changes. Commit or stash them first — the update commits what it changes."
+    cmds:
+      - task: copier:update
+        vars:
+          TASK_COPIER_ANSWER_FILE: .config/devsecops/.copier-answers.yml
+          TASK_COPIER_CLI_OPTS: --skip-answered --defaults
+      - task: glab:update-merge-request
+
   plan:
     cmds:
       - cmd: echo "{{ "{{" }}.TASK_DEVSECOPS_ICON{{ "}}" }} Plan"
