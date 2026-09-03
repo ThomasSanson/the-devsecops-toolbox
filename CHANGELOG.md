@@ -2,6 +2,17 @@
 
 # Changelog
 
+## 23.0.45 (2026-09-03)
+
+### Fix
+
+- **deps**: drop overrides main already resolved in the lockfiles
+- **e2e**: preserve macOS metadata during workspace copy
+- **deps**: resolve fast-uri OSV advisories
+- **deps**: resolve CodeceptJS OSV advisories
+- **betterleaks**: prepare scan directory before archive extraction
+- **betterleaks**: copy repositories without macOS extended attributes
+
 ## 23.0.44 (2026-09-02)
 
 ### Fix
