@@ -160,7 +160,7 @@ tasks:
       # run — including this very run — so it is always present locally and would
       # otherwise land in every Copier render (the matrix `ls` tree baselines).
       - cmd: |
-          tar \
+          COPYFILE_DISABLE=1 tar --no-xattrs \
             --exclude='.git' \
             --exclude='.cache' \
             --exclude='.claude' \
