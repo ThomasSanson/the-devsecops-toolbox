@@ -139,6 +139,30 @@ tasks:
       - task: monitor
       - task: feedback
 
+  devsecops:reload:
+    # Put a project back to what its own answers describe: the framework files
+    # re-applied at the release it already tracks, and the GitLab setup redone
+    # from scratch — tokens replaced even when they still work, protected
+    # branch purged and re-created. What init does on day one, for a project
+    # that has been alive a while and drifted since.
+    desc: ♻️ Re-apply the project's answers and redo the GitLab setup, tokens included
+    preconditions:
+      - sh: test -z "$(git status --porcelain)"
+        msg: "❌ Uncommitted changes. Commit or stash them first — a reload overwrites framework files."
+    cmds:
+      - task: copier:recopy
+        vars:
+          TASK_COPIER_ANSWER_FILE: .config/devsecops/.copier-answers.yml
+      - task: glab:auth:ensure
+      - task: glab:merge-settings
+      - task: glab:renovate-token
+        vars: { TASK_GLAB_RENOVATE_TOKEN_FORCE: "true" }
+      - task: glab:commitizen-token
+        vars: { TASK_GLAB_COMMITIZEN_TOKEN_FORCE: "true" }
+      - task: glab:protected-branch
+      - cmd: echo "♻️ Framework reloaded"
+        silent: true
+
   plan:
     cmds:
       - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Plan"

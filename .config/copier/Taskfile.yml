@@ -53,6 +53,37 @@ tasks:
       - cmd: echo '🎉 Copier run completed successfully.'
         silent: true
 
+  recopy:
+    desc: ♻️ Re-apply the template at the release the project already tracks
+    summary: |
+      ℹ️ Description:
+        Re-applies the template with the answers the project already gave, at
+        the release it already tracks (`--vcs-ref :current:`), overwriting the
+        framework files. Unlike `update`, which merges a NEW release into the
+        project's own evolution, this one puts the framework files back to what
+        that release ships — the "reload" half of `task devsecops:reload`.
+
+        Files listed under `_skip_if_exists` in the template stay as they are.
+
+      🔧 Variables:
+        - TASK_COPIER_ANSWER_FILE: Path to the Copier answers file
+          Required: Yes
+        - TASK_COPIER_COMMAND: Command to run Copier
+        - TASK_COPIER_CLI_OPTS: Additional command line options
+          Default: ""
+
+      🔄 Execution:
+        Runs 'copier recopy --overwrite --vcs-ref :current: -a <TASK_COPIER_ANSWER_FILE>'
+    preconditions:
+      - sh: test -n "{{.TASK_COPIER_ANSWER_FILE}}"
+        msg: "❌ Error: TASK_COPIER_ANSWER_FILE variable is required. Usage: task copier:recopy TASK_COPIER_ANSWER_FILE=path/to/answers.yml"
+    cmds:
+      - cmd: echo "♻️ Re-applying the template from {{.TASK_COPIER_ANSWER_FILE}}"
+        silent: true
+      - "{{.TASK_COPIER_COMMAND}} recopy --trust --overwrite --defaults --skip-answered --skip-tasks --vcs-ref :current: {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
+      - cmd: echo "🎉 Copier recopy completed successfully."
+        silent: true
+
   update:
     desc: 🔄 Update project using Copier
     summary: |
