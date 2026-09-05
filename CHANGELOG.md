@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.46 (2026-09-05)
+
+### Fix
+
+- **deps**: update oxsecurity/megalinter docker tag to v10.1.0
+
 ## 23.0.45 (2026-09-03)
 
 ### Fix

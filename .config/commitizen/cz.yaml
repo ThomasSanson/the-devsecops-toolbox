@@ -5,7 +5,7 @@ commitizen:
   name: cz_conventional_commits
   tag_format: $version
   update_changelog_on_bump: false
-  version: 23.0.45
+  version: 23.0.46
   version_files:
   - .gitlab-ci.yml
   - VERSION
