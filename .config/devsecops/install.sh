@@ -634,6 +634,16 @@ copy_or_report() {
   cp -a "${src}" "${dst}"
 }
 
+check_publication_install_scope() {
+  answers_file=.config/devsecops/.copier-answers.yml
+  if [ -e "${answers_file}" ] &&
+    ! grep -Eq "^install_scope: *['\"]?publication['\"]? *$" "${answers_file}"; then
+    log_error "${answers_file} already describes a complete framework installation."
+    log_info 'Enable publication through its existing update path: task copier:update TASK_COPIER_CLI_OPTS="--data source_publication=true"'
+    exit 1
+  fi
+}
+
 scaffold_publication_only() {
   echo ""
   echo "📋 Installing source publication..."
@@ -650,6 +660,15 @@ scaffold_publication_only() {
     rm -rf "${render_dir}"
     exit 1
   fi
+
+  # Set modes on the rendered files only. Existing configuration may contain
+  # executable tools or private data whose permissions belong to the project.
+  normalise_permissions "${render_dir}"
+  chmod 755 "${render_dir}/.config/publication/publish.sh" \
+    "${render_dir}/.config/copier/renovate-update.sh" \
+    "${render_dir}/.config/task/install.sh"
+  publication_umask="$(umask)"
+  umask 022
 
   PUBLICATION_MANUAL_STEPS=""
   copy_or_report "${render_dir}/Taskfile.yml" "./Taskfile.yml" \
@@ -731,16 +750,12 @@ CI_EOF
 
   rm -rf "${render_dir}"
   rm -f "${render_log}"
-  normalise_permissions .config Taskfile.yml .env.dist .gitlab-ci.yml
-  chmod 755 .config .config/publication 2>/dev/null || true
-  chmod 755 .config/publication/publish.sh 2>/dev/null || true
-  chmod 755 .config/copier/renovate-update.sh 2>/dev/null || true
-  chmod 755 .config/task/install.sh 2>/dev/null || true
+  umask "${publication_umask}"
 
   log_ok "Source publication installed, with the spine that keeps it up to date."
   if [ -n "${PUBLICATION_MANUAL_STEPS}" ]; then
     echo ""
-    log_info "Two files were left exactly as you had them. To wire the component in:"
+    log_info "Existing files were left exactly as you had them. To wire the component in:"
     printf '%s' "${PUBLICATION_MANUAL_STEPS}" | while IFS= read -r line; do
       [ -n "${line}" ] && printf '     %s\n' "${line}"
     done
@@ -858,6 +873,7 @@ main() {
   fi
 
   if [ "${INSTALL_SCOPE}" = "components" ]; then
+    [ "${INSTALL_PUBLICATION:-0}" -eq 1 ] && check_publication_install_scope
     [ "${INSTALL_AGENT:-0}" -eq 1 ] && scaffold_agent_only
     [ "${INSTALL_PUBLICATION:-0}" -eq 1 ] && scaffold_publication_only
 

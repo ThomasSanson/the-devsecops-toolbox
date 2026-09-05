@@ -15,9 +15,8 @@
  *     thread is answered through the API by two DIFFERENT real users, so the
  *     "who signed off" check is exercised both ways.
  *
- * No CI runner is involved, on purpose: the feature's promise is that the same
- * command works from a developer's machine and from the pipeline, so the story
- * runs it from the machine.
+ * A project-scoped runner executes the publication pipelines. The isolated
+ * installation journey also exercises the local task entry points.
  *
  * Every card is twinned with a check of the same fact — the terminal's own
  * words for what the toolbox said, the REST API for what actually reached the
@@ -63,9 +62,10 @@ const {
   maskPipelinePage,
   PIPELINE_TIMEOUT_MS
 } = require('../helpers/pipelineRunner')
-const { renderProject, removeRendered } = require('../helpers/copierRender')
+const { COPIER, renderProject, removeRendered } = require('../helpers/copierRender')
 const {
   PROJECT_DIR,
+  TEMPLATE_DIR,
   INSTALL_LOG,
   WRAPPER_PATH,
   setupClonedProjectTerminal,
@@ -180,25 +180,41 @@ Before(() => {
   global.pubMrIid = null
   global.pubRunner = null
   global.pubCiPid = 0
+  global.pubExistingFiles = null
+  global.pubExistingProject = null
 })
 
 After(async () => {
-  teardownJourneyTerminal(global.pubContainer)
+  // A later scenario can start while these API deletions are pending. Capture
+  // this scenario's resources before the first await, and never read or clear
+  // its successor's globals from the asynchronous cleanup.
+  const resources = {
+    container: global.pubContainer,
+    runner: global.pubRunner,
+    rendered: global.pubRendered,
+    projects: [global.pubPrivate, global.pubPublic],
+    tokens: [...(global.pubTokens || [])]
+  }
   global.pubContainer = null
+  global.pubRunner = null
+  global.pubRendered = null
+  global.pubPrivate = null
+  global.pubPublic = null
+  global.pubTokens = []
+
+  teardownJourneyTerminal(resources.container)
 
   // Surgical: only this scenario's runner, so a full local run does not pull the
   // rug from under the other stories sharing the gitlab-runner service.
-  if (global.pubRunner) {
+  if (resources.runner) {
     try {
-      await teardownScopedRunner(global.pubRunner)
+      await teardownScopedRunner(resources.runner)
     } catch (_) {
       // Best-effort: the project is deleted just below anyway.
     }
-    global.pubRunner = null
   }
 
-  removeRendered(global.pubRendered)
-  global.pubRendered = null
+  removeRendered(resources.rendered)
 
   let rootHeaders = null
   try {
@@ -207,7 +223,7 @@ After(async () => {
     return
   }
 
-  for (const name of [global.pubPrivate, global.pubPublic]) {
+  for (const name of resources.projects) {
     if (!name) continue
     try {
       await deleteProject(name, rootHeaders)
@@ -215,17 +231,14 @@ After(async () => {
       // Best-effort: GitLab deletion is async and non-critical.
     }
   }
-  global.pubPrivate = null
-  global.pubPublic = null
 
-  for (const id of global.pubTokens || []) {
+  for (const id of resources.tokens) {
     try {
       await revokePersonalAccessToken(id, rootHeaders)
     } catch (_) {
       // Best-effort: per-scenario tokens must not pile up on the GitLab volume.
     }
   }
-  global.pubTokens = []
 })
 
 // ---------------------------------------------------------------------------
@@ -852,6 +865,28 @@ storyboardStep(When, 'the developer answers the question themselves and merges i
     throw new Error(`The merge must go through once the thread is answered: ${merged.status} ${JSON.stringify(merged.data)}`)
   }
 
+  // GitLab marks the MR merged before its background worker deletes the source
+  // branch. Wait for that observable result before loading the merged-page card.
+  const sourceBranch = merged.data && merged.data.source_branch
+  if (typeof sourceBranch !== 'string' || !sourceBranch) {
+    throw new Error('The merged response must identify the source branch to verify its deletion')
+  }
+  const branchUrl = `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}` +
+    `/repository/branches/${encodeURIComponent(sourceBranch)}`
+  let deleted = false
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const branch = await freshGet(branchUrl, lambdaHeaders)
+    if (branch.status === 404) {
+      deleted = true
+      break
+    }
+    if (branch.status !== 200 || !branch.data || branch.data.name !== sourceBranch) {
+      throw new Error(`Cannot verify deletion of "${sourceBranch}": HTTP ${branch.status} ${JSON.stringify(branch.data)}`)
+    }
+    if (attempt < 29) await I.wait(2)
+  }
+  if (!deleted) throw new Error(`Source branch "${sourceBranch}" was not deleted after 30 checks`)
+
   I.resizeWindow(1024, 680)
   await GitLabMergeRequestPage.gotoAndMaskMerged(
     projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate
@@ -1051,6 +1086,64 @@ const PUBLICATION_DONE = 'Source publication installed.'
 const WIRING_PROMPT = 'Say where the source goes'
 const WIRING_DONE = 'nightly schedule'
 
+const EXISTING_TOOL = '.config/existing-tool.sh'
+const EXISTING_PRIVATE_FILE = '.config/private-data.txt'
+const EXISTING_TOOL_CONTENT = '#!/bin/sh\nprintf "%s\\n" "existing tool works"\n'
+const EXISTING_PRIVATE_CONTENT = 'Private project data for the installation test.\n'
+const EXISTING_FILE_ARGS = EXISTING_TOOL + ' ' + EXISTING_PRIVATE_FILE
+const EXISTING_FILE_COMMAND = "stat -c '%a %n' " + EXISTING_FILE_ARGS +
+  ' && sha256sum ' + EXISTING_FILE_ARGS + ' && ./' + EXISTING_TOOL
+const ANSWERS_FILE = '.config/devsecops/.copier-answers.yml'
+const ANSWERS_COMMAND = "grep -E '^(install_scope|source_publication|container_runtime|project_enabled):' " +
+  ANSWERS_FILE
+const EXISTING_PROJECT_COMMAND = ANSWERS_COMMAND + ' && sha256sum ' + ANSWERS_FILE +
+  " && stat -c '%a %n' " + ANSWERS_FILE + ' && ' + EXISTING_FILE_COMMAND
+
+function prepareExistingPublicationFiles () {
+  inProjectOrThrow([
+    'mkdir -p -m 755 .config',
+    'printf %s ' + shellEscape(EXISTING_TOOL_CONTENT) + ' > ' + EXISTING_TOOL,
+    'printf %s ' + shellEscape(EXISTING_PRIVATE_CONTENT) + ' > ' + EXISTING_PRIVATE_FILE,
+    'chmod 750 ' + EXISTING_TOOL,
+    'chmod 600 ' + EXISTING_PRIVATE_FILE
+  ].join(' && '))
+  const state = inProjectOrThrow(EXISTING_FILE_COMMAND)
+  mustContain(state, ['750 ' + EXISTING_TOOL, '600 ' + EXISTING_PRIVATE_FILE, 'existing tool works'],
+    'the pre-existing files must start with their intended permissions and executable behavior')
+  for (const content of [EXISTING_TOOL_CONTENT, EXISTING_PRIVATE_CONTENT]) {
+    mustContain(state, crypto.createHash('sha256').update(content).digest('hex'),
+      'the pre-existing files must start with their exact fixture contents')
+  }
+  global.pubExistingFiles = state
+}
+
+function assertExistingPublicationFiles () {
+  const state = inProjectOrThrow(EXISTING_FILE_COMMAND)
+  if (state !== global.pubExistingFiles) {
+    throw new Error('Installing source publication changed a pre-existing file, its permissions or its execution:\n' + state)
+  }
+}
+
+function projectFileState () {
+  const files = inProjectOrThrow(
+    "find . -path './.git' -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum"
+  )
+  const modes = inProjectOrThrow(
+    "find . -path './.git' -prune -o \\( -type f -o -type d \\) -printf '%m %p\\n' | LC_ALL=C sort"
+  )
+  return { files, modes }
+}
+
+function assertExistingProject () {
+  const after = projectFileState()
+  for (const key of ['files', 'modes']) {
+    if (after[key] !== global.pubExistingProject[key]) {
+      throw new Error('The component preflight changed the complete project: ' + key)
+    }
+  }
+  assertExistingPublicationFiles()
+}
+
 async function waitInstallerLog (needle, timeoutMs = 300000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -1123,6 +1216,80 @@ storyboardStep(Given, 'a project that carries no framework at all', async () => 
   await typeCommandAndWait(I, 'clear')
   const screen = await terminalCard('ls -A1 && git status --short', 'ls -A1', 'publication-only-before')
   mustContain(screen, 'README.md', 'the project starts with its README and nothing else')
+})
+
+storyboardStep(Given, 'the project already has an executable tool and an owner-only file under its configuration directory', async () => {
+  inProjectOrThrow('test ! -e ' + ANSWERS_FILE)
+  prepareExistingPublicationFiles()
+  await typeCommandAndWait(I, 'clear')
+  await terminalCard(EXISTING_FILE_COMMAND, 'stat -c', 'publication-only-existing-before')
+})
+
+storyboardStep(Then, 'the existing tool still runs and both existing files keep their contents and permissions', async () => {
+  await typeCommandAndWait(I, 'clear')
+  await terminalCard(EXISTING_FILE_COMMAND, 'stat -c', 'publication-only-existing-after')
+  assertExistingPublicationFiles()
+})
+
+storyboardStep(Given, 'that project was generated with the complete framework and its own Copier choices', async () => {
+  inProjectOrThrow(
+    'umask 022 && export PATH="$HOME/.local/bin:$PATH" && ' +
+    COPIER + ' copy --trust --skip-tasks --defaults --quiet --overwrite --vcs-ref 1.0.0' +
+    ' --data install_scope=everything --data container_runtime=podman --data project_enabled=true' +
+    ' --data use_docker_compose=false --data source_publication=false ' + TEMPLATE_DIR + ' .'
+  )
+  prepareExistingPublicationFiles()
+  const answers = inProjectOrThrow(ANSWERS_COMMAND)
+  mustContain(answers, ['install_scope: everything', 'container_runtime: podman',
+    'project_enabled: true', 'source_publication: false'],
+  'the fixture must use real Copier answers for a complete project')
+  global.pubExistingProject = projectFileState()
+  await typeCommandAndWait(I, 'clear')
+  await terminalCard(
+    EXISTING_PROJECT_COMMAND,
+    'grep -E', 'publication-existing-framework-before'
+  )
+})
+
+storyboardStep(Then, 'the installer refuses the component install and explains how to update the existing project', async () => {
+  // The old installer reaches setup instead of refusing. Decline that prompt so
+  // RED is an assertion on its real exit status, not a timeout waiting for an
+  // error message that the old product never printed.
+  await waitInstallerLog('Say where the source goes\\|COMMAND_EXIT_CODE')
+  let log = execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output
+  if (log.includes(WIRING_PROMPT)) {
+    await waitForTerminalText(I, WIRING_PROMPT, COMMAND_TIMEOUT_MS)
+    I.type('n')
+    I.pressKey('Enter')
+  }
+  await waitInstallerLog('COMMAND_EXIT_CODE')
+  await waitForTerminalSettle(I)
+  log = execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output
+  await typeCommandAndWait(I, 'clear')
+  // script(1) records the installer's status even though its wrapper itself
+  // does not propagate it. Sed selects the real guidance and that exit record,
+  // leaving the volatile session timestamp out of the visual proof.
+  await terminalCard(
+    "sed -n '/\\.copier-answers.yml/p; /task copier:update/p; " +
+    's/.*\\[\\(COMMAND_EXIT_CODE="[0-9]*"\\)\\].*/\\1/p\' ' + INSTALL_LOG,
+    'sed -n', 'publication-existing-framework-refused'
+  )
+  const exit = log.match(/COMMAND_EXIT_CODE="(\d+)"/)
+  if (!exit) throw new Error('The installer session did not record its exit status:\n' + log)
+  if (Number(exit[1]) === 0) {
+    throw new Error('Component installation must refuse an existing full Copier project, but the installer returned 0')
+  }
+  mustContain(log, ['.copier-answers.yml', 'task copier:update', '--data source_publication=true'],
+    'the refusal must identify the existing answers and give the supported update command')
+})
+
+storyboardStep(Then, 'the complete project keeps every original file and permission without gaining a component copy', async () => {
+  await typeCommandAndWait(I, 'clear')
+  await terminalCard(
+    EXISTING_PROJECT_COMMAND,
+    'grep -E', 'publication-existing-framework-unchanged'
+  )
+  assertExistingProject()
 })
 
 storyboardStep(When, 'the developer ticks source publication on the checklist', async () => {
@@ -1261,7 +1428,7 @@ storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () =
       throw new Error(`${name} must exist as a CI/CD variable, got ${variable.status}`)
     }
     if (variable.data.masked !== true || variable.data.protected !== true) {
-      throw new Error(`${name} must be masked and protected, got ${JSON.stringify(variable.data)}`)
+      throw new Error(`${name} must be masked and protected, got masked=${variable.data.masked}, protected=${variable.data.protected}`)
     }
   }
   // The project token is the one the install created, so that no human's own
@@ -1273,6 +1440,10 @@ storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () =
   }
   if (renovateToken.access_level !== 40 || !(renovateToken.scopes || []).includes('api')) {
     throw new Error(`The Renovate token must be api/Maintainer, got ${JSON.stringify(renovateToken)}`)
+  }
+  const project = await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}`, headers)
+  if (project.status !== 200 || project.data.only_allow_merge_if_all_discussions_are_resolved !== true) {
+    throw new Error('Publication setup must enable the discussion merge gate in GitLab')
   }
   await variablesCard()
 })

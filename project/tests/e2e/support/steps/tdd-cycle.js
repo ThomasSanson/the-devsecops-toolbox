@@ -284,3 +284,38 @@ storyboardStep(Then, 'the test phase refuses to certify itself, the moment a che
   }
   await card('verify-refuses-a-switched-off-check', `$ ${VERIFY}\n${output.trimEnd()}`, { colour: true })
 })
+
+// The regeneration contract runs the real engine in a disposable copy, just as
+// the RED-proof story above does. Its reference and actual images come from the
+// browser; each inner run starts from the same blue reference.
+const baselineMode = require('../helpers/baselineModeFixture')
+const { captureElementFrame, addStoryboardFrame } = require('../../../../../.config/codeceptjs/storyboard')
+
+After((test) => {
+  if (test && test.tags && test.tags.includes('@baseline-mode')) baselineMode.removeBaselineFixture()
+})
+
+storyboardStep(Given, 'a reference image and a captured page differ visibly in their pixels', async () => {
+  await baselineMode.prepareBaselineFixture(I)
+  await addStoryboardFrame(I, await captureElementFrame(I, 'baseline-mode-difference', '#fixture'))
+})
+
+const baselineCases = [
+  ['an unset regeneration flag refuses the pixel difference and preserves the reference', undefined, false, 'unset'],
+  ['a regeneration flag set to zero still refuses the difference and preserves the reference', '0', false, 'zero'],
+  ['an explicit local regeneration request replaces the reference with the captured pixels', '1', false, 'one'],
+  ['the same explicit regeneration request is forbidden in CI and preserves the reference', '1', true, 'ci']
+]
+
+for (const [sentence, value, ci, frame] of baselineCases) {
+  storyboardStep(Then, sentence, async () => {
+    const result = baselineMode.runBaselineCase(value, ci)
+    const output = baselineMode.proofOutput(result)
+    // Keep the complete transcript inside the viewport before its element
+    // capture: Chromium can change its fallback font when capturing below it.
+    const rows = stripAnsi(output).split('\n').reduce((count, line) =>
+      count + Math.max(1, Math.ceil(line.replace(/\t/g, '        ').length / 80)), 0)
+    await card('baseline-mode-' + frame, output, { height: Math.max(640, 32 + rows * 24) })
+    baselineMode.assertBaselineCase(result)
+  })
+}

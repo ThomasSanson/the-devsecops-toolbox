@@ -53,3 +53,23 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: It names the file, the line and what that line does, then offers the only way past it: a visible No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing at it.
     # Copy: task devsecops:test:verify
     Then the test phase refuses to certify itself, the moment a check is switched off
+
+
+  @baseline-mode
+  Scenario: Only an explicit local request may replace an image reference
+    # Chapter: A visible difference must fail
+    # Note: The reference contains two blue rectangles. Chromium then captures the same page with an orange rectangle on the right. The fixture keeps both real captures in a disposable copy of the toolbox.
+    Given a reference image and a captured page differ visibly in their pixels
+    # Note: With no regeneration variable, both visual helpers must reject the changed pixels. The task preview shows the actual container command; the real engine output below shows each failed comparison. Neither reference file may change.
+    # Copy: env -u TASK_E2E_UPDATE_BASELINES task project:test:e2e
+    Then an unset regeneration flag refuses the pixel difference and preserves the reference
+    # Note: Setting the variable to 0 must keep the same strict behavior. A nonempty value is not permission to accept a visual regression, and the task must not turn that value into 1.
+    # Copy: TASK_E2E_UPDATE_BASELINES=0 task project:test:e2e
+    And a regeneration flag set to zero still refuses the difference and preserves the reference
+    # Chapter: Regeneration requires an explicit local request
+    # Note: The value 1 authorizes regeneration in this disposable local copy. Each helper must succeed and replace its blue reference with the exact bytes of the newly captured page.
+    # Copy: TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
+    And an explicit local regeneration request replaces the reference with the captured pixels
+    # Note: The same nested engine now receives CI=true. Both helpers must print their CI refusal and leave the reference untouched, even though the regeneration variable is 1. This checks the runtime guard locally; it does not run a GitLab pipeline.
+    # Copy: CI=true TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
+    And the same explicit regeneration request is forbidden in CI and preserves the reference

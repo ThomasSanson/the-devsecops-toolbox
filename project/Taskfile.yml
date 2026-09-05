@@ -210,7 +210,7 @@ tasks:
           fi
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
-          {{if .TASK_E2E_UPDATE_BASELINES}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}codeceptjs
+          {{if eq (.TASK_E2E_UPDATE_BASELINES | default "") "1"}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}codeceptjs
           /usr/local/bin/codeceptjs run-workers
           {{.TASK_E2E_WORKERS | default "3"}}
           --features --by pool

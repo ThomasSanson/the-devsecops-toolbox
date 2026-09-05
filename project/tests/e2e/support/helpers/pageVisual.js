@@ -24,7 +24,7 @@ async function assertPageVisualMatch (I, baselineName) {
   // Force a fresh actual so the helper never compares a stale _output PNG.
   await I.takeScreenshot(baselineName)
 
-  if (!process.env.TASK_E2E_UPDATE_BASELINES) {
+  if (process.env.TASK_E2E_UPDATE_BASELINES !== '1') {
     await I.assertVisualMatch(baselineName)
     return
   }

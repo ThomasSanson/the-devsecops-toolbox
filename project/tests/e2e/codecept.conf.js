@@ -98,6 +98,7 @@ exports.config = {
       './support/steps/generated-ci.js',
       './support/steps/test-discipline.js',
       './support/steps/source-publication.js',
+      './support/steps/publication-contracts.js',
       './support/steps/publication-update.js'
     ]
   },

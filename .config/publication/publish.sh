@@ -31,7 +31,7 @@
 #   sh .config/publication/publish.sh publish   # the real thing (task release)
 #
 # ENVIRONMENT:
-#   TASK_PUBLICATION_ENABLED          off unless "true" (checked by the Taskfile)
+#   TASK_PUBLICATION_ENABLED          off unless "true"
 #   TASK_PUBLICATION_TARGET_URL       the public repository's git URL
 #   TASK_PUBLICATION_TARGET_BRANCH    default: main
 #   TASK_PUBLICATION_TOKEN            write access to the TARGET repository
@@ -46,7 +46,7 @@
 #                                     default: the repository's default branch
 #   TASK_PUBLICATION_ON               when it happens by itself: release (default),
 #                                     tag, or manual
-#   TASK_PUBLICATION_SCAN             required (default), off, or done — whether
+#   TASK_PUBLICATION_SCAN             required (default) or off — whether
 #                                     the snapshot is scanned for secrets first
 #   TASK_PUBLICATION_SCAN_IMAGE       default: ghcr.io/betterleaks/betterleaks:latest
 #   TASK_PUBLICATION_SCAN_CONFIG      default: .config/betterleaks/config.toml
@@ -123,6 +123,15 @@ refuse() {
   exit 1
 }
 
+validate_target_url() {
+  case "${TARGET_URL}" in
+  http*://*@* | http*://*\?* | http*://*\#*)
+    refuse "The public repository URL must not contain credentials, a query or a fragment." \
+      "Use a plain repository URL and TASK_PUBLICATION_TOKEN."
+    ;;
+  esac
+}
+
 require() {
   command -v "$1" >/dev/null 2>&1 || {
     head_line
@@ -139,8 +148,14 @@ origin_url() { git remote get-url origin 2>/dev/null || printf ''; }
 strip_credentials() { printf '%s' "$1" | sed -E 's#^(https?://)[^@/]*@#\1#'; }
 
 derive_api_url() {
-  if [ -n "${TASK_PUBLICATION_API_URL:-}" ]; then printf '%s' "${TASK_PUBLICATION_API_URL}"; return; fi
-  if [ -n "${CI_API_V4_URL:-}" ]; then printf '%s' "${CI_API_V4_URL}"; return; fi
+  if [ -n "${TASK_PUBLICATION_API_URL:-}" ]; then
+    printf '%s' "${TASK_PUBLICATION_API_URL}"
+    return
+  fi
+  if [ -n "${CI_API_V4_URL:-}" ]; then
+    printf '%s' "${CI_API_V4_URL}"
+    return
+  fi
   _o="$(strip_credentials "$(origin_url)")"
   case "${_o}" in
   http*) printf '%s/api/v4' "$(printf '%s' "${_o}" | sed -E 's#^(https?://[^/]+)/.*#\1#')" ;;
@@ -149,8 +164,14 @@ derive_api_url() {
 }
 
 derive_project_path() {
-  if [ -n "${TASK_PUBLICATION_PROJECT_PATH:-}" ]; then printf '%s' "${TASK_PUBLICATION_PROJECT_PATH}"; return; fi
-  if [ -n "${CI_PROJECT_PATH:-}" ]; then printf '%s' "${CI_PROJECT_PATH}"; return; fi
+  if [ -n "${TASK_PUBLICATION_PROJECT_PATH:-}" ]; then
+    printf '%s' "${TASK_PUBLICATION_PROJECT_PATH}"
+    return
+  fi
+  if [ -n "${CI_PROJECT_PATH:-}" ]; then
+    printf '%s' "${CI_PROJECT_PATH}"
+    return
+  fi
   _o="$(strip_credentials "$(origin_url)")"
   case "${_o}" in
   http*) printf '%s' "$(printf '%s' "${_o}" | sed -E 's#^https?://[^/]+/##; s#\.git$##')" ;;
@@ -188,24 +209,29 @@ git_paths() { git -c core.quotepath=off "$@"; }
 SOURCE_INDEX=""
 git_src() {
   if [ -n "${SOURCE_INDEX}" ]; then
-    GIT_INDEX_FILE="${SOURCE_INDEX}" git -c core.quotepath=off "$@"
+    GIT_INDEX_FILE="${SOURCE_INDEX}" git -c core.quotepath=off --literal-pathspecs "$@"
   else
-    git -c core.quotepath=off "$@"
+    git -c core.quotepath=off --literal-pathspecs "$@"
   fi
 }
 
 matching() {
   _file="$1"
-  [ -f "${_file}" ] || return 0
-  git_src ls-files --cached --ignored --exclude-from="${_file}" 2>/dev/null || true
+  git_src ls-files --cached --ignored --exclude-from="${_file}"
 }
 
 # The branch a project publishes unless it says otherwise. CI knows it; outside
 # CI the remote's HEAD does; a repository with neither is on main.
 default_branch() {
-  if [ -n "${CI_DEFAULT_BRANCH:-}" ]; then printf '%s' "${CI_DEFAULT_BRANCH}"; return; fi
+  if [ -n "${CI_DEFAULT_BRANCH:-}" ]; then
+    printf '%s' "${CI_DEFAULT_BRANCH}"
+    return
+  fi
   _head="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-  if [ -n "${_head}" ]; then printf '%s' "${_head#origin/}"; return; fi
+  if [ -n "${_head}" ]; then
+    printf '%s' "${_head#origin/}"
+    return
+  fi
   printf '%s' "${TASK_GIT_DEFAULT_BRANCH:-main}"
 }
 
@@ -224,7 +250,7 @@ resolve_source_sha() {
   fi
   [ -n "${_sha}" ] || _sha="$(git rev-parse --verify --quiet "${_ref}"'^{commit}' 2>/dev/null || true)"
   [ -n "${_sha}" ] || _sha="$(git rev-parse --verify --quiet "origin/${_ref}"'^{commit}' 2>/dev/null || true)"
-  if [ -z "${_sha}" ]; then
+  if [ -z "${_sha}" ] && [ "${2:-ref}" = "ref" ]; then
     git fetch --quiet origin "${_ref}" 2>/dev/null &&
       _sha="$(git rev-parse --verify --quiet 'FETCH_HEAD^{commit}' 2>/dev/null || true)"
   fi
@@ -259,7 +285,7 @@ compute_lists() {
 
   if [ "${_mode}" = "ref" ] || [ -n "${SOURCE_REF}" ]; then
     SOURCE_LABEL="${SOURCE_REF:-$(default_branch)}"
-    SOURCE_SHA="$(resolve_source_sha "${SOURCE_LABEL}")"
+    SOURCE_SHA="$(resolve_source_sha "${SOURCE_LABEL}" "${_mode}")"
     if [ -z "${SOURCE_SHA}" ]; then
       head_line
       refuse "No such ref: \"${SOURCE_LABEL}\"." \
@@ -269,7 +295,8 @@ compute_lists() {
     GIT_INDEX_FILE="${SOURCE_INDEX}" git read-tree "${SOURCE_SHA}"
     for _name in allowlist denylist denylist.base owners manifest; do
       git show "${SOURCE_SHA}:${PUB_DIR}/${_name}" >"${WORK}/list-${_name}" 2>/dev/null ||
-        : >"${WORK}/list-${_name}"
+        refuse "Cannot read ${PUB_DIR}/${_name} from ${SOURCE_LABEL}." \
+          "Restore the publication policy before trying again."
     done
     ALLOWLIST_F="${WORK}/list-allowlist"
     DENYLIST_F="${WORK}/list-denylist"
@@ -281,10 +308,19 @@ compute_lists() {
     SOURCE_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
 
+  for _policy in "${ALLOWLIST_F}" "${DENYLIST_F}" "${DENY_BASE_F}" "${OWNERS_F}" "${MANIFEST_F}"; do
+    [ -f "${_policy}" ] && [ -r "${_policy}" ] ||
+      refuse "Cannot read publication policy ${_policy}."
+  done
+
   git_src ls-files | LC_ALL=C sort >"${WORK}/tracked"
-  matching "${ALLOWLIST_F}" | LC_ALL=C sort -u >"${WORK}/allowed"
-  matching "${DENY_BASE_F}" | LC_ALL=C sort -u >"${WORK}/floor"
-  matching "${DENYLIST_F}" | LC_ALL=C sort -u >"${WORK}/denied"
+  # Read before sorting: POSIX pipelines otherwise hide a failed git command.
+  matching "${ALLOWLIST_F}" >"${WORK}/allowed-raw" || refuse "Cannot evaluate ${ALLOWLIST}."
+  matching "${DENY_BASE_F}" >"${WORK}/floor-raw" || refuse "Cannot evaluate ${DENY_BASE}."
+  matching "${DENYLIST_F}" >"${WORK}/denied-raw" || refuse "Cannot evaluate ${DENYLIST}."
+  LC_ALL=C sort -u "${WORK}/allowed-raw" >"${WORK}/allowed"
+  LC_ALL=C sort -u "${WORK}/floor-raw" >"${WORK}/floor"
+  LC_ALL=C sort -u "${WORK}/denied-raw" >"${WORK}/denied"
 
   # Held back by the framework floor, then by the project's own denylist. A file
   # caught by both is reported once, under the floor: that is the rule a project
@@ -304,6 +340,35 @@ compute_lists() {
   PUBLISHED_COUNT="$(wc -l <"${WORK}/published" | tr -d ' ')"
   HELD_COUNT="$(wc -l <"${WORK}/held" | tr -d ' ')"
   UNAPPROVED_COUNT="$(wc -l <"${WORK}/unapproved" | tr -d ' ')"
+  validate_snapshot_entries
+}
+
+# The manifest is line-oriented. Refuse Git's quoted paths and unsupported
+# object modes instead of advertising a file that cannot be copied faithfully.
+snapshot_entry() {
+  _entry="$(git_src ls-files --stage -- "$1")"
+  ENTRY_MODE="${_entry%% *}"
+  ENTRY_OBJECT="${_entry#* }"
+  ENTRY_OBJECT="${ENTRY_OBJECT%% *}"
+}
+
+validate_snapshot_entries() {
+  while IFS= read -r _path; do
+    case "${_path}" in
+    \"* | \#*) refuse "Unsupported publication path: ${_path}." ;;
+    esac
+    snapshot_entry "${_path}"
+    case "${ENTRY_MODE}" in
+    100644 | 100755) ;;
+    *) refuse "Unsupported publication file: ${_path} (Git mode ${ENTRY_MODE})." \
+      "Symlinks and submodules must be excluded in ${DENYLIST}." ;;
+    esac
+    if [ "$(git cat-file -s "${ENTRY_OBJECT}")" -le 1024 ] &&
+      git cat-file blob "${ENTRY_OBJECT}" | grep -qxF 'version https://git-lfs.github.com/spec/v1'; then
+      refuse "Unsupported publication file: ${_path} (Git LFS pointer)." \
+        "Exclude it in ${DENYLIST}; publication does not fetch LFS objects."
+    fi
+  done <"${WORK}/published"
 }
 
 owner_list() { read_list "${OWNERS_F}"; }
@@ -334,8 +399,20 @@ release_name() {
 # ---------------------------------------------------------------------------
 export_snapshot() {
   _dir="$1"
-  mkdir -p "${_dir}"
-  git_src checkout-index --prefix="${_dir}/" --force --stdin <"${WORK}/published"
+  mkdir -p "${_dir}" || return 1
+  # checkout-index applies the workstation's smudge filters and attributes.
+  # Read blobs directly so an uncommitted setting cannot change what is scanned.
+  while IFS= read -r _path; do
+    snapshot_entry "${_path}" || return 1
+    _parent="${_path%/*}"
+    [ "${_parent}" != "${_path}" ] || _parent=.
+    mkdir -p "${_dir}/${_parent}" || return 1
+    git cat-file blob "${ENTRY_OBJECT}" >"${_dir}/${_path}" || return 1
+    case "${ENTRY_MODE}" in
+    100755) chmod 755 "${_dir}/${_path}" || return 1 ;;
+    *) chmod 644 "${_dir}/${_path}" || return 1 ;;
+    esac
+  done <"${WORK}/published"
 }
 
 # Prefer an installed binary, fall back to the container, and say so when there
@@ -347,13 +424,12 @@ scan_snapshot() {
     say "⚠️  Secret scan skipped (TASK_PUBLICATION_SCAN=off)."
     return 0
     ;;
-  done)
-    return 0
-    ;;
+  required) ;;
+  *) refuse "Invalid TASK_PUBLICATION_SCAN: use required or off." ;;
   esac
 
   _snap="${WORK}/snapshot"
-  export_snapshot "${_snap}"
+  export_snapshot "${_snap}" || refuse "Could not export every published file; the snapshot was not scanned."
 
   # Scanned from INSIDE the snapshot, as ".", so every path the scanner tests is
   # the path that file has in the repository. It matters: a project allowlist
@@ -383,14 +459,19 @@ scan_snapshot() {
     # Copied in rather than mounted: a bind mount hands the container the host's
     # ownership, and the framework's own betterleaks task learned that the hard
     # way.
-    docker cp "${_snap}/." "${_name}:/snapshot" >/dev/null 2>&1
-    _flags=""
-    if [ -f "${SCAN_CONFIG}" ]; then
-      docker cp "${SCAN_CONFIG}" "${_name}:/betterleaks.toml" >/dev/null 2>&1 &&
-        _flags="--config=/betterleaks.toml"
+    if ! docker cp "${_snap}/." "${_name}:/snapshot" >/dev/null 2>&1; then
+      docker rm -f "${_name}" >/dev/null 2>&1 || true
+      refuse "Could not copy the complete snapshot to the scanner."
     fi
-    # shellcheck disable=SC2086
-    docker exec -w /snapshot "${_name}" betterleaks dir . ${_flags} -v >"${WORK}/scan.log" 2>&1
+    set --
+    if [ -f "${SCAN_CONFIG}" ]; then
+      if ! docker cp "${SCAN_CONFIG}" "${_name}:/betterleaks.toml" >/dev/null 2>&1; then
+        docker rm -f "${_name}" >/dev/null 2>&1 || true
+        refuse "Could not copy the scanner configuration."
+      fi
+      set -- --config=/betterleaks.toml
+    fi
+    docker exec -w /snapshot "${_name}" betterleaks dir . "$@" -v >"${WORK}/scan.log" 2>&1
     _rc=$?
     docker rm -f "${_name}" >/dev/null 2>&1 || true
     return ${_rc}
@@ -481,27 +562,33 @@ approval_summary() {
     printf '%s not in the approved list' "${UNAPPROVED_COUNT}"
     return
   fi
-  resolve_approval
-  if [ "${APPROVAL_OK}" -eq 1 ]; then
-    printf 'approved by "%s" in merge request !%s' "${APPROVAL_SIGNER}" "${APPROVAL_MR_IID}"
-  elif [ -n "${APPROVAL_SIGNER}" ]; then
-    printf 'signed off by "%s", who is not an owner' "${APPROVAL_SIGNER}"
-  else
-    printf 'the approved list carries no owner signature'
-  fi
+  printf 'paths match the manifest; owner signature is checked at publication'
 }
 
 # ---------------------------------------------------------------------------
 # publish — refuse, or push the snapshot.
 # ---------------------------------------------------------------------------
 cmd_publish() {
+  if [ "${TASK_PUBLICATION_ENABLED:-$(dotenv_value TASK_PUBLICATION_ENABLED)}" != "true" ]; then
+    say "Publication disabled (TASK_PUBLICATION_ENABLED is not true)."
+    return 0
+  fi
+  # Job rules cannot read a versioned dotenv file. Enforce the choice here too,
+  # so a manual project never publishes merely because an automatic job exists.
+  if [ -n "${CI:-}" ] && [ "${PUBLICATION_ON}" = "manual" ] && [ "${CI_JOB_MANUAL:-}" != "true" ]; then
+    say "Publication waits for a manual job (TASK_PUBLICATION_ON=manual)."
+    return 0
+  fi
+  if [ -n "${CI:-}" ] && [ "${PUBLICATION_ON}" = "tag" ] && [ -z "${CI_COMMIT_TAG:-}" ]; then
+    say "Publication waits for a tag pipeline (TASK_PUBLICATION_ON=tag)."
+    return 0
+  fi
   require git
   # The ref, never the working copy: a laptop sitting on a feature branch with
   # the switch on would otherwise publish that branch.
   compute_lists ref
   head_line
   say "Source      ${SOURCE_LABEL} ($(git rev-parse --short "${SOURCE_SHA}"))"
-
 
   [ -n "${TARGET_URL}" ] || refuse \
     "No public repository configured." \
@@ -557,52 +644,71 @@ push_snapshot() {
   _sha="${SOURCE_SHA}"
   _dest="${WORK}/destination"
 
-  _credential_file="${WORK}/credential-store"
-  # Scheme, user, token and HOST only: git's store helper matches a credential by
-  # host, and an entry carrying the repository path is skipped unless
-  # credential.useHttpPath is on — the request would then find nothing and git
-  # would sit waiting for a password nobody is there to type.
-  printf '%s\n' "$(printf '%s' "${TARGET_URL}" |
-    sed -E "s#^(https?)://([^/]+).*#\\1://${TOKEN_USERNAME}:${TOKEN}@\\2#")" >"${_credential_file}"
-  chmod 600 "${_credential_file}"
+  _credential_file="${WORK}/credential-helper"
+  # Only the helper's code is written. Credentials travel through the
+  # environment and git's credential protocol, never process arguments.
+  cat >"${_credential_file}" <<'CREDENTIAL_HELPER'
+#!/bin/sh
+[ "$1" = get ] || exit 0
+while IFS= read -r field; do
+  case "$field" in
+  '') break ;;
+  host=*) [ "${field#host=}" = "$PUBLICATION_CREDENTIAL_HOST" ] || exit 0 ;;
+  esac
+done
+printf 'username=%s\npassword=%s\n' "$PUBLICATION_CREDENTIAL_USER" "$PUBLICATION_CREDENTIAL_TOKEN"
+CREDENTIAL_HELPER
+  chmod 700 "${_credential_file}"
+  PUBLICATION_CREDENTIAL_HOST="$(printf '%s' "${TARGET_URL}" | sed -E 's#^https?://([^/]+).*#\1#')"
+  PUBLICATION_CREDENTIAL_USER="${TOKEN_USERNAME}"
+  PUBLICATION_CREDENTIAL_TOKEN="${TOKEN}"
+  export PUBLICATION_CREDENTIAL_HOST PUBLICATION_CREDENTIAL_USER PUBLICATION_CREDENTIAL_TOKEN
   # Never wait for a human: a missing credential must fail the job, not hang it.
   GIT_TERMINAL_PROMPT=0
   export GIT_TERMINAL_PROMPT
-  # The token lives in that file and nowhere else: not in the URL git prints, not
-  # in this process's arguments (which `ps` would show), not in the destination's
-  # .git/config. Git's env interface carries the helper because a `-c
-  # credential.helper="store --file=…"` value cannot survive shell word-splitting
-  # — same idiom as .config/devsecops/Taskfile.release.yml.
-  GIT_CONFIG_COUNT=1
+  # Reset inherited helpers so they cannot store this credential. Git's env
+  # interface selects the helper without putting a token in argv or .git/config.
+  GIT_CONFIG_COUNT=2
   GIT_CONFIG_KEY_0=credential.helper
-  GIT_CONFIG_VALUE_0="store --file=${_credential_file}"
-  export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+  GIT_CONFIG_VALUE_0=""
+  GIT_CONFIG_KEY_1=credential.helper
+  GIT_CONFIG_VALUE_1="${_credential_file}"
+  export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
 
   # A full clone, not a shallow one: the push is a plain fast-forward on top of
   # whatever the public repository already has, and history stays intact.
-  if ! git clone --quiet "${TARGET_URL}" "${_dest}" 2>"${WORK}/clone.err"; then
+  if ! git clone --quiet --no-checkout "${TARGET_URL}" "${_dest}" 2>"${WORK}/clone.err"; then
     refuse "Cannot reach the public repository ${TARGET_URL}." \
       "Check the URL and that TASK_PUBLICATION_TOKEN may push to it." \
-      "$(sed -e "s#${TOKEN}#***#g" -e 's/^/git: /' "${WORK}/clone.err" | tail -n 3)"
+      "$(redact_token <"${WORK}/clone.err" | tail -n 3)"
   fi
 
   if git -C "${_dest}" rev-parse --verify --quiet "origin/${TARGET_BRANCH}" >/dev/null 2>&1; then
-    git -C "${_dest}" checkout --quiet -B "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
+    git -C "${_dest}" symbolic-ref HEAD "refs/heads/${TARGET_BRANCH}"
+    git -C "${_dest}" update-ref HEAD "origin/${TARGET_BRANCH}"
   else
-    git -C "${_dest}" checkout --quiet -B "${TARGET_BRANCH}"
+    git -C "${_dest}" symbolic-ref HEAD "refs/heads/${TARGET_BRANCH}"
   fi
 
-  # Everything the public repository holds goes, then the approved files come
-  # back: a file removed from the allowlist disappears at the next release
-  # instead of lingering. Emptied with find on the destination directory itself,
-  # never with `git -C … ls-files | xargs rm`: git -C prints paths relative to
-  # the destination while rm would resolve them against the CURRENT directory,
-  # which is the private project — it deletes the source instead of the copy.
-  find "${_dest}" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
-  git_src checkout-index --prefix="${_dest}/" --force --stdin <"${WORK}/published"
+  # Replace the destination index with exactly the approved blobs and modes.
+  # No working-tree filter or ignore rule may rewrite or discard those bytes.
+  git -C "${_dest}" read-tree --empty
+  while IFS= read -r _path; do
+    snapshot_entry "${_path}" || refuse "Cannot read the approved Git entry: ${_path}."
+    # Check the reader separately: a successful hash-object at the end of a
+    # pipeline could otherwise turn a failed read into a valid empty blob.
+    git cat-file blob "${ENTRY_OBJECT}" >"${WORK}/public-blob" ||
+      refuse "Cannot read the approved Git contents: ${_path}. Nothing was pushed."
+    _object="$(git -C "${_dest}" hash-object -w --no-filters "${WORK}/public-blob")" ||
+      refuse "Cannot store the approved Git contents: ${_path}. Nothing was pushed."
+    git -C "${_dest}" update-index --add --cacheinfo "${ENTRY_MODE},${_object},${_path}"
+  done <"${WORK}/published"
 
-  git -C "${_dest}" add -A
-  if git -C "${_dest}" diff --cached --quiet; then
+  # Same source commit means a retry; identical public bytes in a NEW release
+  # still owe a publication commit and its tag.
+  _previous="$(git -C "${_dest}" log -1 --format=%B 2>/dev/null || true)"
+  if git -C "${_dest}" diff --cached --quiet && printf '%s\n' "${_previous}" | grep -qxF "Commit: ${_sha}"; then
+    push_public_refs
     say "The public repository is already up to date at ${_version}."
     printf '\n'
     return 0
@@ -612,24 +718,34 @@ push_snapshot() {
     "${_version}" "$(source_project_url)" "${_sha}" "${PUBLISHED_COUNT}" "${HELD_COUNT}")"
   git -C "${_dest}" \
     -c "user.name=${COMMIT_AUTHOR_NAME}" -c "user.email=${COMMIT_AUTHOR_EMAIL}" \
-    commit --quiet --no-verify -m "${_message}"
+    commit --quiet --allow-empty --no-verify -m "${_message}"
 
-  if ! git -C "${_dest}" push --quiet origin "${TARGET_BRANCH}"; then
-    refuse "The push to ${TARGET_URL} was refused." \
-      "The public repository moved on its own; nothing here force-pushes over it."
-  fi
-
-  # Mirror the release tag when this snapshot is one. A project with no tag
-  # publishes all the same — the commit message carries the source commit.
-  if git describe --tags --exact-match "${SOURCE_SHA}" >/dev/null 2>&1; then
-    git -C "${_dest}" tag -f "${_version}" >/dev/null 2>&1 || true
-    git -C "${_dest}" push --quiet origin "refs/tags/${_version}" 2>/dev/null || true
-  fi
+  push_public_refs
 
   say "Approved by \"${_who}\" in merge request !${APPROVAL_MR_IID}"
   say "Publishing ${PUBLISHED_COUNT} files, withholding ${HELD_COUNT}"
   say "Pushed ${SOURCE_LABEL} as ${_version} to ${TARGET_URL} (branch ${TARGET_BRANCH})"
   printf '\n'
+}
+
+# Retrying a source commit must also settle its release tag. An earlier
+# untagged publication already supplies the right public commit for a new tag.
+push_public_refs() {
+  set -- "HEAD:refs/heads/${TARGET_BRANCH}"
+  if git describe --tags --exact-match "${SOURCE_SHA}" >/dev/null 2>&1; then
+    _tag_commit="$(git -C "${_dest}" rev-parse --verify --quiet "refs/tags/${_version}^{commit}" 2>/dev/null || true)"
+    if [ -n "${_tag_commit}" ]; then
+      [ "${_tag_commit}" = "$(git -C "${_dest}" rev-parse HEAD)" ] ||
+        refuse "The public tag ${_version} already identifies another commit."
+    else
+      git -C "${_dest}" tag "${_version}" || refuse "Could not create the public tag ${_version}."
+    fi
+    set -- "$@" "refs/tags/${_version}"
+  fi
+  if ! git -C "${_dest}" push --quiet --atomic origin "$@"; then
+    refuse "The push to ${TARGET_URL} was refused." \
+      "The public repository moved on its own; nothing here force-pushes over it."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -646,13 +762,34 @@ APPROVAL_SIGNER=""
 APPROVAL_OK=0
 
 api() {
-  _method="$1"
-  _path="$2"
+  _api_method="$1"
+  _api_path="$2"
   shift 2
-  curl --silent --show-error --request "${_method}" \
-    --header "PRIVATE-TOKEN: ${SOURCE_TOKEN}" \
-    --header "Content-Type: application/json" \
-    "$@" "${API_URL}${_path}"
+  # Read the header and JSON body from stdin. jq quotes embedded newlines and
+  # quotes without exposing either credential in an external process's argv.
+  {
+    printf 'header = '
+    printf 'PRIVATE-TOKEN: %s' "${SOURCE_TOKEN}" | jq -Rs .
+    printf 'header = "Content-Type: application/json"\n'
+    if [ "$#" -gt 0 ]; then
+      [ "$#" -eq 2 ] && [ "$1" = --data ] || return 2
+      printf 'data = '
+      printf '%s' "$2" | jq -Rs .
+    fi
+  } | curl --config - --silent --show-error --fail-with-body \
+    --connect-timeout 10 --max-time 60 --request "${_api_method}" "${API_URL}${_api_path}"
+}
+
+redact_token() {
+  PUBLICATION_REDACT_TOKEN="${TOKEN}" awk '
+    BEGIN { token = ENVIRON["PUBLICATION_REDACT_TOKEN"] }
+    {
+      line = $0
+      while (length(token) && (pos = index(line, token))) {
+        line = substr(line, 1, pos - 1) "***" substr(line, pos + length(token))
+      }
+      print "git: " line
+    }'
 }
 
 forge_ready() {
@@ -678,16 +815,19 @@ resolve_approval() {
   _commit="$(git log -1 --format=%H "${SOURCE_SHA:-HEAD}" -- "${MANIFEST}" 2>/dev/null || true)"
   [ -n "${_commit}" ] || return 0
 
-  _mr="$(api GET "/projects/${PROJECT_ENC}/repository/commits/${_commit}/merge_requests" |
-    jq -r 'if type=="array" and length>0 then .[0].iid else empty end' 2>/dev/null || true)"
+  _mr="$(api GET "/projects/${PROJECT_ENC}/repository/commits/${_commit}/merge_requests?state=merged" |
+    jq -r '[.[]? | select(.state == "merged")] | .[0].iid // empty' 2>/dev/null || true)"
   [ -n "${_mr}" ] || return 0
   APPROVAL_MR_IID="${_mr}"
 
   # EVERY answered thread, not just the first: an owner who arrives after
   # somebody else already ticked the box has to be able to answer on the same
   # merge request, and that late answer is what unblocks the publication.
+  _marker="Publication-manifest: $(git hash-object "${MANIFEST_F}")"
   _signers="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions?per_page=100" |
-    jq -r '[.[]?.notes[]? | select(.system|not) | select(.resolved == true) | .resolved_by.username]
+    jq -r --arg marker "${_marker}" '[.[]?.notes[]? | select(.system|not)
+            | select(.resolvable == true and .resolved == true)
+            | select((.body // "" | split("\n")) | index($marker)) | .resolved_by.username]
             | unique | .[]' 2>/dev/null || true)"
   [ -n "${_signers}" ] || return 0
 
@@ -712,7 +852,7 @@ open_approval_request() {
   require jq
   # "asks", not "opened": the same merge request is reused while it is open, so
   # a second refusal must not claim to have created a second one.
-  _iid="$(cmd_approve_quiet)"
+  _iid="$(cmd_approve_quiet)" || refuse "The forge refused the approval request. Nothing was approved."
   if [ -n "${_iid}" ]; then
     say "Merge request !${_iid} asks the owners to approve it: $(owners_inline)"
     say "$(source_project_url)/-/merge_requests/${_iid}"
@@ -768,9 +908,10 @@ cmd_approve_quiet() {
     '{branch: $branch, commit_message: $msg,
       actions: [{action: $action, file_path: $file, content: $content}]}
       + (if $fresh then {start_branch: $start} else {} end)')"
-  api POST "/projects/${PROJECT_ENC}/repository/commits" --data "${_payload}" >/dev/null 2>&1 || true
+  api POST "/projects/${PROJECT_ENC}/repository/commits" --data "${_payload}" >/dev/null || return 1
 
   if [ -n "${_open}" ]; then
+    ensure_approval_thread "${_open}" || return 1
     printf '%s' "${_open}"
     return 0
   fi
@@ -787,7 +928,7 @@ cmd_approve_quiet() {
     --arg title "chore(publication): approve what becomes public" \
     --arg description "${_desc}" \
     '{source_branch: $source, target_branch: $target, title: $title,
-      description: $description, remove_source_branch: true}')")"
+      description: $description, remove_source_branch: true}')")" || return 1
   _mr="$(printf '%s' "${_created}" | jq -r '.iid // empty' 2>/dev/null || true)"
   if [ -z "${_mr}" ]; then
     # Silence here is how a refusal looks like a bug: the publication stopped and
@@ -795,14 +936,29 @@ cmd_approve_quiet() {
     say "❌ Could not open the approval merge request onto \"${_default}\"."
     say "   $(printf '%s' "${_created}" |
       jq -r '(.message | if type=="object" then (to_entries[] | "\(.key) \(.value|join(", "))") elif type=="array" then join(", ") else . end)? // "the API refused the call"' 2>/dev/null)"
-    return 0
+    return 1
   fi
 
-  api POST "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions" --data "$(jq -n \
-    --arg body "Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does." \
-    '{body: $body}')" >/dev/null 2>&1 || true
+  ensure_approval_thread "${_mr}" || return 1
 
   printf '%s' "${_mr}"
+}
+
+# The question names the exact manifest blob. Refreshing an approval request
+# opens a new question when its paths changed; the old answer cannot sign it.
+ensure_approval_thread() {
+  _thread_mr="$1"
+  _thread_marker="Publication-manifest: $(git hash-object "${WORK}/manifest-next")"
+  _thread_body="$(printf '%s\n\n%s' \
+    'Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does.' \
+    "${_thread_marker}")"
+  _threads="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions?per_page=100")" || return 1
+  _thread_exists="$(printf '%s' "${_threads}" |
+    jq -r --arg body "${_thread_body}" '[.[]?.notes[]? | select(.body == $body and .resolvable == true)] | length')"
+  if [ "${_thread_exists}" -eq 0 ]; then
+    api POST "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions" --data "$(jq -n \
+      --arg body "${_thread_body}" '{body: $body}')" >/dev/null
+  fi
 }
 
 cmd_approve() {
@@ -811,9 +967,22 @@ cmd_approve() {
   compute_lists ref
   head_line
   if [ "${UNAPPROVED_COUNT}" -eq 0 ]; then
-    say "The approved list is already up to date — nothing to ask."
-    printf '\n'
-    return 0
+    resolve_approval
+    if [ "${APPROVAL_OK}" -eq 1 ]; then
+      say "The approved list is already up to date — nothing to ask."
+      printf '\n'
+      return 0
+    fi
+    # Older approvals did not identify the manifest. Ask on the merge request
+    # that introduced this exact blob, even when no path needs to be added.
+    if [ -n "${APPROVAL_MR_IID}" ]; then
+      cp "${MANIFEST_F}" "${WORK}/manifest-next"
+      ensure_approval_thread "${APPROVAL_MR_IID}" || refuse "The forge refused the approval thread."
+      say "Merge request !${APPROVAL_MR_IID} asks the owners to approve it: $(owners_inline)"
+      say "$(source_project_url)/-/merge_requests/${APPROVAL_MR_IID}"
+      printf '\n'
+      return 0
+    fi
   fi
   open_approval_request
   printf '\n'
@@ -878,10 +1047,15 @@ set_env_value() {
 put_ci_variable() {
   _key="$1"
   _value="$2"
-  api DELETE "/projects/${PROJECT_ENC}/variables/${_key}" >/dev/null 2>&1 || true
-  _res="$(api POST "/projects/${PROJECT_ENC}/variables" --data "$(jq -n \
-    --arg key "${_key}" --arg value "${_value}" \
-    '{key: $key, value: $value, masked: true, protected: true}')")"
+  _variable_path="/projects/${PROJECT_ENC}/variables"
+  _variable_method="POST"
+  if api GET "${_variable_path}/${_key}" >/dev/null 2>&1; then
+    _variable_path="${_variable_path}/${_key}"
+    _variable_method="PUT"
+  fi
+  _res="$(api "${_variable_method}" "${_variable_path}" --data "$(PUBLICATION_VARIABLE_VALUE="${_value}" jq -n \
+    --arg key "${_key}" \
+    '{key: $key, value: env.PUBLICATION_VARIABLE_VALUE, masked: true, protected: true}')")" || return 1
   if [ -z "$(printf '%s' "${_res}" | jq -r '.key? // empty' 2>/dev/null)" ]; then
     say "❌ ${_key} was not stored: $(printf '%s' "${_res}" |
       jq -r '(.message | if type=="object" then (to_entries[] | "\(.key) \(.value|join(", "))") else . end)? // "the API refused the call"' 2>/dev/null)"
@@ -902,9 +1076,6 @@ init_token() {
   _existing="$(api GET "/projects/${PROJECT_ENC}/access_tokens?per_page=100" |
     jq -r --arg n "${RENOVATE_TOKEN_NAME}" \
       '[.[]? | select(.name == $n and (.revoked | not))] | .[0].id // empty' 2>/dev/null || true)"
-  if [ -n "${_existing}" ]; then
-    api DELETE "/projects/${PROJECT_ENC}/access_tokens/${_existing}" >/dev/null 2>&1 || true
-  fi
 
   # An expiry is not optional: a GitLab that enforces one refuses the call
   # outright ("expires_at is missing"). Ninety days is the framework's own figure
@@ -927,10 +1098,13 @@ init_token() {
     return 1
   fi
 
-  # protected: the token only reaches pipelines on protected branches, which is
-  # where the release and Renovate run. masked: it never appears in a job log.
+  # Keep the previous token valid until both variables hold the replacement.
+  # A partial failure may leave both tokens active, but CI retains valid access.
   put_ci_variable "${RENOVATE_TOKEN_NAME}" "${_value}" || return 1
   put_ci_variable "TASK_PUBLICATION_SOURCE_TOKEN" "${_value}" || return 1
+  if [ -n "${_existing}" ]; then
+    api DELETE "/projects/${PROJECT_ENC}/access_tokens/${_existing}" >/dev/null || return 1
+  fi
   say "✅ ${RENOVATE_TOKEN_NAME} created, and stored masked for Renovate and for the approval."
   return 0
 }
@@ -939,7 +1113,7 @@ init_token() {
 # every push already does; a repository that is quiet for a month would hear
 # about no release at all, so a nightly schedule is what makes it automatic.
 init_schedule() {
-  _branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'main')"
+  _branch="$(default_branch)"
   _found="$(api GET "/projects/${PROJECT_ENC}/pipeline_schedules?per_page=100" |
     jq -r '[.[]? | select(.description == "Source publication — check for toolbox releases")] | .[0].id // empty' 2>/dev/null || true)"
   if [ -n "${_found}" ]; then
@@ -980,8 +1154,8 @@ verdict() {
   return 0
 }
 
-# A CI/CD variable, seen from the forge. GitLab never gives a masked value back,
-# so what is checked is that the variable exists, which is what a job needs.
+# Check the variable's metadata. Masking controls job-log redaction; authorized
+# API clients can still retrieve its value, which must never be printed here.
 has_ci_variable() {
   forge_ready || return 1
   command -v jq >/dev/null 2>&1 || return 1
@@ -1090,9 +1264,9 @@ cmd_init() {
     TARGET_URL="$(ask_line "The PUBLIC repository the source goes to (https://…): ")"
   fi
   if [ -n "${TARGET_URL}" ]; then
+    validate_target_url
     set_env_value "TASK_PUBLICATION_TARGET_URL" "${TARGET_URL}"
-    set_env_value "TASK_PUBLICATION_ENABLED" "true"
-    say "✅ ${ENV_FILE} sends the source to ${TARGET_URL}, and the publication is on."
+    say "✅ ${ENV_FILE} records the public destination ${TARGET_URL}."
   fi
 
   # The push token belongs to the OTHER repository, so nothing here can create
@@ -1126,7 +1300,15 @@ cmd_init() {
     printf '\n'
     exit 1
   }
-  init_schedule
+  api PUT "/projects/${PROJECT_ENC}" --data \
+    '{"only_allow_merge_if_all_discussions_are_resolved":true}' >/dev/null ||
+    refuse "Could not enable the forge discussion merge gate."
+  say "✅ GitLab requires all discussions to be resolved before merging."
+  init_schedule || return 1
+  if [ -n "${TARGET_URL}" ]; then
+    set_env_value "TASK_PUBLICATION_ENABLED" "true"
+    say "✅ Publication is enabled in ${ENV_FILE}."
+  fi
 
   if [ -f .gitlab-ci.yml ] && ! grep -q '.config/publication/gitlab-ci.yml' .gitlab-ci.yml; then
     printf '\n'
@@ -1138,6 +1320,7 @@ cmd_init() {
   return 0
 }
 
+validate_target_url
 case "${1:-check}" in
 check) cmd_check ;;
 doctor) cmd_doctor ;;

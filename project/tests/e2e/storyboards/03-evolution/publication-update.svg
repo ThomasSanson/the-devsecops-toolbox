@@ -19,7 +19,7 @@
 <text x="50" y="438" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15.5" font-weight="600" fill="#e8e8ec" xml:space="preserve"><tspan fill="#9ece6a">Given</tspan> a project that installed source publication and nothing else</text>
 <text x="50" y="459" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">A project that ticked source publication on the installer's checklist and nothing else. Its</text>
 <text x="50" y="477" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">own README and src are there; the install added four things beside them, .config, .env.dist,</text>
-<text x="50" y="495" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">.gitlab-ci.yml and Taskfile.yml, and five entries under .config. Twenty files in all, and</text>
+<text x="50" y="495" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">.gitlab-ci.yml and Taskfile.yml, and six entries under .config. Twenty-two files in all, and</text>
 <text x="50" y="513" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">the last line is the release they came from.</text>
 <text x="50" y="531" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3"></text>
 <text x="50" y="549" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">What is NOT there is the point: no linter, no container runtime, no forge tooling, and not</text>

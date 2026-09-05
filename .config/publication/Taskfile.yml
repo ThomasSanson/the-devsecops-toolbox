@@ -32,7 +32,8 @@ tasks:
       ℹ️ Description:
         The dry run. Needs no token and touches nothing: it prints the exact
         files that would become public, the ones a rule holds back and why,
-        and whether an owner has approved the current list.
+        and whether the paths match the manifest. Publication checks the owner
+        signature against the forge; this dry run stays offline.
 
       🔄 Execution:
         Runs publish.sh in check mode.
@@ -115,8 +116,9 @@ tasks:
     summary: |
       ℹ️ Description:
         Publishes the approved snapshot. Refuses when a path is not in the
-        manifest, when no owner signed the manifest off, or when the working
-        tree is dirty. Chained into `task release` on the default branch, and
+        manifest or when no owner signed that exact manifest off. It reads the
+        committed source, independently of working-tree edits. Chained into
+        `task release` on the default branch, and
         runnable on its own from a developer's machine.
 
       🔧 Variables:
@@ -126,7 +128,7 @@ tasks:
         - TASK_PUBLICATION_SOURCE_REF: what gets published (default: the
           default branch), a branch or a tag
         - TASK_PUBLICATION_ON: release (default), tag or manual
-        - TASK_PUBLICATION_SCAN: required (default), off or done
+        - TASK_PUBLICATION_SCAN: required (default) or off
         See .config/publication/README.md for the full list.
 
       🔄 Execution:

@@ -11,9 +11,22 @@ copies everything, history included, with no way to leave a file out.
 
 ## What it publishes
 
-A **filtered snapshot, one commit per release**. Nothing is ever rewritten,
-there is no force-push, and a file that was held back was never in the public
-history to be found later. The public repository reads as a publication log:
+A **filtered snapshot of the selected source commit**. Publication copies the
+stored Git file contents directly, without checkout filters, line-ending
+conversion or working-copy edits. Regular files retain their executable bit.
+Symlinks, submodules, Git LFS pointers and paths that the line-based manifest
+cannot represent are refused; exclude them before publishing.
+
+Each newly published source commit gets a public commit, even when its selected
+files have the same contents as the previous publication. Retrying the same
+source commit with the same public tree creates no duplicate commit. When the
+source commit has a release tag, the public branch and tag are pushed
+**atomically**: both are accepted, or neither is changed. An existing conflicting
+tag or a server that cannot accept the atomic push stops publication.
+
+There is no force-push and no copying of private Git history. Files excluded
+from every publication are absent from the history this component creates. The
+public repository reads as a publication log:
 
 ```text
 publish 1.4.0
@@ -23,9 +36,8 @@ Commit: 3f2a1b9c…
 Files:  4 published, 2 withheld
 ```
 
-The cost of that choice is that authorship and day-to-day history are not
-published. For a source-publication obligation that is the right trade. A
-project that wants public collaboration wants a different mechanism.
+Authorship and day-to-day history are not copied. The public commit records the
+source repository URL, source commit and publication counts, as shown above.
 
 ## The files that decide
 
@@ -39,9 +51,10 @@ Everything lives next to this README.
 | `owners`        | your project    | Who may approve what becomes public, one forge username per line. |
 | `manifest`      | written for you | The exact list of paths somebody approved.                        |
 
-Patterns are **gitignore syntax**, and git itself evaluates them, so a path
-(`README.md`), a folder (`docs/`) and a glob (`src/**`) all behave the way you
-already expect, identically on every platform.
+Patterns use **gitignore syntax**, evaluated by Git: a path (`README.md`), a
+folder (`docs/`) or a glob (`src/**`). The manifest stores one path per line.
+Names Git must quote, such as names containing tabs or newlines, and names that
+would be read as manifest comments are refused instead of being misinterpreted.
 
 Three gitignore rules surprise people:
 
@@ -70,9 +83,10 @@ adding `src/internal/customer-keys.js` to a repository where `src/**` has been
 allowed for a year. No list changed, and the file goes public at the next
 release.
 
-So what gets guarded is the **manifest**: the sorted list of every path approved
-to be public. The publication publishes the manifest and nothing else, and it
-**refuses to run** when the lists now compute a different set:
+So what gets guarded is the **manifest**: the sorted list of paths approved to
+be public. Every selected path must occur in it. Publication **refuses to run**
+when a path is newly allowed or appears under an already allowed directory
+without being in the manifest:
 
 ```text
 3 path(s) would become public for the first time:
@@ -83,28 +97,34 @@ to be public. The publication publishes the manifest and nothing else, and it
 Nobody has approved that list, so nothing was published.
 ```
 
-One rule covers both the list edit and the new file: **what is published equals
-what was approved.**
+The allowlist and denylists still apply: a path in the manifest can be withheld
+by those rules. Approval grants permission to publish **paths**, not every future
+change to their contents. New contents at an approved path are scanned before
+publication, but the owners still need to review confidential information that
+a secret scanner cannot recognise.
 
-## The sign-off, without a paid forge
+## The sign-off on GitLab
 
-Code Owners and required approvals are paid features. The sign-off is built out
-of what the free tier does enforce:
+The sign-off uses merge-request discussions, without requiring Code Owners or
+required approval rules:
 
 1. `task publication:approve` opens a merge request that writes the new
     manifest, mentions the owners so they are notified, and leaves **one thread**
-    asking whether these paths become public.
-2. The forge **blocks the merge while that thread is unanswered**. That part is
-    not ours; it is the project setting the toolbox already turns on
-    (`TASK_GLAB_ALL_THREADS_RESOLVED`).
+    asking whether these paths become public. Its `Publication-manifest:` marker
+    contains the Git content hash of the exact proposed manifest file.
+2. Enable GitLab's **All threads must be resolved** merge check so the forge
+    blocks the merge while that thread is unanswered. The full toolbox configures
+    this through `TASK_GLAB_ALL_THREADS_RESOLVED`; `publication:init` also enables
+    it for standalone installations. Set it yourself when using manual setup.
 3. At publish time the toolbox asks the API which merge request brought the
-    current manifest in, and requires that the thread was answered by a username
-    listed in `owners`.
+    current manifest in. It requires a resolved thread carrying that manifest's
+    exact hash, answered by a username listed in `owners`. Resolving an unrelated
+    discussion or a thread for an earlier manifest does not approve this one.
 
-The forge makes sure somebody ticked the box; the toolbox checks **who** ticked
-it. It is not airtight — an owner can tick without reading — but no path becomes
-public without a named person having been asked, in a merge request that lists
-exactly which paths, and having had to act.
+The merge check requires an answer; publication checks **who answered and which
+manifest they answered for**. This is a GitLab identity check, not a cryptographic
+signature or a guarantee that the owner read every file. Protect changes to the
+owners, publication rules and CI configuration through your normal review process.
 
 An **empty `owners` file means publication refuses to run**: nobody could sign
 off. Fill it before switching publication on.
@@ -114,17 +134,23 @@ off. Fill it before switching publication on.
 ```bash
 task publication:doctor    # what is missing, with the fix beside each answer
 task publication:init      # once: where the source goes, the tokens, the nightly check
-task publication:check     # dry run: what would leave, what is held back, who approved
+task publication:check     # offline dry run: selected, withheld and unapproved paths
 task publication:scan      # what would leave, scanned for secrets
 task publication:approve   # open the merge request that asks the owners
 task publication:publish   # the real thing (also chained into `task release`)
 ```
 
-`publication:check` needs no token and touches nothing. Run it before switching
-publication on, and run it again whenever you wonder what is public. It answers
-for your **working copy**, so a list you are editing right now shows its effect;
-`approve` and `publish` answer for the **ref that gets published**, so nothing
-uncommitted can widen what becomes public.
+`publication:check` is offline and needs no token. It does not modify project
+files or contact the forge; a named ref must already be available locally. With
+no source ref configured, it evaluates tracked paths using the lists in your
+**working copy**, so editing a list shows its effect immediately. With a source
+ref configured, it reads that ref. Its result describes the selected paths,
+not proof that they have already reached the public repository.
+
+`check` compares paths with the manifest but does **not** verify the owner's
+signature. `approve`, `scan` and `publish` read the files and policy from the
+**ref that gets published**. `publish` verifies the sign-off on GitLab before
+pushing, so uncommitted list edits cannot widen that publication.
 
 ## What gets published, and when
 
@@ -135,33 +161,42 @@ public repository from a laptop that happened to have the switch on.
 
 `TASK_PUBLICATION_ON` says when it happens by itself:
 
-| Value     | What happens                                                     |
-|-----------|------------------------------------------------------------------|
-| `release` | default. After the tag on the default branch, task and pipeline. |
-| `tag`     | only a tag pipeline publishes, and it publishes that tag.        |
-| `manual`  | nothing publishes by itself: the job waits for a click.          |
+| Value     | What happens                                                                                                |
+|-----------|-------------------------------------------------------------------------------------------------------------|
+| `release` | Default. The full toolbox publishes after `task release`; standalone CI publishes default-branch pipelines. |
+| `tag`     | Standalone CI creates publication jobs for tags and publishes the pipeline's tag.                           |
+| `manual`  | Standalone CI creates a publication job that waits for a click.                                             |
 
-`task publication:publish` run by hand always publishes, whatever `ON` says.
-That is what "manual" means.
+For standalone CI, set `TASK_PUBLICATION_ON` as a **GitLab CI/CD variable** to
+create the intended `manual` or `tag` jobs. GitLab evaluates job rules before
+running `task` and cannot read `.env.dist` at that point. Keep the file and CI
+setting consistent. File-only `manual` and `tag` settings still prevent an automatic
+push through the script's runtime guard, but cannot create a clickable job.
 
-## Nothing leaves unscanned
+On a developer's machine, `task publication:publish` is an explicit request,
+independent of the automatic schedule. Publication still requires
+`TASK_PUBLICATION_ENABLED=true`: the script itself enforces this switch, along
+with the approval and scan checks.
+
+## Scanning before publication
 
 The files that would become public are scanned for secrets **before** the push,
 with betterleaks — the scanner the code phase uses. What is scanned is the
-snapshot, not the repository around it: the publication pushes one commit with
-no history, so its contents are everything the public repository will ever hold,
-and a secret in a file that never leaves is the code phase's business rather
-than this one's.
+snapshot made from stored Git file contents. The same contents are used to build
+the public commit. This scan covers the new snapshot; it does not audit earlier
+publications or the rest of the private repository.
 
 In CI it is a job of its own, `publication:scan`, and `publish-source` needs it:
-a red scan locks the pipeline and nothing is pushed. Both jobs run `task`, like
-everything else here; they install the pinned runner first because their images
-are chosen for what they scan with, not for what they run with. On a machine it runs from
-an installed `betterleaks` if there is one, from the container image otherwise.
+a red scan locks the pipeline and nothing is pushed. The publication job also
+scans the snapshot it will push. A previous job's success is not accepted as
+proof for a later publication: `TASK_PUBLICATION_SCAN=done` is not supported.
+Both jobs use `task`. Locally, scanning uses an installed `betterleaks` binary
+or the configured container image.
 
 With neither, the publication **stops**: a scanner that is missing is not a
-scanner that passed. `TASK_PUBLICATION_SCAN=off` waives it, and the installer
-asks the question so that choice is made once, in the open.
+scanner that passed. The only modes are `required` and `off`. Setting
+`TASK_PUBLICATION_SCAN=off` explicitly disables the scan altogether, even when a
+scanner is available; it is not a fallback used only when a tool is missing.
 
 The publication is a **task**, not a CI job: the same command behaves the same
 way from a developer's machine and from the pipeline. On the default branch,
@@ -177,44 +212,76 @@ its own `stages:` has to list both names.
 
 ## What it touches, and what it never touches
 
-It writes into `.config/publication/` and adds three files at the root when the
-project has none of its own: `Taskfile.yml`, `.env.dist`, `.gitlab-ci.yml`. That
-is all, and a project that already has any of those keeps its own and is told
-what to add.
+The standalone installer writes `.config/publication/` and the update tools
+listed below. It adds `Taskfile.yml`, `.env.dist` and `.gitlab-ci.yml` at the root
+when they do not exist. Existing root files are retained, with instructions for
+the includes and settings to add. `publication:init` subsequently writes the
+publication settings into `.env.dist` and configures tokens and a schedule on
+GitLab.
 
-It never touches your source, never rewrites your pipeline, and never pushes to
-your repository except the one merge request you asked for by running
-`task publication:approve` (or by letting the publication ask for you). The dry
-run, `task publication:check`, needs no token and writes nothing at all.
+The isolated installer preserves the contents and permissions of unrelated
+configuration files, including executable tools and owner-only data. It refuses
+to replace the Copier answers of a project that already has the complete
+framework. Enable publication through that project's existing update path:
+
+```bash
+task copier:update TASK_COPIER_CLI_OPTS="--data source_publication=true"
+```
+
+That update keeps the recorded runtime and workspace choices and uses Copier's
+merge process. A fresh component installation records its own publication scope.
+
+Publication reads your source and pushes its snapshot to the configured target.
+`task publication:approve` creates or refreshes an approval branch and merge
+request in the source repository; an attempted publication can also open that
+request when paths lack approval. `task feedback` lets Renovate propose toolbox
+updates. The offline dry run changes no project files or remote state.
 
 On your machine it needs `task`, and `uv` for the updates. Both are asked for by
 the installer, which says what each is for, and both can stay in a container
 instead: see "Installing without putting anything on your machine" in the root
 README.
 
+Approval and publication also require `git`, `curl` and `jq`. Secret scanning
+requires either the `betterleaks` executable or Docker to run its scanner image.
+
 ## Publishing a tag, by hand
 
-A project that publishes twice a year, from a version that is not the tip of the
-default branch, does not want any of this to happen on its own. Two settings and
-four commands:
+A tag contains the source files **and the publication policy from its commit**.
+Prepare the approval before creating the tag:
+
+1. Set `TASK_PUBLICATION_ON=manual` in `.env.dist` and in GitLab's CI/CD
+    variables. Leave `TASK_PUBLICATION_SOURCE_REF` empty for the default branch,
+    or set it to the release branch that will receive the tag.
+2. Commit the source and publication rules on that branch, then run:
+
+    ```bash
+    task publication:doctor
+    task publication:check
+    task publication:approve
+    ```
+
+3. Have an owner resolve the matching approval thread and merge the manifest
+    into that branch. Create the release tag **after that merge**, using the
+    project's release workflow.
+4. Select the tag and publish it explicitly:
 
 ```bash
-# in .env.dist
+# in .env.dist, after the approved manifest is part of this tag
+TASK_PUBLICATION_ENABLED=true
 TASK_PUBLICATION_ON=manual
 TASK_PUBLICATION_SOURCE_REF=2026.06.0
 ```
 
 ```bash
-task publication:doctor    # is everything in place?
-task publication:check     # what would leave, from that tag
-task publication:approve   # the merge request an owner answers
-task publication:publish   # once they have
+task publication:check     # inspect the tag's selected paths offline
+task publication:publish   # verify its sign-off, scan, then push
 ```
 
-Nothing publishes by itself in that mode: the pipeline job waits for a click,
-and `task publication:publish` is the click on a machine. The approval merge
-request targets the default branch, because a tag cannot receive one — approve
-the list there, then publish the tag.
+An existing tag that lacks the approved manifest cannot be repaired by approving
+a new manifest on the main branch. The tag is immutable and still points at the
+old policy. Prepare a new release tag containing the approved manifest; do not
+move the existing tag and assume its earlier approval applies.
 
 ## Taking something back
 
@@ -225,69 +292,104 @@ next publication from carrying it.
 
 1. Add the path to `.config/publication/denylist` (or take it out of the
     allowlist) and merge that change.
-2. Remove the approved line from `.config/publication/manifest`, through the
-    same merge request, so the two agree.
-3. Empty the public repository's branch of that file and push, or delete the
-    public repository and let the next publication rebuild it from the approved
-    list. The publication only ever adds the files it is told to; it does not
-    delete history it did not write.
-4. If the file held a secret, rotate it. That is the only step that actually
-    undoes anything.
+2. Publish a source commit containing that rule. The next snapshot removes the
+    file from the public branch's current tree; earlier public commits and tags
+    still contain it. If the manifest is changed too, obtain approval for its
+    new hash before publishing.
+3. If the file held a secret, rotate it immediately. Removing a public file or
+    repository cannot invalidate copies somebody already made.
 
 ## Settings
 
-| Variable                           | Default                | What it is                                       |
-|------------------------------------|------------------------|--------------------------------------------------|
-| `TASK_PUBLICATION_ENABLED`         | `false`                | Off unless `true`.                               |
-| `TASK_PUBLICATION_TARGET_URL`      | —                      | The public repository's git URL.                 |
-| `TASK_PUBLICATION_TARGET_BRANCH`   | `main`                 | The branch published on.                         |
-| `TASK_PUBLICATION_TOKEN`           | —                      | A token that may push to the public repository.  |
-| `TASK_PUBLICATION_TOKEN_USERNAME`  | `oauth2`               | `x-access-token` on GitHub.                      |
-| `TASK_PUBLICATION_SOURCE_TOKEN`    | `GITLAB_TOKEN`         | API access to THIS repository, for the sign-off. |
-| `TASK_PUBLICATION_API_URL`         | from `origin`          | The forge API.                                   |
-| `TASK_PUBLICATION_PROJECT_PATH`    | from `origin`          | This project's path on the forge.                |
-| `TASK_PUBLICATION_APPROVAL_BRANCH` | `publication-approval` | The branch the approval merge request uses.      |
-| `TASK_PUBLICATION_SOURCE_REF`      | the default branch     | The branch or tag that gets published.           |
-| `TASK_PUBLICATION_ON`              | `release`              | `release`, `tag` or `manual`.                    |
-| `TASK_PUBLICATION_SCAN`            | `required`             | `required`, `off`, or `done` (a CI job did it).  |
-| `TASK_PUBLICATION_SCAN_IMAGE`      | betterleaks image      | The scanner, when no binary is installed.        |
-| `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.   |
+| Variable                           | Default                | What it is                                         |
+|------------------------------------|------------------------|----------------------------------------------------|
+| `TASK_PUBLICATION_ENABLED`         | `false`                | Script refuses to publish unless `true`.           |
+| `TASK_PUBLICATION_TARGET_URL`      | —                      | Public Git URL, with no embedded credentials.      |
+| `TASK_PUBLICATION_TARGET_BRANCH`   | `main`                 | The branch published on.                           |
+| `TASK_PUBLICATION_TOKEN`           | —                      | A token that may push to the public repository.    |
+| `TASK_PUBLICATION_TOKEN_USERNAME`  | `oauth2`               | `x-access-token` on GitHub.                        |
+| `TASK_PUBLICATION_SOURCE_TOKEN`    | `GITLAB_TOKEN`         | API access to THIS repository, for the sign-off.   |
+| `TASK_PUBLICATION_API_URL`         | from `origin`          | The forge API.                                     |
+| `TASK_PUBLICATION_PROJECT_PATH`    | from `origin`          | This project's path on the forge.                  |
+| `TASK_PUBLICATION_APPROVAL_BRANCH` | `publication-approval` | The branch the approval merge request uses.        |
+| `TASK_PUBLICATION_SOURCE_REF`      | the default branch     | The branch or tag that gets published.             |
+| `TASK_PUBLICATION_ON`              | `release`              | `release`, `tag` or `manual`.                      |
+| `TASK_PUBLICATION_SCAN`            | `required`             | `required` or explicit `off`; no prior-job bypass. |
+| `TASK_PUBLICATION_SCAN_IMAGE`      | betterleaks image      | The scanner, when no binary is installed.          |
+| `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.     |
 
-The two tokens point at two different projects, which is why there are two. Keep
-them as **masked, protected** CI/CD variables; the publication never prints one,
-never puts one in a command line and never writes one into the destination's
-`.git/config`.
+The two tokens authorize operations on different projects. Keep them as
+**masked, protected** CI/CD variables. Give `TASK_PUBLICATION_TARGET_URL` a plain
+URL and pass authentication separately; URLs containing credentials are refused
+before they can be printed or stored in `.env.dist`.
+
+The script passes credentials through standard input or process environment,
+not command arguments, and does not write them into the destination's
+`.git/config`. Masking reduces accidental exposure in logs; it does not make a
+token inaccessible to a job allowed to use it or to administrators. GitLab's
+separate hidden-variable setting prevents revealing a value in its settings UI.
+Review code that receives protected variables accordingly.
+[GitLab CI/CD variable protection](https://docs.gitlab.com/ci/variables/).
 
 ## Setting it up once
 
-Run `task publication:doctor` at any point: it goes through the whole list below
-and says what is still missing, with the fix beside each answer.
+`task publication:doctor` provides setup hints, not a readiness certificate.
+Without a source token it skips forge checks, and its successful exit does not
+mean every requirement is satisfied. It expects the standalone CI include even
+when a full toolbox project uses `task release` instead. Read its findings and
+verify the chosen publication path.
+
+Automatic setup creates a **project access token**. On GitLab.com this requires
+Premium or Ultimate; GitLab.com Free does not provide that setup path. Project
+access tokens are available on GitLab Self-Managed and Dedicated with any
+license, subject to instance policy.
+[GitLab project access token requirements](https://docs.gitlab.com/user/project/settings/project_access_tokens/).
+
+`init` creates a replacement token before updating the existing CI variables
+in place. It revokes the previous token only after both variables were stored.
+A partial failure can leave both tokens active; it does not roll changes back.
+Check the resulting settings before relying on the next pipeline.
 
 1. Create the public repository, empty. Disable its CI so the published pipeline
     does not try to run there.
 2. Create a token on it that may push.
-3. Run `task publication:init`. It asks four things — a token for THIS
-    repository (used once, never stored), the public repository's URL, the token
-    from step 2, and whether a missing secret scanner should stop a publication
-    — then writes the URL into `.env.dist`, stores the push token as a masked,
-    protected CI/CD variable, creates the project token Renovate and the
-    sign-off both use, and schedules the nightly check that brings the next
-    toolbox release in. The installer offers to run it for you.
+3. Where project access tokens are available, run `task publication:init` with
+    a personal access token allowed to create one for the source project
+    (`api` scope, Maintainer or Owner). It asks for the public URL, destination
+    token and scan policy, writes settings into `.env.dist`, stores protected
+    masked CI/CD variables, creates the token used by Renovate and publication,
+    enables the discussion merge gate, and schedules the nightly check on the
+    default branch. It enables publication after token and merge-gate setup
+    succeeds; schedule-creation failures are reported as warnings and need to
+    be fixed separately. The setup token is not stored for reuse.
 4. Fill `owners`, then `allowlist` and `denylist`.
-5. Run `task publication:check` and **read the list**.
+5. Verify **All threads must be resolved** in the source project's merge checks
+    (`init` enables it; manual setup must enable it too).
+    Run `task publication:check` and **read the list**.
 6. Run `task publication:scan` and read the verdict.
-7. Run `task publication:approve`, and have an owner answer the thread.
+7. Run `task publication:approve`, have an owner answer the matching thread,
+    then merge the manifest before publishing or creating the release tag.
+
+On GitLab.com Free, configure this manually using a token from a dedicated
+account with the required access. Store a source-project `api` token as
+`TASK_PUBLICATION_SOURCE_TOKEN` and `TASK_RENOVATE_TOKEN`, and the destination
+push token as `TASK_PUBLICATION_TOKEN`, all masked and protected. Set the
+non-secret publication settings, add the CI include and stages, enable the merge
+check, and create the nightly pipeline schedule on the default branch. Ensure
+the publishing branches or tags can receive protected variables. `init` has no
+automatic fallback to account tokens when project-token creation is unavailable.
 
 ## What it deliberately does not do
 
 - **It does not retract.** Adding a path to the denylist stops publishing it
   from the next release; it does not remove it from releases already public.
   Cleaning a real leak off a public repository is manual.
-- **It does not hunt for secrets.** The `code` phase already scans, before
-  release.
+- **It does not certify confidentiality.** A secret scan detects known patterns;
+  it cannot decide whether every document or data file is suitable for publication.
 - **It does not create the public repository or its token.** One-time human
   action.
-- **Submodules, LFS and symlinks** are out of scope for now.
+- **Submodules, Git LFS pointers, symlinks and unrepresentable paths** are refused
+  when selected. They must be excluded; they are not silently omitted.
 
 ## Installed on its own, and kept up to date
 
@@ -297,8 +399,7 @@ it up to date**: the copier answers file (which records the template and the
 release it came from), the handful of files `task copier:update` needs to run,
 and the Renovate config that watches that answers file.
 
-Measured: **22 files, about 120 KB**, against 199 files and 1.7 MB for a full
-install. Nine of them are the component; the other thirteen are the spine:
+Alongside the component, these files run its commands, CI and updates:
 
 ```text
 Taskfile.yml                            runs the commands below
@@ -322,10 +423,9 @@ build, deploy or monitor phase to run. Feedback is the one it keeps, because
 that is the phase that runs Renovate, and Renovate is what offers it the next
 toolbox release.
 
-`task publication:init` does the forge side once: it asks where the source goes
-and for the token that may push there, stores that token masked, creates the
-project token Renovate authenticates with, and schedules the nightly run that
-looks for a new release.
+Where project access tokens are available, `task publication:init` configures
+the forge as described above. Otherwise, the same variables and schedule must
+be configured manually.
 
 Nothing you already have is overwritten. If the project already has a root
 `Taskfile.yml`, a `.env.dist` or a `.gitlab-ci.yml`, the installer keeps yours
@@ -340,17 +440,19 @@ task feedback           # runs Renovate, which opens the merge request
 task copier:update      # what that merge request runs to apply the release
 ```
 
-Copier's three-way merge is what protects you: a release edits the files the
-framework owns (`publish.sh`, `denylist.base`, the Taskfile) and leaves the four
-files **you** own exactly as you wrote them. It also brings nothing you never
-installed: a release that changes a tool absent from your project changes
-nothing in it.
+Copier's three-way merge carries local changes forward when a release updates
+framework files (`publish.sh`, `denylist.base`, the Taskfile). Review the update
+merge request and resolve any conflicts, especially in the four policy files
+your project owns. The recorded installation scope keeps tools that were not
+installed out of the update.
 
-`@publication-update` in the test suite proves all of that against two real
-toolbox releases.
+`@publication-update` exercises a component update between two fixture releases,
+including preservation of the team's rules and exclusion of an absent tool.
 
 ## Forge portability
 
-Publishing is a `git push`, so the mechanism is forge-neutral by construction:
-GitLab to GitLab, GitLab to GitHub, Forgejo to anything. The only forge-specific
-part is the sign-off, and it lives in the last four functions of `publish.sh`.
+The destination uses Git over HTTP(S) and must support atomic pushes. It can be
+hosted separately from the source project. Approval checks and automatic setup
+currently use the **GitLab API on the source project**; support for another
+source forge requires an adapter. A portable destination does not provide that
+adapter automatically.

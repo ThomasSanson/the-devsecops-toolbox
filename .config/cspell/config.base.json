@@ -1,6 +1,9 @@
 {
   "version": "0.2",
   "words": [
+    "cacheinfo",
+    "pathspecs",
+    "NOSYSTEM",
     "baselined",
     "charmbracelet",
     "metacharacter",

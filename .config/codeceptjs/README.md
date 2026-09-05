@@ -81,5 +81,7 @@ Run the suite in baseline-update mode from the repository root — it asserts fi
 TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
 ```
 
+Only the exact value `1` enables regeneration; `0` and an unset variable keep strict comparisons.
+
 Every baseline it writes must be inspected by a human, which is why the mode throws if `CI` is set: in CI it would silently swallow real visual regressions.
 CI runs the plain `task project:test:e2e`, which only asserts.

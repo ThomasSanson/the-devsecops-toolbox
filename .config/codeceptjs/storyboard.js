@@ -251,10 +251,10 @@ function assertFrameNotEmpty (png) {
  * visual regression.
  */
 async function assertOrUpdateBaseline (I, baselineName) {
-  if (process.env.TASK_E2E_UPDATE_BASELINES && process.env.CI) {
+  if (process.env.TASK_E2E_UPDATE_BASELINES === '1' && process.env.CI) {
     throw new Error('TASK_E2E_UPDATE_BASELINES is forbidden in CI — baselines must be regenerated and inspected locally')
   }
-  if (process.env.TASK_E2E_UPDATE_BASELINES) {
+  if (process.env.TASK_E2E_UPDATE_BASELINES === '1') {
     // tryTo: the recorder marks the test failed on a plain try/catch around
     // an actor call; tryTo is the supported way to probe an assert. Since
     // CodeceptJS 4 it is no longer a plugin exposing a global — it is an
@@ -855,7 +855,7 @@ module.exports = function storyboardPlugin () {
       const failure = passed ? null : buildFailure(board)
       const outputSvg = render(path.join(global.codecept_dir, '_output', `${board.baseDir}.svg`), { failure })
       if (failure && failure.frame) logVisualRegression(failure.frame, outputSvg)
-      if (passed && process.env.TASK_E2E_UPDATE_BASELINES) {
+      if (passed && process.env.TASK_E2E_UPDATE_BASELINES === '1') {
         render(path.join(global.codecept_dir, 'storyboards', `${board.baseDir}.svg`), {
           imageDir: path.join(global.codecept_dir, 'screenshots', 'base', board.baseDir)
         })

@@ -16,6 +16,7 @@
     "typescript": "^7.0.0"
   },
   "overrides": {
+    "@xmldom/xmldom": "0.9.12",
     "axios": "^1.18.0",
     "uuid": "^14.0.0",
     "joi": "^18.2.1",
