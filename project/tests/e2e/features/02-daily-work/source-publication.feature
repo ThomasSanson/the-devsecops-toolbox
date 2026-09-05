@@ -108,6 +108,12 @@ Feature: Publishing the source of a private project, without the parts that must
     # Copy: task publication:publish
     Then a stale manifest signature cannot approve publication
 
+    # Note: The marker names the current manifest, but the note was edited after its owner resolved it. The fixture timestamps differ within the same second, as GitLab preserves the old resolution when a note is edited.
+    Given a publication discussion edited after its owner resolved it
+    # Note: Publication must fail with zero public commits. The approval task must then open a fresh question even though the edited note still contains the expected body and marker.
+    # Copy: task publication:publish
+    Then an edited discussion refuses publication and requests a fresh owner decision
+
     # Note: The prepared manifest is current, but the existing discussion is unrelated. The response and manifest hash are displayed.
     Given an unchanged manifest with no publication sign-off
     # Note: The approval task must succeed and send a POST to the discussions endpoint. The captured request log shows that request.

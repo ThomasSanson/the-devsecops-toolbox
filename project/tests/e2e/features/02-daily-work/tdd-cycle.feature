@@ -73,3 +73,16 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: The same nested engine now receives CI=true. Both helpers must print their CI refusal and leave the reference untouched, even though the regeneration variable is 1. This checks the runtime guard locally; it does not run a GitLab pipeline.
     # Copy: CI=true TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
     And the same explicit regeneration request is forbidden in CI and preserves the reference
+
+  @worker-completion
+  Scenario: Every selected scenario must finish before a parallel run can succeed
+    # Chapter: A worker can disappear before its result exists
+    # Note: These disposable features use the real CodeceptJS engine and the repository JUnit reporter. One step exits its own worker; a second feature has two Outline examples. A third file outside the shard throws if it is selected accidentally.
+    Given parallel test files contain an interruptible worker and two completing examples
+    # Note: The real engine runs twice: first with the interruptible feature alone, then alongside the completing examples. Each run loses a worker. Before testing the task entrypoint, a genuine successful run leaves earlier JUnit reports behind, including the scenario that will now be interrupted.
+    When a worker exits early both alone and alongside a worker that completes its examples
+    # Chapter: A current and complete result is required
+    # Note: The task must refuse both incomplete executions, even when the engine returns zero and even when an earlier launch passed. Its verdict names the missing scenario. Worker reports from the earlier launch must be gone.
+    Then the task rejects both incomplete runs and cannot reuse earlier successful reports
+    # Note: Selecting only the completing examples with grep succeeds; inverting a grep for the interrupted scenario selects the same two examples. The feature list still excludes the third file. The guard must follow those real selections, not demand every feature in the repository.
+    And complete selections pass with either a grep filter or its inverse

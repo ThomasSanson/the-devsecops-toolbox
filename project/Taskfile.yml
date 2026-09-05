@@ -190,6 +190,9 @@ tasks:
       # first one had already changed the script's working directory.
       - defer: |
           echo "📥 Syncing artifacts (reports/screenshots) back to host..."
+          # Mirror this launch's JUnit files: copying over an older directory
+          # would retain reports from workers absent from the current run.
+          rm -rf project/tests/e2e/_output/junit
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/_output tests/e2e/ ) \
             || echo "⚠️  WARNING: artifact sync failed — visual diffs and logs were NOT copied back to the host"
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/screenshots tests/e2e/ ) \
@@ -211,6 +214,7 @@ tasks:
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
           {{if eq (.TASK_E2E_UPDATE_BASELINES | default "") "1"}}-e TASK_E2E_UPDATE_BASELINES=1 {{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}codeceptjs
+          node project/tests/e2e/support/helpers/workerCompletion.js
           /usr/local/bin/codeceptjs run-workers
           {{.TASK_E2E_WORKERS | default "3"}}
           --features --by pool

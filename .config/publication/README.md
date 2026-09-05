@@ -121,6 +121,10 @@ required approval rules:
     exact hash, answered by a username listed in `owners`. Resolving an unrelated
     discussion or a thread for an earlier manifest does not approve this one.
 
+Editing a resolved question invalidates that decision. Run
+`task publication:approve` again to request a fresh owner decision; the edited
+question cannot reuse its old answer.
+
 The merge check requires an answer; publication checks **who answered and which
 manifest they answered for**. This is a GitLab identity check, not a cryptographic
 signature or a guarantee that the owner read every file. Protect changes to the

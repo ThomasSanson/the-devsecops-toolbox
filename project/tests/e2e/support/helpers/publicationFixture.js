@@ -40,6 +40,8 @@ function discussionResponse (state, git) {
       system: false,
       resolvable: true,
       resolved: true,
+      updated_at: state.signoff === 'edited' ? '2026-09-04T12:00:00.200Z' : '2026-09-04T12:00:00.000Z',
+      resolved_at: '2026-09-04T12:00:00.100Z',
       body: state.signoff === 'unrelated'
         ? 'The spelling looks good.'
         : 'Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does.\n\n' + marker,
@@ -201,10 +203,10 @@ const SETUP_COMMANDS = {
   'offline-missing-ref': [['git', ['remote', 'get-url', 'origin']]]
 }
 const API_SETUP_CONTRACTS = new Set([
-  'unrelated-signoff', 'stale-signoff', 'approval-refresh', 'api-failure',
+  'unrelated-signoff', 'stale-signoff', 'edited-signoff', 'approval-refresh', 'api-failure',
   'approval-thread-failure', 'init-token-failure', 'init-variable-failure', 'init-settings'
 ])
-const SIGNOFF_CONTRACTS = new Set(['unrelated-signoff', 'stale-signoff', 'approval-refresh'])
+const SIGNOFF_CONTRACTS = new Set(['unrelated-signoff', 'stale-signoff', 'edited-signoff', 'approval-refresh'])
 
 function describeFixture (f, name, overrides) {
   const settings = Object.fromEntries(
@@ -315,6 +317,16 @@ const CONTRACT_HANDLERS = {
   },
   'unrelated-signoff': signoffContract,
   'stale-signoff': signoffContract,
+  'edited-signoff': async f => {
+    f.state.signoff = 'edited'
+    const result = await f.run('publication:publish')
+    assert.notEqual(result.code, 0, 'A discussion edited after its owner resolution approved publication')
+    assert.equal(f.targetGit('rev-list', '--all', '--count'), '0')
+    const refreshed = await f.run('publication:approve')
+    assert.equal(refreshed.code, 0, refreshed.output)
+    assert.ok(f.state.requests.some(r => r.method === 'POST' && r.url.endsWith('/discussions')), 'An edited approval could not request a fresh owner decision')
+    return refreshed
+  },
   'ignored-paths': async f => {
     const result = await f.run('publication:publish')
     assert.equal(result.code, 0, result.output)

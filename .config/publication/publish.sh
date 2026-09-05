@@ -796,6 +796,33 @@ forge_ready() {
   [ -n "${API_URL}" ] && [ -n "${PROJECT_PATH}" ] && [ -n "${SOURCE_TOKEN}" ]
 }
 
+# GitLab keeps the old resolver when a note is edited. A resolved question is
+# usable only while its body predates that decision. Normalize UTC fractions
+# without rounding: an edit within the same second must invalidate the answer.
+# Open questions remain reusable, since an owner still has to resolve them.
+approval_notes() {
+  jq --arg marker "$1" '
+    def instant:
+      (try (
+        select(type == "string")
+        | capture("^(?<whole>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.(?<fraction>[0-9]{1,9}))?Z$")
+        | . as $parts
+        | ($parts.whole + "Z") as $whole
+        | select(($whole | fromdateiso8601 | todateiso8601) == $whole)
+        | $parts.whole + "." + ((($parts.fraction // "") + "000000000")[0:9]) + "Z"
+      ) catch null) // null;
+    def unedited:
+      (.updated_at | instant) as $updated
+      | (.resolved_at | instant) as $resolved
+      | $updated != null and $resolved != null and $updated <= $resolved;
+    [.[]?.notes[]?
+      | select(.system | not)
+      | select(.resolvable == true)
+      | select((.body // "" | split("\n")) | index($marker))
+      | select(.resolved == false or (.resolved == true and unedited))]
+  '
+}
+
 # WHO put their name on the approved list. The chain: the commit that last
 # changed the manifest, the merge request that brought it in, and the thread
 # somebody answered on it. The forge blocks a merge while a thread is open even
@@ -825,9 +852,8 @@ resolve_approval() {
   # merge request, and that late answer is what unblocks the publication.
   _marker="Publication-manifest: $(git hash-object "${MANIFEST_F}")"
   _signers="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions?per_page=100" |
-    jq -r --arg marker "${_marker}" '[.[]?.notes[]? | select(.system|not)
-            | select(.resolvable == true and .resolved == true)
-            | select((.body // "" | split("\n")) | index($marker)) | .resolved_by.username]
+    approval_notes "${_marker}" |
+    jq -r '[.[]? | select(.resolved == true) | .resolved_by.username]
             | unique | .[]' 2>/dev/null || true)"
   [ -n "${_signers}" ] || return 0
 
@@ -954,7 +980,8 @@ ensure_approval_thread() {
     "${_thread_marker}")"
   _threads="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions?per_page=100")" || return 1
   _thread_exists="$(printf '%s' "${_threads}" |
-    jq -r --arg body "${_thread_body}" '[.[]?.notes[]? | select(.body == $body and .resolvable == true)] | length')"
+    approval_notes "${_thread_marker}" |
+    jq -r --arg body "${_thread_body}" '[.[]? | select(.body == $body)] | length')"
   if [ "${_thread_exists}" -eq 0 ]; then
     api POST "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions" --data "$(jq -n \
       --arg body "${_thread_body}" '{body: $body}')" >/dev/null

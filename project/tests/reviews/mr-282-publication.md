@@ -464,17 +464,17 @@ under `project/tests/`, which Copier excludes from generated projects.
 
 ### Spec disposition
 
-| Finding | Correction and proof contract                                                                                                                                                                                                                                                                                                               |
-|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| SPEC-01 | Require a resolvable, resolved publication discussion containing the exact manifest blob hash, on a merged MR. Refresh the question when the manifest changes; an existing unsigned manifest can request a signature without adding a path. Contracts: `unrelated-signoff`, `stale-signoff`, `approval-refresh`, `approval-thread-failure`. |
-| SPEC-02 | Enforce the activation switch inside the publisher before forge access or a destination push. Contract: `disabled`.                                                                                                                                                                                                                         |
-| SPEC-03 | Remove the CI default that overwrote the project's choice. Enforce manual and tag-only modes again at runtime. Document the CI variable needed to create the right jobs. Contracts: `manual-ci`, `tag-ci`.                                                                                                                                  |
-| SPEC-04 | Send API headers/bodies through stdin; supply Git credentials through an environment-backed helper, with no token in its file. Reject credential-bearing target URLs without echoing them. Contracts: `credentials-argv`, `credential-url`.                                                                                                 |
-| SPEC-05 | Require every policy file and propagate matcher errors. Contract: `missing-floor`.                                                                                                                                                                                                                                                          |
-| SPEC-06 | Publish identical bytes for a new release with a distinct release commit; push branch and tag atomically and reject tag conflicts. Verify retry/tag behavior explicitly. Contracts: `unchanged-release`, `tag-conflict`, `late-tag`.                                                                                                        |
-| SPEC-07 | Refuse symlinks, submodules and Git LFS pointer files before advertising the snapshot. Read ordinary file contents and executable modes directly from Git objects. Contracts: `unsupported-symlink`, `unsupported-lfs`, `committed-bytes`, `option-path`.                                                                                   |
-| SPEC-08 | Set modes on scratch-rendered files only; preserve unrelated executable and private files. Journey: `@publication-only`.                                                                                                                                                                                                                    |
-| SPEC-09 | Check existing Copier scope before either component is copied; refuse replacement of complete answers with the supported Copier update command. Journey: `@publication-existing-framework`.                                                                                                                                                 |
+| Finding | Correction and proof contract                                                                                                                                                                                                                                                                                                                                               |
+|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| SPEC-01 | Require a resolvable, resolved publication discussion containing the exact manifest blob hash, on a merged MR, without an edit after resolution. Refresh changed or edited questions; an unsigned manifest can request a signature without adding a path. Contracts: `unrelated-signoff`, `stale-signoff`, `edited-signoff`, `approval-refresh`, `approval-thread-failure`. |
+| SPEC-02 | Enforce the activation switch inside the publisher before forge access or a destination push. Contract: `disabled`.                                                                                                                                                                                                                                                         |
+| SPEC-03 | Remove the CI default that overwrote the project's choice. Enforce manual and tag-only modes again at runtime. Document the CI variable needed to create the right jobs. Contracts: `manual-ci`, `tag-ci`.                                                                                                                                                                  |
+| SPEC-04 | Send API headers/bodies through stdin; supply Git credentials through an environment-backed helper, with no token in its file. Reject credential-bearing target URLs without echoing them. Contracts: `credentials-argv`, `credential-url`.                                                                                                                                 |
+| SPEC-05 | Require every policy file and propagate matcher errors. Contract: `missing-floor`.                                                                                                                                                                                                                                                                                          |
+| SPEC-06 | Publish identical bytes for a new release with a distinct release commit; push branch and tag atomically and reject tag conflicts. Verify retry/tag behavior explicitly. Contracts: `unchanged-release`, `tag-conflict`, `late-tag`.                                                                                                                                        |
+| SPEC-07 | Refuse symlinks, submodules and Git LFS pointer files before advertising the snapshot. Read ordinary file contents and executable modes directly from Git objects. Contracts: `unsupported-symlink`, `unsupported-lfs`, `committed-bytes`, `option-path`.                                                                                                                   |
+| SPEC-08 | Set modes on scratch-rendered files only; preserve unrelated executable and private files. Journey: `@publication-only`.                                                                                                                                                                                                                                                    |
+| SPEC-09 | Check existing Copier scope before either component is copied; refuse replacement of complete answers with the supported Copier update command. Journey: `@publication-existing-framework`.                                                                                                                                                                                 |
 
 Additional review findings closed by the implementation:
 
@@ -664,6 +664,119 @@ directory's mode 700. The installer still preserves project permissions. The
 original screenshot is retained, and both installer journeys are rechecked
 strictly after this fixture correction.
 
+### Final review of editable approval notes
+
+The final independent review found a second way to reuse an owner decision:
+GitLab [keeps the resolution fields when a note is edited][gitlab-note-edits]. An
+author could therefore replace a previously resolved comment with the exact
+publication marker after the owner answered. The marker alone did not close
+SPEC-01.
+
+This behavior was verified against the local GitLab CE 19.2.4 test instance,
+using temporary users, projects and tokens. Sixteen normal resolutions through
+both REST endpoints set `updated_at` exactly equal to `resolved_at`. Editing
+the body retained the resolver and old resolution time. In the note-level
+example, `updated_at` moved from `2026-09-05T01:57:12.507Z` to
+`2026-09-05T01:57:12.777Z`, while `resolved_at` remained at `.507Z`. Reopening and
+resolving again recorded a new decision. REST preserved millisecond precision;
+the GraphQL response omitted fractions and was unsuitable for this comparison.
+All temporary projects were confirmed absent, and the proof's users and tokens
+were removed or revoked after the measurement.
+
+The shared approval-note filter now requires valid UTC timestamps and a
+resolution at least as recent as the last edit. It compares normalized decimal
+fractions without rounding, rejecting missing or invalid dates. Both approval
+lookup and question reuse apply this filter, so an edited question cannot
+prevent a fresh request. A replay of the actual helper passed all 22 recorded
+REST states and 28 additional timestamp cases, including nanosecond differences,
+different fractional precision and invalid calendar dates.
+
+The added `edited-signoff` contract first failed because the shipped publication
+command accepted the edited note. Its Gherkin RED was certified by
+`red-is-real`. GREEN then proved zero public commits and a new discussion
+request. The contract collection now contains 28 cases and 56 PNGs. The two new
+images and three setup images extended with timestamps were individually
+inspected. The earlier 25-scenario strict run predates this final correction.
+
+### Additional CI finding: interrupted workers can report success
+
+On corrective revision `efca3f403b38a8b900321b57cca0a7ae6b252601`,
+[test job 7/9][ci-incomplete-workers] was green despite completing neither of
+its two selected scenarios. The trace records both workers being terminated
+after inactivity, both exiting with code 1, then CodeceptJS reporting
+`OK 0 passed` with exit code 0. No JUnit file was produced. Inspecting the
+reports, rather than the job color alone, exposed this material evidence gap.
+
+The acceptance criterion is that every selected scenario has a completed,
+successful result from the current run. A successful worker cannot cover a
+missing result from another worker, and reports from an older run cannot
+establish completion. File selection and local grep filters must remain
+consistent with the engine's selection. This is a separate failure from the
+visual-regeneration switch described in STD-08.
+
+The task now wraps the real parallel engine with a completion check. It derives
+the selected full scenario titles with CodeceptJS's own Gherkin parser and
+Mocha filters, then requires fresh, successful JUnit records for that exact
+selection. Missing results, duplicate titles across workers, failed or skipped
+last attempts and unexpected results all fail the command. Unsupported run
+options fail explicitly. The container's old reports are removed before the
+launch; artifact synchronization also removes old host JUnit reports before
+copying the current ones.
+
+The added `worker-completion` scenario uses actual worker exits, first alone
+and then beside a worker completing two Outline examples. A real successful
+run seeds earlier reports before each refusal check. The task accepted both
+incomplete runs in RED; `red-is-real` certified that assertion. GREEN rejects
+both, while grep and inverted grep accept the two selected examples and
+exclude an unselected feature. The strict replay of this scenario and
+`baseline-mode` completed both selected scenarios and left all 11 associated
+PNG and SVG hashes unchanged. The suite now selects 26 distinct scenarios.
+Four new worker proof images and the four affected task-preview images were
+inspected individually; no pixel tolerance was changed.
+
+That CI run also exposed existing preparation weaknesses:
+
+- Four test jobs exhausted their 45-minute limit after the Ubuntu image's apt
+  update/install layer alone took 28 to 34 minutes. The suites started with
+  only 3 to 11 minutes left. The traces establish this preparation cost, not
+  a particular network cause.
+- Both attempts of `fresh-machine` failed while preparing the bare container,
+  before copying or executing the installer. `execInContainer` ignores a
+  caller's timeout and uses 120 seconds, while `runCommandWithResult` discards
+  the child process error and signal. A controlled replay proves that this
+  loses an `ETIMEDOUT` diagnostic; the empty CI error alone does not prove
+  that this was the actual cause of those two failures.
+- The first `release-window` attempt failed with HTTP 422 when recreating
+  the protected main branch. Its setup deletes the existing protection and
+  ignores deletion errors, then creates it again. This separate fixture needs
+  a reliable update and an explicit readiness check.
+- The later installer attempts also stopped during environment setup. The
+  saved log from [job 2/9][ci-installer-two] ends in Python installation through
+  apt. [Job 4/9][ci-installer-four] records an Ubuntu package-index size
+  mismatch, retries initialization, and ends at the same Python installation
+  step. These artifacts locate the failure more precisely than the outer
+  installer's generic completion timeout.
+
+These setup functions were unchanged by the corrective revision. Their
+failures and the incomplete-worker success are not accepted as passing test
+evidence. The final corrective MR records the pipeline of its delivered head.
+
+### Final local verification
+
+After the editable-note and worker-completion corrections,
+`task devsecops:code:verify` passed the configured linters and scanners.
+The final `task devsecops:test:verify` ran with the regeneration environment
+variable absent and its Task override empty. All 26 selected scenarios passed;
+the completion guard certified 26 of 26, and the three current JUnit files
+contain a successful result for every scenario, without duplicate distribution
+across workers. SHA256 comparison confirmed that all 324 reference PNGs and
+storyboard SVGs remained byte-identical across this full run.
+
+The final audit text is checked separately after recording these results.
+The branch-history secret scan is repeated on the actual committed revision
+before pushing. Remote validation is recorded in the corrective MR, against
+its delivered commit, rather than inferred from this local success.
+
 Invalid undefined-step, fixture-TypeError and revoked-test-token runs were
 rejected as product RED evidence. The revoked token was traced to the teardown
 race described above. The first quality attempt could not resolve a Git
@@ -711,3 +824,7 @@ to a separate full clone. No gate or assertion was disabled for these problems.
 [publication-installer]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/blob/52ce1cc75eb9d3816d019559a300714af4593e3a/.config/devsecops/install.sh#L637-738
 [baseline-forwarding]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/blob/52ce1cc75eb9d3816d019559a300714af4593e3a/project/Taskfile.yml#L213
 [baseline-mode]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/blob/52ce1cc75eb9d3816d019559a300714af4593e3a/.config/codeceptjs/storyboard.js#L254-276
+[gitlab-note-edits]: https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/services/notes/update_service.rb#L92
+[ci-incomplete-workers]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16320948484
+[ci-installer-two]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16321203953
+[ci-installer-four]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16321204821

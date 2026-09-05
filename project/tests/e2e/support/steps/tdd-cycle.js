@@ -319,3 +319,38 @@ for (const [sentence, value, ci, frame] of baselineCases) {
     baselineMode.assertBaselineCase(result)
   })
 }
+
+const workerCompletion = require('../helpers/workerCompletionFixture')
+let interruptedRuns = null
+
+After((test) => {
+  if (test && test.tags && test.tags.includes('@worker-completion')) {
+    workerCompletion.removeWorkerFixture()
+    interruptedRuns = null
+  }
+})
+
+async function workerCard (name, output) {
+  const rows = output.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / 80)), 0)
+  await card('worker-completion-' + name, output, { height: Math.max(640, 32 + rows * 24) })
+}
+
+storyboardStep(Given, 'parallel test files contain an interruptible worker and two completing examples', async () => {
+  const source = workerCompletion.prepareWorkerFixture()
+  await workerCard('setup', '$ ' + source.command + '\n' + source.output.trimEnd())
+})
+
+storyboardStep(When, 'a worker exits early both alone and alongside a worker that completes its examples', async () => {
+  interruptedRuns = workerCompletion.runInterruptedCases()
+  await workerCard('native', interruptedRuns.map(result => workerCompletion.transcript(result.native)).join('\n\n'))
+})
+
+storyboardStep(Then, 'the task rejects both incomplete runs and cannot reuse earlier successful reports', async () => {
+  await workerCard('refused', interruptedRuns.map(result => workerCompletion.transcript(result.guarded, true)).join('\n\n'))
+  workerCompletion.assertInterruptedCases(interruptedRuns)
+})
+
+storyboardStep(Then, 'complete selections pass with either a grep filter or its inverse', async () => {
+  const results = workerCompletion.runCompletedSelections()
+  await workerCard('selected', results.map(result => workerCompletion.transcript(result, true)).join('\n\n'))
+})
