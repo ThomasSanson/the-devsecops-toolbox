@@ -761,6 +761,38 @@ These setup functions were unchanged by the corrective revision. Their
 failures and the incomplete-worker success are not accepted as passing test
 evidence. The final corrective MR records the pipeline of its delivered head.
 
+### CI exposed a duration mask and an installer retry defect
+
+The first [test 3/9 attempt on the next revision][ci-duration-install] failed
+two scenarios. The completion guard correctly rejected this incomplete run
+with four of six selected scenarios successful.
+
+The TDD storyboard differed only in its duration: the actual frame contained
+`// 1m`, while its reference contained `// <duration>`. The existing normalizer
+recognized milliseconds and seconds but omitted minutes. The 126 changed
+pixels, or 0.058874% of the frame, all belong to that duration. Both the
+normalizer and the PNG reference were unchanged from the reviewed parent.
+The correction includes minutes in the same duration field; it preserves
+the assertion, the failure verdict, the reference image and zero tolerance.
+The failed CI JUnit report passed `check:red-is-real`, and a replay of the
+actual summary failed before the correction and passed afterward.
+
+The piped installer failure has a separate chain, proved by its persistent
+log: the first push created `init-framework-devsecops`, but the immediately
+following merge-request API call returned HTTP 400, saying that the source
+branch did not exist. The installer treated this as missing prerequisites
+and restarted initialization. Its supposedly idempotent branch script used
+`git checkout -B` from main again, recreated the commit and failed its second
+push with a non-fast-forward rejection. The process exited with code 201,
+but the outer fixture watched only a success marker and waited until its
+fifteen-minute timeout. This is not evidence of an apt failure.
+
+These unchanged installer functions need a separate correction: preserve the
+existing proposal commit during retries, wait for the pushed branch to be
+visible before creating its MR, distinguish configuration failures from
+missing prerequisites, and surface a terminated installer immediately.
+Retrying the entire CI job does not establish that these defects are fixed.
+
 ### Final local verification
 
 After the editable-note and worker-completion corrections,
@@ -828,3 +860,4 @@ to a separate full clone. No gate or assertion was disabled for these problems.
 [ci-incomplete-workers]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16320948484
 [ci-installer-two]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16321203953
 [ci-installer-four]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16321204821
+[ci-duration-install]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/jobs/16321705126

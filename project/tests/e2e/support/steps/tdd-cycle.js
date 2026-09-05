@@ -114,8 +114,8 @@ function run (cmd, cwd) {
 // with an upgrade, never with the behaviour under test).
 function maskDurations (text) {
   return text
-    .replace(/\/\/ \d+(\.\d+)?m?s/g, '// <duration>')
-    .replace(/ in \d+(\.\d+)?m?s/g, ' in <duration>')
+    .replace(/\/\/ \d+(\.\d+)?(?:ms|s|m)\b/g, '// <duration>')
+    .replace(/ in \d+(\.\d+)?(?:ms|s|m)\b/g, ' in <duration>')
     .replace(/CodeceptJS v[0-9][0-9.]*/g, 'CodeceptJS v<version>')
 }
 
