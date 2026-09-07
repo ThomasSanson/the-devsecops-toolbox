@@ -27,7 +27,7 @@ TASK_VERSION="3.49.1"
 GIT_MIN_VERSION="2.34.0"
 PYTHON_VERSION="3.14"
 # renovate: datasource=pypi depName=copier
-COPIER_VERSION="copier==9.18.1"
+COPIER_VERSION="copier==9.18.2"
 # renovate: datasource=github-releases depName=charmbracelet/gum extractVersion=^v(?<version>.*)$
 GUM_VERSION="0.17.0"
 # renovate: datasource=github-releases depName=charmbracelet/glow extractVersion=^v(?<version>.*)$
