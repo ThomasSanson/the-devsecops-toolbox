@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.51 (2026-09-14)
+
+### Fix
+
+- **deps**: update dependency ansible-core to v2.21.4
+
 ## 23.0.50 (2026-09-14)
 
 ### Fix
