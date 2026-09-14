@@ -38,6 +38,12 @@ tasks:
       - test "{{.TASK_RENOVATE_ENABLED}}" != "true"
     env:
       RENOVATE_TOKEN: "{{.TASK_RENOVATE_TOKEN}}"
+      # Self-hosted options: Renovate ignores them in a repository config, so
+      # the run must carry them. allowScripts lets the copier manager pass
+      # --trust (the template declares tasks, Copier refuses it otherwise);
+      # allowedCommands lets the framework-evolution postUpgradeTasks run.
+      RENOVATE_ALLOW_SCRIPTS: "true"
+      RENOVATE_ALLOWED_COMMANDS: '["^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS=.+$"]'
     vars:
       TASK_RENOVATE_CMD:
         sh: |

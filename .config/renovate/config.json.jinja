@@ -9,6 +9,12 @@
   dependencies. Adding per-tool customManagers / .config/<tool> includePaths here
   would make every generated project open duplicate per-tool MRs (snowball).
   Proven by features/template/renovate.feature (@e2e-template-renovate-downstream).
+
+  Copier refuses this template without --trust (it declares tasks). Renovate
+  only passes --trust when the RUN allows scripts (allowScripts, a self-hosted
+  option: `task renovate` exports it) AND the project opts in below with
+  "ignoreScripts": false. allowedCommands is self-hosted too, so it lives in
+  `task renovate`, never here, where Renovate would silently ignore it.
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -24,14 +30,12 @@
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
   "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"],
-  "allowedCommands": [
-    "^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref .+'$"
-  ],
   "packageRules": [
     {
       "description": "DevSecOps Toolbox: update .copier-answers.yml and run task copier:update to regenerate all files",
       "matchManagers": ["copier"],
       "matchFileNames": [".config/devsecops/.copier-answers.yml"],
+      "ignoreScripts": false,
       "semanticCommitType": "feat",
       "semanticCommitScope": "devsecops",
       "commitMessageTopic": "DevSecOps Toolbox",

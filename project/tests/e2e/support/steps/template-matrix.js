@@ -441,6 +441,61 @@ storyboardStep(Then, 'turning automerge off still passes the same validator', as
   await renderPreFrame(I, 'contract-validate-automerge-off', validatorVerdictLines(result.output))
 })
 
+// Copier refuses this template without --trust (it declares tasks). Renovate's
+// copier manager only adds --trust when BOTH the run allows scripts (allowScripts,
+// a self-hosted option, exported by `task renovate`) AND the project's config opts
+// in (ignoreScripts: false). allowedCommands is self-hosted as well: written in
+// the project config it was silently ignored, so the postUpgradeTasks fallback
+// never ran either. Proof reads Renovate's own debug "Env config" block — the
+// global config it resolved from the framework's real entrypoint — plus the
+// rendered project config.
+// The task sets LOG_LEVEL itself from TASK_RENOVATE_LOG_LEVEL, so the level is a task variable, not a shell export.
+const DEBUG_EXTRACT_CMD = 'task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract TASK_RENOVATE_LOG_LEVEL=debug'
+
+function renovateEnvConfig (dir, gitEnv) {
+  let raw
+  try {
+    raw = execSync(`${DEBUG_EXTRACT_CMD} 2>&1`, {
+      cwd: dir, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 300000, maxBuffer: 256 * 1024 * 1024
+    })
+  } catch (e) {
+    raw = (e.stdout || '') + (e.stderr || '')
+  }
+  const lines = stripAnsiEscapeSequences(raw).split('\n')
+  const start = lines.findIndex(l => l.includes('DEBUG: Env config'))
+  const end = lines.findIndex((l, i) => i > start && /DEBUG: /.test(l))
+  return start < 0 ? '' : lines.slice(start, end < 0 ? undefined : end).join('\n')
+}
+
+storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust', async () => {
+  const dir = renderProject()
+  cleanupDirs.push(dir)
+  const config = JSON.parse(fs.readFileSync(path.join(dir, '.config/renovate/config.json'), 'utf8'))
+  const rule = (config.packageRules || []).find(r => JSON.stringify(r).includes('DevSecOps Toolbox'))
+  if (!rule) throw new Error('No packageRules entry matching "DevSecOps Toolbox" in the rendered renovate config')
+  if (rule.ignoreScripts !== false) {
+    throw new Error('The toolbox rule must set "ignoreScripts": false — without it Renovate never passes --trust to Copier')
+  }
+  if ('allowedCommands' in config) {
+    throw new Error('allowedCommands is a self-hosted option: Renovate ignores it in a project config, it belongs to the run (task renovate)')
+  }
+  const gitEnv = isolatedGitEnv(dir)
+  execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
+  const envConfig = renovateEnvConfig(dir, gitEnv)
+  if (!/"allowScripts":\s*true/.test(envConfig)) {
+    throw new Error(`task renovate must export allowScripts=true, Renovate resolved:\n${envConfig}`)
+  }
+  if (!/"allowedCommands":\s*\[[^\]]*copier:update[^\]]*\]/.test(envConfig)) {
+    throw new Error(`task renovate must export allowedCommands covering task copier:update, Renovate resolved:\n${envConfig}`)
+  }
+  await renderPreFrame(I, 'contract-copier-trust', [
+    'project config (toolbox rule)  ignoreScripts: false   -> Copier runs with --trust',
+    'project config                 allowedCommands: absent (self-hosted option)',
+    'task renovate, as Renovate resolved it:',
+    envConfig
+  ].join('\n'))
+})
+
 storyboardStep(Then, "a downstream project's renovate ignores stale framework-owned .config drift", async () => {
   const dir = renderProject()
   cleanupDirs.push(dir)

@@ -34,6 +34,9 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: The automerge-off branch of the template is real, valid config too.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --data devsecops_automerge=false /workspace <project> && renovate-config-validator .config/renovate/config.json
     Then turning automerge off still passes the same validator
+    # Note: Copier refuses this template without --trust (it declares tasks). Renovate only adds --trust when the run allows scripts (allowScripts, a self-hosted option, so task renovate exports it) AND the project opts in (ignoreScripts: false on the toolbox rule). allowedCommands is self-hosted too: kept in the project config, Renovate ignored it and the postUpgradeTasks never ran. Seen on a real project: every framework-evolution MR carried a bare "#copier updated" marker, a red renovate/artifacts status and nothing regenerated.
+    # Copy: task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract TASK_RENOVATE_LOG_LEVEL=debug
+    And a generated project lets Renovate run Copier with --trust
     # Note: Off-camera: a freshly generated project with every framework-owned .config pin downgraded to a stale value. Renovate's own extraction summary then lists no .config file — the downstream project never re-tracks a framework tool.
     # Copy: task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract
     And a downstream project's renovate ignores stale framework-owned .config drift
