@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.49 (2026-09-14)
+
+### Fix
+
+- **deps**: raise multer, hono and js-yaml past their advisories
+- **deps**: raise multer, hono and js-yaml past their advisories
+
 ## 23.0.48 (2026-09-07)
 
 ### Fix
