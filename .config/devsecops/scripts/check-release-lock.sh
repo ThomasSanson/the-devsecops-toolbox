@@ -6,8 +6,8 @@
 #
 # DESCRIPTION:
 #   The release temporarily opens push access to the default branch to push the
-#   version commit, then re-locks it. Three invariants keep that door from being
-#   left open:
+#   version commit, then re-locks it. Four invariants keep that door from being
+#   left open, and keep the push from happening too early:
 #
 #     1. A restore_branch_protection trap must fire on the way out. It must be
 #        `trap ... EXIT` and NOTHING more: `task release` runs under go-task's
@@ -20,8 +20,17 @@
 #        after_script swallows a failed re-lock and the job stays green.
 #     3. Only one release may run at a time, or two concurrent releases race on
 #        the protection state. That is what `resource_group: release` enforces.
+#     4. The push comes LAST. A release cuts a version locally, publishes the
+#        image for it, and only then pushes the tag and the version commit. The
+#        push is the step that cannot be taken back: done first, any later
+#        failure (a flaky download inside the image build is enough) leaves a
+#        tag naming an image the registry does not have, the default branch
+#        pointing at it, and no retry able to get past the tag — issue #221,
+#        seen for real on 23.0.54. So `default:` must run `push-release` (bump,
+#        nothing pushed), then `:project:release` (build and publish), then
+#        `push`, and `push-release:` must contain no `git push` of its own.
 #
-#   This guard asserts all three across the release Taskfile (and its .jinja
+#   This guard asserts all four across the release Taskfile (and its .jinja
 #   twin when present) and the release CI job.
 #
 # USAGE:
@@ -97,6 +106,35 @@ if [ -f "$release_ci" ]; then
 else
   fail ".config/gitlab/ci/devsecops/release.yml not found"
 fi
+
+# 4. The push comes last: bump locally, publish the image, THEN push. Checked by
+#    line order in `default:` — `- task: push$` matches only the bare push task,
+#    never `push-release` — plus the absence of any `git push` inside
+#    `push-release:` itself. The `:project:release` line is optional: the .jinja
+#    twin wraps it in a `project_enabled` conditional, so a generated project
+#    without the project workspace has only the two release tasks.
+for tf in "${release_taskfiles[@]}"; do
+  [ -f "$tf" ] || continue
+  rel="${tf#"$PROJECT_ROOT"/}"
+  prepare_line="$(grep -nE -- '- task: push-release$' "$tf" | head -1 | cut -d: -f1 || true)"
+  publish_line="$(grep -nE -- '- task: :project:release$' "$tf" | head -1 | cut -d: -f1 || true)"
+  push_line="$(grep -nE -- '- task: push$' "$tf" | head -1 | cut -d: -f1 || true)"
+  if [ -z "$prepare_line" ] || [ -z "$push_line" ]; then
+    fail "$rel: the release must cut the version (push-release) and push it (push) as two separate tasks"
+  elif [ "$push_line" -lt "$prepare_line" ]; then
+    fail "$rel: the release pushes (line $push_line) before cutting the version (line $prepare_line)"
+  elif [ -n "$publish_line" ] && { [ "$publish_line" -lt "$prepare_line" ] || [ "$publish_line" -gt "$push_line" ]; }; then
+    fail "$rel: the image must be published (:project:release, line $publish_line) between the version bump (line $prepare_line) and the push (line $push_line)"
+  else
+    pass "$rel: the push comes after the image is published (nothing pushed for an image that does not exist)"
+  fi
+  push_release_body="$(awk '/^  push-release:/ {found = 1; next} /^  [a-zA-Z]/ {if (found) exit} found' "$tf")"
+  if echo "$push_release_body" | grep -qE '^\s*git push'; then
+    fail "$rel: push-release: pushes to the remote; the push belongs in the push: task, after the image is published"
+  else
+    pass "$rel: push-release: pushes nothing to the remote"
+  fi
+done
 
 echo ""
 if [ "$errors" -eq 0 ]; then
