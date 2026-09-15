@@ -212,7 +212,10 @@ async function maskPipelinePage (I, projectName, { keepContext = false } = {}) {
     // the whole difference between green and red. Ending every transition
     // before the capture takes the timing out of the picture.
     const stillness = document.createElement('style')
-    stillness.textContent = '*, *::before, *::after { transition: none !important }'
+    // Animations too, not just transitions: GitLab 19.3's "More features"
+    // sidebar item carries a moving gradient, and a capture catches whatever
+    // phase it is in.
+    stillness.textContent = '*, *::before, *::after { transition: none !important; animation: none !important }'
     document.head.appendChild(stillness)
 
     // Top app bar: it carries the project breadcrumb, which tells the reader

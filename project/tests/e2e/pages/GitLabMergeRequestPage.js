@@ -64,7 +64,12 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
       // of one navigation item then came out one RGB unit off — six pixels, which
       // at tolerance 0 is the whole difference between green and red. Ending every
       // transition before the capture removes the timing from the picture.
-      '*, *::before, *::after { transition: none !important }',
+      //
+      // ANIMATIONS have to go too, and `transition: none` does not touch them:
+      // GitLab 19.3's "More features" sidebar item carries a moving gradient, so
+      // two captures of the same page caught it at two phases — 6000 pixels apart,
+      // enough to redden a card that had photographed the same fact for months.
+      '*, *::before, *::after { transition: none !important; animation: none !important }',
       args.hideMergeWidget ? '.mr-state-widget { display: none !important }' : ''
     ].join('\n')
     document.head.appendChild(style)
