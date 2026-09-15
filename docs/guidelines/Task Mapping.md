@@ -121,8 +121,9 @@ task devsecops:test:teardown:infrastructure   # Teardown test infra
 ```bash
 task release                   # Run all release tasks
 task devsecops:release:commitizen      # Bump version
-task devsecops:release:push-release    # Push tags/commits
+task devsecops:release:push-release    # Cut the version locally (pushes nothing)
 task docker-ce:push            # Push Docker image
+task devsecops:release:push            # Push the version commit and its tag (last)
 ```
 
 ### 🚀 Deploy

@@ -37,6 +37,12 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting release phase"
         silent: true
+      # The ORDER is the safety belt, and check-release-lock.sh freezes it: the
+      # version is cut locally, the image for that version is published, and the
+      # push comes LAST. Pushing is the one step that cannot be taken back —
+      # done first, any later failure (a flaky download inside the image build
+      # is enough) leaves a tag naming an image the registry does not have, the
+      # default branch pointing at it, and no retry able to get past the tag.
       - task: push-release
 {%- endraw %}
 {%- if project_enabled %}
@@ -44,6 +50,7 @@ tasks:
 {%- endraw %}
 {%- endif %}
 {% raw %}
+      - task: push
       - cmd: echo "🎉 Release phase completed successfully"
         silent: true
 
@@ -74,14 +81,22 @@ tasks:
         silent: true
 
   push-release:
-    desc: Run Commitizen and push release with temporary branch push window.
+    desc: Cut the release version locally. Pushes nothing.
+    summary: |
+      Commitizen writes the version bump, its changelog and its tag in the local
+      clone, and that is all: the tag and the commit leave the machine in the
+      `push` task, which runs once the image for that version is published.
+
+      Everything that would make that push fail is checked HERE, before the
+      bump, so a release that cannot be pushed never gets an image published in
+      its name.
     preconditions:
       - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH}}"
         msg: "PROJECT_PATH (TASK_DEVSECOPS_RELEASE_PROJECT_PATH) is not set. Set TASK_DEVSECOPS_RELEASE_PROJECT_PATH or CI_PROJECT_PATH env var."
       - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
         msg: "CURRENT_BRANCH (TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH) is not set. Set TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH or ensure git setup is correct."
     cmds:
-      - cmd: echo "🔄 Starting release push"
+      - cmd: echo "🔄 Starting release bump"
         silent: true
       - cmd: |
           echo "Current branch: {{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
@@ -104,16 +119,44 @@ tasks:
             fi
           }
 
+          # Checked BEFORE the bump: a release that cannot be pushed must never
+          # get an image published for a version nothing will ever tag.
+          require_var "${TASK_DEVSECOPS_RELEASE_PUSH_TOKEN:-}" "TASK_DEVSECOPS_RELEASE_PUSH_TOKEN (or TASK_COMMITIZEN_TOKEN)"
+          require_var "${TASK_DEVSECOPS_RELEASE_GITLAB_API_URL:-}" "TASK_DEVSECOPS_RELEASE_GITLAB_API_URL"
+          require_var "${TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST:-}" "TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST"
+          require_var "${TASK_DEVSECOPS_RELEASE_PROJECT_PATH:-}" "TASK_DEVSECOPS_RELEASE_PROJECT_PATH"
+
+          echo "🧩 Running Commitizen..."
+          task devsecops:release:commitizen
+        silent: true
+      - cmd: echo "🎉 Release version cut locally"
+        silent: true
+
+  push:
+    desc: Push the version commit and its tag through a temporary push window.
+    summary: |
+      The last step of a release, and the only one that cannot be undone. It
+      runs after the image for the new version is published, so the default
+      branch never names an image the registry does not have.
+
+      The default branch is protected: push access is opened for the seconds the
+      push takes, and restored by an EXIT trap on every way out, a kill
+      included (asserted by .config/devsecops/scripts/check-release-lock.sh).
+    cmds:
+      - cmd: echo "🔄 Starting release push"
+        silent: true
+      - cmd: |
+          if [ "{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH}}" != "true" ] || \
+            [ "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}" != "{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}" ]; then
+            echo "Skip: no remote push performed (ALLOW_PUSH disabled or not on default branch)."
+            exit 0
+          fi
+
           TOKEN="${TASK_DEVSECOPS_RELEASE_PUSH_TOKEN:-}"
           API_URL="${TASK_DEVSECOPS_RELEASE_GITLAB_API_URL:-}"
           HOST="${TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST:-}"
           PROJECT_PATH="${TASK_DEVSECOPS_RELEASE_PROJECT_PATH:-}"
           BRANCH="${TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH:-{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}}"
-
-          require_var "$TOKEN" "TASK_DEVSECOPS_RELEASE_PUSH_TOKEN (or TASK_COMMITIZEN_TOKEN)"
-          require_var "$API_URL" "TASK_DEVSECOPS_RELEASE_GITLAB_API_URL"
-          require_var "$HOST" "TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST"
-          require_var "$PROJECT_PATH" "TASK_DEVSECOPS_RELEASE_PROJECT_PATH"
 
           REMOTE_PROTOCOL="https"
           if echo "$API_URL" | grep -Eq '^http://'; then
@@ -155,17 +198,14 @@ tasks:
           echo "🔓 Temporarily opening push access for Maintainers..."
           set_branch_protection 40
 
-          echo "🧩 Running Commitizen with temporary push access..."
-          task devsecops:release:commitizen
-
           echo "🔐 Configuring ${REMOTE_PROTOCOL^^} remote with Commitizen token..."
           git remote set-url origin "${REMOTE_PROTOCOL}://oauth2:${TOKEN}@${HOST}/${PROJECT_PATH}.git"
 
-          echo "Pushing tags..."
-          git push origin --tags
-
-          echo "Pushing commit to default branch (${BRANCH})..."
-          git push origin HEAD:"${BRANCH}"
+          # ONE push for both refs: a remote that refuses the connection, the
+          # token or the branch leaves the default branch exactly as it was,
+          # instead of a tag landing on its own with no commit behind it.
+          echo "Pushing tags and the version commit to ${BRANCH}..."
+          git push origin HEAD:"${BRANCH}" --tags
         silent: true
       - cmd: echo "🎉 Release push completed successfully"
         silent: true
