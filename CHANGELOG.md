@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.56 (2026-09-15)
+
+### Fix
+
+- **release**: publish the image before pushing the tag
+
 ## 23.0.55 (2026-09-15)
 
 ### Fix
