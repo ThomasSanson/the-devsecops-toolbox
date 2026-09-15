@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.55 (2026-09-15)
+
+### Fix
+
+- **renovate**: let the framework-evolution update run Copier trusted
+
 ## 23.0.54 (2026-09-14)
 
 ### Fix
