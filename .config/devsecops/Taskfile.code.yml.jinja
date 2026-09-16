@@ -57,5 +57,8 @@ tasks:
       - task: :copier:update
         vars:
           TASK_COPIER_ANSWER_FILE: ".config/devsecops/.copier-answers.yml"
-          TASK_COPIER_CLI_OPTS: "--skip-answered"
+          # The caller may need more than --skip-answered: Renovate adds
+          # --vcs-ref to move to a precise release. Hardcoding the options here
+          # silently dropped it, and the update ran against the wrong target.
+          TASK_COPIER_CLI_OPTS: '{{.TASK_COPIER_CLI_OPTS | default "--skip-answered"}}'
 {%- endraw %}

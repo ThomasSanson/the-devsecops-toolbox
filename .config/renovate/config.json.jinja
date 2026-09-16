@@ -41,7 +41,7 @@
       "commitMessageTopic": "DevSecOps Toolbox",
       "postUpgradeTasks": {
         "commands": [
-          "git checkout -- . && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS='--trust --skip-answered --defaults --vcs-ref {% raw %}{{{newVersion}}}{% endraw %}'"
+          "git checkout -- . && git clean -fd && task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS='--skip-answered --defaults --vcs-ref {% raw %}{{{newVersion}}}{% endraw %}'"
         ],
         "fileFilters": ["**/*"],
         "executionMode": "branch"

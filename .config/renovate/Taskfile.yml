@@ -43,7 +43,7 @@ tasks:
       # --trust (the template declares tasks, Copier refuses it otherwise);
       # allowedCommands lets the framework-evolution postUpgradeTasks run.
       RENOVATE_ALLOW_SCRIPTS: "true"
-      RENOVATE_ALLOWED_COMMANDS: '["^git checkout -- \\. && git clean -fd && task copier:update TASK_COPIER_CLI_OPTS=.+$"]'
+      RENOVATE_ALLOWED_COMMANDS: '["^git checkout -- \\. && git clean -fd && task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS=.+$"]'
     vars:
       TASK_RENOVATE_CMD:
         sh: |
