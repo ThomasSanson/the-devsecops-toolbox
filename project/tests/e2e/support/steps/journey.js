@@ -247,7 +247,7 @@ async function updateCard (command, marker, frameName, timeoutMs, mask = []) {
   await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask }))
 }
 
-// go-task echoes the whole uvx command line behind `task copier:update`, pinned
+// go-task echoes the whole uvx command line behind the update task, pinned
 // copier and all, and that echo IS part of what the developer sees — it says
 // which tool the update actually ran. Only the number in it moves, roughly
 // monthly, breaking a card about a toolbox release with a copier release. So
@@ -289,8 +289,8 @@ storyboardStep(Given, 'the developer has added their own word inside that shared
 
 storyboardStep(When, 'the developer runs the toolbox update in the terminal', async () => {
   await updateCard(
-    `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
-    'task copier:update', 'update-run', 240000, COPIER_PIN_MASK
+    `task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
+    'task devsecops:code:sync-templates', 'update-run', 240000, COPIER_PIN_MASK
   )
 })
 

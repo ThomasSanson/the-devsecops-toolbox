@@ -485,8 +485,8 @@ storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust'
   if (!/"allowScripts":\s*true/.test(envConfig)) {
     throw new Error(`task renovate must export allowScripts=true, Renovate resolved:\n${envConfig}`)
   }
-  if (!/"allowedCommands":\s*\[[^\]]*copier:update[^\]]*\]/.test(envConfig)) {
-    throw new Error(`task renovate must export allowedCommands covering task copier:update, Renovate resolved:\n${envConfig}`)
+  if (!/"allowedCommands":\s*\[[^\]]*devsecops:code:sync-templates[^\]]*\]/.test(envConfig)) {
+    throw new Error(`task renovate must export allowedCommands covering task devsecops:code:sync-templates, Renovate resolved:\n${envConfig}`)
   }
   await renderPreFrame(I, 'contract-copier-trust', [
     'project config (toolbox rule)  ignoreScripts: false   -> Copier runs with --trust',

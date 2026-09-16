@@ -221,11 +221,12 @@ function setupCspellUpdateTerminal (projectWord) {
     throw new Error(`Failed to set up the cspell-update terminal:\n${setup.output}`)
   }
 
-  // TASK_COPIER_ANSWER_FILE is what `task copier:update` resolves the answers from;
-  // Renovate's command relies on it being in the repo's environment, so export it
-  // into the terminal session (the typed command then matches Renovate's exactly).
+  // No TASK_COPIER_ANSWER_FILE export here, on purpose. Exporting it used to
+  // make the update work in this terminal and nowhere else: a real project has
+  // no such variable, so Renovate's command died on the task precondition and
+  // every framework-evolution merge request arrived empty. The task the
+  // developer types now carries the answers file itself (#178).
   const ttydStart = execInContainerAsUser(name, 'bootstrap', [
-    'export TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml',
     `cd ${PROJECT_DIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
   ].join('\n'))
