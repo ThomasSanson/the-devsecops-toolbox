@@ -372,9 +372,11 @@ function releaseTraceStory (projectName, jobId, rootHeaders) {
 //
 // Volatile, and why each one has to go:
 //   - line numbers and timestamps: per-run values in the gutter;
-//   - "Possibly zombie container runner-<token>--project-…-docker-0 is
-//     disconnected from network": gitlab-runner 19 housekeeping, named after a
-//     token minted per run;
+//   - the runner's own cleanup line, which names a container built from a
+//     token minted per run: "Possibly zombie container runner-<token>-…-docker-0
+//     is disconnected from network …" up to gitlab-runner 19.2, "Container
+//     runner-<token>-…-docker-0 disconnected from network …" from 19.3.3 on.
+//     Matched on what both wordings share, so the next rewording is caught too;
 //   - every semver: the toolbox version and its pinned tools drift on every bump;
 //   - "exit code N" / "exit status N": N is whatever the runner and go-task
 //     happened to report. It moved from 1 to 201 on a routine gitlab-runner
@@ -390,8 +392,9 @@ async function showJobLog (jobId, { anchor, lead, masks }) {
     const idx = lineEls.findIndex(l => new RegExp(args.anchor, 'i').test(l.textContent))
     if (idx > args.lead) lineEls.slice(0, idx - args.lead).forEach(l => { l.style.display = 'none' })
     document.querySelectorAll('.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(e => { e.style.display = 'none' })
+    const RUNNER_CLEANUP = /runner-\S+.*disconnected from network/i
     lineEls.forEach(l => {
-      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
+      if (RUNNER_CLEANUP.test(l.textContent)) l.style.display = 'none'
     })
     document.querySelectorAll('.job-log-line-content').forEach(e => {
       e.textContent = args.masks.reduce((text, [pattern, to]) => text.replace(new RegExp(pattern, 'g'), to), e.textContent)
