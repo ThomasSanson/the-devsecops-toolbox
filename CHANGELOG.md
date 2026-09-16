@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.0.59 (2026-09-16)
+
+### Fix
+
+- **renovate**: run the toolbox update through the task that knows the answers file
+
 ## 23.0.58 (2026-09-16)
 
 ### Fix
