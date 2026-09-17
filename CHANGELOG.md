@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 23.0.62 (2026-09-17)
+
+### Fix
+
+- **tests**: keep the host's node_modules out of the test image
+- **deps**: update dependency playwright to v1.63.0
+
 ## 23.0.61 (2026-09-17)
 
 ### Fix
