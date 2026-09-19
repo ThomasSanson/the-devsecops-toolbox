@@ -66,6 +66,12 @@ code:renovate-validate:
 code:betterleaks:
   stage: code
   needs: []
+{%- if not privileged_ci_runners %}
+  # Your runners cannot start privileged containers: the scan runs from the
+  # pinned binary (TASK_BETTERLEAKS_MODE=binary in .env.dist), so this job drops
+  # the Docker-in-Docker service every other job inherits.
+  services: []
+{%- endif %}
   script:
     - task betterleaks:scan-branch
   <<: *code_rules
