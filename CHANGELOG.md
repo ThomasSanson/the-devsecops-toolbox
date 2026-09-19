@@ -2,6 +2,22 @@
 
 # Changelog
 
+## 23.1.0 (2026-09-19)
+
+### Feat
+
+- **betterleaks**: announce the binary scan, and prove the answer picks it
+- **betterleaks**: scan from a pinned binary where containers are refused
+
+### Fix
+
+- **agent**: wrap the framework-bug rule so a generated project lints clean
+- **tests**: talk to the GitLab of our own compose stack
+
+### Refactor
+
+- **betterleaks**: keep the non-privileged answer to the mode alone
+
 ## 23.0.63 (2026-09-17)
 
 ### Fix
