@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.1.2 (2026-09-19)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v21.2.3
+
 ## 23.1.1 (2026-09-19)
 
 ### Fix
