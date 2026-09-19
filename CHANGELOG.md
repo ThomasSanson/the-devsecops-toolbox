@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 23.2.0 (2026-09-19)
+
+### Feat
+
+- **reload**: put a drifted project back with one command
+
 ## 23.1.2 (2026-09-19)
 
 ### Fix
