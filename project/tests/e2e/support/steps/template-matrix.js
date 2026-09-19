@@ -663,18 +663,6 @@ storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-d
   if (!content.includes('DOCKER_TLS_CERTDIR: ""')) throw new Error('Expected rendered CI variables to set DOCKER_TLS_CERTDIR to an empty value')
 })
 
-storyboardStep(Then, 'answering that the runners cannot start privileged containers moves the secret scan off Docker', async () => {
-  rendered = renderProject(parseAnswers('privileged_ci_runners=false'))
-  cleanupDirs.push(rendered)
-  const mode = runCaptured('grep TASK_BETTERLEAKS_MODE .env.dist', rendered)
-  await renderPreFrame(I, 'answers-no-privileged-runners', `$ grep TASK_BETTERLEAKS_MODE .env.dist\n${mode}`)
-  // Twin: the project carries the mode as its own default, so every scan it
-  // runs — in CI as on a laptop — uses the pinned binary rather than an image.
-  if (!readRendered('.env.dist').includes('TASK_BETTERLEAKS_MODE=binary')) {
-    throw new Error('Expected the rendered .env.dist to set TASK_BETTERLEAKS_MODE=binary')
-  }
-})
-
 storyboardStep(Then, 'turning off project mode removes the project directory entirely', async () => {
   rendered = renderProject(parseAnswers('project_enabled=false'))
   cleanupDirs.push(rendered)

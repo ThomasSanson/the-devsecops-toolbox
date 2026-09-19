@@ -19,9 +19,10 @@ Feature: the framework guards what reaches the repository — clean commits and 
   # private key is blocked and named, and a secret kept out of git's view via
   # .gitignore never reaches the scanner at all. Chapter 3 — getting unstuck:
   # deleting the file is not enough, rewriting the history is. Chapter 4 — the
-  # same scan from the pinned binary (issue #225): a project whose runners
-  # refuse privileged containers scans with the checksum-verified release
-  # binary instead of an image, and the verdict does not change.
+  # same scan from the pinned binary (issue #225): a project generated for
+  # runners that refuse privileged containers scans with the checksum-verified
+  # release binary instead of an image, on the strength of its install answer
+  # alone, and the verdict does not change.
   @protected-commits
   Scenario: the commit checks accept clean work and secrets never reach the repository
     # Chapter: The commit message is checked
@@ -89,9 +90,9 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Copy: task betterleaks:scan-branch
     Then the scan comes back clean and the branch is safe to push
     # Chapter: The same scan, from the pinned binary
-    # Note: A project whose runners may not start containers answers so at install time, and carries TASK_BETTERLEAKS_MODE=binary. The scanner is then the official binary pinned in .config/betterleaks/version, downloaded once and checked against the checksum published with that release. No container, no root, no sudo.
+    # Note: This project answered at install time that its runners may not start containers, and nothing else was set by hand. The scanner it installs is the official binary pinned in .config/betterleaks/version, downloaded once and checked against the checksum published with that release. No container, no root, no sudo.
     # Copy: task betterleaks:install
-    When a project set to the binary mode installs the pinned scanner
-    # Note: The same private key, committed on a fresh branch, scanned by the same command in that mode. The verdict is word for word the one the container gives: "Betterleaks detected secrets in your branch commits!" — and no container was started at any point.
+    When a project generated for runners that refuse containers installs its scanner
+    # Note: The same private key, committed on a fresh branch, scanned by the very same command a developer types. The scan says which scanner it used, then gives the verdict word for word as the container gives it: "Betterleaks detected secrets in your branch commits!" No container was started at any point.
     # Copy: task betterleaks:scan-branch
-    Then the same committed key is blocked again, and no container was ever started
+    Then the scan runs from that binary and blocks the same committed key

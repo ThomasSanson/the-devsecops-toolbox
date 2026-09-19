@@ -41,6 +41,7 @@ const TEST_PRIVATE_KEY_SECRET = [
 // (findings/timings in between carry commit dates and fingerprints and are
 // asserted separately by the string checks). The scan-range SHA is masked.
 const VERDICT_RES = [
+  /^🔧 Running betterleaks from the pinned binary, no container$/,
   /^🔍 Scanning commits from /,
   /^🎉 No secrets detected in branch commits\.$/,
   /^❌ Betterleaks detected secrets in your branch commits!$/,
@@ -89,8 +90,8 @@ function git (cmd) {
 // A fresh rendered project on its own feature branch — each situation in the
 // journey gets one, so a later commit never bleeds into an earlier scan's
 // branch history.
-function newProject () {
-  projectDir = renderProject()
+function newProject (answers) {
+  projectDir = renderProject(answers)
   cleanupDirs.push(projectDir)
   git('init --quiet --initial-branch=main')
   git('config user.email "e2e@test.local"')
@@ -198,10 +199,12 @@ function verdictText (output) {
 // release binary instead of an image. `os.tmpdir()` gives the installer a
 // fresh, writable folder per run, which also keeps its output identical on
 // every run: an already-installed binary would print a different line.
-function binaryModeEnv (binDir) {
+// Only WHERE the binary lands, never HOW the scan runs: the mode must come
+// from the render's own .env.dist, exactly as it does for a real project. A
+// per-worker directory keeps parallel scans from sharing one download.
+function binaryBinDirEnv (binDir) {
   return {
     ...process.env,
-    TASK_BETTERLEAKS_MODE: 'binary',
     TASK_BETTERLEAKS_BIN_DIR: binDir
   }
 }
@@ -408,15 +411,22 @@ storyboardStep(Then, 'the scan comes back clean and the branch is safe to push',
 // Movement 5 — the same scan from the pinned binary (issue #225)
 // ============================================
 
-storyboardStep(When, 'a project set to the binary mode installs the pinned scanner', async () => {
-  newProject()
+storyboardStep(When, 'a project generated for runners that refuse containers installs its scanner', async () => {
+  newProject({ privileged_ci_runners: false })
   fs.writeFileSync(path.join(projectDir, 'tracked-secret.pem'), TEST_PRIVATE_KEY_SECRET)
   git('add tracked-secret.pem')
   git('commit --quiet --no-verify -m "test: add tracked secret fixture"')
 
   binaryBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'betterleaks-binary-'))
-  binaryEnv = binaryModeEnv(binaryBinDir)
+  binaryEnv = binaryBinDirEnv(binaryBinDir)
   containersBefore = betterleaksContainersSeen()
+
+  // Twin, and the link the whole chapter rests on: nothing here chose the mode.
+  // The Copier answer did, by writing it into the project's own settings.
+  const settings = fs.readFileSync(path.join(projectDir, '.env.dist'), 'utf8')
+  if (!settings.includes('TASK_BETTERLEAKS_MODE=binary')) {
+    throw new Error(`Expected the render to carry the binary mode in .env.dist, got:\n${settings}`)
+  }
 
   const res = runInBinaryMode('task betterleaks:install', binaryEnv)
   if (res.exitCode !== 0) {
@@ -435,11 +445,14 @@ storyboardStep(When, 'a project set to the binary mode installs the pinned scann
   await renderPreFrame(I, 'binary-install', installText(res.output))
 })
 
-storyboardStep(Then, 'the same committed key is blocked again, and no container was ever started', async () => {
+storyboardStep(Then, 'the scan runs from that binary and blocks the same committed key', async () => {
   const res = runInBinaryMode('task betterleaks:scan-branch', binaryEnv)
   if (res.exitCode === 0) {
     throw new Error(`Expected the binary-mode scan to fail on the committed key\n${res.output}`)
   }
+  // Twin: the scan names the scanner it used, and gives the same verdict the
+  // container gives on the same key.
+  assertContains(res.output, 'Running betterleaks from the pinned binary')
   assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
   // Twin, and the one that says this really was the binary mode: the scan
   // created no container, so nothing could have quietly fallen back to an image.

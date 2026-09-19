@@ -99,9 +99,9 @@ privileged_ci_runners:
   type: bool
   help: |
     Can your CI runners start privileged containers (Docker-in-Docker)?
-    Answer no for locked-down runners: the secret scanner then runs from the
-    pinned binary shipped with the toolbox instead of a container, and its CI
-    job stops requiring the Docker-in-Docker service.
+    Answer no for locked-down runners: every secret scan then runs from the
+    pinned binary shipped with the toolbox, in CI as on a laptop, instead of
+    starting a container.
   default: true
 
 # Questions — Project workspace
