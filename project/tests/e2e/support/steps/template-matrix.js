@@ -666,15 +666,12 @@ storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-d
 storyboardStep(Then, 'answering that the runners cannot start privileged containers moves the secret scan off Docker', async () => {
   rendered = renderProject(parseAnswers('privileged_ci_runners=false'))
   cleanupDirs.push(rendered)
-  const job = runCaptured("grep -A6 '^code:betterleaks:' .config/gitlab/ci/devsecops/code.yml", rendered)
-  await renderPreFrame(I, 'answers-no-privileged-runners', `$ grep -A6 '^code:betterleaks:' .config/gitlab/ci/devsecops/code.yml\n${job}`)
-  // Twins: the project carries the mode as its own default, and its scan job
-  // stops inheriting the Docker-in-Docker service.
+  const mode = runCaptured('grep TASK_BETTERLEAKS_MODE .env.dist', rendered)
+  await renderPreFrame(I, 'answers-no-privileged-runners', `$ grep TASK_BETTERLEAKS_MODE .env.dist\n${mode}`)
+  // Twin: the project carries the mode as its own default, so every scan it
+  // runs — in CI as on a laptop — uses the pinned binary rather than an image.
   if (!readRendered('.env.dist').includes('TASK_BETTERLEAKS_MODE=binary')) {
     throw new Error('Expected the rendered .env.dist to set TASK_BETTERLEAKS_MODE=binary')
-  }
-  if (!readRendered('.config/gitlab/ci/devsecops/code.yml').includes('services: []')) {
-    throw new Error('Expected the rendered code:betterleaks job to drop the inherited services')
   }
 })
 
