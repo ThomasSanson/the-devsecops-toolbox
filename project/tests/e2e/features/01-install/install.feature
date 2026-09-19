@@ -42,6 +42,8 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     And the developer keeps Docker as the container runtime
     # Note: With Docker chosen, the setup offers to create project/docker-compose.yml; the developer keeps the default, yes.
     And the developer keeps the generated docker-compose file
+    # Note: The next question asks whether the CI runners may start privileged containers. Answering no would move the secret scan off Docker, onto a pinned binary the job installs itself; the developer's runners can, so the default yes stands.
+    And the developer confirms the runners can start privileged containers
     # Note: The next question turns the project workspace on or off (it adds project/Taskfile.yml and docker-compose.yml); the developer keeps it on.
     And the developer keeps the project workspace enabled
     # Note: The next question asks whether Renovate — the bot that proposes dependency updates — should merge toolbox updates on its own; the developer keeps it on.

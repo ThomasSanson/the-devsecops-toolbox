@@ -379,6 +379,7 @@ const COPIER_PROMPTS = [
   'Which CI/CD platform are you using?',
   'Which container runtime would you like to use?',
   'Generate a docker-compose.yml file',
+  'Can your CI runners start privileged containers',
   'Enable the project workspace?',
   'Auto-merge Renovate merge requests',
   'Language for Gherkin test specifications'
@@ -1262,6 +1263,8 @@ storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => c
 storyboardStep(When, 'the developer keeps Docker as the container runtime', () => captureCopierQuestion('Enter', 'Which container runtime would you like to use?', 'copier-runtime'))
 
 storyboardStep(When, 'the developer keeps the generated docker-compose file', () => captureCopierQuestion('Enter', 'Generate a docker-compose.yml file', 'copier-compose'))
+
+storyboardStep(When, 'the developer confirms the runners can start privileged containers', () => captureCopierQuestion('Enter', 'Can your CI runners start privileged containers', 'copier-privileged-runners'))
 
 storyboardStep(When, 'the developer keeps the project workspace enabled', () => captureCopierQuestion('Enter', 'Enable the project workspace?', 'copier-workspace'))
 
