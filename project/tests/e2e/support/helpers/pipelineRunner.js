@@ -16,7 +16,7 @@
  * config.toml, never a restart — so the other scenario's registration and its
  * running job survive.
  */
-const { runCommandWithResult } = require('./docker')
+const { runCommandWithResult, composeService } = require('./docker')
 const {
   BASE_URL,
   encodedProjectPath,
@@ -55,8 +55,9 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   }
   const runnerId = runner.data.id
   const glrt = runner.data.token
-  const found = runCommandWithResult('docker ps --format "{{.Names}}" --filter "name=gitlab-runner"')
-  const svc = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)[0]
+  // Our OWN runner service: a second toolbox-derived stack on the machine would
+  // otherwise be picked first and register the runner on the neighbour's GitLab.
+  const svc = composeService('gitlab-runner')
   if (!svc) throw new Error('gitlab-runner compose service is not running')
   // ONE job slot, deliberately: every docker-using job spawns a dind service
   // named 'docker' on the SHARED network, so two concurrent services collide (a

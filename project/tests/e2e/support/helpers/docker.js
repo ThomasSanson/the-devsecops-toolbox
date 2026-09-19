@@ -38,6 +38,32 @@ function stripAnsiEscapeSequences (value) {
   return cleaned
 }
 
+// The compose service of THIS stack, by suffix ("gitlab", "gitlab-runner").
+//
+// A developer machine can host two toolbox-derived stacks at once — the
+// framework's own and a generated project's — and `docker ps --filter
+// name=gitlab` then lists both. Picking the first match minted an admin token
+// on the neighbour's GitLab and every call answered 401. Compose labels every
+// container with its project, and the container running the suite is one of
+// them, so ask Docker which project we belong to and stay inside it. Falls back
+// to the first match when the label is unreadable (a runner without the socket
+// mounted, say), which is the old behaviour.
+function composeService (suffix) {
+  const names = runCommand(`docker ps --format '{{.Names}}' --filter 'name=${suffix}'`)
+    .split('\n').map(n => n.trim())
+    .filter(n => new RegExp(`-${suffix}-\\d+$`).test(n))
+  if (names.length <= 1) return names[0]
+  try {
+    const self = runCommand('hostname').trim()
+    const project = runCommand(
+      `docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' ${self}`
+    ).trim()
+    const mine = project && names.find(n => n.startsWith(`${project}-${suffix}-`))
+    if (mine) return mine
+  } catch (_) {}
+  return names[0]
+}
+
 function runCommand (command, options = {}) {
   return execSync(command, {
     encoding: 'utf8',
@@ -163,6 +189,7 @@ function waitForTtyd (container, timeoutMs) {
 
 module.exports = {
   ttydPort,
+  composeService,
   shellEscape,
   stripAnsiEscapeSequences,
   runCommand,

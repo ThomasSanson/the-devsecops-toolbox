@@ -1,5 +1,5 @@
 const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
-const { runCommand } = require('./docker')
+const { runCommand, composeService } = require('./docker')
 
 const BASE_URL = 'http://gitlab:80'
 
@@ -34,10 +34,10 @@ let rootHeadersCache = null
 
 async function getRootHeaders () {
   if (rootHeadersCache) return rootHeadersCache
-  const names = runCommand("docker ps --format '{{.Names}}' --filter 'name=gitlab'")
   // `<project>-gitlab-1` is the GitLab service; `<project>-gitlab-runner-1` is
-  // its runner, and answers no API.
-  const service = names.split('\n').map(n => n.trim()).filter(n => /-gitlab-\d+$/.test(n))[0]
+  // its runner, and answers no API. composeService keeps us inside OUR stack
+  // when a second toolbox-derived one runs on the same machine.
+  const service = composeService('gitlab')
   if (!service) throw new Error('the gitlab compose service is not running')
   const ruby =
     `puts User.find_by_username('${process.env.TASK_GITLAB_ROOT_USER}')` +
