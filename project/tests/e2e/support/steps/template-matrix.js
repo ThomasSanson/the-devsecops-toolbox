@@ -663,6 +663,21 @@ storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-d
   if (!content.includes('DOCKER_TLS_CERTDIR: ""')) throw new Error('Expected rendered CI variables to set DOCKER_TLS_CERTDIR to an empty value')
 })
 
+storyboardStep(Then, 'answering that the runners cannot start privileged containers moves the secret scan off Docker', async () => {
+  rendered = renderProject(parseAnswers('privileged_ci_runners=false'))
+  cleanupDirs.push(rendered)
+  const job = runCaptured("grep -A6 '^code:betterleaks:' .config/gitlab/ci/devsecops/code.yml", rendered)
+  await renderPreFrame(I, 'answers-no-privileged-runners', `$ grep -A6 '^code:betterleaks:' .config/gitlab/ci/devsecops/code.yml\n${job}`)
+  // Twins: the project carries the mode as its own default, and its scan job
+  // stops inheriting the Docker-in-Docker service.
+  if (!readRendered('.env.dist').includes('TASK_BETTERLEAKS_MODE=binary')) {
+    throw new Error('Expected the rendered .env.dist to set TASK_BETTERLEAKS_MODE=binary')
+  }
+  if (!readRendered('.config/gitlab/ci/devsecops/code.yml').includes('services: []')) {
+    throw new Error('Expected the rendered code:betterleaks job to drop the inherited services')
+  }
+})
+
 storyboardStep(Then, 'turning off project mode removes the project directory entirely', async () => {
   rendered = renderProject(parseAnswers('project_enabled=false'))
   cleanupDirs.push(rendered)

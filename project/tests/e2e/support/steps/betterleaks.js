@@ -20,6 +20,7 @@
 const { I } = inject()
 const crypto = require('crypto')
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const { execSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
@@ -50,12 +51,18 @@ let projectDir = null
 let scanResult = null
 let cleanupDirs = []
 let betterleaksContainer = null
+let binaryBinDir = null
+let binaryEnv = null
+let containersBefore = []
 
 Before(() => {
   projectDir = null
   scanResult = null
   cleanupDirs = []
   betterleaksContainer = null
+  binaryBinDir = null
+  binaryEnv = null
+  containersBefore = []
 })
 
 After(() => {
@@ -68,6 +75,10 @@ After(() => {
       // Already removed by the Taskfile defer.
     }
     betterleaksContainer = null
+  }
+  if (binaryBinDir) {
+    try { fs.rmSync(binaryBinDir, { recursive: true, force: true }) } catch (_) {}
+    binaryBinDir = null
   }
 })
 
@@ -174,6 +185,60 @@ function verdictText (output) {
     .map(line => line.replace(/[0-9a-f]{7,40}/g, '<sha>'))
   if (lines.length === 0) {
     throw new Error(`No betterleaks verdict lines found in output:\n${output}`)
+  }
+  return lines.join('\n')
+}
+
+// ============================================
+// Native mode (issue #225) — the scan on a machine with no Docker
+// ============================================
+
+// The binary mode of issue #225: the project sets TASK_BETTERLEAKS_MODE=binary
+// (its Copier answer writes it into .env.dist) and the scan runs the pinned
+// release binary instead of an image. `os.tmpdir()` gives the installer a
+// fresh, writable folder per run, which also keeps its output identical on
+// every run: an already-installed binary would print a different line.
+function binaryModeEnv (binDir) {
+  return {
+    ...process.env,
+    TASK_BETTERLEAKS_MODE: 'binary',
+    TASK_BETTERLEAKS_BIN_DIR: binDir
+  }
+}
+
+function runInBinaryMode (command, env) {
+  try {
+    return { exitCode: 0, output: execSync(`${command} 2>&1`, { cwd: projectDir, encoding: 'utf8', stdio: 'pipe', timeout: 300000, env }) }
+  } catch (error) {
+    return {
+      exitCode: typeof error.status === 'number' ? error.status : 1,
+      output: `${error.stdout || ''}${error.stderr || ''}`
+    }
+  }
+}
+
+// Containers whose name says they belong to a betterleaks scan, running or
+// exited. The docker mode leaves one behind for a moment; the binary mode must
+// never create one, and that is the fact the last card is twinned with.
+function betterleaksContainersSeen () {
+  return execSync('docker ps -a --format "{{.Names}}" --filter "name=betterleaks"', { encoding: 'utf8', stdio: 'pipe' })
+    .split('\n').map(n => n.trim()).filter(Boolean)
+}
+
+const INSTALL_RES = [
+  /^🔍 Installing betterleaks /,
+  /^✅ Checksum verified/,
+  /^🎉 betterleaks .* installed/
+]
+
+function installText (output) {
+  const lines = stripAnsiEscapeSequences(output)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => INSTALL_RES.some(re => re.test(line)))
+    .map(line => line.replace(/ in \/\S+/, ' in <bin-dir>'))
+  if (lines.length === 0) {
+    throw new Error(`No betterleaks install lines found in output:\n${output}`)
   }
   return lines.join('\n')
 }
@@ -337,4 +402,50 @@ storyboardStep(Then, 'the scan comes back clean and the branch is safe to push',
   }
   assertContains(res.output, 'No secrets detected in branch commits.')
   await renderPreFrame(I, 'branch-clean', verdictText(res.output))
+})
+
+// ============================================
+// Movement 5 — the same scan from the pinned binary (issue #225)
+// ============================================
+
+storyboardStep(When, 'a project set to the binary mode installs the pinned scanner', async () => {
+  newProject()
+  fs.writeFileSync(path.join(projectDir, 'tracked-secret.pem'), TEST_PRIVATE_KEY_SECRET)
+  git('add tracked-secret.pem')
+  git('commit --quiet --no-verify -m "test: add tracked secret fixture"')
+
+  binaryBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'betterleaks-binary-'))
+  binaryEnv = binaryModeEnv(binaryBinDir)
+  containersBefore = betterleaksContainersSeen()
+
+  const res = runInBinaryMode('task betterleaks:install', binaryEnv)
+  if (res.exitCode !== 0) {
+    throw new Error(`Expected the pinned install to succeed, exit=${res.exitCode}\n${res.output}`)
+  }
+  // Twin: a real binary landed in the folder and answers for the pinned version.
+  const installed = path.join(binaryBinDir, 'betterleaks')
+  if (!fs.existsSync(installed)) {
+    throw new Error(`Expected the installer to place a binary in ${binaryBinDir}\n${res.output}`)
+  }
+  const pinned = fs.readFileSync(path.join(projectDir, '.config/betterleaks/version'), 'utf8').trim()
+  const reported = execSync(`${installed} version 2>&1`, { encoding: 'utf8' }).trim()
+  if (!reported.includes(pinned)) {
+    throw new Error(`Expected the installed binary to report the pinned version ${pinned}, got: ${reported}`)
+  }
+  await renderPreFrame(I, 'binary-install', installText(res.output))
+})
+
+storyboardStep(Then, 'the same committed key is blocked again, and no container was ever started', async () => {
+  const res = runInBinaryMode('task betterleaks:scan-branch', binaryEnv)
+  if (res.exitCode === 0) {
+    throw new Error(`Expected the binary-mode scan to fail on the committed key\n${res.output}`)
+  }
+  assertContains(res.output, 'Betterleaks detected secrets in your branch commits!')
+  // Twin, and the one that says this really was the binary mode: the scan
+  // created no container, so nothing could have quietly fallen back to an image.
+  const created = betterleaksContainersSeen().filter(name => !containersBefore.includes(name))
+  if (created.length > 0) {
+    throw new Error(`Expected the binary mode to start no container, found: ${created.join(', ')}`)
+  }
+  await renderPreFrame(I, 'binary-verdict-blocked', verdictText(res.output))
 })

@@ -58,3 +58,6 @@ Feature: Template rendering matrix — every Copier answer renders the expected 
     # Note: gherkin_language=fr: the tests-structure rule now instructs the project to write its Gherkin in French.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --data gherkin_language=fr /workspace <project>
     And choosing French Gherkin changes the language rule for generated tests
+    # Note: privileged_ci_runners=false: the answer for runners that may not start containers. The generated project scans from the pinned binary instead of an image, and the job says so itself before dropping the Docker-in-Docker service the others inherit.
+    # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --data privileged_ci_runners=false /workspace <project>
+    And answering that the runners cannot start privileged containers moves the secret scan off Docker
