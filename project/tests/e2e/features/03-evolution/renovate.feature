@@ -56,6 +56,8 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: The rule made visible: every tracked tool is reported from its canonical .config source AND install.sh, so one Renovate PR touches both files, never only one.
     # Copy: task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract
     And each tool is detected at both its config source and the install.sh pin
+    # Note: The local task and both CI templates pin the same MegaLinter release. Renovate must find all three places so a dependency update cannot silently leave CI behind.
+    And Renovate tracks the MegaLinter release in both local and CI execution
     # Chapter: One dependency, one merge request
     # Note: Renovate proposes the updates, and it must propose them one at a time. When twenty dependencies ride in the same merge request, one broken package holds the nineteen others hostage and nobody can tell which one broke.
     # Note: Off-camera: another throwaway copy of the framework, where four dependencies are pinned back to old versions on purpose. One comes from npm, one from the Docker registry, one from Python, and one is the linter whose number is spent as a Docker tag.

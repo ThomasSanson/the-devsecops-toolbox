@@ -726,7 +726,7 @@ function render (outFile, options = {}) {
 
   const height = y + g.pagePad
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"` + // DevSkim: ignore DS137138 -- SVG namespace identifier, never a network request.
     ' role="img" aria-labelledby="sb-title sb-desc">\n' +
     `<title id="sb-title">${esc(board.feature)} — ${esc(board.scenario)}</title>\n` +
     `<desc id="sb-desc">e2e storyboard · ${esc(board.file)} · replay: ${esc(board.rerun)}</desc>\n` +

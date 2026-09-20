@@ -2,7 +2,7 @@
 monitor:
   stage: monitor
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   script:
     - task monitor
   rules:

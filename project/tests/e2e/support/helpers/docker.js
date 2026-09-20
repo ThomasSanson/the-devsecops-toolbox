@@ -173,7 +173,7 @@ function removeContainer (name) {
 
 function waitForTtyd (container, timeoutMs) {
   const start = Date.now()
-  const url = `http://${container}:${ttydPort()}/` // DevSkim: ignore DS162092
+  const url = `http://${container}:${ttydPort()}/` // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
 
   while (Date.now() - start < timeoutMs) {
     try {

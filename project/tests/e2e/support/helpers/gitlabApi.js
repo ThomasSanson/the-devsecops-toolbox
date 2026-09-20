@@ -1,7 +1,7 @@
 const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
 const { runCommand, composeService } = require('./docker')
 
-const BASE_URL = 'http://gitlab:80'
+const BASE_URL = 'http://gitlab:80' // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
 
 function getLambdaUsername () {
   return process.env.TASK_GITLAB_LAMBDA_USER
@@ -209,7 +209,7 @@ async function rotateProjectAccessToken (projectName, tokenId, headers) {
 // returns { valid, errors, warnings, merged_yaml }.
 async function lintProjectCi (projectName, headers, ref = 'main') {
   return freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/ci/lint?ref=${ref}&dry_run=false`,
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/ci/lint?content_ref=${encodeURIComponent(ref)}&dry_run=false`,
     headers
   )
 }

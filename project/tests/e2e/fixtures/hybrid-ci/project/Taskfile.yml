@@ -1,0 +1,30 @@
+---
+version: "3"
+
+vars:
+  COMPOSE: docker compose -f project/docker-compose.yml
+
+tasks:
+  project:plan: { cmds: ["echo 'Project plan complete'"] }
+  project:code:
+    cmds:
+      - sh project/code/check-runtime.sh
+  project:build:
+    cmds:
+      - "{{.COMPOSE}} build"
+  project:deploy:
+    deps: [project:build]
+    cmds:
+      - "{{.COMPOSE}} up -d --wait --wait-timeout 60"
+  project:test:
+    cmds:
+      - defer: { task: project:operate:web:down }
+      - task: project:deploy
+      - sh project/tests/health.sh
+  project:operate:web:down:
+    cmds:
+      - "{{.COMPOSE}} down --remove-orphans"
+  project:release: { cmds: ["echo 'Project release complete'"] }
+  project:operate: { cmds: ["echo 'Project operations complete'"] }
+  project:monitor: { cmds: ["echo 'Project monitoring complete'"] }
+  project:feedback: { cmds: ["echo 'Project feedback complete'"] }

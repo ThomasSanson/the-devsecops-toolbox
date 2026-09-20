@@ -7,7 +7,7 @@
 test:
   stage: test
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   retry: 1
   # The suite is sharded: each of the 9 parallel jobs boots its own full test
   # environment (GitLab CE, Chromium, scenario containers) and runs only the
@@ -75,7 +75,7 @@ test:
 storyboard-coverage:
   stage: test
   needs: [] # Parallel, fast (~seconds): a git diff, no environment to boot.
-  extends: .default-tags
+  extends: .native-job
   # The guard needs only git + bash, both in the base image — skip the heavy
   # curl/task/dev:init:ci bootstrap so an unrelated setup hiccup can't mask it.
   before_script: []
@@ -98,7 +98,7 @@ storyboard-coverage:
 no-cheat:
   stage: test
   needs: [] # Parallel, fast (~seconds): a git diff, no environment to boot.
-  extends: .default-tags
+  extends: .native-job
   # The guard needs only git + bash, both in the base image — skip the heavy
   # curl/task/dev:init:ci bootstrap so an unrelated setup hiccup can't mask it.
   before_script: []

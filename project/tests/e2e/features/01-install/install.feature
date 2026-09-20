@@ -38,6 +38,8 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     And the developer keeps the complete framework and the first question asks about Ansible
     # Note: The next question asks which CI/CD platform to use — the automatic build-and-deploy system that runs on every change; the developer keeps the default, GitLab.
     And the developer keeps GitLab as the CI/CD platform
+    # Note: Docker jobs need a runner that can start containers. The developer keeps the existing saas-linux-medium-amd64 tag; file checks do not need this tag.
+    And the developer keeps the existing medium runner tag for Docker jobs
     # Note: The next question asks which tool runs the containers; the developer keeps the default, Docker.
     And the developer keeps Docker as the container runtime
     # Note: With Docker chosen, the setup offers to create project/docker-compose.yml; the developer keeps the default, yes.
@@ -76,7 +78,7 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     And GitLab now keeps that token as a CI/CD variable
     # Chapter: The merge request proves itself
-    # Note: The framework merge request, now merged: the green Merged badge, the pipeline that passed all 17 jobs, and the branch joined into main. A project-scoped runner (the machine that runs the pipeline) ran the checks; the merge only happened once they were green — reached through review, never a forced push.
+    # Note: The framework merge request, now merged: the green Merged badge, the pipeline that passed every job, and the branch joined into main. A project-scoped runner (the machine that runs the pipeline) ran the checks; the merge only happened once they were green — reached through review, never a forced push.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     Then the framework pipeline passes and the merge request merges into main
     # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — and the commit's own pipeline runs green, so main built clean after the merge. The first install is proven end to end.

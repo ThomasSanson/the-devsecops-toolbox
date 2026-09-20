@@ -1,8 +1,4 @@
 ---
-# Defines project-specific runner tags. Extend this in jobs with "extends: .default-tags".
-# Keep it empty if you want no enforced tags.
+# Runner selection for Docker jobs. Native checks use .native-job instead.
 .default-tags:
-  tags:
-{%- if ci_platform == 'gitlab_saas' %}
-    - saas-linux-medium-amd64
-{%- endif %}
+  tags: {{ gitlab_docker_runner_tags | tojson }}

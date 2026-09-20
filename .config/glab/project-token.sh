@@ -160,20 +160,9 @@ verify_ci_variable_token() {
   fi
   : "${host:=gitlab.com}"
 
-  # No HTTP client available: cannot verify the token, force re-sync.
-  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    return 1
-  fi
-
-  # Try HTTPS first (gitlab.com default), fall back to HTTP (self-hosted/local).
-  # Avoids fragile protocol detection via glab config which varies across versions.
-  if command -v curl >/dev/null 2>&1; then
-    curl -sf --connect-timeout 5 -o /dev/null "https://${host}/api/v4/user" -H "Authorization: Bearer ${cred}" 2>/dev/null ||
-      curl -sf --connect-timeout 5 -o /dev/null "http://${host}/api/v4/user" -H "Authorization: Bearer ${cred}"
-  else
-    wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "https://${host}/api/v4/user" 2>/dev/null ||
-      wget -q -T 5 -O /dev/null --header="Authorization: Bearer ${cred}" "http://${host}/api/v4/user"
-  fi
+  # Use the host's configured API protocol, exactly as the variable lookup did.
+  # A failed HTTPS request must never send the credential again over HTTP.
+  GITLAB_TOKEN="$cred" glab api --hostname "$host" user >/dev/null 2>&1
 }
 
 check_permissions() {

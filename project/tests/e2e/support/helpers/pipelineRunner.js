@@ -69,7 +69,7 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   runCommandWithResult("docker ps -a --filter status=exited --format '{{.Names}}' | grep -E '^runner-' | xargs -r docker rm -f")
   const reg = runCommandWithResult(
     `docker exec ${svc} gitlab-runner register --non-interactive ` +
-    `--url http://gitlab --token ${glrt} --executor docker ` +
+    `--url http://gitlab --token ${glrt} --executor docker ` + // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     `--docker-image alpine:3.20 --docker-network-mode ${RUNNER_NET} ` +
     '--docker-privileged --docker-volumes /certs/client'
   )
@@ -90,7 +90,7 @@ async function teardownScopedRunner (runner, rootHeaders) {
   if (runner.svc && runner.runnerToken) {
     try {
       runCommandWithResult(
-        `docker exec ${runner.svc} gitlab-runner unregister --url http://gitlab --token ${runner.runnerToken}`
+        `docker exec ${runner.svc} gitlab-runner unregister --url http://gitlab --token ${runner.runnerToken}` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
       )
     } catch (_) {}
   }

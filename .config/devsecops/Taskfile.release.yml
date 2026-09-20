@@ -153,7 +153,7 @@ tasks:
           BRANCH="${TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH:-{{.TASK_DEVSECOPS_RELEASE_DEFAULT_BRANCH}}}"
 
           REMOTE_PROTOCOL="https"
-          if echo "$API_URL" | grep -Eq '^http://'; then
+          if [ "${API_URL%%:*}" = "http" ]; then
             REMOTE_PROTOCOL="http"
           fi
 

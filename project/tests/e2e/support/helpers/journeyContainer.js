@@ -45,7 +45,7 @@ const SETUP_TIMEOUT = 300000
 function setupClonedProjectTerminal (projectName, cloneToken) {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   const encodedToken = encodeURIComponent(cloneToken)
-  const cloneUrl = `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git`
+  const cloneUrl = `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   const name = containerName()
 
   runCommand(

@@ -32,7 +32,7 @@ function bootstrapWorkspaceRepo (projectName, repoDir, glabToken, { runInit = fa
     export PATH="$HOME/.local/bin:$PATH"
 
     rm -rf "$REPO_DIR" || true
-    git clone "http://$LAMBDA_USER:$CLONE_TOKEN@gitlab/$LAMBDA_USER/$PROJECT_NAME.git" "$REPO_DIR"
+    git clone "http://$LAMBDA_USER:$CLONE_TOKEN@gitlab/$LAMBDA_USER/$PROJECT_NAME.git" "$REPO_DIR" # DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
 
     cp -r /workspace/. "$REPO_DIR/"
 

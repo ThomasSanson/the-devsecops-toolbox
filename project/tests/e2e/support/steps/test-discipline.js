@@ -393,7 +393,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   )
 
   const user = lambdaUser()
-  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
+  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   fs.rmSync(FIXTURE_DIR, { recursive: true, force: true })
   // chown: the tar-extracted /workspace keeps the HOST uid, and git refuses to
   // work in a repository owned by another user (dubious ownership).

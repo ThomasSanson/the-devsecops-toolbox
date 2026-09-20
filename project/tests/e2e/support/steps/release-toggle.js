@@ -207,7 +207,7 @@ function wirePublishStep (repoDir) {
 // the push (and crashes there). The token-bearing remote URL is swallowed.
 function pushFeatToMain (repoDir, token) {
   const user = lambdaUser()
-  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
+  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   try {
     runTaskInRepo([
       'git init --quiet --initial-branch=main',

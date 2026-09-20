@@ -174,7 +174,7 @@ async function assertCloneWithVariable (variableName) {
   const cloneDir = `/tmp/${projectName}-clone`
   try {
     execSync(
-      `rm -rf ${cloneDir} && git clone http://${lambdaUser}:${tokenValue}@gitlab/${lambdaUser}/${projectName}.git ${cloneDir}`,
+      `rm -rf ${cloneDir} && git clone http://${lambdaUser}:${tokenValue}@gitlab/${lambdaUser}/${projectName}.git ${cloneDir}`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
       { stdio: 'pipe', timeout: 120000 }
     )
   } catch (error) {
@@ -214,7 +214,7 @@ async function cloneProofFrame (frameName, variableName) {
   const variable = await readProjectVariable(projectName, variableName, await getRootHeaders())
   const tokenValue = variable.data && variable.data.value
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const realUrl = `http://${lambdaUser}:${tokenValue}@gitlab/${lambdaUser}/${projectName}.git`
+  const realUrl = `http://${lambdaUser}:${tokenValue}@gitlab/${lambdaUser}/${projectName}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   let out
   try {
     out = execSync(`git ls-remote ${realUrl}`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, encoding: 'utf8' })
@@ -223,7 +223,7 @@ async function cloneProofFrame (frameName, variableName) {
   }
   const maskedOut = out.replace(/^[0-9a-f]{40}\t/gm, '<sha>\t').replace(/\r/g, '').trimEnd()
   const shown =
-    `$ git ls-remote http://<lambda-user>:<token>@gitlab/<lambda-user>/${projectName}.git\n` +
+    `$ git ls-remote http://<lambda-user>:<token>@gitlab/<lambda-user>/${projectName}.git\n` + // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     (maskedOut || '(authenticated — remote reachable)')
   await renderPreFrame(I, frameName, shown)
 }
@@ -423,7 +423,9 @@ async function provisionGeneratedProject (name) {
   execSync(`rm -rf ${repoDirFor(name)} && mv ${rendered} ${repoDirFor(name)}`)
 
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const remote = `http://${lambdaUser}:${encodeURIComponent(glabToken)}@gitlab/${lambdaUser}/${name}.git`
+  const remote = new URL(`${BASE_URL}/${lambdaUser}/${name}.git`)
+  remote.username = lambdaUser
+  remote.password = glabToken
   execSync(`git remote add origin ${remote} && git push -q -u origin main`, {
     cwd: repoDirFor(name), stdio: 'pipe', timeout: 120000
   })

@@ -193,7 +193,7 @@ async function wireAutomationVariable (projectName, name, rootHeaders) {
 // commit is fast and deterministic (protected-commits covers hook enforcement).
 function pushFrameworkToMain (repoDir, token) {
   const user = lambdaUser()
-  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
+  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   try {
     runTaskInRepo([
       'git init --quiet --initial-branch=main',
@@ -358,19 +358,19 @@ storyboardStep(When, 'the developer clones the project into a fresh workspace fo
   sh(`mkdir -p gitlab/${user}/${PROJECT_NAME}`, workspaceHome())
   // Keep only the deterministic first clone line; the remote-counting lines
   // that follow carry object counts and speeds.
-  const cloneOut = sh(`git clone http://gitlab/${user}/${PROJECT_NAME}.git .`, dir)
+  const cloneOut = sh(`git clone http://gitlab/${user}/${PROJECT_NAME}.git .`, dir) // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     .split('\n').filter(l => l.startsWith('Cloning into'))[0] || ''
   const checkoutOut = sh(`git checkout ${BRANCH}`, dir)
   // Off-camera plumbing a real developer has globally: a git identity, and
   // credentials for pushing (the push URL carries the token; it is never
   // printed on a card).
   sh('git config user.email "lambda@test.local" && git config user.name "Lambda"', dir)
-  sh(`git remote set-url --push origin http://${user}:${encodeURIComponent(global.dailyGlabToken)}@gitlab/${user}/${PROJECT_NAME}.git`, dir)
+  sh(`git remote set-url --push origin http://${user}:${encodeURIComponent(global.dailyGlabToken)}@gitlab/${user}/${PROJECT_NAME}.git`, dir) // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   await renderPreFrame(I, 'workspace-clone', [
     '$ cd ~/workspace',
     `$ mkdir -p gitlab/${user}/${PROJECT_NAME}`,
     `$ cd gitlab/${user}/${PROJECT_NAME}`,
-    `$ git clone http://gitlab/${user}/${PROJECT_NAME}.git .`,
+    `$ git clone http://gitlab/${user}/${PROJECT_NAME}.git .`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     cloneOut,
     `$ git checkout ${BRANCH}`,
     checkoutOut

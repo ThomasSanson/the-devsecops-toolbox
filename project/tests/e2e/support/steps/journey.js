@@ -177,7 +177,7 @@ async function openBlankProjectTerminal () {
   }
 
   global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
 }
@@ -256,7 +256,7 @@ const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 
 storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", async () => {
   global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await updateCard(
@@ -377,6 +377,7 @@ const NOTHING_MARKER = 'Nothing selected'
 const COPIER_PROMPTS = [
   'Do you need Ansible?',
   'Which CI/CD platform are you using?',
+  'Runner tags for jobs that need Docker',
   'Which container runtime would you like to use?',
   'Generate a docker-compose.yml file',
   'Can your CI runners start privileged containers',
@@ -403,7 +404,7 @@ async function openReadmeProjectTerminal () {
     throw new Error(`Failed to create project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
   global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
 }
@@ -416,7 +417,7 @@ async function openReadmeProjectTerminal () {
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
 async function launchWorkingBranchInstaller () {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(2)
   I.click('.xterm-screen')
@@ -522,7 +523,7 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
 // Back to the live terminal — a NEW shell session (the GitLab capture navigated
 // away); the cloned repo state lives on disk, not in the session.
 storyboardStep(When, 'the developer opens the cloned project in the terminal', async () => {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
@@ -616,9 +617,9 @@ storyboardStep(When, 'the developer pushes the AI agent files to main', async ()
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   execInContainerAsUser(global.journeyContainer, 'bootstrap', [
     `cd ${PROJECT_DIR}`,
-    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`,
+    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     'git config --global credential.helper store',
-    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`,
+    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     'chmod 600 "$HOME/.git-credentials"'
   ].join('\n'))
   await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
@@ -1049,6 +1050,20 @@ storyboardStep(Then, 'the framework pipeline passes and the merge request merges
   }
   // Twin FIRST: the green pipeline (18 jobs) unblocked the merge, MR is merged.
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
+  // GitLab removes the source branch asynchronously after accepting the merge.
+  // Wait for that result before photographing the merged widget.
+  const sourceBranch = merged.data.source_branch
+  if (!sourceBranch) throw new Error('The merged request must name its source branch')
+  const branchDeletionPollSeconds = 2
+  let branches = []
+  for (let i = 0; i < 30; i++) {
+    const listed = await listProjectBranches(global.journeyProjectName, rootHeaders)
+    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
+    branches = (listed.data || []).map(branch => branch.name)
+    if (!branches.includes(sourceBranch)) break
+    await I.wait(branchDeletionPollSeconds)
+  }
+  if (branches.includes(sourceBranch)) throw new Error(`Expected the source branch ${sourceBranch} to be deleted by the merge`)
   // ONE proof: the merged merge-request page, full width — the Merged badge,
   // its pipeline shown passed, the branch joined into main.
   I.resizeWindow(1024, 900)
@@ -1243,7 +1258,7 @@ storyboardStep(Given, 'a brand-new empty project waits on GitLab', async () => {
 storyboardStep(Given, 'the developer has just cloned it into the terminal', async () => {
   // The GitLab navigation left the ttyd page — return to it (the shell session
   // is still alive, xterm reconnects) before driving the terminal.
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
@@ -1259,6 +1274,8 @@ storyboardStep(When, 'the developer starts the toolbox installer', async () => {
 storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible'))
 
 storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
+
+storyboardStep(When, 'the developer keeps the existing medium runner tag for Docker jobs', () => captureCopierQuestion('Enter', 'Runner tags for jobs that need Docker', 'copier-docker-runner-tags'))
 
 storyboardStep(When, 'the developer keeps Docker as the container runtime', () => captureCopierQuestion('Enter', 'Which container runtime would you like to use?', 'copier-runtime'))
 
