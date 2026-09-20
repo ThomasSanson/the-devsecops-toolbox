@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.0.0 (2026-09-20)
+
+### Feat
+
+- **ci**: separate file checks from Docker jobs
+
 ## 23.2.0 (2026-09-19)
 
 ### Feat
