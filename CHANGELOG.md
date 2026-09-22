@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.0.1 (2026-09-22)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.19.0
+
 ## 24.0.0 (2026-09-20)
 
 ### Feat
