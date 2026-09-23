@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.1.0 (2026-09-23)
+
+### Feat
+
+- **update**: deliver a toolbox release through a merge request
+
 ## 24.0.1 (2026-09-22)
 
 ### Fix
