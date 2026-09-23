@@ -41,9 +41,10 @@ tasks:
       # Self-hosted options: Renovate ignores them in a repository config, so
       # the run must carry them. allowScripts lets the copier manager pass
       # --trust (the template declares tasks, Copier refuses it otherwise);
-      # allowedCommands lets the framework-evolution postUpgradeTasks run.
+      # allowedCommands lets the framework-evolution postUpgradeTasks run. Renovate
+      # starts that command without a shell, so it is one task call, no &&.
       RENOVATE_ALLOW_SCRIPTS: "true"
-      RENOVATE_ALLOWED_COMMANDS: '["^git checkout -- \\. && git clean -fd && task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS=.+$"]'
+      RENOVATE_ALLOWED_COMMANDS: '["^task devsecops:code:sync-templates:renovate TASK_COPIER_CLI_OPTS=.+$"]'
     vars:
       TASK_RENOVATE_CMD:
         sh: |

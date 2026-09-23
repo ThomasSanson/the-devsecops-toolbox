@@ -61,4 +61,23 @@ tasks:
           # --vcs-ref to move to a precise release. Hardcoding the options here
           # silently dropped it, and the update ran against the wrong target.
           TASK_COPIER_CLI_OPTS: '{{.TASK_COPIER_CLI_OPTS | default "--skip-answered"}}'
+
+  sync-templates:renovate:
+    desc: "Renovate only: discards every uncommitted change, then syncs the project templates."
+    summary: |
+      ℹ️ Description:
+        What Renovate's post-upgrade command calls on a toolbox release. Renovate's
+        own Copier run works from the folder of the answers file: it bumps the
+        version line, leaves a stray VERSION in .config/devsecops/ and regenerates
+        nothing. This throws all of that away, then runs sync-templates from the
+        project root.
+
+        Renovate runs post-upgrade commands without a shell, so this has to be one
+        command it can call: a line chained with && hands "&&" to git as a path.
+
+        It discards uncommitted work: on your own copy, run sync-templates instead.
+    cmds:
+      - git checkout -- .
+      - git clean -fd
+      - task: sync-templates
 {%- endraw %}
