@@ -13,6 +13,7 @@ const { I } = inject()
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
+const { pathToFileURL } = require('url')
 const {
   renderProject,
   prepareVersionedTemplate,
@@ -32,6 +33,7 @@ const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFram
 let rendered = null
 let template = null
 let cleanupDirs = []
+let renovateEnv = ''
 let renovateResult = null
 
 Before(() => {
@@ -39,6 +41,7 @@ Before(() => {
   template = null
   cleanupDirs = []
   renovateResult = null
+  renovateEnv = ''
 })
 
 After(() => {
@@ -482,6 +485,7 @@ storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust'
   const gitEnv = isolatedGitEnv(dir)
   execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
   const envConfig = renovateEnvConfig(dir, gitEnv)
+  renovateEnv = envConfig
   if (!/"allowScripts":\s*true/.test(envConfig)) {
     throw new Error(`task renovate must export allowScripts=true, Renovate resolved:\n${envConfig}`)
   }
@@ -494,6 +498,74 @@ storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust'
     'task renovate, as Renovate resolved it:',
     envConfig
   ].join('\n'))
+})
+
+// Renovate hands a post-upgrade command to its own executor, which splits it
+// with shlex and starts the first word with shell: false (the default of
+// allowShellExecutorForPostUpgradeCommands), under a short list of inherited
+// variables. The same code runs it here, from the Renovate the test image
+// pins, so a command that only works in a shell fails here as it does there.
+async function renovateInternals () {
+  const root = execSync('npm root -g', { encoding: 'utf8' }).trim()
+  const load = file => import(pathToFileURL(path.join(root, 'renovate/dist', file)).href)
+  const [{ rawExec }, { getChildProcessEnv }, { regEx }] = await Promise.all([
+    load('util/exec/common.js'), load('util/exec/env.js'), load('util/regex.js')
+  ])
+  return { rawExec, getChildProcessEnv, regEx }
+}
+
+// What stays on the card: git clean naming what it removed, and the task's own
+// start and end lines. Copier's file-by-file report and uv's download lines
+// carry versions and timings, and go to stderr anyway.
+const POST_UPGRADE_LINES = [/^Removing /, /^🔄 /, /^🎉 /]
+
+storyboardStep(Then, "Renovate's post-upgrade command runs without a shell and brings the new release in", async () => {
+  const tpl = prepareVersionedTemplate()
+  cleanupDirs.push(tpl)
+  const dir = renderProjectFromTemplate(tpl, '1.0.0')
+  cleanupDirs.push(dir)
+  // What Renovate's own Copier run leaves in the branch for 1.0.1, working from
+  // .config/devsecops/: the version line bumped, a stray VERSION, nothing else.
+  const answers = path.join(dir, '.config/devsecops/.copier-answers.yml')
+  fs.writeFileSync(answers, fs.readFileSync(answers, 'utf8').replace(/^_commit: 1\.0\.0$/m, '_commit: 1.0.1'))
+  fs.writeFileSync(path.join(dir, '.config/devsecops/VERSION'), '0.1.0\n')
+
+  const config = JSON.parse(fs.readFileSync(path.join(dir, '.config/renovate/config.json'), 'utf8'))
+  const rule = (config.packageRules || []).find(r => JSON.stringify(r).includes('DevSecOps Toolbox'))
+  const commands = ((rule || {}).postUpgradeTasks || {}).commands || []
+  if (commands.length === 0) throw new Error('The toolbox rule carries no postUpgradeTasks command')
+  const allowed = JSON.parse((renovateEnv.match(/"allowedCommands":\s*(\[[^\]]*\])/) || [])[1] || '[]')
+
+  const { rawExec, getChildProcessEnv, regEx } = await renovateInternals()
+  const shown = []
+  for (const cmd of commands) {
+    const compiled = cmd.replace('{{{newVersion}}}', '1.0.1')
+    // Twin: Renovate skips a command no allowedCommands pattern matches, and
+    // reports it as an artifact error.
+    if (!allowed.some(pattern => regEx(pattern).test(compiled))) {
+      throw new Error(`Renovate would refuse "${compiled}": no allowedCommands pattern matches it. Resolved: ${JSON.stringify(allowed)}`)
+    }
+    let run
+    try {
+      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf-8' })
+    } catch (e) {
+      throw new Error(`Renovate's post-upgrade command failed without a shell, exit=${e.exitCode}\n$ ${compiled}\n${e.stderr || e.message}`)
+    }
+    shown.push(`$ ${compiled}`, ...run.stdout.split('\n').map(l => l.trim()).filter(l => POST_UPGRADE_LINES.some(re => re.test(l))))
+  }
+
+  // Twins: the stray file is gone, and the release really landed.
+  if (fs.existsSync(path.join(dir, '.config/devsecops/VERSION'))) {
+    throw new Error('The stray .config/devsecops/VERSION Renovate left behind is still there')
+  }
+  if (!/^_commit: 1\.0\.1$/m.test(fs.readFileSync(answers, 'utf8'))) {
+    throw new Error('Expected the answers file to record release 1.0.1 after the update')
+  }
+  if (!fs.readFileSync(path.join(dir, UPDATE_MARKER_FILE), 'utf8').includes(UPDATE_MARKER)) {
+    throw new Error(`Expected release 1.0.1's change (${UPDATE_MARKER} in ${UPDATE_MARKER_FILE}) in the project`)
+  }
+  const status = execSync('git status --short', { cwd: dir, encoding: 'utf8' }).trimEnd()
+  await renderPreFrame(I, 'contract-post-upgrade', [...shown, '', '$ git status --short', status].join('\n'))
 })
 
 storyboardStep(Then, "a downstream project's renovate ignores stale framework-owned .config drift", async () => {
