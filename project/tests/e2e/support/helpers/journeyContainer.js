@@ -272,7 +272,7 @@ function setupManualUpdateTerminal (projectName, pushToken) {
     template: prepareVersionedTemplate(),
     vcsRef: '1.0.0',
     commitMessage: 'chore: project generated from an earlier toolbox release',
-    push: `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git`
+    push: `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   })
   authenticateGlab(name, pushToken)
   return name

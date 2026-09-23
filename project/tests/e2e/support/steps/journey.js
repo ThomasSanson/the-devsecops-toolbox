@@ -400,7 +400,7 @@ storyboardStep(Given, 'GitLab holds that main branch on its own', async () => {
 })
 
 storyboardStep(When, 'the developer asks for the new toolbox release from the main branch', async () => {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
