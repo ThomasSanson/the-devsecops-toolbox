@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.1.2 (2026-09-24)
+
+### Fix
+
+- **renovate**: hand the post-upgrade command to one task Renovate can call
+
 ## 24.1.1 (2026-09-23)
 
 ### Fix
