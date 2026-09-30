@@ -143,6 +143,8 @@ storyboardStep(When, "the generated project's OSV scan leaves inherited tools to
   const result = scan()
   assert.equal(result.exitCode, 0, `Inherited framework tools must not block a generated project:\n${result.report}`)
   assert.ok(/no package sources found/i.test(result.report), 'The report must explain that there is no project dependency to scan')
+  assert.ok(result.output.includes('Successfully linted all files without errors'), 'An empty scan must be a clean success, without ignored errors')
+  assert.ok(result.report.includes('No issues found'), 'OSV must return its native clean verdict for an empty scan')
   await showReport('inherited-tools-excluded', result)
 })
 
@@ -178,8 +180,8 @@ storyboardStep(When, 'the developer updates the framework through Copier', async
   assert.equal(fs.readFileSync(path.join(state.project, PROJECT_CONFIG), 'utf8'), state.override)
   for (const file of PROJECT_LOCKS) assert.ok(fs.existsSync(path.join(state.project, file)))
   const answers = run('grep', ['^_commit:', '.config/devsecops/.copier-answers.yml'])
-  const argumentsBlock = run('grep', ['-A', '12', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
-  await renderPreFrame(I, 'copier-keeps-osv-scope', `$ grep '^_commit:' .config/devsecops/.copier-answers.yml\n${answers}\n$ grep -A 12 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' ${BASE_CONFIG}\n${argumentsBlock}`)
+  const argumentsBlock = run('grep', ['-A', '13', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
+  await renderPreFrame(I, 'copier-keeps-osv-scope', `$ grep '^_commit:' .config/devsecops/.copier-answers.yml\n${answers}\n$ grep -A 13 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' ${BASE_CONFIG}\n${argumentsBlock}`)
 })
 
 storyboardStep(Then, 'OSV keeps the same ownership boundary after the update', async () => {
@@ -198,5 +200,7 @@ storyboardStep(Then, "the project's empty OSV scan passes with a clear result", 
   const result = scan()
   assert.equal(result.exitCode, 0, result.report)
   assert.ok(/no package sources found/i.test(result.report))
+  assert.ok(result.output.includes('Successfully linted all files without errors'), 'The empty scan must stay a clean success after Copier updates')
+  assert.ok(result.report.includes('No issues found'), 'OSV must still return its native clean verdict after Copier updates')
   await showReport('empty-project-scan', result)
 })

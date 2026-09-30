@@ -82,6 +82,7 @@ The toolbox scans these dependencies itself and ships fixes through Copier updat
 Keep project tools in their own directories: dependencies elsewhere, including
 other tools under `.config/`, remain scanned. Custom OSV arguments in
 `.config/megalinter/config.yml` are appended to the inherited arguments.
+An empty project scan reports `No issues found` and succeeds.
 
 ## Update an existing project
 

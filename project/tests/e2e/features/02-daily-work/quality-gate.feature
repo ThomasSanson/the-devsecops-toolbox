@@ -51,6 +51,6 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The developer removes the four disposable project lockfiles. Only inherited framework dependencies remain.
     # Copy: find .config -name package-lock.json | sort
     When the developer removes the project dependency fixtures
-    # Note: OSV has nothing left to scan for the project and MegaLinter passes. An empty scan does not turn into a pipeline failure.
+    # Note: OSV reports "No package sources found" and "No issues found". MegaLinter passes: an empty project scan succeeds without an error diagnostic.
     # Copy: task megalinter
     Then the project's empty OSV scan passes with a clear result
