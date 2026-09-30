@@ -87,11 +87,19 @@ async function scan () {
 }
 
 async function showReport (name, result) {
-  // The scanner's full text report is the proof. Only versions and filesystem
-  // walk durations vary between runs; findings and paths remain unmasked.
-  const report = result.report
+  const directory = path.join(__dirname, '../../_output/osv-reports')
+  fs.mkdirSync(directory, { recursive: true })
+  fs.writeFileSync(path.join(directory, `${name}.log`), result.report)
+  // Keep the raw report for assertions and artifacts. Filesystem traversal
+  // order and counters depend on the host; render scan lines in path order.
+  // Findings, scanned paths, package counts and extract calls remain intact.
+  const lines = result.report.split('\n')
+  const scans = lines.filter(line => line.startsWith('Scanned ')).sort()
+  let index = 0
+  const report = lines.map(line => line.startsWith('Scanned ') ? scans[index++] : line).join('\n')
     .replace(/version [0-9.]+/g, 'version <version>')
     .replace(/megalinter\.io\/[0-9.]+\//g, 'megalinter.io/<version>/')
+    .replace(/\d+ dirs visited, \d+ inodes visited/g, '<dirs> dirs visited, <inodes> inodes visited')
     .replace(/[0-9.]+(?:ns|µs|ms|s) elapsed, [0-9.]+(?:ns|µs|ms|s) wall time/g, '<duration> elapsed, <duration> wall time')
   await renderPreFrame(I, name, `$ cat ${result.file}\n${report}`, { colour: true, height: 1000 })
 }
