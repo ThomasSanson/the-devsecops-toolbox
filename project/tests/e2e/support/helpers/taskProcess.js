@@ -1,4 +1,5 @@
 const { spawn } = require('child_process')
+const { parentPort, workerData } = require('worker_threads')
 
 // Keep real task output flowing to CodeceptJS's worker monitor while retaining
 // the complete output for assertions. A silent synchronous image pull can make
@@ -16,6 +17,8 @@ function runTask (directory, args, { timeout = 900000, colour = '1' } = {}) {
       const text = chunk.toString()
       raw += text
       console.log(text.trimEnd())
+      // CodeceptJS monitors worker messages, independently of stdout.
+      if (parentPort) parentPort.postMessage({ type: 'task-output', workerIndex: workerData.workerIndex, output: text })
     }
     child.stdout.on('data', collect)
     child.stderr.on('data', collect)

@@ -55,6 +55,15 @@ Feature: a freshly generated project passes its own quality gate
     # Copy: task megalinter
     Then the project's empty OSV scan passes with a clear result
 
+  @task-progress
+  Scenario: a worker reports real task progress and preserves failures
+    # Note: A disposable task prints real output, then exits with an error. No artificial heartbeat is involved.
+    # Copy: cat Taskfile.yml
+    Given a task emits real output before failing
+    # Note: The parent receives the task's actual output while it runs, and the failed exit code remains a failure.
+    # Copy: task probe
+    When the worker reports the output and keeps the failed task status
+
   @framework-dependencies
   Scenario: the toolbox ships dependencies that pass its own OSV scan
     # Note: The maintainer checks the actual dependency versions shipped by the toolbox. Its base config keeps framework dependencies in the scan.

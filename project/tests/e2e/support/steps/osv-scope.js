@@ -3,10 +3,11 @@ const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
+const { Worker } = require('worker_threads')
 const {
   COPIER, prepareVersionedTemplate, renderProjectFromTemplate, removeRendered
 } = require('../helpers/copierRender')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { renderPreFrame, stripAnsi } = require('../helpers/capturedOutput')
 const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I } = inject()
@@ -197,6 +198,42 @@ storyboardStep(Then, "the project's empty OSV scan passes with a clear result", 
   assert.ok(result.output.includes('Successfully linted all files without errors'), 'The empty scan must stay a clean success after Copier updates')
   assert.ok(result.report.includes('No issues found'), 'OSV must still return its native clean verdict after Copier updates')
   await showReport('empty-project-scan', result)
+})
+
+storyboardStep(Given, 'a task emits real output before failing', async () => {
+  state.project = fs.mkdtempSync('/tmp/osv-task-progress-')
+  state.dirs.push(state.project)
+  const taskfile = "version: '3'\ntasks:\n  probe:\n    silent: true\n    cmds:\n      - printf 'native task output\\n' >&2\n      - exit 7\n"
+  fs.writeFileSync(path.join(state.project, 'Taskfile.yml'), taskfile)
+  await renderPreFrame(I, 'failing-task', `$ cat Taskfile.yml\n${taskfile}`)
+})
+
+storyboardStep(When, 'the worker reports the output and keeps the failed task status', async () => {
+  const progress = []
+  const result = await new Promise((resolve, reject) => {
+    const worker = new Worker(`
+      const { parentPort, workerData } = require('worker_threads')
+      const { runTask } = require(workerData.helper)
+      runTask(workerData.directory, ['probe'], { timeout: 15000, colour: '0' })
+        .then(result => parentPort.postMessage({ type: 'result', result }))
+        .catch(error => { throw error })
+    `, {
+      eval: true,
+      workerData: { directory: state.project, helper: require.resolve('../helpers/taskProcess'), workerIndex: 1 }
+    })
+    worker.on('message', message => {
+      if (message.type === 'task-output') progress.push(message.output)
+      if (message.type === 'result') resolve(message.result)
+    })
+    worker.on('error', reject)
+    worker.on('exit', code => { if (code !== 0) reject(new Error(`Task worker exited ${code}`)) })
+  })
+  assert.ok(progress.length > 0, 'The worker monitor must receive actual task output while the task runs')
+  assert.equal(progress.join(''), result.raw, 'Every progress message must come from the task output')
+  assert.notEqual(result.exitCode, 0, 'Task failures must remain failures')
+  assert.ok(result.raw.includes('native task output'))
+  assert.ok(result.raw.includes('exit status 7'))
+  await renderPreFrame(I, 'failed-task-progress', `$ task probe\n${stripAnsi(progress.join(''))}\nWorker task exit code: ${result.exitCode}`)
 })
 
 storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {
