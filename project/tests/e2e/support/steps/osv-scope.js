@@ -7,6 +7,7 @@ const {
   COPIER, prepareVersionedTemplate, renderProjectFromTemplate, removeRendered
 } = require('../helpers/copierRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
+const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I } = inject()
 
@@ -75,16 +76,9 @@ function configureScanner () {
     database, path.join(FIXTURES, `${ADVISORY}.json`)])
 }
 
-function scan () {
-  let exitCode = 0
-  let output
-  try {
-    output = run('task', ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=ml-osv-${process.pid}-${sequence++}`])
-  } catch (error) {
-    assert.equal(typeof error.status, 'number', 'The scanner must finish, rather than time out')
-    exitCode = error.status
-    output = `${error.stdout || ''}${error.stderr || ''}`
-  }
+async function scan () {
+  const { raw: output, exitCode } = await runTask(state.project,
+    ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=ml-osv-${process.pid}-${sequence++}`], { timeout: 300000 })
   const file = `${REPORTS}/REPOSITORY_OSV_SCANNER-${exitCode === 0 ? 'SUCCESS' : 'ERROR'}.log`
   assert.ok(fs.existsSync(path.join(state.project, file)), `OSV must run and produce its report:\n${output}`)
   const report = run('cat', [file])
@@ -140,7 +134,7 @@ storyboardStep(Given, 'every framework tool in a generated project contains the 
 })
 
 storyboardStep(When, "the generated project's OSV scan leaves inherited tools to the toolbox", async () => {
-  const result = scan()
+  const result = await scan()
   assert.equal(result.exitCode, 0, `Inherited framework tools must not block a generated project:\n${result.report}`)
   assert.ok(/no package sources found/i.test(result.report), 'The report must explain that there is no project dependency to scan')
   assert.ok(result.output.includes('Successfully linted all files without errors'), 'An empty scan must be a clean success, without ignored errors')
@@ -150,7 +144,7 @@ storyboardStep(When, "the generated project's OSV scan leaves inherited tools to
 
 storyboardStep(Then, "the toolbox's OSV scan reports the same vulnerable framework tools", async () => {
   fs.copyFileSync(`/workspace/${BASE_CONFIG}`, path.join(state.project, BASE_CONFIG))
-  const result = scan()
+  const result = await scan()
   assert.notEqual(result.exitCode, 0, 'The toolbox must block vulnerable framework tools')
   assert.ok(result.report.includes(ADVISORY))
   for (const tool of state.tools) assert.ok(result.report.includes(`Scanned .config/${tool}/package-lock.json file`), `The toolbox must scan ${tool}`)
@@ -166,7 +160,7 @@ storyboardStep(When, 'the developer adds vulnerable dependencies in project-owne
 })
 
 storyboardStep(Then, 'OSV reports every project-owned copy of the vulnerable package', async () => {
-  const result = scan()
+  const result = await scan()
   assertProjectFindings(result)
   await showReport('project-tools-reported', result)
 })
@@ -185,7 +179,7 @@ storyboardStep(When, 'the developer updates the framework through Copier', async
 })
 
 storyboardStep(Then, 'OSV keeps the same ownership boundary after the update', async () => {
-  const result = scan()
+  const result = await scan()
   assertProjectFindings(result)
   await showReport('updated-project-tools-reported', result)
 })
@@ -197,10 +191,36 @@ storyboardStep(When, 'the developer removes the project dependency fixtures', as
 })
 
 storyboardStep(Then, "the project's empty OSV scan passes with a clear result", async () => {
-  const result = scan()
+  const result = await scan()
   assert.equal(result.exitCode, 0, result.report)
   assert.ok(/no package sources found/i.test(result.report))
   assert.ok(result.output.includes('Successfully linted all files without errors'), 'The empty scan must stay a clean success after Copier updates')
   assert.ok(result.report.includes('No issues found'), 'OSV must still return its native clean verdict after Copier updates')
   await showReport('empty-project-scan', result)
+})
+
+storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {
+  state.project = prepareVersionedTemplate()
+  state.dirs.push(state.project)
+  state.base = fs.readFileSync(path.join(state.project, BASE_CONFIG), 'utf8')
+  assert.ok(!state.base.includes('--experimental-exclude=.config/'), 'The toolbox must keep its own tools in the scan')
+  fs.appendFileSync(path.join(state.project, PROJECT_CONFIG), '\nENABLE_LINTERS: [REPOSITORY_OSV_SCANNER]\nSARIF_REPORTER: false\nOUTPUT_DETAIL: detailed\n')
+  const code = 'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)'
+  const versions = run('node', ['--eval', code])
+  assert.ok(versions.includes('node_modules/undici:'))
+  await renderPreFrame(I, 'shipped-dependency-versions', `$ node --eval '${code}'\n${versions}`)
+})
+
+storyboardStep(When, "the maintainer uses the toolbox's own scanner configuration", async () => {
+  state.scan = await scan()
+  fs.writeFileSync(path.join(__dirname, '../../_output/framework-osv.log'), state.scan.report)
+  fs.writeFileSync(path.join(__dirname, '../../_output/framework-megalinter.log'), state.scan.output)
+  assert.ok(state.scan.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
+  await renderPreFrame(I, 'framework-scanner-config', `$ grep -A 2 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' ${BASE_CONFIG}\n${run('grep', ['-A', '2', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])}`)
+})
+
+storyboardStep(Then, "the toolbox's dependency scan reports no known vulnerabilities", async () => {
+  assert.equal(state.scan.exitCode, 0, `The toolbox must fix its dependency vulnerabilities:\n${state.scan.report}`)
+  assert.ok(state.scan.report.includes('No issues found'), 'OSV must report its native clean verdict')
+  await showReport('framework-dependencies-clean', state.scan)
 })

@@ -24,6 +24,8 @@ Read the acts in order and you follow one developer from an empty project all th
 
 ## Act 2 — Daily work (`02-daily-work`)
 
+- [**framework-dependencies**](02-daily-work/framework-dependencies.svg) — The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
+  Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
 - [**osv-scope**](02-daily-work/osv-scope.svg) — OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
   Chapters: Framework tools are checked in the toolbox · Project dependencies still block the project · Framework updates preserve the boundary.
   Replay: `task project:test:e2e -- --grep "@osv-scope"`

@@ -26,6 +26,7 @@ const {
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { assertTextVisualMatch, renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
+const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
@@ -235,7 +236,7 @@ function ensureGitRepo (dir) {
 // lines and mask the elapsed time it prints (the sole volatile bit). MegaLinter
 // exits non-zero when any linter fails — the cspell verdict is still in its
 // output, which is all this test reads. A per-run container name isolates workers.
-function runMegalinterCspell (dir) {
+async function runMegalinterCspell (dir) {
   // MegaLinter runs as a heavy (~multi-GB) docker image. In CI's EPHEMERAL dind the
   // image is re-pulled per scenario (≈17×/job) and a pull occasionally stalls/fails,
   // leaving the run dead mid "Pull complete …" with NO [cspell] verdict — proven by
@@ -246,13 +247,8 @@ function runMegalinterCspell (dir) {
   let raw = ''
   for (let attempt = 1; attempt <= 2; attempt++) {
     const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
-    try {
-      raw = execSync(`FORCE_COLOR=1 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
-        cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 900000, maxBuffer: 256 * 1024 * 1024
-      })
-    } catch (e) {
-      raw = (e.stdout || '') + (e.stderr || '')
-    }
+    const result = await runTask(dir, ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=${container}`])
+    raw = result.raw
     if (/with \[cspell\]/.test(stripAnsiEscapeSequences(raw))) break
   }
   const plainRaw = stripAnsiEscapeSequences(raw)
@@ -303,8 +299,8 @@ Then('the file under spell-check should visually match {string}', async (baselin
   await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${readRendered(CSPELL_SAMPLE).trimEnd()}`)
 })
 
-When('MegaLinter runs on the generated project', () => {
-  spellOutput = runMegalinterCspell(rendered)
+When('MegaLinter runs on the generated project', async () => {
+  spellOutput = await runMegalinterCspell(rendered)
 })
 
 // Setup proof for the survival half: the project-owned override AFTER copier
@@ -326,8 +322,8 @@ Given('the project registers its own word {string} in its cspell override', (wor
   execSync('git add -A && git commit --quiet --no-verify -m "test: register project cspell word"', { cwd: rendered })
 })
 
-When('MegaLinter runs on the updated project', () => {
-  spellOutput = runMegalinterCspell(rendered)
+When('MegaLinter runs on the updated project', async () => {
+  spellOutput = await runMegalinterCspell(rendered)
 })
 
 Then('MegaLinter\'s cspell should flag it, matching {string}', async (baselineName) => {

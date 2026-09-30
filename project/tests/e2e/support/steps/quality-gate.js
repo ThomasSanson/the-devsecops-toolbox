@@ -14,6 +14,7 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { renderPreFrame, stripAnsi } = require('../helpers/capturedOutput')
+const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const MEGALINTER_TIMEOUT = 900000
@@ -46,20 +47,14 @@ function scaffoldCleanProject () {
 // code stage runs — from inside the render. MegaLinter is a heavy (~multi-GB)
 // image; in CI's ephemeral dind a pull occasionally stalls, so retry once (the
 // same guard template-matrix uses) — the second attempt finds the image warm.
-function runMegalinter (dir) {
+async function runMegalinter (dir) {
   let raw = ''
   let exitCode = 0
   for (let attempt = 1; attempt <= 2; attempt++) {
     const container = `ml-gate-${process.pid}-${megalinterSeq++}`
-    exitCode = 0
-    try {
-      raw = execSync(`FORCE_COLOR=0 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
-        cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MEGALINTER_TIMEOUT, maxBuffer: 256 * 1024 * 1024
-      })
-    } catch (e) {
-      raw = (e.stdout || '') + (e.stderr || '')
-      exitCode = e.status || 1
-    }
+    const result = await runTask(dir, ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=${container}`], { timeout: MEGALINTER_TIMEOUT, colour: '0' })
+    raw = result.raw
+    exitCode = result.exitCode
     if (stripAnsi(raw).includes(VERDICT_MARKER)) break
   }
   return { raw: stripAnsi(raw), exitCode }
@@ -103,7 +98,7 @@ storyboardStep(Given, 'a freshly generated project, still untouched', async () =
 })
 
 storyboardStep(When, 'the developer runs the whole linter suite on it', async () => {
-  lintRun = runMegalinter(project)
+  lintRun = await runMegalinter(project)
   const verdict = lintRun.raw.split('\n')
     .filter(l => /Successfully linted all files|correctly linted with megalinter/.test(l))
     .map(l => l.trim())

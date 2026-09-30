@@ -54,3 +54,15 @@ Feature: a freshly generated project passes its own quality gate
     # Note: OSV reports "No package sources found" and "No issues found". MegaLinter passes: an empty project scan succeeds without an error diagnostic.
     # Copy: task megalinter
     Then the project's empty OSV scan passes with a clear result
+
+  @framework-dependencies
+  Scenario: the toolbox ships dependencies that pass its own OSV scan
+    # Note: The maintainer checks the actual dependency versions shipped by the toolbox. Its base config keeps framework dependencies in the scan.
+    # Copy: node --eval 'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)'
+    Given the maintainer checks the toolbox's shipped dependency versions
+    # Note: The toolbox's base arguments contain "--no-resolve" and keep framework tools in the scan. The scanner uses the live vulnerability database.
+    # Copy: grep -A 2 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' .config/megalinter/config.base.yml
+    When the maintainer uses the toolbox's own scanner configuration
+    # Note: OSV reads the toolbox's CodeceptJS lockfile and reports "No issues found". Known vulnerabilities fail this check.
+    # Copy: cat megalinter-reports/linters_logs/REPOSITORY_OSV_SCANNER-SUCCESS.log
+    Then the toolbox's dependency scan reports no known vulnerabilities
