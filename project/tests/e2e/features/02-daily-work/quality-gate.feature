@@ -21,3 +21,36 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The secret and dependency scanners (betterleaks, trivy, trufflehog, grype) all report zero findings, so the scaffold has nothing leaking and no known-vulnerable dependency out of the box.
     # Copy: task megalinter
     Then the secret and dependency scanners all come back clean
+
+  @osv-scope
+  Scenario: OSV checks dependencies where their owner can fix them
+    # Chapter: Framework tools are checked in the toolbox
+    # Note: Every shipped tool receives the same vulnerable lodash lockfile in a disposable project. The saved public advisory lets the real scanner work offline.
+    # Copy: find .config -name package-lock.json | sort
+    Given every framework tool in a generated project contains the same vulnerable package
+    # Note: OSV finds no project dependency to check. Inherited tools do not block the generated project, even when the project adds its own scanner arguments.
+    # Copy: task megalinter
+    When the generated project's OSV scan leaves inherited tools to the toolbox
+    # Note: The toolbox's own base config reports the same vulnerable package in every shipped tool. The exclusion only belongs to generated projects.
+    # Copy: task megalinter
+    Then the toolbox's OSV scan reports the same vulnerable framework tools
+    # Chapter: Project dependencies still block the project
+    # Note: The developer adds the same package at the repository root, in a custom tool, in a similarly named tool, and in a nested .config directory. None of these locations belongs to the framework.
+    # Copy: find . -name package-lock.json -not -path './.git/*' -not -path './megalinter-reports/*' | sort
+    When the developer adds vulnerable dependencies in project-owned locations
+    # Note: OSV reports all four project dependencies. The inherited copies remain excluded, so a blanket .config exclusion or a package-name exemption cannot pass this check.
+    # Copy: task megalinter
+    Then OSV reports every project-owned copy of the vulnerable package
+    # Chapter: Framework updates preserve the boundary
+    # Note: Copier advances the disposable project's toolbox release. The project's scanner arguments and custom tool files survive the update.
+    # Copy: task copier:update TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml TASK_COPIER_CLI_OPTS='--defaults --skip-tasks --vcs-ref 1.0.1'
+    When the developer updates the framework through Copier
+    # Note: The same scan reports the same four project dependencies after the update. The generated base arguments still exclude framework tools.
+    # Copy: task megalinter
+    Then OSV keeps the same ownership boundary after the update
+    # Note: The developer removes the four disposable project lockfiles. Only inherited framework dependencies remain.
+    # Copy: find .config -name package-lock.json | sort
+    When the developer removes the project dependency fixtures
+    # Note: OSV has nothing left to scan for the project and MegaLinter passes. An empty scan does not turn into a pipeline failure.
+    # Copy: task megalinter
+    Then the project's empty OSV scan passes with a clear result

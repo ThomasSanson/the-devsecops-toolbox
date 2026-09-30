@@ -1,6 +1,9 @@
 {
   "version": "0.2",
+  "ignoreRegExpList": ["/\\bGHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}\\b/g"],
   "words": [
+    "GHSA",
+    "lockfiles",
     "gitlabci",
     "tojson",
     "baselined",

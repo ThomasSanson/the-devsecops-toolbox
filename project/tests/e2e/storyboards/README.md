@@ -24,6 +24,9 @@ Read the acts in order and you follow one developer from an empty project all th
 
 ## Act 2 — Daily work (`02-daily-work`)
 
+- [**osv-scope**](02-daily-work/osv-scope.svg) — OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
+  Chapters: Framework tools are checked in the toolbox · Project dependencies still block the project · Framework updates preserve the boundary.
+  Replay: `task project:test:e2e -- --grep "@osv-scope"`
 - [**6. protected-commits**](02-daily-work/protected-commits.svg) — The commit checks accept clean work and secrets never reach the repository.
   Chapters: The commit message is checked · Secrets never reach the repository.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`

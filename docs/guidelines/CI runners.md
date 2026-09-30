@@ -73,6 +73,16 @@ Project lint hooks and the linters they invoke must work without a container
 engine in the direct CI job. Projects with hooks that start containers should
 postpone this update until those hooks no longer require Docker.
 
+### OSV dependency ownership
+
+Generated projects exclude the toolbox's dependency directories from OSV scans:
+`.config/ansible`, `.config/codeceptjs`, `.config/commitizen`, `.config/commitlint`,
+`.config/copier`, `.config/lizard`, `.config/megalinter` and `.config/yamllint`.
+The toolbox scans these dependencies itself and ships fixes through Copier updates.
+Keep project tools in their own directories: dependencies elsewhere, including
+other tools under `.config/`, remain scanned. Custom OSV arguments in
+`.config/megalinter/config.yml` are appended to the inherited arguments.
+
 ## Update an existing project
 
 Update through Copier in a branch and review the resulting merge request. Keep
