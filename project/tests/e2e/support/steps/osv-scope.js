@@ -7,10 +7,10 @@ const { Worker } = require('worker_threads')
 const {
   COPIER, prepareVersionedTemplate, renderProjectFromTemplate, removeRendered
 } = require('../helpers/copierRender')
-const { renderPreFrame, stripAnsi } = require('../helpers/capturedOutput')
 const { runTask } = require('../helpers/taskProcess')
+const { OsvCiEvidence } = require('../helpers/osvCiEvidence')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
-const { I } = inject()
+const { I, GitLabUserPage } = inject()
 
 const FIXTURES = path.join(__dirname, '../../fixtures/osv-scope')
 const BASE_CONFIG = '.config/megalinter/config.base.yml'
@@ -28,7 +28,15 @@ let state
 let sequence = 0
 
 Before(() => { state = { dirs: [] } })
-After(() => { state.dirs.forEach(removeRendered) })
+After(async () => {
+  const finished = state
+  try { if (finished.ci) await finished.ci.close() } finally { finished.dirs.forEach(removeRendered) }
+})
+
+function ciEvidence (name = 'e2e-osv-scope') {
+  if (!state.ci) state.ci = new OsvCiEvidence(I, GitLabUserPage, name)
+  return state.ci
+}
 
 function run (command, args = []) {
   return execFileSync(command, args, {
@@ -90,18 +98,9 @@ async function showReport (name, result) {
   const directory = path.join(__dirname, '../../_output/osv-reports')
   fs.mkdirSync(directory, { recursive: true })
   fs.writeFileSync(path.join(directory, `${name}.log`), result.report)
-  // Keep the raw report for assertions and artifacts. Filesystem traversal
-  // order and counters depend on the host; render scan lines in path order.
-  // Findings, scanned paths, package counts and extract calls remain intact.
-  const lines = result.report.split('\n')
-  const scans = lines.filter(line => line.startsWith('Scanned ')).sort()
-  let index = 0
-  const report = lines.map(line => line.startsWith('Scanned ') ? scans[index++] : line).join('\n')
-    .replace(/version [0-9.]+/g, 'version <version>')
-    .replace(/megalinter\.io\/[0-9.]+\//g, 'megalinter.io/<version>/')
-    .replace(/\d+ dirs visited, \d+ inodes visited/g, '<dirs> dirs visited, <inodes> inodes visited')
-    .replace(/[0-9.]+(?:ns|µs|ms|s) elapsed, [0-9.]+(?:ns|µs|ms|s) wall time/g, '<duration> elapsed, <duration> wall time')
-  await renderPreFrame(I, name, `$ cat ${result.file}\n${report}`, { colour: true, height: 1000 })
+  await state.ci.publish(state.project, `test: ${name.replace(/-/g, ' ')}`)
+  await state.ci.scan(result)
+  await state.ci.jobFrame(name)
 }
 
 function assertProjectFindings (result) {
@@ -139,7 +138,10 @@ storyboardStep(Given, 'every framework tool in a generated project contains the 
   const listing = run('sh', ['-c', 'find .config -name package-lock.json | sort'])
   const lock = run('cat', ['.config/codeceptjs/package-lock.json'])
   assert.ok(state.tools.includes('codeceptjs') && state.tools.includes('commitlint'))
-  await renderPreFrame(I, 'framework-lockfiles', `$ find .config -name package-lock.json | sort\n${listing}\n$ cat .config/codeceptjs/package-lock.json\n${lock}`)
+  assert.ok(listing.includes('.config/codeceptjs/package-lock.json') && lock.includes('4.17.20'))
+  await ciEvidence().publish(state.project, 'test: vulnerable framework tools')
+  await state.ci.run()
+  await state.ci.jobFrame('framework-lockfiles', { height: 1250, anchor: '$ find .', end: '$ if [ -f' })
 })
 
 storyboardStep(When, "the generated project's OSV scan leaves inherited tools to the toolbox", async () => {
@@ -165,7 +167,10 @@ storyboardStep(When, 'the developer adds vulnerable dependencies in project-owne
   PROJECT_LOCKS.forEach(writeLock)
   const listing = run('sh', ['-c', "find . -name package-lock.json -not -path './.git/*' -not -path './megalinter-reports/*' | sort"])
   assert.ok(!fs.existsSync(path.join(state.project, 'project')), 'Root dependencies must work with project mode disabled')
-  await renderPreFrame(I, 'project-lockfiles', `$ find . -name package-lock.json -not -path './.git/*' -not -path './megalinter-reports/*' | sort\n${listing}`)
+  for (const file of PROJECT_LOCKS) assert.ok(listing.includes(file))
+  await state.ci.publish(state.project, 'test: add project dependencies')
+  await state.ci.run()
+  await state.ci.jobFrame('project-lockfiles', { height: 850, anchor: '$ find .', end: '$ cat .config/codeceptjs/' })
 })
 
 storyboardStep(Then, 'OSV reports every project-owned copy of the vulnerable package', async () => {
@@ -184,7 +189,9 @@ storyboardStep(When, 'the developer updates the framework through Copier', async
   for (const file of PROJECT_LOCKS) assert.ok(fs.existsSync(path.join(state.project, file)))
   const answers = run('grep', ['^_commit:', '.config/devsecops/.copier-answers.yml'])
   const argumentsBlock = run('grep', ['-A', '13', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
-  await renderPreFrame(I, 'copier-keeps-osv-scope', `$ grep '^_commit:' .config/devsecops/.copier-answers.yml\n${answers}\n$ grep -A 13 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' ${BASE_CONFIG}\n${argumentsBlock}`)
+  assert.ok(answers.includes('1.0.1') && argumentsBlock.includes('--experimental-exclude=.config/codeceptjs'))
+  await state.ci.publish(state.project, 'test: update the framework through Copier')
+  await state.ci.repositoryFrame('copier-keeps-osv-scope', '.config/devsecops/.copier-answers.yml', '1.0.1')
 })
 
 storyboardStep(Then, 'OSV keeps the same ownership boundary after the update', async () => {
@@ -196,7 +203,10 @@ storyboardStep(Then, 'OSV keeps the same ownership boundary after the update', a
 storyboardStep(When, 'the developer removes the project dependency fixtures', async () => {
   PROJECT_LOCKS.forEach(file => fs.unlinkSync(path.join(state.project, file)))
   const listing = run('sh', ['-c', 'find .config -name package-lock.json | sort'])
-  await renderPreFrame(I, 'only-framework-lockfiles', `$ find .config -name package-lock.json | sort\n${listing}`)
+  assert.ok(listing.includes('.config/codeceptjs/package-lock.json'))
+  await state.ci.publish(state.project, 'test: remove project dependency fixtures')
+  await state.ci.run()
+  await state.ci.jobFrame('only-framework-lockfiles', { height: 850, anchor: '$ find .', end: '$ cat .config/codeceptjs/' })
 })
 
 storyboardStep(Then, "the project's empty OSV scan passes with a clear result", async () => {
@@ -213,7 +223,8 @@ storyboardStep(Given, 'a task emits real output before failing', async () => {
   state.dirs.push(state.project)
   const taskfile = "version: '3'\ntasks:\n  probe:\n    silent: true\n    cmds:\n      - printf 'native task output\\n' >&2\n      - exit 7\n"
   fs.writeFileSync(path.join(state.project, 'Taskfile.yml'), taskfile)
-  await renderPreFrame(I, 'failing-task', `$ cat Taskfile.yml\n${taskfile}`)
+  await ciEvidence('e2e-task-progress').publishTask(state.project)
+  await state.ci.repositoryFrame('failing-task', 'Taskfile.yml', 'native task output')
 })
 
 storyboardStep(When, 'the worker reports the output and keeps the failed task status', async () => {
@@ -241,7 +252,8 @@ storyboardStep(When, 'the worker reports the output and keeps the failed task st
   assert.notEqual(result.exitCode, 0, 'Task failures must remain failures')
   assert.ok(result.raw.includes('native task output'))
   assert.ok(result.raw.includes('exit status 7'))
-  await renderPreFrame(I, 'failed-task-progress', `$ task probe\n${stripAnsi(progress.join(''))}\nWorker task exit code: ${result.exitCode}`)
+  await state.ci.taskResult(result)
+  await state.ci.jobFrame('failed-task-progress', { height: 780, anchor: '$ task --taskfile ci-evidence.yml worker' })
 })
 
 storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {
@@ -253,7 +265,9 @@ storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency ve
   const code = 'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)'
   const versions = run('node', ['--eval', code])
   assert.ok(versions.includes('node_modules/undici:'))
-  await renderPreFrame(I, 'shipped-dependency-versions', `$ node --eval '${code}'\n${versions}`)
+  await ciEvidence('e2e-framework-dependencies').publish(state.project, 'test: check the shipped dependency versions')
+  await state.ci.run()
+  await state.ci.jobFrame('shipped-dependency-versions', { height: 780, anchor: '$ node --eval', end: '$ grep -A 2' })
 })
 
 storyboardStep(When, "the maintainer uses the toolbox's own scanner configuration", async () => {
@@ -261,7 +275,7 @@ storyboardStep(When, "the maintainer uses the toolbox's own scanner configuratio
   fs.writeFileSync(path.join(__dirname, '../../_output/framework-osv.log'), state.scan.report)
   fs.writeFileSync(path.join(__dirname, '../../_output/framework-megalinter.log'), state.scan.output)
   assert.ok(state.scan.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
-  await renderPreFrame(I, 'framework-scanner-config', `$ grep -A 2 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' ${BASE_CONFIG}\n${run('grep', ['-A', '2', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])}`)
+  await state.ci.jobFrame('framework-scanner-config', { height: 780, anchor: '$ grep -A 2', end: '$ if [ -f' })
 })
 
 storyboardStep(Then, "the toolbox's dependency scan reports no known vulnerabilities", async () => {
