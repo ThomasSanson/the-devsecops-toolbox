@@ -263,10 +263,13 @@ class OsvCiEvidence {
     // GitLab may introduce the repository tree after the page has loaded.
     // Close its real onboarding hint so it cannot cover the captured file.
     await this.I.executeScript(() => {
-      const hint = Array.from(document.querySelectorAll('.popover, .gl-popover'))
-        .find(el => el.textContent.includes('File tree navigation'))
-      if (hint) hint.querySelector('button')?.click()
+      const title = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, strong, div'))
+        .find(el => Array.from(el.childNodes).some(node => node.nodeType === 3 && node.nodeValue.trim() === 'File tree navigation'))
+      let hint = title
+      while (hint && hint !== document.body && !hint.querySelector('button')) hint = hint.parentElement
+      if (hint && hint !== document.body) hint.querySelector('button')?.click()
     })
+    await this.I.waitForInvisible('//*[normalize-space(text())="File tree navigation"]', 10)
     await this.I.dontSee('File tree navigation')
     await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
     this.I.resizeWindow(1024, 768)
