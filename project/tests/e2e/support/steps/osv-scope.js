@@ -101,7 +101,7 @@ async function showReport (name, result) {
   fs.writeFileSync(path.join(directory, `${name}.log`), result.report)
   await state.ci.publish(state.project, `test: ${name.replace(/-/g, ' ')}`)
   await state.ci.scan(result)
-  await state.ci.pipelineFrame(name)
+  await state.ci.reportFrame(name, result)
 }
 
 function assertProjectFindings (result) {

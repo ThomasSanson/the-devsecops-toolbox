@@ -14,7 +14,8 @@ and selects it for this fixture; it adds no scanner command or diagnostic script
 OSV is the only selected scanner in this test. Production keeps the full linter
 suite and live database.
 
-The screenshots show two simple outcomes:
+The screenshots show the actual OSV job logs in GitLab, including the scanner's
+verdict, vulnerable package, advisory and dependency paths:
 
 - Vulnerable framework tools only: **Passed**.
 - A vulnerable project dependency, including a custom `.config/` tool: **Failed**.

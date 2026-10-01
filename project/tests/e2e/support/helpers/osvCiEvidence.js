@@ -194,7 +194,46 @@ class OsvCiEvidence {
     await this.capture(name)
   }
 
-  async capture (name, focus = null) {
+  async reportFrame (name, result) {
+    this.I.resizeWindow(2100, 1100)
+    await this.I.amOnPage(`/${projectPath(this.name)}/-/jobs/${this.jobId}`)
+    await this.I.waitForElement('[data-testid="job-log-content"]', 60)
+    await this.I.waitForText('[osv-scanner]', 60, '[data-testid="job-log-content"]')
+    // Open GitLab's own folded scanner section to show its original output.
+    await this.I.executeScript(() => {
+      const section = Array.from(document.querySelectorAll('.job-log-line-header'))
+        .find(element => element.textContent.includes('[osv-scanner]'))
+      if (section && !section.querySelector('[data-testid="chevron-lg-down-icon"]')) section.click()
+      document.querySelectorAll('.job-log-line-header').forEach(header => {
+        if (/Uploading artifacts|Cleaning up/.test(header.textContent) &&
+            header.querySelector('[data-testid="chevron-lg-down-icon"]')) header.click()
+      })
+    })
+    await this.I.waitForText(result.exitCode === 0 ? 'No issues found' : 'GHSA-35jh-r3h4-6jhm', 60, '[data-testid="job-log-content"]')
+    await maskPipelinePage(this.I, this.name, { keepContext: true })
+    await this.I.executeScript(() => {
+      // OSV's filesystem counters and timings change between otherwise
+      // identical scans. Keep the paths, advisory and verdict untouched.
+      document.querySelectorAll('.job-log-line-number, .job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]')
+        .forEach(element => { element.style.visibility = 'hidden' })
+      document.querySelectorAll('.job-log-line-header .badge').forEach(element => { element.style.visibility = 'hidden' })
+      const log = document.querySelector('.job-log')
+      log.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(log).lineHeight))}px`
+      const walker = document.createTreeWalker(document.querySelector('[data-testid="job-log-content"]'), NodeFilter.SHOW_TEXT)
+      const nodes = []
+      while (walker.nextNode()) nodes.push(walker.currentNode)
+      for (const node of nodes) {
+        node.nodeValue = node.nodeValue
+          .replace(/\d+ (dirs visited|inodes visited)/g, '<count> $1')
+          .replace(/\d+(?:\.\d+)?(?:ms|µs|s) (elapsed|wall time)/g, '<duration> $1')
+          .replace(/\b\d+(?:\.\d+)?s +(?=\|)/g, '<duration>   ')
+          .replace(/\b\d+(?:\.\d+)?s\b/g, '<duration>')
+      }
+    })
+    await this.capture(name, null, result.exitCode === 0 ? 'No issues found' : 'packages affected by')
+  }
+
+  async capture (name, focus = null, logMarker = null) {
     await this.I.wait(1)
     await this.I.executeScript(() => {
       window.scrollTo(0, 0)
@@ -213,7 +252,21 @@ class OsvCiEvidence {
     })
     await this.I.waitForInvisible('//*[normalize-space(text())="File tree navigation"]', 10)
     await this.I.dontSee('File tree navigation')
-    if (focus) await this.I.scrollTo(focus, 0, -300)
+    if (logMarker) {
+      await this.I.executeScript(marker => {
+        const line = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+          .find(element => element.textContent.includes(marker))
+        if (!line) throw new Error(`The real OSV job log must contain ${marker}`)
+        line.scrollIntoView({ block: 'center' })
+        window.scrollTo(0, 0)
+      }, logMarker)
+      await this.I.waitForFunction(marker => {
+        const line = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+          .find(element => element.textContent.includes(marker))
+        const box = line?.getBoundingClientRect()
+        return box && box.top >= 0 && box.bottom <= window.innerHeight
+      }, [logMarker], 15)
+    } else if (focus) await this.I.scrollTo(focus, 0, -300)
     await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
     this.I.resizeWindow(1024, 768)
   }
