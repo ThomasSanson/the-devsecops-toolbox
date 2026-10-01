@@ -260,6 +260,14 @@ class OsvCiEvidence {
     })
     await this.I.wait(0.5)
     await this.I.moveCursorTo('body', 1, 1)
+    // GitLab may introduce the repository tree after the page has loaded.
+    // Close its real onboarding hint so it cannot cover the captured file.
+    await this.I.executeScript(() => {
+      const hint = Array.from(document.querySelectorAll('.popover, .gl-popover'))
+        .find(el => el.textContent.includes('File tree navigation'))
+      if (hint) hint.querySelector('button')?.click()
+    })
+    await this.I.dontSee('File tree navigation')
     await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
     this.I.resizeWindow(1024, 768)
   }
