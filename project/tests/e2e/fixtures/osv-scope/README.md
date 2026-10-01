@@ -8,5 +8,16 @@ framework and project directories as `package-lock.json`; it installs no package
 The test puts that record into an offline npm database. This small snapshot proves
 path selection with a real vulnerability without querying a changing database.
 
-The test runs the pinned MegaLinter through `task megalinter`, with OSV as its
-only selected scanner. Production keeps the full linter suite and live database.
+The test runs `task megalinter` locally, then the generated `code:megalinter`
+job in the test GitLab. `megalinter-ci.yml` includes the generated job definition
+and selects it for this fixture; it adds no scanner command or diagnostic script.
+OSV is the only selected scanner in this test. Production keeps the full linter
+suite and live database.
+
+The screenshots show two simple outcomes:
+
+- Vulnerable framework tools only: **Passed**.
+- A vulnerable project dependency, including a custom `.config/` tool: **Failed**.
+
+The assertions also check the native CI reports, the toolbox's own scan, and a
+Copier update. Nothing under `project/tests/` ships to generated projects.

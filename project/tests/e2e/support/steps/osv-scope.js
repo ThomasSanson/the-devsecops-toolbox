@@ -74,7 +74,8 @@ function configureScanner () {
     'OUTPUT_DETAIL: detailed',
     'REPOSITORY_OSV_SCANNER_ARGUMENTS: ["--offline"]',
     'REPOSITORY_OSV_SCANNER_PRE_COMMANDS:',
-    '  - command: mkdir -p "$HOME/.cache/osv-scanner/npm" && cp /tmp/lint/.cache/osv-scanner/npm/all.zip "$HOME/.cache/osv-scanner/npm/all.zip"',
+    '  - command: mkdir -p "$HOME/.cache/osv-scanner/npm" && cp .cache/osv-scanner/npm/all.zip "$HOME/.cache/osv-scanner/npm/all.zip"',
+    '    cwd: workspace',
     '    continue_if_failed: false',
     ''
   ].join('\n'))
@@ -100,7 +101,7 @@ async function showReport (name, result) {
   fs.writeFileSync(path.join(directory, `${name}.log`), result.report)
   await state.ci.publish(state.project, `test: ${name.replace(/-/g, ' ')}`)
   await state.ci.scan(result)
-  await state.ci.jobFrame(name)
+  await state.ci.pipelineFrame(name)
 }
 
 function assertProjectFindings (result) {
@@ -140,8 +141,7 @@ storyboardStep(Given, 'every framework tool in a generated project contains the 
   assert.ok(state.tools.includes('codeceptjs') && state.tools.includes('commitlint'))
   assert.ok(listing.includes('.config/codeceptjs/package-lock.json') && lock.includes('4.17.20'))
   await ciEvidence().publish(state.project, 'test: vulnerable framework tools')
-  await state.ci.run()
-  await state.ci.jobFrame('framework-lockfiles', { height: 1250, anchor: '$ find .', end: '$ if [ -f' })
+  await state.ci.repositoryFrame('framework-lockfiles', '.config/codeceptjs/package-lock.json', '4.17.20')
 })
 
 storyboardStep(When, "the generated project's OSV scan leaves inherited tools to the toolbox", async () => {
@@ -169,8 +169,7 @@ storyboardStep(When, 'the developer adds vulnerable dependencies in project-owne
   assert.ok(!fs.existsSync(path.join(state.project, 'project')), 'Root dependencies must work with project mode disabled')
   for (const file of PROJECT_LOCKS) assert.ok(listing.includes(file))
   await state.ci.publish(state.project, 'test: add project dependencies')
-  await state.ci.run()
-  await state.ci.jobFrame('project-lockfiles', { height: 850, anchor: '$ find .', end: '$ cat .config/codeceptjs/' })
+  await state.ci.repositoryFrame('project-lockfiles', '.config/project-tool/package-lock.json', '4.17.20')
 })
 
 storyboardStep(Then, 'OSV reports every project-owned copy of the vulnerable package', async () => {
@@ -205,8 +204,7 @@ storyboardStep(When, 'the developer removes the project dependency fixtures', as
   const listing = run('sh', ['-c', 'find .config -name package-lock.json | sort'])
   assert.ok(listing.includes('.config/codeceptjs/package-lock.json'))
   await state.ci.publish(state.project, 'test: remove project dependency fixtures')
-  await state.ci.run()
-  await state.ci.jobFrame('only-framework-lockfiles', { height: 850, anchor: '$ find .', end: '$ cat .config/codeceptjs/' })
+  await state.ci.repositoryFrame('only-framework-lockfiles', '.config/codeceptjs/package-lock.json', '4.17.20')
 })
 
 storyboardStep(Then, "the project's empty OSV scan passes with a clear result", async () => {
@@ -253,7 +251,7 @@ storyboardStep(When, 'the worker reports the output and keeps the failed task st
   assert.ok(result.raw.includes('native task output'))
   assert.ok(result.raw.includes('exit status 7'))
   await state.ci.taskResult(result)
-  await state.ci.jobFrame('failed-task-progress', { height: 780, anchor: '$ task --taskfile ci-evidence.yml worker' })
+  await state.ci.pipelineFrame('failed-task-progress')
 })
 
 storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {
@@ -266,8 +264,7 @@ storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency ve
   const versions = run('node', ['--eval', code])
   assert.ok(versions.includes('node_modules/undici:'))
   await ciEvidence('e2e-framework-dependencies').publish(state.project, 'test: check the shipped dependency versions')
-  await state.ci.run()
-  await state.ci.jobFrame('shipped-dependency-versions', { height: 780, anchor: '$ node --eval', end: '$ grep -A 2' })
+  await state.ci.repositoryFrame('shipped-dependency-versions', '.config/codeceptjs/package.json', 'codeceptjs')
 })
 
 storyboardStep(When, "the maintainer uses the toolbox's own scanner configuration", async () => {
@@ -275,7 +272,9 @@ storyboardStep(When, "the maintainer uses the toolbox's own scanner configuratio
   fs.writeFileSync(path.join(__dirname, '../../_output/framework-osv.log'), state.scan.report)
   fs.writeFileSync(path.join(__dirname, '../../_output/framework-megalinter.log'), state.scan.output)
   assert.ok(state.scan.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
-  await state.ci.jobFrame('framework-scanner-config', { height: 780, anchor: '$ grep -A 2', end: '$ if [ -f' })
+  await state.ci.repositoryFrame('framework-scanner-config', BASE_CONFIG, '--no-resolve', {
+    focus: '//*[contains(@class, "file-content")]//span[contains(text(), "--no-resolve")]'
+  })
 })
 
 storyboardStep(Then, "the toolbox's dependency scan reports no known vulnerabilities", async () => {

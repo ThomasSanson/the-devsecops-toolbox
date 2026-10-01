@@ -24,54 +24,40 @@ Feature: a freshly generated project passes its own quality gate
 
   @osv-scope
   Scenario: OSV checks dependencies where their owner can fix them
-    # Chapter: Framework tools are checked in the toolbox
-    # Note: The GitLab job lists every shipped tool's lockfile and opens the vulnerable lodash fixture. The saved public advisory lets the real scanner work offline.
-    # Copy: find .config -name package-lock.json | sort
+    # Chapter: Framework vulnerability: the project passes
+    # Note: GitLab shows lodash 4.17.20 in the inherited CodeceptJS lockfile. The same vulnerable fixture is present in every framework tool.
     Given every framework tool in a generated project contains the same vulnerable package
-    # Note: GitLab marks code:megalinter as "Passed". OSV reports "No package sources found" and "No issues found": inherited tools do not block the generated project.
-    # Copy: task megalinter
+    # Note: Passed. The inherited code:megalinter job leaves framework tools to the toolbox. The test also checks the real OSV report.
     When the generated project's OSV scan leaves inherited tools to the toolbox
-    # Note: GitLab marks the same job as "Failed" with the toolbox's own base config. OSV lists the vulnerable package in all eight framework tools. The exclusion only belongs to generated projects.
-    # Copy: task megalinter
+    # Note: Failed with the toolbox's own scanner configuration. The toolbox must catch vulnerabilities in all its tools.
     Then the toolbox's OSV scan reports the same vulnerable framework tools
-    # Chapter: Project dependencies still block the project
-    # Note: The GitLab job lists the four added lockfiles: the repository root, a custom tool, a similarly named tool, and a nested .config directory. None of these locations belongs to the framework.
-    # Copy: find . -name package-lock.json -not -path './.git/*' -not -path './megalinter-reports/*' | sort
+    # Chapter: Project vulnerability: the project fails
+    # Note: GitLab shows the same vulnerable package in .config/project-tool. The fixture is also added at the repository root and in two other project-owned locations.
     When the developer adds vulnerable dependencies in project-owned locations
-    # Note: OSV reports all four project dependencies. The inherited copies remain excluded, so a blanket .config exclusion or a package-name exemption cannot pass this check.
-    # Copy: task megalinter
+    # Note: Failed. The same inherited code:megalinter job now blocks the project. Its OSV report must contain all four project-owned lockfiles.
     Then OSV reports every project-owned copy of the vulnerable package
     # Chapter: Framework updates preserve the boundary
-    # Note: GitLab shows "1.0.1" in .copier-answers.yml after the real Copier update. The regression checks that the project's scanner arguments and custom tool files survive.
-    # Copy: task copier:update TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml TASK_COPIER_CLI_OPTS='--defaults --skip-tasks --vcs-ref 1.0.1'
+    # Note: GitLab shows version 1.0.1 after a real Copier update. Project settings and dependency files survive.
     When the developer updates the framework through Copier
-    # Note: The same scan reports the same four project dependencies after the update. The generated base arguments still exclude framework tools.
-    # Copy: task megalinter
+    # Note: Still Failed. The project vulnerabilities remain blocking after the framework update.
     Then OSV keeps the same ownership boundary after the update
-    # Note: The GitLab job's file listing contains only the eight inherited framework lockfiles. The four project fixtures have been removed.
-    # Copy: find .config -name package-lock.json | sort
+    # Note: The project fixtures have been removed. GitLab shows that the vulnerable inherited CodeceptJS fixture is still there.
     When the developer removes the project dependency fixtures
-    # Note: OSV reports "No package sources found" and "No issues found". MegaLinter passes: an empty project scan succeeds without an error diagnostic.
-    # Copy: task megalinter
+    # Note: Passed again. Only framework vulnerabilities remain, so the generated project's pipeline succeeds.
     Then the project's empty OSV scan passes with a clear result
 
   @task-progress
   Scenario: a worker reports real task progress and preserves failures
     # Note: GitLab shows the disposable Taskfile.yml: the probe prints "native task output", then exits with an error.
-    # Copy: cat Taskfile.yml
     Given a task emits real output before failing
-    # Note: The real GitLab job is "Failed" and its log shows "native task output" and "exit status 7". The regression also checks that every progress message contains the task's actual output.
-    # Copy: task probe
+    # Note: The real GitLab job is Failed. The test checks that the worker forwards every byte of the task output and preserves its failure.
     When the worker reports the output and keeps the failed task status
 
   @framework-dependencies
   Scenario: the toolbox ships dependencies that pass its own OSV scan
-    # Note: The real GitLab job lists the dependency versions from the toolbox's shipped lockfile, including axios, multer and undici.
-    # Copy: node --eval 'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)'
+    # Note: GitLab shows the toolbox's CodeceptJS manifest. The test reads the dependency versions from its actual shipped lockfile.
     Given the maintainer checks the toolbox's shipped dependency versions
-    # Note: The GitLab job opens the toolbox's base scanner arguments: "--no-resolve" with no framework exclusion. The scanner uses the live vulnerability database.
-    # Copy: grep -A 2 '^REPOSITORY_OSV_SCANNER_ARGUMENTS:' .config/megalinter/config.base.yml
+    # Note: The toolbox's base configuration has no framework exclusion. Its tools are scanned against the live vulnerability database.
     When the maintainer uses the toolbox's own scanner configuration
-    # Note: GitLab marks code:megalinter as "Passed". Its native OSV report shows the CodeceptJS lockfile was scanned and says "No issues found". Known vulnerabilities fail this check.
-    # Copy: cat megalinter-reports/linters_logs/REPOSITORY_OSV_SCANNER-SUCCESS.log
+    # Note: Passed. The test also checks that OSV scanned the shipped CodeceptJS lockfile and found no known vulnerabilities.
     Then the toolbox's dependency scan reports no known vulnerabilities

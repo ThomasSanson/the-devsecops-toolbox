@@ -1,0 +1,29 @@
+---
+# Test project only: run the inherited MegaLinter job with the OSV fixture.
+include:
+  - local: .config/gitlab/ci/services.yml
+  - local: .config/gitlab/ci/tags.yml
+  - local: .config/gitlab/ci/variables.yml
+  - local: .config/gitlab/ci/devsecops/code.yml
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "api"
+
+stages: [code]
+
+code:megalinter:
+  rules:
+    - when: always
+
+# Other checks are covered by the full quality-gate scenario.
+code:project: &other_checks
+  rules:
+    - when: never
+code:commitlint: *other_checks
+code:commitizen-check: *other_checks
+code:commitizen-bump-dry: *other_checks
+code:lizard: *other_checks
+code:renovate-validate: *other_checks
+code:betterleaks: *other_checks
+code:all: *other_checks

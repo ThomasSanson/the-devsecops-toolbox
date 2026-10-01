@@ -76,36 +76,10 @@ class OsvCiEvidence {
         ['.git', 'node_modules', 'megalinter-reports', '_output', 'tmp'].includes(part)) &&
         !/^project\/(tests|gitlab|ubuntu)(\/|$)/.test(path.relative(source, file))
     })
-    const version = JSON.parse(fs.readFileSync(path.join(source, '.config/megalinter/package.json'), 'utf8')).dependencies['mega-linter-runner']
-    const diagnostics = []
-    if (this.name === 'e2e-framework-dependencies') {
-      diagnostics.push(
-        '    - >-',
-        '      node --eval \'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)\'',
-        '    - grep -A 2 \'^REPOSITORY_OSV_SCANNER_ARGUMENTS:\' .config/megalinter/config.base.yml'
-      )
-    }
-    if (this.name === 'e2e-osv-scope') {
-      diagnostics.push(
-        '    - find . -name package-lock.json -not -path \'./.git/*\' -not -path \'./megalinter-reports/*\' | sort',
-        '    - cat .config/codeceptjs/package-lock.json'
-      )
-    }
-    fs.writeFileSync(path.join(this.directory, '.gitlab-ci.yml'), [
-      'workflow:', '  rules:', '    - if: $CI_PIPELINE_SOURCE == "api"',
-      'stages: [code]',
-      'code:megalinter:', '  stage: code',
-      '  tags: [saas-linux-medium-amd64]',
-      '  image:', `    name: ghcr.io/oxsecurity/megalinter:v${version}`, '    entrypoint: [""]',
-      '  before_script:', '    - .config/task/install.sh',
-      ...diagnostics,
-      // The existing offline fixture uses the local MegaLinter workspace path.
-      // Supply that same database to the native CI entrypoint unchanged.
-      '    - if [ -f .cache/osv-scanner/npm/all.zip ]; then mkdir -p /tmp/lint/.cache/osv-scanner/npm; cp .cache/osv-scanner/npm/all.zip /tmp/lint/.cache/osv-scanner/npm/all.zip; fi',
-      '  script:', '    - task megalinter:ci',
-      '  after_script:', '    - cat megalinter-reports/linters_logs/REPOSITORY_OSV_SCANNER-*.log',
-      '  artifacts:', '    when: always', '    paths: [megalinter-reports/]', ''
-    ].join('\n'))
+    // Select the generated MegaLinter job unchanged. The fixture only selects
+    // when it runs; its image, commands and artifacts come from the framework.
+    fs.copyFileSync(path.join(__dirname, '../../fixtures/osv-scope/megalinter-ci.yml'),
+      path.join(this.directory, '.gitlab-ci.yml'))
     this.git('add', '-A')
     const database = '.cache/osv-scanner/npm/all.zip'
     if (fs.existsSync(path.join(this.directory, database))) this.git('add', '-f', database)
@@ -178,6 +152,7 @@ class OsvCiEvidence {
     assert.equal(job.status, status)
     assert.equal(job.commit.id, this.sha, 'CI must run the published dependency snapshot')
     this.jobId = job.id
+    this.pipelineId = pid
     this.job = job
     return job
   }
@@ -196,7 +171,7 @@ class OsvCiEvidence {
     fs.writeFileSync(path.join(__dirname, '../../_output/osv-reports', `ci-${job.id}.log`), report)
   }
 
-  async repositoryFrame (name, file, text, { height = 900 } = {}) {
+  async repositoryFrame (name, file, text, { height = 900, focus = null } = {}) {
     this.I.resizeWindow(1440, height)
     await this.I.amOnPage(`/${projectPath(this.name)}/-/blob/main/${file}`)
     await this.I.waitForText(text, 60, '.file-content')
@@ -207,52 +182,19 @@ class OsvCiEvidence {
       while (walker.nextNode()) nodes.push(walker.currentNode)
       for (const node of nodes) node.nodeValue = node.nodeValue.replace(/\/tmp\/e2e-template-[0-9a-f]+/g, '<template>')
     })
-    await this.capture(name)
+    await this.capture(name, focus)
   }
 
-  async jobFrame (name, { height = 1100, anchor = '$ cat megalinter-reports/linters_logs/', end = null } = {}) {
-    this.I.resizeWindow(1920, height)
-    await this.I.amOnPage(`/${projectPath(this.name)}/-/jobs/${this.jobId}`)
-    await this.I.waitForElement('[data-testid="job-log-content"]', 60)
-    await this.I.waitForText(anchor, 60, '[data-testid="job-log-content"]')
+  async pipelineFrame (name) {
+    this.I.resizeWindow(1440, 900)
+    await this.I.amOnPage(`/${projectPath(this.name)}/-/pipelines/${this.pipelineId}`)
+    await this.I.waitForText(this.job.status === 'success' ? 'Passed' : 'Failed', 60)
+    await this.I.waitForText(this.job.name, 60)
     await maskPipelinePage(this.I, this.name, { keepContext: true })
-    await this.I.executeScript(({ anchor, end }) => {
-      // Open the genuine OSV report printed by after_script. Runner setup and
-      // MegaLinter's other diagnostics remain available in the full job trace.
-      const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-      const start = lines.findIndex(line => line.textContent.includes(anchor))
-      if (start > 0) lines.slice(0, start).forEach(line => { line.style.display = 'none' })
-      if (end) {
-        const finish = lines.findIndex((line, index) => index > start && line.textContent.includes(end))
-        if (finish > start) lines.slice(finish).forEach(line => { line.style.display = 'none' })
-      }
-      const upload = lines.findIndex(line => line.textContent.includes('Uploading artifacts for'))
-      const cleanup = lines.findIndex(line => line.textContent.includes('Cleaning up project directory'))
-      if (upload >= 0 && cleanup > upload) lines.slice(upload, cleanup + 1).forEach(line => { line.style.display = 'none' })
-      document.querySelectorAll('.job-log-line-number, [class*="line-timestamp"]').forEach(el => { el.style.display = 'none' })
-      for (const line of lines) {
-        if (/runner-\S+.*disconnected from network/i.test(line.textContent)) line.style.display = 'none'
-        // The scanner's debug walk order varies with the filesystem. The
-        // finding table is the readable evidence and retains every source.
-        if (/Scanned .* file and found/.test(line.textContent) && !line.textContent.includes('Scanned .config/codeceptjs/package-lock.json')) line.style.display = 'none'
-      }
-      const log = document.querySelector('[data-testid="job-log-content"]')
-      const walker = document.createTreeWalker(log, NodeFilter.SHOW_TEXT)
-      const nodes = []
-      while (walker.nextNode()) nodes.push(walker.currentNode)
-      for (const node of nodes) {
-        node.nodeValue = node.nodeValue
-          .replace(/for workspace \/builds\/[^\s]+/g, 'for workspace <workspace>')
-          .replace(/version [0-9.]+/g, 'version <version>')
-          .replace(/megalinter\.io\/[0-9.]+\//g, 'megalinter.io/<version>/')
-          .replace(/\d+ dirs visited, \d+ inodes visited/g, '<dirs> dirs visited, <inodes> inodes visited')
-          .replace(/[0-9.]+(?:ns|µs|ms|s) elapsed, [0-9.]+(?:ns|µs|ms|s) wall time/g, '<duration> elapsed, <duration> wall time')
-      }
-    }, { anchor, end })
     await this.capture(name)
   }
 
-  async capture (name) {
+  async capture (name, focus = null) {
     await this.I.wait(1)
     await this.I.executeScript(() => {
       window.scrollTo(0, 0)
@@ -271,6 +213,7 @@ class OsvCiEvidence {
     })
     await this.I.waitForInvisible('//*[normalize-space(text())="File tree navigation"]', 10)
     await this.I.dontSee('File tree navigation')
+    if (focus) await this.I.scrollTo(focus, 0, -300)
     await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
     this.I.resizeWindow(1024, 768)
   }
