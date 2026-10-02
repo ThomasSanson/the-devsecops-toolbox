@@ -55,7 +55,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**12. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
   Chapters: Updates flow through the framework · Every pinned tool is watched in both places.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
-- [**Renovate runtime**](03-evolution/renovate-runtime.svg) — The installed validator rejects invalid configuration, accepts the correction, and the download fallback uses the framework version.
+- [**Renovate runtime**](03-evolution/renovate-runtime.svg) — The pinned download rejects invalid configuration and accepts the correction, without a global Renovate installation.
   Replay: `task project:test:e2e -- --grep "@renovate-runtime"`
 - [**13. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
   Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.

@@ -29,10 +29,10 @@ Feature: Dependency updates flow through the framework, not around it
     # Copy: cat .config/renovate/config.json
     Given a generated project carries the framework's centralized renovate config
     # Note: renovate-config-validator itself checks the rendered config, doing far more than a plain JSON.parse would.
-    # Copy: renovate-config-validator .config/renovate/config.json
+    # Copy: task renovate:validate
     When the config passes the real renovate validator
     # Note: The automerge-off branch of the template is real, valid config too.
-    # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --data devsecops_automerge=false /workspace <project> && renovate-config-validator .config/renovate/config.json
+    # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --data devsecops_automerge=false /workspace <project> && task renovate:validate
     Then turning automerge off still passes the same validator
     # Note: Copier refuses this template without --trust (it declares tasks). Renovate only adds --trust when the run allows scripts (allowScripts, a self-hosted option, so task renovate exports it) AND the project opts in (ignoreScripts: false on the toolbox rule). allowedCommands is self-hosted too: kept in the project config, Renovate ignored it and the postUpgradeTasks never ran. Seen on a real project: every framework-evolution MR carried a bare "#copier updated" marker, a red renovate/artifacts status and nothing regenerated.
     # Copy: task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract TASK_RENOVATE_LOG_LEVEL=debug
@@ -76,11 +76,11 @@ Feature: Dependency updates flow through the framework, not around it
     And the test runner already holds the browser its own Playwright asks for
 
   @renovate-runtime
-  Scenario: Renovate validates with the installed tool and pins its download fallback
-    # Note: This project has an invalid Renovate option and an installed validator. The test refuses any unexpected npx download.
-    Given a project has an installed Renovate validator and an invalid configuration
-    # Note: The project's actual task reports the invalid option through Renovate itself, without downloading another release.
-    When the installed validator rejects the invalid Renovate option
+  Scenario: Renovate validates through its pinned download without a global installation
+    # Note: The generated project has an invalid option and a pinned Renovate version. The CodeceptJS runner has no global Renovate installation.
+    Given a project has an invalid configuration and no installed Renovate
+    # Note: The project's actual task downloads the pinned release through npx. Renovate rejects the invalid option.
+    When the pinned Renovate download rejects the invalid option
     # Note: Removing the invalid option makes the same task pass. Validation remains mandatory.
     Then correcting the configuration passes the same Renovate task
     # Note: On a machine without an installed tool, both tasks resolve the same framework-pinned Renovate release. The test reads the commands Go Task would execute.

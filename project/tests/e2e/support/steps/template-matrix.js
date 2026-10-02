@@ -161,17 +161,19 @@ function frameworkCheckout () {
 // renovate:dry-run` — in `dir`, capturing its COMPLETE output verbatim. FORCE_COLOR keeps
 // the real terminal colours; we mask only the volatile durationMs and strip ANSI just for
 // the (colour-agnostic) packageFiles assertion.
-function runRenovateExtract (dir, gitEnv) {
+function runRenovateExtract (dir, gitEnv, version) {
+  const command = version ? `npx --yes -p renovate@${version} -c '${EXTRACT_CMD}'` : EXTRACT_CMD
   let raw
   try {
-    raw = execSync(`FORCE_COLOR=1 ${EXTRACT_CMD} 2>&1`, {
+    raw = execSync(`FORCE_COLOR=1 ${command} 2>&1`, {
       cwd: dir, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 300000, maxBuffer: 256 * 1024 * 1024
     })
   } catch (e) {
-    raw = (e.stdout || '') + (e.stderr || '')
+    throw new Error(`Renovate extraction failed:\n${e.stdout || ''}${e.stderr || ''}`)
   }
   const clean = stripAnsiEscapeSequences(raw)
   return {
+    command,
     output: raw.replace(/("durationMs":\s*)\d+/g, '$1<ms>').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').trim(),
     packageFiles: [...new Set([...clean.matchAll(/"packageFile":\s*"([^"]+)"/g)].map(m => m[1]))].sort()
   }
@@ -201,11 +203,13 @@ function downgradeConfigVersions (dir) {
 // Commit a pristine tree, downgrade every .config pin, commit, run renovate.
 // Shared by the downstream (ignores .config) and framework (tracks it) tests.
 function downgradeConfigAndExtract (dir) {
+  // Regress the dependency pins, while running the current Renovate release.
+  const version = fs.readFileSync(path.join(dir, '.config/renovate/version'), 'utf8').trim()
   const gitEnv = isolatedGitEnv(dir)
   execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
   downgradeConfigVersions(dir)
   execSync('git add -A && git commit -qm "downgrade every .config version"', { cwd: dir, env: gitEnv })
-  lastExtract = runRenovateExtract(dir, gitEnv)
+  lastExtract = runRenovateExtract(dir, gitEnv, version)
 }
 
 // ============================================
@@ -350,16 +354,15 @@ Then('cspell should recognise the project word and flag only the control, matchi
 
 // ============================================
 // Renovate — the REAL validator on the rendered config. Shared by the
-// renovate-contract storyboard below: runs renovate-config-validator (the
-// runner image bakes a pinned copy, so it runs offline) exactly as CI's
-// code:renovate-validate job does, and keeps only its stable verdict lines
+// renovate-contract storyboard below: runs task renovate:validate exactly as
+// CI's code:renovate-validate job does, and keeps only its stable verdict lines
 // (the npm/npx download noise above them is volatile).
 // ============================================
 
 function runRenovateValidator (dir) {
   try {
     const output = execSync(
-      'LOG_LEVEL=info renovate-config-validator ".config/renovate/config.json" 2>&1',
+      'task renovate:validate TASK_RENOVATE_LOG_LEVEL=info 2>&1',
       { cwd: dir, encoding: 'utf8', stdio: 'pipe', timeout: 300000 }
     )
     return { exitCode: 0, output }
@@ -499,11 +502,13 @@ storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust'
 // Renovate hands a post-upgrade command to its own executor, which splits it
 // with shlex and starts the first word with shell: false (the default of
 // allowShellExecutorForPostUpgradeCommands), under a short list of inherited
-// variables. The same code runs it here, from the Renovate the test image
-// pins, so a command that only works in a shell fails here as it does there.
-async function renovateInternals () {
-  const root = execSync('npm root -g', { encoding: 'utf8' }).trim()
-  const load = file => import(pathToFileURL(path.join(root, 'renovate/dist', file)).href)
+// variables. Load the same pinned npm package used by task renovate, so a
+// command that only works in a shell fails here as it does there.
+async function renovateInternals (dir) {
+  const version = fs.readFileSync(path.join(dir, '.config/renovate/version'), 'utf8').trim()
+  const binary = execSync(`npx --yes -p renovate@${version} -c 'command -v renovate'`, { encoding: 'utf8', timeout: 300000 }).trim()
+  const dist = path.dirname(fs.realpathSync(binary))
+  const load = file => import(pathToFileURL(path.join(dist, file)).href)
   const [{ rawExec }, { getChildProcessEnv }, { regEx }] = await Promise.all([
     load('util/exec/common.js'), load('util/exec/env.js'), load('util/regex.js')
   ])
@@ -532,7 +537,7 @@ storyboardStep(Then, "Renovate's post-upgrade command runs without a shell and b
   if (commands.length === 0) throw new Error('The toolbox rule carries no postUpgradeTasks command')
   const allowed = JSON.parse((renovateEnv.match(/"allowedCommands":\s*(\[[^\]]*\])/) || [])[1] || '[]')
 
-  const { rawExec, getChildProcessEnv, regEx } = await renovateInternals()
+  const { rawExec, getChildProcessEnv, regEx } = await renovateInternals(dir)
   const shown = []
   for (const cmd of commands) {
     const compiled = cmd.replace('{{{newVersion}}}', '1.0.1')
@@ -574,7 +579,7 @@ storyboardStep(Then, "a downstream project's renovate ignores stale framework-ow
   if (frameworkOwned.length) {
     throw new Error(`Downstream Renovate scanned framework-owned .config files: ${frameworkOwned.join(', ')}`)
   }
-  await renderColorFrame('contract-downstream-ignores', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
+  await renderColorFrame('contract-downstream-ignores', `$ ${lastExtract.command}\n${extractionSummary(lastExtract.output)}`)
 })
 
 storyboardStep(Then, "a downstream project's renovate tracks its own outdated project dependency", async () => {
@@ -599,7 +604,7 @@ storyboardStep(Then, "the framework repo's own renovate detects that same stale 
   if (!configDetected.length) {
     throw new Error(`Framework Renovate detected no .config update; scanned: ${lastExtract.packageFiles.join(', ') || 'nothing'}`)
   }
-  await renderColorFrame('contract-framework-tracks', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
+  await renderColorFrame('contract-framework-tracks', `$ ${lastExtract.command}\n${extractionSummary(lastExtract.output)}`)
 })
 
 // ============================================

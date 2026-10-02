@@ -53,13 +53,6 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
 # simultaneously they race on the apt lock (exit 100, observed with unzip
 # then xz-utils). Baking them all removes every scenario-time apt call.
 
-# Pre-install a pinned renovate so the e2e template suite can run the real
-# renovate-config-validator OFFLINE: `npx -p renovate` re-resolves "latest"
-# against the npm registry on every call, which flakes/hangs on throttled
-# shared-runner egress (same class as the go-task/uv pre-warm above).
-COPY .config/renovate/version /tmp/renovate-version
-RUN npm install -g "renovate@$(cat /tmp/renovate-version)" && rm /tmp/renovate-version
-
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/
 

@@ -84,7 +84,7 @@ const {
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
 
-Before(() => {
+function resetJourneyState () {
   global.journeyContainer = null
   global.journeyProjectName = null
   global.journeyLambdaToken = null
@@ -94,60 +94,62 @@ Before(() => {
   // { runnerId, runnerToken, svc } — torn down surgically by its own token).
   global.journeyRunner = null
   global.journeyPipelineId = null
-})
+}
+
+Before(resetJourneyState)
 
 After(async () => {
+  // Async cleanup can overlap the next scenario. Keep its resources locally
+  // and clear shared state before any await, so it cannot erase the next project.
+  const { journeyContainer, journeyProjectName, journeyLambdaTokenId, journeyRunner } = global
+  resetJourneyState()
   // Save the full installer log as a debug artifact (best-effort) so a failing
   // run can be diagnosed from the complete output, alongside the visual diffs.
   // The file is named after the per-scenario project so parallel workers (and
   // mocha retries) never overwrite the log of the scenario that failed.
-  if (global.journeyContainer) {
+  if (journeyContainer) {
     try {
-      const logName = `install-${global.journeyProjectName || global.journeyContainer}.log`
+      const logName = `install-${journeyProjectName || journeyContainer}.log`
       const dest = path.join(E2E_OUTPUT, 'install-logs', logName)
       fs.mkdirSync(path.dirname(dest), { recursive: true })
-      runCommand(`docker cp ${shellEscape(`${global.journeyContainer}:${INSTALL_LOG}`)} ${shellEscape(dest)}`)
+      runCommand(`docker cp ${shellEscape(`${journeyContainer}:${INSTALL_LOG}`)} ${shellEscape(dest)}`)
     } catch (_) {
       // No installer log for this scenario (e.g. blank-repo only) — ignore.
     }
   }
 
-  teardownJourneyTerminal(global.journeyContainer)
-  global.journeyContainer = null
+  teardownJourneyTerminal(journeyContainer)
 
-  if (global.journeyProjectName) {
+  if (journeyProjectName) {
     try {
       const rootHeaders = await getRootHeaders()
-      await deleteProject(global.journeyProjectName, rootHeaders)
+      await deleteProject(journeyProjectName, rootHeaders)
     } catch (_) {
       // Best-effort cleanup — GitLab deletion is async and non-critical.
     }
-    global.journeyProjectName = null
   }
 
   // Revoke the per-scenario lambda PAT so credentials do not accumulate on
   // the persistent test-GitLab volume across runs.
-  if (global.journeyLambdaTokenId) {
+  if (journeyLambdaTokenId) {
     try {
       const rootHeaders = await getRootHeaders()
-      await revokePersonalAccessToken(global.journeyLambdaTokenId, rootHeaders)
+      await revokePersonalAccessToken(journeyLambdaTokenId, rootHeaders)
     } catch (_) {
       // Best-effort cleanup.
     }
-    global.journeyLambdaTokenId = null
   }
 
   // Surgically unregister ONLY this scenario's runner token (never
   // --all-runners) so @daily-contribution, which shares the same compose service
   // locally, keeps its own registration and its running job.
-  if (global.journeyRunner) {
+  if (journeyRunner) {
     try {
       const rootHeaders = await getRootHeaders()
-      await teardownScopedRunner(global.journeyRunner, rootHeaders)
+      await teardownScopedRunner(journeyRunner, rootHeaders)
     } catch (_) {
       // Best-effort cleanup.
     }
-    global.journeyRunner = null
   }
 })
 

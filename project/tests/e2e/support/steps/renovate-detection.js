@@ -11,8 +11,8 @@
  * copy of the framework (the "safe zone") where each tool has been regressed to
  * an older version. So the task wiring, the config path it resolves, and the
  * Renovate config are ALL exercised together — not a renovate command run on the
- * side. Extract mode is offline (no datasource lookup), and the task prefers the
- * pinned, baked `renovate` over npx, so the run is deterministic and CI-safe.
+ * side. Extract mode performs no datasource lookup; the task downloads the
+ * framework's pinned Renovate release through npx.
  *
  * ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline, asserted
  * inside the step (tolerance: 0): the regression stage, Renovate's own
@@ -281,8 +281,8 @@ function maskBranchVersion (branch) {
 }
 
 // Map each pinned-back dependency -> the branches Renovate would open for it.
-// The per-manager package files sit under `config` in the pinned renovate the
-// image carries, and directly under `packageFiles` in newer ones.
+// The per-manager package files sit under `config` in the pinned Renovate
+// release, and directly under `packageFiles` in newer ones.
 // Renovate nests its findings four deep — manager, package file, dependency,
 // update — and reading that nest is a separate job from finding the one log
 // line that holds it. Split accordingly: this walks the nest, the caller finds
