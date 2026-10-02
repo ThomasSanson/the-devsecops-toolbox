@@ -57,7 +57,8 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
 # renovate-config-validator OFFLINE: `npx -p renovate` re-resolves "latest"
 # against the npm registry on every call, which flakes/hangs on throttled
 # shared-runner egress (same class as the go-task/uv pre-warm above).
-RUN npm install -g renovate@43.220.0
+COPY .config/renovate/version /tmp/renovate-version
+RUN npm install -g "renovate@$(cat /tmp/renovate-version)" && rm /tmp/renovate-version
 
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/

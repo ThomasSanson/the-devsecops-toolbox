@@ -14,6 +14,8 @@ vars:
   TASK_RENOVATE_CLI_OPTS: '{{.TASK_RENOVATE_CLI_OPTS | default ""}}'
   TASK_RENOVATE_DRY_RUN: '{{.TASK_RENOVATE_DRY_RUN | default "false"}}'
   TASK_RENOVATE_TOKEN: '{{.TASK_RENOVATE_TOKEN | default (env "RENOVATE_TOKEN")}}'
+  TASK_RENOVATE_VERSION:
+    sh: cat .config/renovate/version
 
 tasks:
   default:
@@ -51,14 +53,12 @@ tasks:
           # Safer shell behaviour
           set -eu
 
-          # Prefer an already-installed renovate (pinned, offline, deterministic
-          # and fast); fall back to npx only when it is not on PATH. npx re-resolves
-          # "latest" from the registry on every call, which is slow and flakes on
-          # throttled egress.
+          # Reuse the installed tool; otherwise download the framework version.
+          # Resolving latest made CI depend on newly broken npm publications.
           if command -v renovate >/dev/null 2>&1; then
             CMD="renovate"
           else
-            CMD="npx --yes -p renovate renovate"
+            CMD="npx --yes -p renovate@{{.TASK_RENOVATE_VERSION}} renovate"
           fi
 
           # Append dry-run argument directly
@@ -132,10 +132,18 @@ tasks:
         - TASK_RENOVATE_LOG_LEVEL: Logging verbosity
 
       🔄 Execution:
-        Runs renovate-config-validator via npx
+        Uses the installed validator, or downloads the framework version via npx
     deps: [check]
+    vars:
+      TASK_RENOVATE_VALIDATOR:
+        sh: |
+          if command -v renovate-config-validator >/dev/null 2>&1; then
+            echo "renovate-config-validator"
+          else
+            echo "npx --yes -p renovate@{{.TASK_RENOVATE_VERSION}} renovate-config-validator"
+          fi
     cmds:
-      - cmd: 'LOG_LEVEL="{{.TASK_RENOVATE_LOG_LEVEL}}" npx --yes -p renovate renovate-config-validator "{{.TASK_RENOVATE_CONFIG}}"'
+      - cmd: 'LOG_LEVEL="{{.TASK_RENOVATE_LOG_LEVEL}}" {{.TASK_RENOVATE_VALIDATOR}} "{{.TASK_RENOVATE_CONFIG}}"'
 
   dry-run:
     desc: 🧪 Local dry-run of Renovate with the provided configuration

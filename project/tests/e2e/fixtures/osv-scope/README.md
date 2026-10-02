@@ -20,5 +20,9 @@ verdict, vulnerable package, advisory and dependency paths:
 - Vulnerable framework tools only: **Passed**.
 - A vulnerable project dependency, including a custom `.config/` tool: **Failed**.
 
+Concurrent scans can print file paths in a different order. The screenshots sort
+those original rows and the informational reporter rows, keeping every message.
+The assertions read the unmodified CI reports.
+
 The assertions also check the native CI reports, the toolbox's own scan, and a
 Copier update. Nothing under `project/tests/` ships to generated projects.

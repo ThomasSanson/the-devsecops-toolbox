@@ -74,3 +74,14 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: So the image now installs the browser its own Playwright asks for. The picture reads the runner from the inside: the build line that installs it, and the browser file that is really there.
     # Copy: node -e "console.log(require('playwright').chromium.executablePath())"
     And the test runner already holds the browser its own Playwright asks for
+
+  @renovate-runtime
+  Scenario: Renovate validates with the installed tool and pins its download fallback
+    # Note: This project has an invalid Renovate option and an installed validator. The test refuses any unexpected npx download.
+    Given a project has an installed Renovate validator and an invalid configuration
+    # Note: The project's actual task reports the invalid option through Renovate itself, without downloading another release.
+    When the installed validator rejects the invalid Renovate option
+    # Note: Removing the invalid option makes the same task pass. Validation remains mandatory.
+    Then correcting the configuration passes the same Renovate task
+    # Note: On a machine without an installed tool, both tasks resolve the same framework-pinned Renovate release. The test reads the commands Go Task would execute.
+    And the Renovate download fallback uses the framework version for running and validating

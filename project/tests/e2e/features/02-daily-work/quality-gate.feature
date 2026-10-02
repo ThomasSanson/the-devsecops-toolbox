@@ -29,7 +29,7 @@ Feature: a freshly generated project passes its own quality gate
     Given every framework tool in a generated project contains the same vulnerable package
     # Note: GitLab shows the inherited job's OSV log: no package sources found and No issues found. The vulnerable framework tools leave the project pipeline green.
     When the generated project's OSV scan leaves inherited tools to the toolbox
-    # Note: GitLab shows the OSV error and the vulnerable framework lockfiles. The toolbox's own scanner configuration catches the tools it owns.
+    # Note: The same test repository now uses the toolbox's own scanner configuration. GitLab shows the OSV error and the vulnerable framework lockfiles: the toolbox catches the tools it owns.
     Then the toolbox's OSV scan reports the same vulnerable framework tools
     # Chapter: Project vulnerability: the project fails
     # Note: GitLab shows the same vulnerable package in .config/project-tool. The fixture is also added at the repository root and in two other project-owned locations.

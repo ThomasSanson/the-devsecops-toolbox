@@ -39,6 +39,13 @@
   "customManagers": [
     {
       "customType": "regex",
+      "fileMatch": ["\\.config/renovate/version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "renovate",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
       "fileMatch": ["\\.config/node/version$"],
       "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "node",

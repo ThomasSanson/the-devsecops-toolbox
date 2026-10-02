@@ -10,6 +10,7 @@ const {
 } = require('./gitlabApi')
 const { registerScopedRunner, teardownScopedRunner, maskPipelinePage, PIPELINE_TIMEOUT_MS } = require('./pipelineRunner')
 const { freshDelete } = require('./http')
+const { stableJobLog } = require('./stableJobLog')
 const { addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Repeat the existing local scan in a real CI job. The local regression checks
@@ -211,6 +212,7 @@ class OsvCiEvidence {
     })
     await this.I.waitForText(result.exitCode === 0 ? 'No issues found' : 'GHSA-35jh-r3h4-6jhm', 60, '[data-testid="job-log-content"]')
     await maskPipelinePage(this.I, this.name, { keepContext: true })
+    await this.I.executeScript(stableJobLog)
     await this.I.executeScript(() => {
       // OSV's filesystem counters and timings change between otherwise
       // identical scans. Keep the paths, advisory and verdict untouched.

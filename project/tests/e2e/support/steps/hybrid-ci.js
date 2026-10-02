@@ -312,6 +312,13 @@ async function captureJob (name, frame) {
         !header.querySelector('[data-testid="chevron-lg-down-icon"]')), [expanded], 15)
   }
   await I.executeScript(({ projectName, command, showImage }) => {
+    // Same-stage jobs finish in a different order on each run. Retain all
+    // native jobs and statuses, with a stable name order for the screenshot.
+    document.querySelectorAll('.builds-container').forEach(container => {
+      Array.from(container.querySelectorAll('.build-job'))
+        .sort((left, right) => left.textContent.localeCompare(right.textContent))
+        .forEach(job => job.parentElement.appendChild(job))
+    })
     // Collapse only the runner bootstrap, before the user's task begins. Keep
     // its entire output: a screenshot must never pick just the passing lines.
     const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
