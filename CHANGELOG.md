@@ -2,6 +2,24 @@
 
 # Changelog
 
+## 24.1.10 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.19.1
+
+## 24.1.9 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.120.0
+
+## 24.1.8 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency renovate to v43.288.0
+
 ## 24.1.7 (2026-10-03)
 
 ### Fix
