@@ -2,6 +2,21 @@
 
 # Changelog
 
+## 24.1.5 (2026-10-03)
+
+### Fix
+
+- **ci**: pin Renovate downloads and stabilize native CI captures
+- **test**: render OSV reports deterministically
+- **test**: report actual task output to the worker monitor
+- **deps**: patch shipped tooling vulnerabilities
+- **megalinter**: allow empty project OSV scans
+- **megalinter**: scope project OSV scans to owned dependencies
+
+### Refactor
+
+- **test**: remove Renovate from the CodeceptJS image
+
 ## 24.1.4 (2026-09-26)
 
 ### Fix
