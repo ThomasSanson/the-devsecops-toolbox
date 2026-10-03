@@ -333,8 +333,10 @@ storyboardStep(When, 'the developer creates the merge request from the issue and
   if (closing.length === 0) throw new Error('Expected the merge request to be closing the issue')
   // Wide enough for GitLab to unfold the right sidebar — the card must show
   // the Assignee the developer just took.
-  I.resizeWindow(1280, 700)
+  I.resizeWindow(1440, 700)
   await GitLabMergeRequestPage.gotoAndMask(projectPath(PROJECT_NAME), global.dailyMrIid, PROJECT_NAME)
+  await I.waitForVisible('[data-testid="issuable-sidebar"].right-sidebar-expanded', 10)
+  await I.see(mr.data.assignee.name, '[data-testid="assignee-block-container"]')
   await addStoryboardFrame(I, await capturePageFrame(I, 'mr-from-issue'))
   I.resizeWindow(1024, 768)
   // Twin: the MR is open, on its own branch, targeting main, taken by its author.
