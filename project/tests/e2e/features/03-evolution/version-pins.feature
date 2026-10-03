@@ -12,3 +12,8 @@ Feature: The curl|sh installer pins the same tool versions as the framework
   @e2e-template-version-pins-aligned
   Scenario: install.sh bootstrap pins stay aligned with the framework
     Then the install.sh bootstrap pins should visually match "template/version-pins"
+
+  @publication-ci-version
+  Scenario: The publication update job follows the current toolbox release
+    # Note: Read the actual CI files and VERSION. Check both image tags before displaying their shared version as a placeholder, and check that release bumps track both files.
+    Then the full pipeline and publication update job use the current toolbox image

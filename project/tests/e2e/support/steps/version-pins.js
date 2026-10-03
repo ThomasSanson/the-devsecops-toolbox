@@ -16,7 +16,10 @@
  */
 const fs = require('fs')
 const path = require('path')
+const assert = require('assert/strict')
 const { assertTextVisualMatch } = require('../helpers/textRender')
+const { renderPreFrame } = require('../helpers/capturedOutput')
+const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const { I } = inject()
 const REPO = '/workspace'
@@ -71,4 +74,22 @@ function buildPinReport () {
 
 Then('the install.sh bootstrap pins should visually match {string}', async (baselineName) => {
   await assertTextVisualMatch(I, baselineName, buildPinReport())
+})
+
+storyboardStep(Then, 'the full pipeline and publication update job use the current toolbox image', async () => {
+  const version = readVersionFile('VERSION')
+  const files = ['.gitlab-ci.yml', '.config/publication/gitlab-ci.yml']
+  const rows = files.map(file => {
+    const content = readVersionFile(file)
+    const image = content.match(/^\s*image: registry\.gitlab\.com\/digital-commons\/devsecops\/the-devsecops-toolbox:(\S+)/m)
+    assert.ok(image, `The toolbox image must be declared in ${file}`)
+    assert.equal(image[1], version, `${file} must use the current toolbox release`)
+    return `${file}\n  image: the-devsecops-toolbox:<current VERSION>\n  verdict: aligned`
+  })
+  const release = readVersionFile('.config/commitizen/cz.yaml')
+  for (const file of files) {
+    assert.ok(release.split('\n').some(line => line.trim() === `- ${file}`),
+      `Release bumps must keep updating ${file}`)
+  }
+  await renderPreFrame(I, 'framework-image-version', rows.join('\n\n') + '\n\nBoth files are tracked by the release bump.')
 })
