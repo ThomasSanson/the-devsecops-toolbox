@@ -3,7 +3,7 @@ test:
   stage: test
   retry: 1
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   script:
     - task test
   artifacts:
@@ -38,7 +38,7 @@ test:
 no-cheat:
   stage: test
   needs: [] # Parallel, fast (~seconds): a git diff, no environment to boot.
-  extends: .default-tags
+  extends: .native-job
   # The guard needs only git + bash, both in the base image — skip the heavy
   # bootstrap so an unrelated setup hiccup can't mask it.
   before_script: []

@@ -324,6 +324,20 @@ These project-specific tasks will be automatically integrated into the main pipe
 - Add custom monitoring solutions
 - Implement project-specific security checks
 
+### Updating the framework
+
+A toolbox release normally arrives on its own: Renovate opens a merge request that runs `task copier:update`, and review decides.
+
+`task devsecops:update` is the same thing asked for by hand — for a project without
+Renovate, for the day Renovate is broken, or simply to get the release now.
+It applies the release with the answers already stored in
+`.config/devsecops/.copier-answers.yml`, then delivers it the way the installer
+delivers the framework: a branch, a commit, and a merge request left open for review.
+Standing on your own branch instead, the change is committed there and no merge
+request is opened.
+
+It refuses to run on a dirty working tree, because it commits what it changed.
+
 ### Available Commands
 
 ```bash
@@ -340,6 +354,9 @@ task deploy     # Deployment
 task operate    # Operations
 task monitor    # Monitoring
 task feedback   # Feedback loop
+
+# Move to a new toolbox release, delivered as a merge request
+task devsecops:update
 
 # Run specific tools
 task megalinter         # Code quality & security

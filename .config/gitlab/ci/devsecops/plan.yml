@@ -2,7 +2,7 @@
 plan:
   stage: plan
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   script:
     - task plan
   rules:

@@ -1,0 +1,11 @@
+---
+EXTENDS: .config/megalinter/config.yml
+CONFIG_PROPERTIES_TO_APPEND:
+  - PRE_COMMANDS
+  - POST_COMMANDS
+PRE_COMMANDS:
+  - command: test "$DEFAULT_WORKSPACE" = "$CI_PROJECT_DIR" && printf 'Project lint setup complete\n'
+    continue_if_failed: false
+POST_COMMANDS:
+  - command: test -d "$REPORT_OUTPUT_FOLDER" && printf 'Project lint reports ready\n'
+    continue_if_failed: false

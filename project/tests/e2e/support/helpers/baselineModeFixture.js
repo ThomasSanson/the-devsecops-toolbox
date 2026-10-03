@@ -142,6 +142,7 @@ function proofOutput (result) {
   return [result.preview.output, ...result.results.map(item => item.output)].join('\n')
     .replace(/\b\d+(\.\d+)?m?s\b/g, '<duration>')
     .replace(/CodeceptJS v[0-9][0-9.]*/g, 'CodeceptJS v<version>')
+    .replace(/browserVersion: [0-9.]+/g, 'browserVersion: <version>')
 }
 
 function removeBaselineFixture () {

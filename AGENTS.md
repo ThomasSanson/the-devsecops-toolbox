@@ -19,7 +19,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 |----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)           | All commands MUST go through `task` from the repository root. Never use `docker compose`, `npm run`, or `cd` directly.      |
 | [`.agent/rules/environment.md`](.agent/rules/environment.md)               | Environment files live at the repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
-| [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Respect the inherited architecture. Never modify `.config/` or the root `Taskfile.yml` — they are framework-managed.        |
+| [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Never modify `.config/` or the root `Taskfile.yml`. A failure rooted there is fixed in the toolbox, never here.             |
 | [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                        |
 | [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                               |
 | [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |

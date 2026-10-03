@@ -27,14 +27,21 @@ Read the acts in order and you follow one developer from an empty project all th
 
 ## Act 2 — Daily work (`02-daily-work`)
 
+- [**framework-dependencies**](02-daily-work/framework-dependencies.svg) — The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
+  Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
+- [**task-progress**](02-daily-work/task-progress.svg) — Workers report actual task output while preserving failed exit codes.
+  Replay: `task project:test:e2e -- --grep "@task-progress"`
+- [**osv-scope**](02-daily-work/osv-scope.svg) — OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
+  Chapters: Framework tools are checked in the toolbox · Project dependencies still block the project · Framework updates preserve the boundary.
+  Replay: `task project:test:e2e -- --grep "@osv-scope"`
 - [**7. protected-commits**](02-daily-work/protected-commits.svg) — The commit checks accept clean work and secrets never reach the repository.
   Chapters: The commit message is checked · Secrets never reach the repository.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`
 - [**8. self-healing**](02-daily-work/self-healing.svg) — init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed.
   Chapters: A revoked token is rebuilt · A tampered variable and a duplicate token are repaired.
   Replay: `task project:test:e2e -- --grep "@self-healing"`
-- [**9. release-window**](02-daily-work/release-window.svg) — task release opens the push window on main just long enough to push, then always closes it — even if the push fails.
-  One continuous scene (no chapters).
+- [**9. release-window**](02-daily-work/release-window.svg) — A release that fails leaves nothing broken behind: the main branch re-locks itself, and no tag is pushed for an image that was never published.
+  Chapters: The push window always closes · A release that cannot publish its image pushes nothing.
   Replay: `task project:test:e2e -- --grep "@release-window"`
 - [**10. source-publication**](02-daily-work/source-publication.svg) — A private project publishes its source to a public one from its own pipeline, minus the files that never leave, and only after an owner approved the exact list.
   Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through · A secret in a published file stops everything.
@@ -47,6 +54,13 @@ Read the acts in order and you follow one developer from an empty project all th
   Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
 
+- [**baseline-mode**](02-daily-work/baseline-mode.svg) — Changed pixels fail unless a developer explicitly requests new references locally. CI refuses regeneration.
+  Replay: `task project:test:e2e -- --grep "@baseline-mode"`
+- [**worker-completion**](02-daily-work/worker-completion.svg) — A missing worker result fails the run, even when the engine returns zero. Filtered runs contain only their selected scenarios.
+  Replay: `task project:test:e2e -- --grep "@worker-completion"`
+- [**junit-freshness**](02-daily-work/junit-freshness.svg) — A config crash cannot reuse an earlier failure as RED evidence. A filter matching no scenario fails clearly.
+  Replay: `task project:test:e2e -- --grep "@junit-freshness"`
+
 ## Act 3 — Evolution (`03-evolution`)
 
 - [**12. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
@@ -58,6 +72,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**14. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
   Chapters: Updates flow through the framework · Every pinned tool is watched in both places.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
+- [**Renovate runtime**](03-evolution/renovate-runtime.svg) — The pinned download rejects invalid configuration and accepts the correction, without a global Renovate installation.
+  Replay: `task project:test:e2e -- --grep "@renovate-runtime"`
 - [**15. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
   Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.
   Replay: `task project:test:e2e -- --grep "@test-discipline"`

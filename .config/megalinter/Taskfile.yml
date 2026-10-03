@@ -49,6 +49,20 @@ tasks:
     cmds:
       - task: docker
 
+  ci:
+    desc: 🔍 Run directly inside the pinned MegaLinter CI image
+    status:
+      - test "{{.TASK_MEGALINTER_ENABLED}}" = "false"
+    preconditions:
+      - sh: test -f /entrypoint.sh
+        msg: "This task runs inside the MegaLinter image. Use task megalinter locally."
+    env:
+      MEGALINTER_CONFIG: "{{.TASK_MEGALINTER_CONFIG}}"
+      DEFAULT_WORKSPACE: "{{.ROOT_DIR}}"
+      REPORT_OUTPUT_FOLDER: "{{.ROOT_DIR}}/megalinter-reports"
+    cmds:
+      - /bin/bash /entrypoint.sh
+
   docker:
     desc: 🐳 Run MegaLinter for comprehensive code analysis
     summary: |

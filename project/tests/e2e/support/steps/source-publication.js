@@ -216,6 +216,9 @@ After(async () => {
 
   removeRendered(resources.rendered)
 
+  // Scenarios without publication resources need no GitLab credential.
+  if (!resources.projects.some(Boolean) && resources.tokens.length === 0) return
+
   let rootHeaders = null
   try {
     rootHeaders = await getRootHeaders()

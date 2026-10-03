@@ -1,13 +1,13 @@
 @e2e
 Feature: A toolbox release arrives — copier update preserves my work
   As a maintainer of a project generated from the DevSecOps Toolbox
-  I want `task copier:update` — the command Renovate runs automatically for
-  every toolbox release — to apply the new release while keeping every edit
-  I made
-  So that upgrading the framework never destroys my customizations
+  I want the new release to apply while keeping every edit I made, whether
+  Renovate brings it in automatically or I ask for it myself
+  So that upgrading the framework never destroys my customizations, and never
+  lands on main without a review
 
   # cspell:ignore Caddyfile -- the update story's project word, carried in the card notes below
-  # ONE story in two chapters. ONE Gherkin sentence = ONE card = ONE pixel
+  # ONE story in three chapters. ONE Gherkin sentence = ONE card = ONE pixel
   # baseline, asserted inside the step (tolerance: 0); every AFTER card twins
   # its frame with a filesystem check read straight from the project, so a
   # regression fails loud even without eyes.
@@ -21,8 +21,13 @@ Feature: A toolbox release arrives — copier update preserves my work
   # with a flipped answer (Ansible turned on) delivers the brand-new tooling the
   # release ships, while a file the developer hand-edited is left exactly as
   # they wrote it.
+  # Chapter 3 is the same upgrade asked for BY HAND, on a REAL GitLab project:
+  # `task devsecops:update` from the main branch applies the release and opens
+  # the merge request itself, so the update reaches main through a review
+  # instead of a direct push — what Renovate does for a project that has it,
+  # available to every project that does not.
   @toolbox-update
-  Scenario: a toolbox update splits the dictionary, keeps my word, and spares my edits
+  Scenario: a toolbox update splits the dictionary, keeps my work, and reaches main through a review
     # Chapter: The update splits the dictionary and keeps my word
     # Note: A project made with an older toolbox (release 22.0.0), from before the spelling dictionary was split. The line on screen shows which toolbox version it came from.
     # Copy: grep _commit .config/devsecops/.copier-answers.yml
@@ -73,3 +78,19 @@ Feature: A toolbox release arrives — copier update preserves my work
     # Note: project/Taskfile.yml still carries the developer's marker after the update — the skip-if-exists file was never overwritten.
     # Copy: tail -4 project/Taskfile.yml
     And the developer's own edit survived the update untouched
+    # Chapter: I ask for the release myself, and it arrives as a merge request
+    # Note: Off camera: a project generated from an older toolbox release (1.0.0) and pushed to GitLab. On screen, the branch the developer is standing on and the release the project came from.
+    # Copy: git branch --show-current && grep _commit .config/devsecops/.copier-answers.yml
+    Given a project generated from an earlier toolbox release sits on its main branch
+    # Note: The project's branches page on GitLab before anything happens: main, on its own.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/branches
+    And GitLab holds that main branch on its own
+    # Note: The developer asks for the new release instead of waiting for Renovate. One command applies release 1.0.1 and opens the review.
+    # Copy: task devsecops:update
+    When the developer asks for the new toolbox release from the main branch
+    # Note: The merge request that command opened: it carries the new release number in its title and aims at the main branch.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
+    Then GitLab now holds a merge request carrying the new release
+    # Note: The branches page now: the update branch stands next to main, and main itself never took a direct push.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/branches
+    And the update branch stands next to a main nobody pushed to

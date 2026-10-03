@@ -4,7 +4,7 @@ feedback:
   needs:
     - job: release
       optional: true
-  extends: .default-tags
+  extends: .docker-job
   script:
     - pipx install copier
     - task feedback

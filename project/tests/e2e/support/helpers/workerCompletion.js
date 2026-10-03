@@ -119,11 +119,11 @@ function certify (selected, latest, engineStatus) {
 
 async function main (args) {
   const options = selectionOptions(args)
-  const { selected, reports } = await selectedScenarios(options)
-  // The repository JUnit plugin writes this fixed directory. Clearing it
-  // immediately before this launch excludes earlier attempts and stale worker
-  // files even when a worker dies before producing any report this time.
+  const reports = path.join(path.dirname(path.resolve(options.config)), '_output/junit')
+  // Clear before loading the configuration: a config crash or an empty
+  // selection must not leave an earlier failure available as RED evidence.
   fs.rmSync(reports, { recursive: true, force: true })
+  const { selected } = await selectedScenarios(options)
   const engine = spawnSync(args[0], args.slice(1), { stdio: 'inherit' })
   if (engine.error) throw engine.error
   const status = engine.signal ? 'signal ' + engine.signal : engine.status

@@ -60,6 +60,7 @@ const {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupCspellUpdateTerminal,
+  setupManualUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
   authenticateGlab,
@@ -83,7 +84,7 @@ const {
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
 
-Before(() => {
+function resetJourneyState () {
   global.journeyContainer = null
   global.journeyProjectName = null
   global.journeyLambdaToken = null
@@ -93,60 +94,62 @@ Before(() => {
   // { runnerId, runnerToken, svc } — torn down surgically by its own token).
   global.journeyRunner = null
   global.journeyPipelineId = null
-})
+}
+
+Before(resetJourneyState)
 
 After(async () => {
+  // Async cleanup can overlap the next scenario. Keep its resources locally
+  // and clear shared state before any await, so it cannot erase the next project.
+  const { journeyContainer, journeyProjectName, journeyLambdaTokenId, journeyRunner } = global
+  resetJourneyState()
   // Save the full installer log as a debug artifact (best-effort) so a failing
   // run can be diagnosed from the complete output, alongside the visual diffs.
   // The file is named after the per-scenario project so parallel workers (and
   // mocha retries) never overwrite the log of the scenario that failed.
-  if (global.journeyContainer) {
+  if (journeyContainer) {
     try {
-      const logName = `install-${global.journeyProjectName || global.journeyContainer}.log`
+      const logName = `install-${journeyProjectName || journeyContainer}.log`
       const dest = path.join(E2E_OUTPUT, 'install-logs', logName)
       fs.mkdirSync(path.dirname(dest), { recursive: true })
-      runCommand(`docker cp ${shellEscape(`${global.journeyContainer}:${INSTALL_LOG}`)} ${shellEscape(dest)}`)
+      runCommand(`docker cp ${shellEscape(`${journeyContainer}:${INSTALL_LOG}`)} ${shellEscape(dest)}`)
     } catch (_) {
       // No installer log for this scenario (e.g. blank-repo only) — ignore.
     }
   }
 
-  teardownJourneyTerminal(global.journeyContainer)
-  global.journeyContainer = null
+  teardownJourneyTerminal(journeyContainer)
 
-  if (global.journeyProjectName) {
+  if (journeyProjectName) {
     try {
       const rootHeaders = await getRootHeaders()
-      await deleteProject(global.journeyProjectName, rootHeaders)
+      await deleteProject(journeyProjectName, rootHeaders)
     } catch (_) {
       // Best-effort cleanup — GitLab deletion is async and non-critical.
     }
-    global.journeyProjectName = null
   }
 
   // Revoke the per-scenario lambda PAT so credentials do not accumulate on
   // the persistent test-GitLab volume across runs.
-  if (global.journeyLambdaTokenId) {
+  if (journeyLambdaTokenId) {
     try {
       const rootHeaders = await getRootHeaders()
-      await revokePersonalAccessToken(global.journeyLambdaTokenId, rootHeaders)
+      await revokePersonalAccessToken(journeyLambdaTokenId, rootHeaders)
     } catch (_) {
       // Best-effort cleanup.
     }
-    global.journeyLambdaTokenId = null
   }
 
   // Surgically unregister ONLY this scenario's runner token (never
   // --all-runners) so @daily-contribution, which shares the same compose service
   // locally, keeps its own registration and its running job.
-  if (global.journeyRunner) {
+  if (journeyRunner) {
     try {
       const rootHeaders = await getRootHeaders()
-      await teardownScopedRunner(global.journeyRunner, rootHeaders)
+      await teardownScopedRunner(journeyRunner, rootHeaders)
     } catch (_) {
       // Best-effort cleanup.
     }
-    global.journeyRunner = null
   }
 })
 
@@ -154,7 +157,10 @@ After(async () => {
 // GIVEN — environment setup
 // ============================================
 
-async function openBlankProjectTerminal () {
+// `setupTerminal(projectName, lambdaToken)` decides what the container starts
+// from: the plain clone of the blank project (the installer journeys), or a
+// project already generated from an older release and pushed (manual update).
+async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTerminal) {
   const rootHeaders = await getRootHeaders()
   const projectName = `e2e-journey-${crypto.randomBytes(4).toString('hex')}`
   global.journeyProjectName = projectName
@@ -176,8 +182,8 @@ async function openBlankProjectTerminal () {
     throw new Error(`Failed to create blank project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
 
-  global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  global.journeyContainer = setupTerminal(projectName, lambdaToken)
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
 }
@@ -247,7 +253,7 @@ async function updateCard (command, marker, frameName, timeoutMs, mask = []) {
   await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask }))
 }
 
-// go-task echoes the whole uvx command line behind `task copier:update`, pinned
+// go-task echoes the whole uvx command line behind the update task, pinned
 // copier and all, and that echo IS part of what the developer sees — it says
 // which tool the update actually ran. Only the number in it moves, roughly
 // monthly, breaking a card about a toolbox release with a copier release. So
@@ -256,7 +262,7 @@ const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 
 storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", async () => {
   global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await updateCard(
@@ -289,8 +295,8 @@ storyboardStep(Given, 'the developer has added their own word inside that shared
 
 storyboardStep(When, 'the developer runs the toolbox update in the terminal', async () => {
   await updateCard(
-    `task copier:update TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
-    'task copier:update', 'update-run', 240000, COPIER_PIN_MASK
+    `task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
+    'task devsecops:code:sync-templates', 'update-run', 240000, COPIER_PIN_MASK
   )
 })
 
@@ -341,6 +347,92 @@ storyboardStep(Then, 'the shared file itself is now empty — it only imports th
   twinExcludes('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
 })
 
+// ============================================
+// Toolbox-update storyboard — @toolbox-update (chapter 3).
+// The same upgrade asked for BY HAND on a REAL GitLab project: a project
+// generated at release 1.0.0 sits on main, the developer runs
+// `task devsecops:update`, and the new release arrives as a merge request
+// instead of a push to main. ONE sentence = ONE card = ONE pixel baseline;
+// every GitLab card twins its page with the REST fact behind it.
+// ============================================
+
+const UPDATE_BRANCH = 'update-framework-devsecops'
+const MANUAL_UPDATE_VERSION = '1.0.1'
+const GENERATED_COMMIT = 'chore: project generated from an earlier toolbox release'
+
+// The branches page, masked, as one card — the "before" and the "after" of the
+// manual update are shot from the SAME page so the reader compares two panels.
+async function branchesFrame (frameName) {
+  await pageFrame(async () => {
+    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
+    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
+  }, frameName)
+}
+
+async function branchCommitTitle (branch) {
+  const headers = await getRootHeaders()
+  const res = await listProjectBranches(global.journeyProjectName, headers)
+  const found = (res.data || []).find(b => b.name === branch)
+  if (!found) {
+    throw new Error(`Branch "${branch}" not found for ${global.journeyProjectName}`)
+  }
+  return (found.commit && found.commit.title) || ''
+}
+
+storyboardStep(Given, 'a project generated from an earlier toolbox release sits on its main branch', async () => {
+  await ensureLambdaUser()
+  await openBlankProjectTerminal(setupManualUpdateTerminal)
+  await typeCommandAndWait(I, 'clear')
+  // No trailing `# comment` marker on this one: the prompt plus the command
+  // already fill the terminal's width, and a wrapped card reads badly. The
+  // command itself is unique enough to anchor on, right after a `clear`.
+  await updateCard(
+    'git branch --show-current && grep _commit .config/devsecops/.copier-answers.yml',
+    'git branch --show-current', 'review-before-main'
+  )
+  twinContains('git branch --show-current', 'main')
+  twinContains('grep _commit .config/devsecops/.copier-answers.yml', '1.0.0')
+})
+
+storyboardStep(Given, 'GitLab holds that main branch on its own', async () => {
+  await branchesFrame('review-branches-before')
+  await assertBranchExists('main')
+  await assertBranchAbsent(UPDATE_BRANCH)
+  await assertNoOpenMr()
+})
+
+storyboardStep(When, 'the developer asks for the new toolbox release from the main branch', async () => {
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
+  I.waitForElement('.xterm-screen', 10)
+  I.wait(3)
+  await typeCommandAndWait(I, 'clear')
+  // The remote URL and the merge-request link the push prints carry this run's
+  // project name (e2e-journey-<hex>), like every GitLab card of this story.
+  await updateCard('task devsecops:update', 'task devsecops:update', 'review-update-run', 240000, [
+    ...COPIER_PIN_MASK,
+    [new RegExp(global.journeyProjectName, 'g'), 'project']
+  ])
+})
+
+storyboardStep(Then, 'GitLab now holds a merge request carrying the new release', async () => {
+  const mr = await findOpenMr(UPDATE_BRANCH, 'main')
+  if (!mr.title.includes(MANUAL_UPDATE_VERSION)) {
+    throw new Error(`Expected the merge request title to name release ${MANUAL_UPDATE_VERSION}, got: ${mr.title}`)
+  }
+  await assertMrChangedFiles()
+  await mrPageFrame('review-mr-page')
+})
+
+storyboardStep(Then, 'the update branch stands next to a main nobody pushed to', async () => {
+  await branchesFrame('review-branches-after')
+  await assertBranchExists('main')
+  await assertBranchExists(UPDATE_BRANCH)
+  const mainTitle = await branchCommitTitle('main')
+  if (mainTitle !== GENERATED_COMMIT) {
+    throw new Error(`Expected main to still point at the generated commit, found: "${mainTitle}"`)
+  }
+})
+
 // The installer WHEN bindings (type command / launch / accept-default-and-wait
 // per prompt / wait-for-completion) were removed with the storyboard migration:
 // the questionnaire is now driven by the @install-complete storyboard
@@ -378,8 +470,10 @@ const NOTHING_MARKER = 'Nothing selected'
 const COPIER_PROMPTS = [
   'Do you need Ansible?',
   'Which CI/CD platform are you using?',
+  'Runner tags for jobs that need Docker',
   'Which container runtime would you like to use?',
   'Generate a docker-compose.yml file',
+  'Can your CI runners start privileged containers',
   'Enable the project workspace?',
   "Publish this project's source",
   'Auto-merge Renovate merge requests',
@@ -404,7 +498,7 @@ async function openReadmeProjectTerminal () {
     throw new Error(`Failed to create project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
   global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
 }
@@ -417,7 +511,7 @@ async function openReadmeProjectTerminal () {
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
 async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT) {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(2)
   I.click('.xterm-screen')
@@ -523,7 +617,7 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
 // Back to the live terminal — a NEW shell session (the GitLab capture navigated
 // away); the cloned repo state lives on disk, not in the session.
 storyboardStep(When, 'the developer opens the cloned project in the terminal', async () => {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
@@ -618,9 +712,9 @@ storyboardStep(When, 'the developer pushes the AI agent files to main', async ()
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
   execInContainerAsUser(global.journeyContainer, 'bootstrap', [
     `cd ${PROJECT_DIR}`,
-    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`,
+    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     'git config --global credential.helper store',
-    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`,
+    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     'chmod 600 "$HOME/.git-credentials"'
   ].join('\n'))
   await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
@@ -1051,6 +1145,20 @@ storyboardStep(Then, 'the framework pipeline passes and the merge request merges
   }
   // Twin FIRST: the green pipeline (18 jobs) unblocked the merge, MR is merged.
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
+  // GitLab removes the source branch asynchronously after accepting the merge.
+  // Wait for that result before photographing the merged widget.
+  const sourceBranch = merged.data.source_branch
+  if (!sourceBranch) throw new Error('The merged request must name its source branch')
+  const branchDeletionPollSeconds = 2
+  let branches = []
+  for (let i = 0; i < 30; i++) {
+    const listed = await listProjectBranches(global.journeyProjectName, rootHeaders)
+    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
+    branches = (listed.data || []).map(branch => branch.name)
+    if (!branches.includes(sourceBranch)) break
+    await I.wait(branchDeletionPollSeconds)
+  }
+  if (branches.includes(sourceBranch)) throw new Error(`Expected the source branch ${sourceBranch} to be deleted by the merge`)
   // ONE proof: the merged merge-request page, full width — the Merged badge,
   // its pipeline shown passed, the branch joined into main.
   I.resizeWindow(1024, 900)
@@ -1255,7 +1363,7 @@ storyboardStep(Given, 'a brand-new empty project waits on GitLab', async () => {
 storyboardStep(Given, 'the developer has just cloned it into the terminal', async () => {
   // The GitLab navigation left the ttyd page — return to it (the shell session
   // is still alive, xterm reconnects) before driving the terminal.
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
   await typeCommandAndWait(I, 'clear')
@@ -1272,9 +1380,13 @@ storyboardStep(When, 'the developer keeps the complete framework and the first q
 
 storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
 
+storyboardStep(When, 'the developer keeps the existing medium runner tag for Docker jobs', () => captureCopierQuestion('Enter', 'Runner tags for jobs that need Docker', 'copier-docker-runner-tags'))
+
 storyboardStep(When, 'the developer keeps Docker as the container runtime', () => captureCopierQuestion('Enter', 'Which container runtime would you like to use?', 'copier-runtime'))
 
 storyboardStep(When, 'the developer keeps the generated docker-compose file', () => captureCopierQuestion('Enter', 'Generate a docker-compose.yml file', 'copier-compose'))
+
+storyboardStep(When, 'the developer confirms the runners can start privileged containers', () => captureCopierQuestion('Enter', 'Can your CI runners start privileged containers', 'copier-privileged-runners'))
 
 storyboardStep(When, 'the developer keeps the project workspace enabled', () => captureCopierQuestion('Enter', 'Enable the project workspace?', 'copier-workspace'))
 

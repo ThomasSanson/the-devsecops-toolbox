@@ -38,7 +38,7 @@ exports.config = {
   helpers: {
     Playwright: {
       browser: 'chromium',
-      url: 'http://gitlab:80',
+      url: 'http://gitlab:80', // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
       show: false,
       windowSize: '1024x768',
       waitForNavigation: 'domcontentloaded',
@@ -64,7 +64,7 @@ exports.config = {
       threshold: 0.1
     },
     REST: {
-      endpoint: 'http://gitlab:80'
+      endpoint: 'http://gitlab:80' // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     }
   },
   gherkin: {
@@ -84,6 +84,7 @@ exports.config = {
       './support/steps/glab-auth-ensure.js',
       './support/steps/release-toggle.js',
       './support/steps/quality-gate.js',
+      './support/steps/osv-scope.js',
       './support/steps/daily-contribution.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
@@ -95,7 +96,9 @@ exports.config = {
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
       './support/steps/renovate-detection.js',
+      './support/steps/renovate-runtime.js',
       './support/steps/generated-ci.js',
+      './support/steps/hybrid-ci.js',
       './support/steps/test-discipline.js',
       './support/steps/source-publication.js',
       './support/steps/publication-contracts.js',

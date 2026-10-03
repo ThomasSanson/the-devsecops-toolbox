@@ -16,7 +16,7 @@
  * config.toml, never a restart — so the other scenario's registration and its
  * running job survive.
  */
-const { runCommandWithResult } = require('./docker')
+const { runCommandWithResult, composeService } = require('./docker')
 const {
   BASE_URL,
   encodedProjectPath,
@@ -27,10 +27,6 @@ const {
   cancelPipeline
 } = require('./gitlabApi')
 const { freshGet } = require('./http')
-
-// project/docker-compose.yml pins this name; every container of the suite's
-// own stack is prefixed with it.
-const COMPOSE_PROJECT = 'the-devsecops-toolbox'
 
 const RUNNER_TAG = 'saas-linux-medium-amd64'
 const RUNNER_NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
@@ -59,15 +55,9 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   }
   const runnerId = runner.data.id
   const glrt = runner.data.token
-  const found = runCommandWithResult('docker ps --format "{{.Names}}" --filter "name=gitlab-runner"')
-  const candidates = (found.stdout || found.output || '').trim().split('\n').filter(Boolean)
-  // A developer machine happily runs a SECOND stack whose runner is also called
-  // "<something>-gitlab-runner-1" — another checkout of this template, for
-  // instance. Registering OUR project's runner inside THAT container hands the
-  // token to a runner on another network, which cannot reach this GitLab and
-  // answers "Verifying runner... is not valid". Ours is the one under this
-  // compose project (same reason as getRootHeaders in helpers/gitlabApi.js).
-  const svc = candidates.find(n => n.startsWith(`${COMPOSE_PROJECT}-`)) || candidates[0]
+  // Our OWN runner service: a second toolbox-derived stack on the machine would
+  // otherwise be picked first and register the runner on the neighbour's GitLab.
+  const svc = composeService('gitlab-runner')
   if (!svc) throw new Error('gitlab-runner compose service is not running')
   // ONE job slot, deliberately: every docker-using job spawns a dind service
   // named 'docker' on the SHARED network, so two concurrent services collide (a
@@ -79,7 +69,7 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   runCommandWithResult("docker ps -a --filter status=exited --format '{{.Names}}' | grep -E '^runner-' | xargs -r docker rm -f")
   const reg = runCommandWithResult(
     `docker exec ${svc} gitlab-runner register --non-interactive ` +
-    `--url http://gitlab --token ${glrt} --executor docker ` +
+    `--url http://gitlab --token ${glrt} --executor docker ` + // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     `--docker-image alpine:3.20 --docker-network-mode ${RUNNER_NET} ` +
     '--docker-privileged --docker-volumes /certs/client'
   )
@@ -100,7 +90,7 @@ async function teardownScopedRunner (runner, rootHeaders) {
   if (runner.svc && runner.runnerToken) {
     try {
       runCommandWithResult(
-        `docker exec ${runner.svc} gitlab-runner unregister --url http://gitlab --token ${runner.runnerToken}`
+        `docker exec ${runner.svc} gitlab-runner unregister --url http://gitlab --token ${runner.runnerToken}` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
       )
     } catch (_) {}
   }
@@ -223,7 +213,10 @@ async function maskPipelinePage (I, projectName, { keepContext = false } = {}) {
     // the whole difference between green and red. Ending every transition
     // before the capture takes the timing out of the picture.
     const stillness = document.createElement('style')
-    stillness.textContent = '*, *::before, *::after { transition: none !important }'
+    // Animations too, not just transitions: GitLab 19.3's "More features"
+    // sidebar item carries a moving gradient, and a capture catches whatever
+    // phase it is in.
+    stillness.textContent = '*, *::before, *::after { transition: none !important; animation: none !important }'
     document.head.appendChild(stillness)
 
     // Top app bar: it carries the project breadcrumb, which tells the reader

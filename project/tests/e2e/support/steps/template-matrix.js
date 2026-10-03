@@ -13,6 +13,7 @@ const { I } = inject()
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
+const { pathToFileURL } = require('url')
 const {
   renderProject,
   prepareVersionedTemplate,
@@ -25,6 +26,7 @@ const {
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { assertTextVisualMatch, renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
+const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
@@ -32,6 +34,7 @@ const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFram
 let rendered = null
 let template = null
 let cleanupDirs = []
+let renovateEnv = ''
 let renovateResult = null
 
 Before(() => {
@@ -39,6 +42,7 @@ Before(() => {
   template = null
   cleanupDirs = []
   renovateResult = null
+  renovateEnv = ''
 })
 
 After(() => {
@@ -157,17 +161,20 @@ function frameworkCheckout () {
 // renovate:dry-run` — in `dir`, capturing its COMPLETE output verbatim. FORCE_COLOR keeps
 // the real terminal colours; we mask only the volatile durationMs and strip ANSI just for
 // the (colour-agnostic) packageFiles assertion.
-function runRenovateExtract (dir, gitEnv) {
+function runRenovateExtract (dir, gitEnv, version) {
+  const command = version ? `npx --yes -p renovate@${version} -c '${EXTRACT_CMD}'` : EXTRACT_CMD
   let raw
   try {
-    raw = execSync(`FORCE_COLOR=1 ${EXTRACT_CMD} 2>&1`, {
+    raw = execSync(`FORCE_COLOR=1 ${command} 2>&1`, {
       cwd: dir, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 300000, maxBuffer: 256 * 1024 * 1024
     })
   } catch (e) {
-    raw = (e.stdout || '') + (e.stderr || '')
+    throw new Error(`Renovate extraction failed:\n${e.stdout || ''}${e.stderr || ''}`)
   }
   const clean = stripAnsiEscapeSequences(raw)
   return {
+    // Only the displayed command is normalized; execution uses the real pin.
+    command: version ? command.replace(`renovate@${version}`, 'renovate@x.x.x') : command,
     output: raw.replace(/("durationMs":\s*)\d+/g, '$1<ms>').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').trim(),
     packageFiles: [...new Set([...clean.matchAll(/"packageFile":\s*"([^"]+)"/g)].map(m => m[1]))].sort()
   }
@@ -197,11 +204,13 @@ function downgradeConfigVersions (dir) {
 // Commit a pristine tree, downgrade every .config pin, commit, run renovate.
 // Shared by the downstream (ignores .config) and framework (tracks it) tests.
 function downgradeConfigAndExtract (dir) {
+  // Regress the dependency pins, while running the current Renovate release.
+  const version = fs.readFileSync(path.join(dir, '.config/renovate/version'), 'utf8').trim()
   const gitEnv = isolatedGitEnv(dir)
   execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
   downgradeConfigVersions(dir)
   execSync('git add -A && git commit -qm "downgrade every .config version"', { cwd: dir, env: gitEnv })
-  lastExtract = runRenovateExtract(dir, gitEnv)
+  lastExtract = runRenovateExtract(dir, gitEnv, version)
 }
 
 // ============================================
@@ -232,7 +241,7 @@ function ensureGitRepo (dir) {
 // lines and mask the elapsed time it prints (the sole volatile bit). MegaLinter
 // exits non-zero when any linter fails — the cspell verdict is still in its
 // output, which is all this test reads. A per-run container name isolates workers.
-function runMegalinterCspell (dir) {
+async function runMegalinterCspell (dir) {
   // MegaLinter runs as a heavy (~multi-GB) docker image. In CI's EPHEMERAL dind the
   // image is re-pulled per scenario (≈17×/job) and a pull occasionally stalls/fails,
   // leaving the run dead mid "Pull complete …" with NO [cspell] verdict — proven by
@@ -243,13 +252,8 @@ function runMegalinterCspell (dir) {
   let raw = ''
   for (let attempt = 1; attempt <= 2; attempt++) {
     const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
-    try {
-      raw = execSync(`FORCE_COLOR=1 task megalinter TASK_MEGALINTER_CONTAINER_NAME=${container} 2>&1`, {
-        cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 900000, maxBuffer: 256 * 1024 * 1024
-      })
-    } catch (e) {
-      raw = (e.stdout || '') + (e.stderr || '')
-    }
+    const result = await runTask(dir, ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=${container}`])
+    raw = result.raw
     if (/with \[cspell\]/.test(stripAnsiEscapeSequences(raw))) break
   }
   const plainRaw = stripAnsiEscapeSequences(raw)
@@ -300,8 +304,8 @@ Then('the file under spell-check should visually match {string}', async (baselin
   await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${readRendered(CSPELL_SAMPLE).trimEnd()}`)
 })
 
-When('MegaLinter runs on the generated project', () => {
-  spellOutput = runMegalinterCspell(rendered)
+When('MegaLinter runs on the generated project', async () => {
+  spellOutput = await runMegalinterCspell(rendered)
 })
 
 // Setup proof for the survival half: the project-owned override AFTER copier
@@ -323,8 +327,8 @@ Given('the project registers its own word {string} in its cspell override', (wor
   execSync('git add -A && git commit --quiet --no-verify -m "test: register project cspell word"', { cwd: rendered })
 })
 
-When('MegaLinter runs on the updated project', () => {
-  spellOutput = runMegalinterCspell(rendered)
+When('MegaLinter runs on the updated project', async () => {
+  spellOutput = await runMegalinterCspell(rendered)
 })
 
 Then('MegaLinter\'s cspell should flag it, matching {string}', async (baselineName) => {
@@ -351,16 +355,15 @@ Then('cspell should recognise the project word and flag only the control, matchi
 
 // ============================================
 // Renovate — the REAL validator on the rendered config. Shared by the
-// renovate-contract storyboard below: runs renovate-config-validator (the
-// runner image bakes a pinned copy, so it runs offline) exactly as CI's
-// code:renovate-validate job does, and keeps only its stable verdict lines
+// renovate-contract storyboard below: runs task renovate:validate exactly as
+// CI's code:renovate-validate job does, and keeps only its stable verdict lines
 // (the npm/npx download noise above them is volatile).
 // ============================================
 
 function runRenovateValidator (dir) {
   try {
     const output = execSync(
-      'LOG_LEVEL=info renovate-config-validator ".config/renovate/config.json" 2>&1',
+      'task renovate:validate TASK_RENOVATE_LOG_LEVEL=info 2>&1',
       { cwd: dir, encoding: 'utf8', stdio: 'pipe', timeout: 300000 }
     )
     return { exitCode: 0, output }
@@ -441,6 +444,132 @@ storyboardStep(Then, 'turning automerge off still passes the same validator', as
   await renderPreFrame(I, 'contract-validate-automerge-off', validatorVerdictLines(result.output))
 })
 
+// Copier refuses this template without --trust (it declares tasks). Renovate's
+// copier manager only adds --trust when BOTH the run allows scripts (allowScripts,
+// a self-hosted option, exported by `task renovate`) AND the project's config opts
+// in (ignoreScripts: false). allowedCommands is self-hosted as well: written in
+// the project config it was silently ignored, so the postUpgradeTasks fallback
+// never ran either. Proof reads Renovate's own debug "Env config" block — the
+// global config it resolved from the framework's real entrypoint — plus the
+// rendered project config.
+// The task sets LOG_LEVEL itself from TASK_RENOVATE_LOG_LEVEL, so the level is a task variable, not a shell export.
+const DEBUG_EXTRACT_CMD = 'task renovate:dry-run TASK_RENOVATE_DRY_RUN=extract TASK_RENOVATE_LOG_LEVEL=debug'
+
+function renovateEnvConfig (dir, gitEnv) {
+  let raw
+  try {
+    raw = execSync(`${DEBUG_EXTRACT_CMD} 2>&1`, {
+      cwd: dir, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 300000, maxBuffer: 256 * 1024 * 1024
+    })
+  } catch (e) {
+    raw = (e.stdout || '') + (e.stderr || '')
+  }
+  const lines = stripAnsiEscapeSequences(raw).split('\n')
+  const start = lines.findIndex(l => l.includes('DEBUG: Env config'))
+  const end = lines.findIndex((l, i) => i > start && /DEBUG: /.test(l))
+  return start < 0 ? '' : lines.slice(start, end < 0 ? undefined : end).join('\n')
+}
+
+storyboardStep(Then, 'a generated project lets Renovate run Copier with --trust', async () => {
+  const dir = renderProject()
+  cleanupDirs.push(dir)
+  const config = JSON.parse(fs.readFileSync(path.join(dir, '.config/renovate/config.json'), 'utf8'))
+  const rule = (config.packageRules || []).find(r => JSON.stringify(r).includes('DevSecOps Toolbox'))
+  if (!rule) throw new Error('No packageRules entry matching "DevSecOps Toolbox" in the rendered renovate config')
+  if (rule.ignoreScripts !== false) {
+    throw new Error('The toolbox rule must set "ignoreScripts": false — without it Renovate never passes --trust to Copier')
+  }
+  if ('allowedCommands' in config) {
+    throw new Error('allowedCommands is a self-hosted option: Renovate ignores it in a project config, it belongs to the run (task renovate)')
+  }
+  const gitEnv = isolatedGitEnv(dir)
+  execSync('git init -q && git add -A && git commit -qm "pristine"', { cwd: dir, env: gitEnv })
+  const envConfig = renovateEnvConfig(dir, gitEnv)
+  renovateEnv = envConfig
+  if (!/"allowScripts":\s*true/.test(envConfig)) {
+    throw new Error(`task renovate must export allowScripts=true, Renovate resolved:\n${envConfig}`)
+  }
+  if (!/"allowedCommands":\s*\[[^\]]*devsecops:code:sync-templates[^\]]*\]/.test(envConfig)) {
+    throw new Error(`task renovate must export allowedCommands covering task devsecops:code:sync-templates, Renovate resolved:\n${envConfig}`)
+  }
+  await renderPreFrame(I, 'contract-copier-trust', [
+    'project config (toolbox rule)  ignoreScripts: false   -> Copier runs with --trust',
+    'project config                 allowedCommands: absent (self-hosted option)',
+    'task renovate, as Renovate resolved it:',
+    envConfig
+  ].join('\n'))
+})
+
+// Renovate hands a post-upgrade command to its own executor, which splits it
+// with shlex and starts the first word with shell: false (the default of
+// allowShellExecutorForPostUpgradeCommands), under a short list of inherited
+// variables. Load the same pinned npm package used by task renovate, so a
+// command that only works in a shell fails here as it does there.
+async function renovateInternals (dir) {
+  const version = fs.readFileSync(path.join(dir, '.config/renovate/version'), 'utf8').trim()
+  const binary = execSync(`npx --yes -p renovate@${version} -c 'command -v renovate'`, { encoding: 'utf8', timeout: 300000 }).trim()
+  const dist = path.dirname(fs.realpathSync(binary))
+  const load = file => import(pathToFileURL(path.join(dist, file)).href)
+  const [{ rawExec }, { getChildProcessEnv }, { regEx }] = await Promise.all([
+    load('util/exec/common.js'), load('util/exec/env.js'), load('util/regex.js')
+  ])
+  return { rawExec, getChildProcessEnv, regEx }
+}
+
+// What stays on the card: git clean naming what it removed, and the task's own
+// start and end lines. Copier's file-by-file report and uv's download lines
+// carry versions and timings, and go to stderr anyway.
+const POST_UPGRADE_LINES = [/^Removing /, /^🔄 /, /^🎉 /]
+
+storyboardStep(Then, "Renovate's post-upgrade command runs without a shell and brings the new release in", async () => {
+  const tpl = prepareVersionedTemplate()
+  cleanupDirs.push(tpl)
+  const dir = renderProjectFromTemplate(tpl, '1.0.0')
+  cleanupDirs.push(dir)
+  // What Renovate's own Copier run leaves in the branch for 1.0.1, working from
+  // .config/devsecops/: the version line bumped, a stray VERSION, nothing else.
+  const answers = path.join(dir, '.config/devsecops/.copier-answers.yml')
+  fs.writeFileSync(answers, fs.readFileSync(answers, 'utf8').replace(/^_commit: 1\.0\.0$/m, '_commit: 1.0.1'))
+  fs.writeFileSync(path.join(dir, '.config/devsecops/VERSION'), '0.1.0\n')
+
+  const config = JSON.parse(fs.readFileSync(path.join(dir, '.config/renovate/config.json'), 'utf8'))
+  const rule = (config.packageRules || []).find(r => JSON.stringify(r).includes('DevSecOps Toolbox'))
+  const commands = ((rule || {}).postUpgradeTasks || {}).commands || []
+  if (commands.length === 0) throw new Error('The toolbox rule carries no postUpgradeTasks command')
+  const allowed = JSON.parse((renovateEnv.match(/"allowedCommands":\s*(\[[^\]]*\])/) || [])[1] || '[]')
+
+  const { rawExec, getChildProcessEnv, regEx } = await renovateInternals(dir)
+  const shown = []
+  for (const cmd of commands) {
+    const compiled = cmd.replace('{{{newVersion}}}', '1.0.1')
+    // Twin: Renovate skips a command no allowedCommands pattern matches, and
+    // reports it as an artifact error.
+    if (!allowed.some(pattern => regEx(pattern).test(compiled))) {
+      throw new Error(`Renovate would refuse "${compiled}": no allowedCommands pattern matches it. Resolved: ${JSON.stringify(allowed)}`)
+    }
+    let run
+    try {
+      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf-8' })
+    } catch (e) {
+      throw new Error(`Renovate's post-upgrade command failed without a shell, exit=${e.exitCode}\n$ ${compiled}\n${e.stderr || e.message}`)
+    }
+    shown.push(`$ ${compiled}`, ...run.stdout.split('\n').map(l => l.trim()).filter(l => POST_UPGRADE_LINES.some(re => re.test(l))))
+  }
+
+  // Twins: the stray file is gone, and the release really landed.
+  if (fs.existsSync(path.join(dir, '.config/devsecops/VERSION'))) {
+    throw new Error('The stray .config/devsecops/VERSION Renovate left behind is still there')
+  }
+  if (!/^_commit: 1\.0\.1$/m.test(fs.readFileSync(answers, 'utf8'))) {
+    throw new Error('Expected the answers file to record release 1.0.1 after the update')
+  }
+  if (!fs.readFileSync(path.join(dir, UPDATE_MARKER_FILE), 'utf8').includes(UPDATE_MARKER)) {
+    throw new Error(`Expected release 1.0.1's change (${UPDATE_MARKER} in ${UPDATE_MARKER_FILE}) in the project`)
+  }
+  const status = execSync('git status --short', { cwd: dir, encoding: 'utf8' }).trimEnd()
+  await renderPreFrame(I, 'contract-post-upgrade', [...shown, '', '$ git status --short', status].join('\n'))
+})
+
 storyboardStep(Then, "a downstream project's renovate ignores stale framework-owned .config drift", async () => {
   const dir = renderProject()
   cleanupDirs.push(dir)
@@ -451,7 +580,7 @@ storyboardStep(Then, "a downstream project's renovate ignores stale framework-ow
   if (frameworkOwned.length) {
     throw new Error(`Downstream Renovate scanned framework-owned .config files: ${frameworkOwned.join(', ')}`)
   }
-  await renderColorFrame('contract-downstream-ignores', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
+  await renderColorFrame('contract-downstream-ignores', `$ ${lastExtract.command}\n${extractionSummary(lastExtract.output)}`)
 })
 
 storyboardStep(Then, "a downstream project's renovate tracks its own outdated project dependency", async () => {
@@ -476,7 +605,7 @@ storyboardStep(Then, "the framework repo's own renovate detects that same stale 
   if (!configDetected.length) {
     throw new Error(`Framework Renovate detected no .config update; scanned: ${lastExtract.packageFiles.join(', ') || 'nothing'}`)
   }
-  await renderColorFrame('contract-framework-tracks', `$ ${EXTRACT_CMD}\n${extractionSummary(lastExtract.output)}`)
+  await renderColorFrame('contract-framework-tracks', `$ ${lastExtract.command}\n${extractionSummary(lastExtract.output)}`)
 })
 
 // ============================================

@@ -64,7 +64,7 @@ class GitLabUserPage {
     // when the user is already there — so no scenario depends on run order.
     if (username === process.env.TASK_GITLAB_LAMBDA_USER) {
       await this.ensureUserViaApi(
-        'http://gitlab:80',
+        'http://gitlab:80', // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
         process.env.TASK_GITLAB_ROOT_USER,
         process.env.TASK_GITLAB_ROOT_PASSWORD,
         {

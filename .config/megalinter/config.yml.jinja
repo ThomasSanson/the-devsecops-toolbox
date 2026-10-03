@@ -4,3 +4,7 @@
 # You can override or add settings here.
 
 EXTENDS: .config/megalinter/config.base.yml
+
+# Keep inherited OSV exclusions when adding project-specific arguments.
+CONFIG_PROPERTIES_TO_APPEND:
+  - REPOSITORY_OSV_SCANNER_ARGUMENTS

@@ -27,7 +27,7 @@ TASK_VERSION="3.49.1"
 GIT_MIN_VERSION="2.34.0"
 PYTHON_VERSION="3.14"
 # renovate: datasource=pypi depName=copier
-COPIER_VERSION="copier==9.17.2"
+COPIER_VERSION="copier==9.18.2"
 # renovate: datasource=github-releases depName=charmbracelet/gum extractVersion=^v(?<version>.*)$
 GUM_VERSION="0.17.0"
 # renovate: datasource=github-releases depName=charmbracelet/glow extractVersion=^v(?<version>.*)$
@@ -727,6 +727,7 @@ CI_EOF
   # that publishes has no build, deploy or monitor phase to run.
   copy_spine_file "${render_dir}/.config/devsecops/Taskfile.feedback.yml" ".config/devsecops/Taskfile.feedback.yml"
   copy_spine_file "${render_dir}/.config/renovate/Taskfile.yml" ".config/renovate/Taskfile.yml"
+  copy_spine_file "${render_dir}/.config/renovate/version" ".config/renovate/version"
 
   # `cp -a src dst` copies src INSIDE dst when dst already exists, which on a
   # second install would bury the new component in .config/publication/publication.

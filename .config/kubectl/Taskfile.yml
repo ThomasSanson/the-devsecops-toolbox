@@ -61,10 +61,10 @@ tasks:
         silent: true
 
   port-forward:
-    desc: 🔌 Port-forward a Kubernetes service to localhost
+    desc: 🔌 Port-forward a Kubernetes service to this machine
     summary: |
       ℹ️ Description:
-        Port-forwards a Kubernetes service to localhost for local access.
+        Opens a port on the loopback interface for access from this machine.
 
       🔧 Variables:
         - SERVICE_NAME: Name of the Kubernetes service

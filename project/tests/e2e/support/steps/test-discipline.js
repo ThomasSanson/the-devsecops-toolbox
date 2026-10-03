@@ -165,13 +165,16 @@ async function captureGateJobFrame (jobId, frameName, height, opts = {}) {
     document.querySelectorAll(
       '.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]'
     ).forEach(el => { el.style.display = 'none' })
-    // gitlab-runner 19 signs off with a cleanup line of its own — "Possibly
-    // zombie container runner-<token>--project-…-docker-0 is disconnected from
-    // network …" — naming a container built from the runner token this story
-    // registers fresh every run. It is the runner tidying up after itself, not
-    // the gate speaking, and it appears or not depending on the runner version.
+    // gitlab-runner signs off with a cleanup line of its own, naming a
+    // container built from the runner token this story registers fresh every
+    // run: "Possibly zombie container runner-<token>-…-docker-0 is disconnected
+    // from network …" up to 19.2, "Container runner-<token>-…-docker-0
+    // disconnected from network …" from 19.3.3 on. It is the runner tidying up
+    // after itself, not the gate speaking, and both wordings carry a per-run
+    // token, so match what they share rather than one sentence.
+    const RUNNER_CLEANUP = /runner-\S+.*disconnected from network/i
     lines.forEach(l => {
-      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
+      if (RUNNER_CLEANUP.test(l.textContent)) l.style.display = 'none'
     })
     const log = document.querySelector('[data-testid="job-log-content"]')
     if (!log) return
@@ -390,7 +393,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   )
 
   const user = lambdaUser()
-  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git`
+  const remote = `http://${user}:${encodeURIComponent(token)}@gitlab/${user}/${PROJECT_NAME}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   fs.rmSync(FIXTURE_DIR, { recursive: true, force: true })
   // chown: the tar-extracted /workspace keeps the HOST uid, and git refuses to
   // work in a repository owned by another user (dubious ownership).

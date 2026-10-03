@@ -324,7 +324,7 @@ const workerCompletion = require('../helpers/workerCompletionFixture')
 let interruptedRuns = null
 
 After((test) => {
-  if (test && test.tags && test.tags.includes('@worker-completion')) {
+  if (test && test.tags && test.tags.some(tag => ['@worker-completion', '@junit-freshness'].includes(tag))) {
     workerCompletion.removeWorkerFixture()
     interruptedRuns = null
   }
@@ -353,4 +353,24 @@ storyboardStep(Then, 'the task rejects both incomplete runs and cannot reuse ear
 storyboardStep(Then, 'complete selections pass with either a grep filter or its inverse', async () => {
   const results = workerCompletion.runCompletedSelections()
   await workerCard('selected', results.map(result => workerCompletion.transcript(result, true)).join('\n\n'))
+})
+
+storyboardStep(Given, 'an earlier launch has a genuine failed scenario and accepted RED evidence', async () => {
+  const result = workerCompletion.seedFailedLaunch()
+  await workerCard('previous-failure', workerCompletion.transcript(result))
+})
+
+storyboardStep(When, 'the next launch crashes before loading its scenarios', async () => {
+  const result = workerCompletion.crashBeforeScenarios()
+  await workerCard('config-crash', workerCompletion.transcript(result, true))
+})
+
+storyboardStep(Then, 'the RED gate refuses the old failure and no worker report remains', async () => {
+  const result = workerCompletion.redAfterCrash()
+  await workerCard('stale-red-refused', workerCompletion.transcript(result))
+})
+
+storyboardStep(Then, 'a zero-match filter fails clearly and removes earlier reports', async () => {
+  const result = workerCompletion.zeroMatchSelection()
+  await workerCard('zero-match', workerCompletion.transcript(result, true))
 })

@@ -66,7 +66,7 @@ async function createAndPushProject (dir) {
     throw new Error(`createProject failed (${created2.status}): ${JSON.stringify(created2.data)}`)
   }
   const user = process.env.TASK_GITLAB_LAMBDA_USER
-  const remote = `http://${user}:${encodeURIComponent(lambdaToken)}@gitlab/${user}/${projectName}.git`
+  const remote = `http://${user}:${encodeURIComponent(lambdaToken)}@gitlab/${user}/${projectName}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
   git(dir, 'init --quiet --initial-branch=main')
   git(dir, 'config user.email "e2e@test.local"')
   git(dir, 'config user.name "E2E"')

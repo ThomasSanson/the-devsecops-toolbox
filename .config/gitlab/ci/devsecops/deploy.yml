@@ -2,7 +2,7 @@
 deploy:
   stage: deploy
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   script:
     - task deploy
   rules:

@@ -65,6 +65,18 @@ REPOSITORY_BETTERLEAKS_CONFIG_FILE: .config/betterleaks/config.toml
 # pins; the lock files are still read in full.
 REPOSITORY_OSV_SCANNER_ARGUMENTS:
   - "--no-resolve"
+  - "--allow-no-lockfiles"
+  # The toolbox scans these tools upstream. Projects receive fixes through
+  # Copier updates; their own dependencies, including other .config tools,
+  # remain in the scan. Keep these paths aligned with shipped dependencies.
+  - "--experimental-exclude=.config/ansible"
+  - "--experimental-exclude=.config/codeceptjs"
+  - "--experimental-exclude=.config/commitizen"
+  - "--experimental-exclude=.config/commitlint"
+  - "--experimental-exclude=.config/copier"
+  - "--experimental-exclude=.config/lizard"
+  - "--experimental-exclude=.config/megalinter"
+  - "--experimental-exclude=.config/yamllint"
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
 REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_KINGFISHER_ARGUMENTS:

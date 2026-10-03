@@ -58,6 +58,20 @@ ci_platform:
     GitLab Self-Hosted: gitlab_self_hosted
   default: gitlab_saas
 
+gitlab_docker_runner_tags:
+  type: json
+  help: |
+    Runner tags for jobs that need Docker (JSON list).
+    Use ["saas-linux-medium-amd64"] or ["saas-linux-large-amd64"] to keep existing tags.
+    An empty list keeps legacy self-hosted routing: untagged runners must then support Docker.
+  default: '{{ (["saas-linux-medium-amd64"] if ci_platform == "gitlab_saas" else []) | tojson }}'
+  validator: >-
+    {% if gitlab_docker_runner_tags is not sequence or gitlab_docker_runner_tags is string or gitlab_docker_runner_tags is mapping %}
+    Enter a JSON list of runner tag strings.
+    {% elif gitlab_docker_runner_tags | reject('string') | list | length > 0 or '' in gitlab_docker_runner_tags %}
+    Every runner tag must be a non-empty string.
+    {% endif %}
+
 gitlab_docker_host:
   type: str
   help: |
@@ -94,6 +108,15 @@ use_docker_compose:
   help: Generate a docker-compose.yml file in the project/ directory?
   default: true
   when: "{{ container_runtime == 'docker' }}"
+
+privileged_ci_runners:
+  type: bool
+  help: |
+    Can your CI runners start privileged containers (Docker-in-Docker)?
+    Answer no for locked-down runners: every secret scan then runs from the
+    pinned binary shipped with the toolbox, in CI as on a laptop, instead of
+    starting a container.
+  default: true
 
 # Questions — Project workspace
 project_enabled:

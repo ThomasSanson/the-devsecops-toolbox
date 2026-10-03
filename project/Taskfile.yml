@@ -131,6 +131,9 @@ tasks:
           {{end}}
       - cmd: echo "🚀 Starting project E2E test phase"
         silent: true
+      # Setup can fail before the engine starts. Clear the host reports now so
+      # neither that failure nor the copy into the container reuses an old run.
+      - cmd: rm -rf project/tests/e2e/_output/junit
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} up -d codeceptjs --wait"
       # Once both test images are built, the BuildKit build cache is dead
       # weight on the disk-constrained CI dind (~25 GB) and competes with the
@@ -160,7 +163,7 @@ tasks:
       # run — including this very run — so it is always present locally and would
       # otherwise land in every Copier render (the matrix `ls` tree baselines).
       - cmd: |
-          tar \
+          COPYFILE_DISABLE=1 tar --no-xattrs \
             --exclude='.git' \
             --exclude='.cache' \
             --exclude='.claude' \

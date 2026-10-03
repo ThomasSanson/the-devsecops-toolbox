@@ -6,7 +6,7 @@ release:
   # concurrent releases would race on opening/closing push access to the
   # default branch.
   resource_group: release
-  extends: .default-tags
+  extends: .docker-job
   variables:
     # Variables for Docker (likely used within 'task release')
     TASK_DOCKER_CE_AUTH_ENABLED: "true"

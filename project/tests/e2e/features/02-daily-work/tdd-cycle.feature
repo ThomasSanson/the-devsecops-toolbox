@@ -86,3 +86,16 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     Then the task rejects both incomplete runs and cannot reuse earlier successful reports
     # Note: Selecting only the completing examples with grep succeeds; inverting a grep for the interrupted scenario selects the same two examples. The feature list still excludes the third file. The guard must follow those real selections, not demand every feature in the repository.
     And complete selections pass with either a grep filter or its inverse
+
+  @junit-freshness
+  Scenario: A launch that cannot reach its scenarios cannot reuse an earlier report
+    # Chapter: An earlier failure is not proof for the next launch
+    # Note: A disposable scenario really fails on an assertion. The repository's reporter writes its failure, and the RED gate accepts that current evidence.
+    Given an earlier launch has a genuine failed scenario and accepted RED evidence
+    # Note: The next launch throws while loading its configuration, before it can execute any scenario. This uses the engine command from the task's own preview.
+    When the next launch crashes before loading its scenarios
+    # Note: The same RED command must now refuse the proof. The previous report must be gone, even though configuration loading failed before a new report could be written.
+    Then the RED gate refuses the old failure and no worker report remains
+    # Chapter: A filter that selects nothing is an error
+    # Note: A real successful launch seeds reports again. A filter matching no scenario must fail clearly and leave no result from that earlier launch.
+    And a zero-match filter fails clearly and removes earlier reports

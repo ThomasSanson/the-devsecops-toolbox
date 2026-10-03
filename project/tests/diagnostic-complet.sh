@@ -48,11 +48,11 @@ run_diagnostic "Inspection des conteneurs" "02-containers-inspect.txt" sh -c 'do
 
 # 3. Santé HTTP / TLS
 log "🏥 Section 3: Santé HTTP / TLS"
-run_diagnostic "Curl localhost (HEAD)" "03-health-localhost.txt" sh -c "curl -k -I https://localhost:${HTTPS_PORT_VALUE}/ || true"
+run_diagnostic "Curl localhost (HEAD)" "03-health-localhost.txt" sh -c "curl -k -I https://localhost:${HTTPS_PORT_VALUE}/ || true" # DevSkim: ignore DS162092 -- Deliberate loopback check in the local test environment.
 run_diagnostic "Curl docker (HEAD)" "03-health-docker.txt" sh -c "curl -k -I https://docker:${HTTPS_PORT_VALUE}/ || true"
-run_diagnostic "Curl localhost (verbose)" "03-health-localhost-verbose.txt" sh -c "curl -kv https://localhost:${HTTPS_PORT_VALUE}/ -o /dev/null || true"
+run_diagnostic "Curl localhost (verbose)" "03-health-localhost-verbose.txt" sh -c "curl -kv https://localhost:${HTTPS_PORT_VALUE}/ -o /dev/null || true" # DevSkim: ignore DS162092 -- Deliberate loopback check in the local test environment.
 run_diagnostic "Curl docker (verbose)" "03-health-docker-verbose.txt" sh -c "curl -kv https://docker:${HTTPS_PORT_VALUE}/ -o /dev/null || true"
-run_diagnostic "TLS docker via openssl" "03-tls-docker-openssl.txt" sh -c "openssl s_client -connect docker:${HTTPS_PORT_VALUE} -servername localhost </dev/null || true"
+run_diagnostic "TLS docker via openssl" "03-tls-docker-openssl.txt" sh -c "openssl s_client -connect docker:${HTTPS_PORT_VALUE} -servername localhost </dev/null || true" # DevSkim: ignore DS162092 -- Deliberate loopback check in the local test environment.
 
 # 4. Logs des services (dernières 400 lignes)
 log "📝 Section 4: Logs des services"

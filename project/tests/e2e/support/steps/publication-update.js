@@ -84,7 +84,10 @@ const ABSENT_TOOL = '.config/glab/Taskfile.yml'
 // once the release tightens the floor.
 const CREDENTIAL = 'src/cluster.kubeconfig'
 
-Before(() => {
+const ownsScenario = test => Boolean(test && test.tags && test.tags.includes('@publication-update'))
+
+Before(test => {
+  if (!ownsScenario(test)) return
   global.pubUpdateContainer = null
   global.pubUpdateTemplate = null
   global.pubUpdateToolbox = null
@@ -94,17 +97,29 @@ Before(() => {
   global.pubUpdateMr = null
 })
 
-After(async () => {
-  removeContainer(global.pubUpdateContainer)
+After(async test => {
+  if (!ownsScenario(test)) return
+  const resources = {
+    container: global.pubUpdateContainer,
+    template: global.pubUpdateTemplate,
+    projects: [global.pubUpdateProject, global.pubUpdateToolbox],
+    tokenId: global.pubUpdateTokenId
+  }
+  // A later scenario can start while API cleanup is pending.
   global.pubUpdateContainer = null
-  if (global.pubUpdateTemplate && global.pubUpdateTemplate.startsWith('/tmp/')) {
+  global.pubUpdateTemplate = null
+  global.pubUpdateProject = null
+  global.pubUpdateToolbox = null
+  global.pubUpdateTokenId = null
+  global.pubUpdateToken = null
+  removeContainer(resources.container)
+  if (resources.template && resources.template.startsWith('/tmp/')) {
     try {
-      execSync(`rm -rf ${shellEscape(global.pubUpdateTemplate)}`, { stdio: 'ignore' })
+      execSync(`rm -rf ${shellEscape(resources.template)}`, { stdio: 'ignore' })
     } catch (_) {
       // Best-effort cleanup.
     }
   }
-  global.pubUpdateTemplate = null
   try {
     execSync(`rm -rf ${CHECKOUT_DIR}`, { stdio: 'ignore' })
   } catch (_) {
@@ -117,7 +132,7 @@ After(async () => {
   } catch (_) {
     return
   }
-  for (const name of [global.pubUpdateProject, global.pubUpdateToolbox]) {
+  for (const name of resources.projects) {
     if (!name) continue
     try {
       await deleteProject(name, rootHeaders)
@@ -125,17 +140,13 @@ After(async () => {
       // Best-effort: GitLab deletion is async and non-critical.
     }
   }
-  global.pubUpdateProject = null
-  global.pubUpdateToolbox = null
-  if (global.pubUpdateTokenId) {
+  if (resources.tokenId) {
     try {
-      await revokePersonalAccessToken(global.pubUpdateTokenId, rootHeaders)
+      await revokePersonalAccessToken(resources.tokenId, rootHeaders)
     } catch (_) {
       // Best-effort.
     }
-    global.pubUpdateTokenId = null
   }
-  global.pubUpdateToken = null
 })
 
 function sh (cmd, cwd) {
@@ -339,20 +350,26 @@ function runFeedback (cloneUrl, token) {
     'TASK_RENOVATE_ENDPOINT=http://gitlab/api/v4',
     `TASK_RENOVATE_TOKEN=${token}`
   ].join(' ')
-  let raw
   try {
-    raw = execSync(`env ${env} task feedback 2>&1`, {
+    const output = execSync(`env ${env} task feedback 2>&1`, {
       cwd: CHECKOUT_DIR, encoding: 'utf8', timeout: SETUP_TIMEOUT, maxBuffer: 64 * 1024 * 1024
     })
+    return { output, exitCode: 0 }
   } catch (e) {
-    raw = (e.stdout || '') + (e.stderr || '')
+    return {
+      output: (e.stdout || '') + (e.stderr || ''),
+      exitCode: typeof e.status === 'number' ? e.status : 1
+    }
   }
-  return raw
 }
 
 /** What the card must not carry: the run's own name, its clock, its version pins. */
 function maskFeedback (output) {
   return stripAnsiEscapeSequences(output)
+    // npm's first download emits deprecation notices that a warm cache omits.
+    // Keep Renovate's own warnings and errors, which describe this update.
+    .replace(/^npm warn deprecated[^\n]*(?:\n|$)/gm, '')
+    .replace(/renovate@[0-9][0-9.]*/g, 'renovate@<version>')
     .replace(/e2e-toolbox-[0-9a-f]+/g, 'toolbox')
     .replace(/e2e-component-[0-9a-f]+/g, 'project')
     .replace(/("renovateVersion":\s*)"[^"]+"/g, '$1"<version>"')
@@ -438,12 +455,17 @@ storyboardStep(Given, 'what it would publish today, cluster credential included'
 })
 
 storyboardStep(When, 'the nightly check runs and Renovate finds the new release', async () => {
-  const output = runFeedback(
+  const { output, exitCode } = runFeedback(
     `http://${lambdaUser()}:${encodeURIComponent(global.pubUpdateToken)}@gitlab/${lambdaUser()}/${global.pubUpdateProject}.git`,
     global.pubUpdateToken
   )
+  if (exitCode !== 0) {
+    throw new Error(`The feedback phase failed (exit ${exitCode}):\n${maskFeedback(output)}`)
+  }
   mustContain(output, ['Feedback', 'Renovate started'],
     'the feedback phase must be what starts Renovate')
+  mustNotContain(output, ['artifactErrors'],
+    'Renovate must apply the release without an artifact error')
   await renderPreFrame(I, 'update-feedback', `$ task feedback\n${maskFeedback(output)}`, { colour: true, height: 720 })
 
   const mrs = await listProjectMergeRequests(

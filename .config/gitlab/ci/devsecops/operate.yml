@@ -2,7 +2,7 @@
 operate:
   stage: operate
   needs: [] # Allows parallel execution
-  extends: .default-tags
+  extends: .docker-job
   script:
     - task operate
   rules:

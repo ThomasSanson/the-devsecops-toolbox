@@ -11,8 +11,8 @@
  * copy of the framework (the "safe zone") where each tool has been regressed to
  * an older version. So the task wiring, the config path it resolves, and the
  * Renovate config are ALL exercised together — not a renovate command run on the
- * side. Extract mode is offline (no datasource lookup), and the task prefers the
- * pinned, baked `renovate` over npx, so the run is deterministic and CI-safe.
+ * side. Extract mode performs no datasource lookup; the task downloads the
+ * framework's pinned Renovate release through npx.
  *
  * ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline, asserted
  * inside the step (tolerance: 0): the regression stage, Renovate's own
@@ -38,7 +38,7 @@ const TOOLS = [
   { depName: 'charmbracelet/gum', old: '0.14.0', source: '.config/gum/version', pinVar: 'GUM_VERSION' },
   { depName: 'charmbracelet/glow', old: '2.0.0', source: '.config/glow/version', pinVar: 'GLOW_VERSION' }
 ]
-const TRACKED = TOOLS.map(tool => tool.depName)
+const TRACKED = [...TOOLS.map(tool => tool.depName), 'oxsecurity/megalinter']
 
 let workdir = null
 let gitEnv = null
@@ -185,6 +185,21 @@ storyboardStep(Then, 'each tool is detected at both its config source and the in
   await renderPreFrame(I, 'detection-endpoints', `$ ${EXTRACT}  (per-endpoint)\n${rows.join('\n')}`)
 })
 
+storyboardStep(Then, 'Renovate tracks the MegaLinter release in both local and CI execution', async () => {
+  const expected = ['.config/megalinter/package.json', '.config/gitlab/ci/devsecops/code.yml', '.config/gitlab/ci/devsecops/code.yml.jinja']
+  const files = trackedDepFiles(runExtract(EXTRACT_JSON, workdir, gitEnv))['oxsecurity/megalinter'] || new Set()
+  for (const file of expected) {
+    if (!files.has(file)) throw new Error(`Renovate must track the MegaLinter version in ${file}`)
+  }
+  const command = [
+    'grep -H -E "mega-linter-runner|ghcr.io/oxsecurity/megalinter:"',
+    ...expected.map(file => '  ' + file)
+  ].join(' \\\n')
+  const output = execSync(command, { cwd: workdir, env: gitEnv, encoding: 'utf8' })
+    .replace(/\b(v?)[0-9]+\.[0-9]+\.[0-9]+\b/g, '$1<version>')
+  await renderPreFrame(I, 'megalinter-local-and-ci-pins', `$ ${command}\n${output}`)
+})
+
 // ---------------------------------------------------------------------------
 // Chapter 3 — one dependency, one merge request
 // ---------------------------------------------------------------------------
@@ -266,8 +281,8 @@ function maskBranchVersion (branch) {
 }
 
 // Map each pinned-back dependency -> the branches Renovate would open for it.
-// The per-manager package files sit under `config` in the pinned renovate the
-// image carries, and directly under `packageFiles` in newer ones.
+// The per-manager package files sit under `config` in the pinned Renovate
+// release, and directly under `packageFiles` in newer ones.
 // Renovate nests its findings four deep — manager, package file, dependency,
 // update — and reading that nest is a separate job from finding the one log
 // line that holds it. Split accordingly: this walks the nest, the caller finds
@@ -397,14 +412,18 @@ storyboardStep(Then, 'the test runner already holds the browser its own Playwrig
   const executable = execSync(RESOLVE, { cwd: '/app/.config/codeceptjs', encoding: 'utf8' }).trim()
   fs.accessSync(executable, fs.constants.X_OK)
 
-  // The browser build number moves with every Playwright release; masking it
-  // keeps the picture stable while still showing the file is really there.
+  // Browser build numbers and platform directories differ between runners.
+  // Mask them so the baseline proves availability, not the host architecture.
+  const displayedExecutable = executable
+    .replace(/-\d+\//, '-<build>/')
+    .replace(/\/chrome-[^/]+\//, '/chrome-<platform>/')
+
   await renderPreFrame(I, 'browser-inside-the-runner', [
     "$ grep 'playwright install' .config/codeceptjs/Dockerfile",
     buildLine.trim(),
     '',
     `$ ${RESOLVE}`,
-    executable.replace(/-\d+\//, '-<build>/'),
+    displayedExecutable,
     '',
     'present and executable inside the test runner'
   ].join('\n'))

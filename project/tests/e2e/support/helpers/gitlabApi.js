@@ -1,10 +1,7 @@
 const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
-const { runCommand } = require('./docker')
+const { runCommand, composeService } = require('./docker')
 
-const BASE_URL = 'http://gitlab:80'
-// project/docker-compose.yml pins this name; every container of the suite's own
-// stack is prefixed with it.
-const COMPOSE_PROJECT = 'the-devsecops-toolbox'
+const BASE_URL = 'http://gitlab:80' // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
 
 function getLambdaUsername () {
   return process.env.TASK_GITLAB_LAMBDA_USER
@@ -37,16 +34,10 @@ let rootHeadersCache = null
 
 async function getRootHeaders () {
   if (rootHeadersCache) return rootHeadersCache
-  const names = runCommand("docker ps --format '{{.Names}}' --filter 'name=gitlab'")
   // `<project>-gitlab-1` is the GitLab service; `<project>-gitlab-runner-1` is
-  // its runner, and answers no API.
-  const candidates = names.split('\n').map(n => n.trim()).filter(n => /-gitlab-\d+$/.test(n))
-  // A developer machine happily runs a SECOND stack whose GitLab is also called
-  // "<something>-gitlab-1" — another checkout of this template, for instance.
-  // Minting the admin token inside that one and sending it to ours answers 401
-  // on every call, intermittently, depending on the order docker happens to
-  // list containers in. Ours is the one under this compose project.
-  const service = candidates.find(n => n.startsWith(`${COMPOSE_PROJECT}-`)) || candidates[0]
+  // its runner, and answers no API. composeService keeps us inside OUR stack
+  // when a second toolbox-derived one runs on the same machine.
+  const service = composeService('gitlab')
   if (!service) throw new Error('the gitlab compose service is not running')
   const ruby =
     `puts User.find_by_username('${process.env.TASK_GITLAB_ROOT_USER}')` +
@@ -218,7 +209,7 @@ async function rotateProjectAccessToken (projectName, tokenId, headers) {
 // returns { valid, errors, warnings, merged_yaml }.
 async function lintProjectCi (projectName, headers, ref = 'main') {
   return freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/ci/lint?ref=${ref}&dry_run=false`,
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/ci/lint?content_ref=${encodeURIComponent(ref)}&dry_run=false`,
     headers
   )
 }

@@ -28,6 +28,7 @@ const COMPLETED = `Feature: Completed worker
 const STEPS = `/* global Then */
 Then('the worker exits before completing when requested', () => {
   if (process.env.WORKER_PROBE_STOP === '1') process.exit(23)
+  if (process.env.WORKER_PROBE_FAIL === '1') require('assert/strict').fail('Previous launch: the greeting is missing')
 })
 Then('the worker completes example {int}', number => {
   require('assert/strict').ok(number === 1 || number === 2)
@@ -153,6 +154,7 @@ function runCompletedSelections () {
   const results = []
   for (const option of ['--grep ' + quote('@worker-ok'), '--grep ' + quote('@worker-stop') + ' --invert']) {
     const env = environment(true)
+    seedReports(env)
     const result = run(taskCommand(env, option), env)
     assert.equal(result.code, 0, result.output)
     assert.match(result.output, /Worker completion: PASS \(2\/2 selected scenarios\)/, result.output)
@@ -183,4 +185,46 @@ function removeWorkerFixture () {
   fs.rmSync(ROOT, { recursive: true, force: true })
 }
 
-module.exports = { prepareWorkerFixture, runInterruptedCases, assertInterruptedCases, runCompletedSelections, transcript, removeWorkerFixture }
+function seedFailedLaunch () {
+  prepareWorkerFixture()
+  const env = { ...environment(false), WORKER_PROBE_FAIL: '1' }
+  const command = taskCommand(env, '--grep @worker-stop')
+  const result = run(command, env)
+  assert.notEqual(result.code, 0, result.output)
+  assert.ok(reportSnapshot().some(report => report.xml.includes('Previous launch: the greeting is missing')),
+    'The previous launch must really fail and record its assertion')
+  const proof = run('task devsecops:test:check:red-is-real -- @worker-stop', env)
+  assert.equal(proof.code, 0, proof.output)
+  return proof
+}
+
+function crashBeforeScenarios () {
+  const env = environment(false)
+  const command = taskCommand(env, '--grep @worker-stop')
+  fs.appendFileSync(path.join(ROOT, CONFIG), '\nthrow new Error("Freshness probe: config failed before execution")\n')
+  const result = run(command, env)
+  assert.notEqual(result.code, 0, result.output)
+  assert.match(result.output, /Freshness probe: config failed before execution/)
+  return result
+}
+
+function redAfterCrash () {
+  const result = run('task devsecops:test:check:red-is-real -- @worker-stop', environment(false))
+  assert.notEqual(result.code, 0, 'A config crash reused an earlier failed report as RED evidence:\n' + stripAnsi(result.output))
+  assert.deepEqual(reportSnapshot(), [], 'A previous worker report survived the config crash')
+  assert.match(result.output, /no report at all/)
+  return result
+}
+
+function zeroMatchSelection () {
+  prepareWorkerFixture()
+  const env = environment(false)
+  seedReports(env)
+  const result = run(taskCommand(env, '--grep @no-such-scenario'), env)
+  assert.notEqual(result.code, 0, result.output)
+  assert.match(result.output, /No Gherkin scenario matches this selection/)
+  assert.deepEqual(reportSnapshot(), [], 'A zero-match selection retained earlier results')
+  return result
+}
+
+module.exports = { prepareWorkerFixture, runInterruptedCases, assertInterruptedCases, runCompletedSelections, transcript, removeWorkerFixture, seedFailedLaunch, crashBeforeScenarios, redAfterCrash, zeroMatchSelection }

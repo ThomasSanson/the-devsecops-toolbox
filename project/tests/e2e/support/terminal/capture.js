@@ -81,7 +81,18 @@ const TERMINAL_NOISE_PATTERNS = [
   // Server-side messages git relays during a push (GitLab's merge-request hint,
   // object/progress counts) — volatile and not part of the story. The push
   // itself runs with -q; this drops whatever the remote still prints.
-  /^remote:/
+  /^remote:/,
+  // Git's OWN push plumbing, when the push on camera is not a quiet one: object
+  // counts, the compression thread count (the machine's CPU), the pack size
+  // (the commit SHA is in it) and the throughput. Volatile by nature, and no
+  // card is about them — a card showing a push is about the branch it created
+  // and the merge request it opened.
+  /^Enumerating objects: /,
+  /^Counting objects: /,
+  /^Delta compression using /,
+  /^Compressing objects: /,
+  /^Writing objects: /,
+  /^Total \d+ \(delta /
 ]
 
 async function readTerminalState (I) {
@@ -384,11 +395,27 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     let kept = 0
     let maxChars = 0
 
+    // The terminal's width in characters: a row that reaches it was WRAPPED, so
+    // the row after it is its tail. Dropping a noisy row would otherwise leave
+    // that tail behind as an orphan fragment ("cops", the end of GitLab's
+    // "create a merge request for update-framework-devsecops" hint).
+    const columns = sortedRows.reduce(function (widest, entry) {
+      return Math.max(widest, (entry.row.textContent || '').length)
+    }, 0)
+    let droppedRowWasWrapped = false
+
     sortedRows.forEach(function (entry) {
       const rawText = entry.row.textContent || ''
       const trimmed = rawText.replace(/\s+$/, '')
-      if (trimmed === '') return
-      if (patterns.some(function (re) { return re.test(trimmed) })) return
+      if (trimmed === '') {
+        droppedRowWasWrapped = false
+        return
+      }
+      if (patterns.some(function (re) { return re.test(trimmed) }) || droppedRowWasWrapped) {
+        droppedRowWasWrapped = columns > 0 && trimmed.length >= columns
+        return
+      }
+      droppedRowWasWrapped = false
 
       const line = document.createElement('div')
       line.className = 'row'

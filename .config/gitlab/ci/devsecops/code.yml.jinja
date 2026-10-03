@@ -19,16 +19,15 @@
 
 # One job per check (all in parallel thanks to same stage + needs: [])
 code:project:
+  extends: .docker-job
   stage: code
   needs: []
-{%- if ci_platform == 'gitlab_saas' %}
-  tags: [saas-linux-medium-amd64]
-{%- endif %}
   script:
     - task project:code
   <<: *code_rules
 
 code:commitlint:
+  extends: .native-job
   stage: code
   needs: []
   script:
@@ -36,6 +35,7 @@ code:commitlint:
   <<: *code_rules
 
 code:commitizen-check:
+  extends: .native-job
   stage: code
   needs: []
   script:
@@ -43,6 +43,7 @@ code:commitizen-check:
   <<: *code_rules
 
 code:commitizen-bump-dry:
+  extends: .native-job
   stage: code
   needs: []
   script:
@@ -50,6 +51,7 @@ code:commitizen-bump-dry:
   <<: *code_rules
 
 code:lizard:
+  extends: .native-job
   stage: code
   needs: []
   script:
@@ -57,6 +59,7 @@ code:lizard:
   <<: *code_rules
 
 code:renovate-validate:
+  extends: .native-job
   stage: code
   needs: []
   script:
@@ -64,6 +67,9 @@ code:renovate-validate:
   <<: *code_rules
 
 code:betterleaks:
+  extends: .native-job
+  variables:
+    TASK_BETTERLEAKS_MODE: binary
   stage: code
   needs: []
   script:
@@ -71,13 +77,16 @@ code:betterleaks:
   <<: *code_rules
 
 code:megalinter:
+  extends: .native-job
+  image:
+    name: ghcr.io/oxsecurity/megalinter:v10.1.0
+    entrypoint: [""]
+  before_script:
+    - .config/task/install.sh
   stage: code
   needs: []
-{%- if ci_platform == 'gitlab_saas' %}
-  tags: [saas-linux-medium-amd64]
-{%- endif %}
   script:
-    - task megalinter
+    - task megalinter:ci
   rules:
     # Block specific tags and branches (highest priority)
     - if: $CI_COMMIT_TAG =~ /^staging$/
@@ -111,6 +120,9 @@ code:megalinter:
 
 # (Optional) Aggregator waiting for all checks
 code:all:
+  extends: .native-job
+  image: alpine:3.20
+  before_script: []
   stage: code
   needs:
     - code:commitizen-bump-dry

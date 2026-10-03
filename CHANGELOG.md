@@ -2,6 +2,279 @@
 
 # Changelog
 
+## 24.1.10 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.19.1
+
+## 24.1.9 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.120.0
+
+## 24.1.8 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency renovate to v43.288.0
+
+## 24.1.7 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.19.1
+
+## 24.1.6 (2026-10-03)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v4.2.0
+
+## 24.1.5 (2026-10-03)
+
+### Fix
+
+- **ci**: pin Renovate downloads and stabilize native CI captures
+- **test**: render OSV reports deterministically
+- **test**: report actual task output to the worker monitor
+- **deps**: patch shipped tooling vulnerabilities
+- **megalinter**: allow empty project OSV scans
+- **megalinter**: scope project OSV scans to owned dependencies
+
+### Refactor
+
+- **test**: remove Renovate from the CodeceptJS image
+
+## 24.1.4 (2026-09-26)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.19.0
+
+## 24.1.3 (2026-09-24)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-runner docker tag to v19.4.1
+
+## 24.1.2 (2026-09-24)
+
+### Fix
+
+- **renovate**: hand the post-upgrade command to one task Renovate can call
+
+## 24.1.1 (2026-09-23)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.119.0
+
+## 24.1.0 (2026-09-23)
+
+### Feat
+
+- **update**: deliver a toolbox release through a merge request
+
+## 24.0.1 (2026-09-22)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.19.0
+
+## 24.0.0 (2026-09-20)
+
+### Feat
+
+- **ci**: separate file checks from Docker jobs
+
+## 23.2.0 (2026-09-19)
+
+### Feat
+
+- **reload**: put a drifted project back with one command
+
+## 23.1.2 (2026-09-19)
+
+### Fix
+
+- **deps**: update commitlint monorepo to v21.2.3
+
+## 23.1.1 (2026-09-19)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.13.6
+
+## 23.1.0 (2026-09-19)
+
+### Feat
+
+- **betterleaks**: announce the binary scan, and prove the answer picks it
+- **betterleaks**: scan from a pinned binary where containers are refused
+
+### Fix
+
+- **agent**: wrap the framework-bug rule so a generated project lints clean
+- **tests**: talk to the GitLab of our own compose stack
+
+### Refactor
+
+- **betterleaks**: keep the non-privileged answer to the mode alone
+
+## 23.0.63 (2026-09-17)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-runner docker tag to v19.4.0
+
+## 23.0.62 (2026-09-17)
+
+### Fix
+
+- **tests**: keep the host's node_modules out of the test image
+- **deps**: update dependency playwright to v1.63.0
+
+## 23.0.61 (2026-09-17)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-runner docker tag to v19.3.3
+
+## 23.0.60 (2026-09-16)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v19.3.2
+
+## 23.0.59 (2026-09-16)
+
+### Fix
+
+- **renovate**: run the toolbox update through the task that knows the answers file
+
+## 23.0.58 (2026-09-16)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.118.0
+
+## 23.0.57 (2026-09-15)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.13.5
+
+## 23.0.56 (2026-09-15)
+
+### Fix
+
+- **release**: publish the image before pushing the tag
+
+## 23.0.55 (2026-09-15)
+
+### Fix
+
+- **renovate**: let the framework-evolution update run Copier trusted
+
+## 23.0.54 (2026-09-14)
+
+### Fix
+
+- **deps**: update node.js to v24.21.0
+
+## 23.0.53 (2026-09-14)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.117.0
+
+## 23.0.52 (2026-09-14)
+
+### Fix
+
+- **deps**: update dependency commitizen to v4.18.1
+
+## 23.0.51 (2026-09-14)
+
+### Fix
+
+- **deps**: update dependency ansible-core to v2.21.4
+
+## 23.0.50 (2026-09-14)
+
+### Fix
+
+- **deps**: update dependency @types/node to v24.13.4
+
+## 23.0.49 (2026-09-14)
+
+### Fix
+
+- **deps**: raise multer, hono and js-yaml past their advisories
+- **deps**: raise multer, hono and js-yaml past their advisories
+
+## 23.0.48 (2026-09-07)
+
+### Fix
+
+- **deps**: update dependency copier to v9.18.2
+
+## 23.0.47 (2026-09-06)
+
+### Fix
+
+- **deps**: update mcr.microsoft.com/playwright docker tag to v1.63.0
+
+## 23.0.46 (2026-09-05)
+
+### Fix
+
+- **deps**: update oxsecurity/megalinter docker tag to v10.1.0
+
+## 23.0.45 (2026-09-03)
+
+### Fix
+
+- **deps**: drop overrides main already resolved in the lockfiles
+- **e2e**: preserve macOS metadata during workspace copy
+- **deps**: resolve fast-uri OSV advisories
+- **deps**: resolve CodeceptJS OSV advisories
+- **betterleaks**: prepare scan directory before archive extraction
+- **betterleaks**: copy repositories without macOS extended attributes
+
+## 23.0.44 (2026-09-02)
+
+### Fix
+
+- **test**: stop racing GitLab's own default-branch protection
+- **deps**: raise qs, fast-uri and xmldom past their advisories
+
+## 23.0.43 (2026-09-02)
+
+### Fix
+
+- **deps**: update node.js to v24.20.0
+
+## 23.0.42 (2026-09-02)
+
+### Fix
+
+- **deps**: update dependency copier to v9.18.1
+
+## 23.0.41 (2026-09-01)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.116.0
+
+## 23.0.40 (2026-08-25)
+
+### Fix
+
+- **deps**: update dependency gitlab-org/cli to v1.115.0
+
 ## 23.0.39 (2026-08-23)
 
 ### Fix

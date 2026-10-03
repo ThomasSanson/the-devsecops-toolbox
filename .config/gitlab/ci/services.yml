@@ -1,15 +1,23 @@
 ---
-services:
-  # kics-scan ignore-line
-  - name: docker:29-dind # The rule [ce76b7d0-9e77-464d-b86f-c5c48e03e22d,698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b] are ignored here because it causes false positives specifically related to the Docker-in-Docker service.
-    # --mtu=1360: since May 2026 GitLab.com hosted runners set the OUTER
-    # Docker daemon MTU to 1360 (production incident 22051), while the inner
-    # dind daemon defaults to 1500. Packets above the outer MTU emitted by
-    # nested build/run containers are silently dropped, and several CDNs
-    # filter the ICMP fragmentation-needed replies, so downloads stall until
-    # curl dies with exit 28 — while small or MSS-clamped exchanges (apt,
-    # registry.gitlab.com) keep working. 1360 is the value recommended by
-    # GitLab Support KB article 27528955698972 for the dind service (any
-    # override ABOVE it reproduces the failure), and stays harmless on
-    # self-hosted runners with larger MTUs.
-    command: ["--mtu=1360"]
+# File checks need neither a runner tag nor a container engine.
+.native-job:
+  tags: []
+  services: []
+
+# Project tasks keep Docker because their commands may start containers.
+.docker-job:
+  extends: [.default-tags, .docker-variables]
+  services:
+    # kics-scan ignore-line
+    - name: docker:29-dind # The rule [ce76b7d0-9e77-464d-b86f-c5c48e03e22d,698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b] are ignored here because it causes false positives specifically related to the Docker-in-Docker service.
+      # --mtu=1360: since May 2026 GitLab.com hosted runners set the OUTER
+      # Docker daemon MTU to 1360 (production incident 22051), while the inner
+      # dind daemon defaults to 1500. Packets above the outer MTU emitted by
+      # nested build/run containers are silently dropped, and several CDNs
+      # filter the ICMP fragmentation-needed replies, so downloads stall until
+      # curl dies with exit 28 — while small or MSS-clamped exchanges (apt,
+      # registry.gitlab.com) keep working. 1360 is the value recommended by
+      # GitLab Support KB article 27528955698972 for the dind service (any
+      # override ABOVE it reproduces the failure), and stays harmless on
+      # self-hosted runners with larger MTUs.
+      command: ["--mtu=1360"]

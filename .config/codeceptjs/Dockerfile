@@ -1,5 +1,5 @@
 # kics-scan disable=fd54f200-402c-4333-a5a4-36ef6709af2f,b03a748a-542d-44f4-bb86-9199ab4fd2d5,965a08d7-ef86-4f14-8792-4a3b2098937e
-FROM mcr.microsoft.com/playwright:v1.62.1
+FROM mcr.microsoft.com/playwright:v1.63.0
 
 WORKDIR /app
 
@@ -52,12 +52,6 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
 # the init-effects scenarios, and when two workers hit a missing apt package
 # simultaneously they race on the apt lock (exit 100, observed with unzip
 # then xz-utils). Baking them all removes every scenario-time apt call.
-
-# Pre-install a pinned renovate so the e2e template suite can run the real
-# renovate-config-validator OFFLINE: `npx -p renovate` re-resolves "latest"
-# against the npm registry on every call, which flakes/hangs on throttled
-# shared-runner egress (same class as the go-task/uv pre-warm above).
-RUN npm install -g renovate@43.220.0
 
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/

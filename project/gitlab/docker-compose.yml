@@ -9,7 +9,7 @@
 ---
 services:
   gitlab:
-    image: gitlab/gitlab-ce:19.2.4-ce.0
+    image: gitlab/gitlab-ce:19.3.2-ce.0
     restart: unless-stopped
     profiles: ["debug", "dev", "local", "test"]
     cap_drop:
@@ -19,7 +19,7 @@ services:
     environment:
       GITLAB_ROOT_PASSWORD: ${TASK_GITLAB_ROOT_PASSWORD}
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab'
+        external_url 'http://gitlab' # DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
         # Disable heavy services to reduce resource usage
         prometheus_monitoring['enable'] = false
         alertmanager['enable'] = false
@@ -35,17 +35,15 @@ services:
         puma['worker_processes'] = 2
         sidekiq['concurrency'] = 5
     ports:
-      - "127.0.0.1:${TASK_GITLAB_WEB_PORT}:80"
+      - "127.0.0.1:${TASK_GITLAB_WEB_PORT}:80" # DevSkim: ignore DS162092 -- Deliberate loopback check in the local test environment.
     volumes:
       - gitlab_config:/etc/gitlab
       - gitlab_logs:/var/log/gitlab
       - gitlab_data:/var/opt/gitlab
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "curl -sf http://127.0.0.1:80/users/sign_in | grep -q 'user_login' || exit 1",
-        ]
+        - CMD-SHELL
+        - "curl -sf http://127.0.0.1:80/users/sign_in | grep -q 'user_login' || exit 1" # DevSkim: ignore DS162092 -- Deliberate loopback check in the local test environment.
       interval: 30s
       timeout: 15s
       retries: 20
@@ -64,7 +62,7 @@ services:
   # no-new-privileges omitted (it would break the docker CLI flow).
   gitlab-runner:
     # renovate: datasource=docker depName=gitlab/gitlab-runner
-    image: gitlab/gitlab-runner:v19.2.2
+    image: gitlab/gitlab-runner:v19.4.1
     restart: unless-stopped
     profiles: ["debug", "dev", "local", "test"]
     cap_drop:

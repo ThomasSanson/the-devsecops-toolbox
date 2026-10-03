@@ -10,17 +10,16 @@
   would make every generated project open duplicate per-tool MRs (snowball).
   Proven by features/template/renovate.feature (@e2e-template-renovate-downstream).
 
-  Two things about the update itself, both learned the hard way:
+  Copier refuses this template without --trust (it declares tasks). Renovate
+  only passes --trust when the RUN allows scripts (allowScripts, a self-hosted
+  option: `task renovate` exports it) AND the project opts in below with
+  "ignoreScripts": false. allowedCommands is self-hosted too, so it lives in
+  `task renovate`, never here, where Renovate would silently ignore it.
 
-  - the release is applied by `postUpgradeTasks`, and it names a SCRIPT. Renovate
-    runs a post-upgrade command as a command, not as a shell line: an
-    `a && b && c` written here reaches `a` with "&&" among its arguments and dies
-    there, leaving a merge request that bumps a version and changes nothing else;
-  - `allowScripts` stays OFF on purpose. With it on, Renovate's own copier
-    manager runs `copier update` from the directory holding the answers file —
-    .config/devsecops/ — and regenerates the whole project INSIDE it. Off, that
-    attempt fails harmlessly with "unsafe feature: tasks" and the script above
-    does the real update, from the root, where it belongs.
+  A component update uses only its root-level task. The native Copier manager
+  runs inside the answers directory and caches stray generated files even after
+  the post-upgrade cleanup removes them. skipArtifactsUpdate avoids that first
+  run; the post-upgrade task still applies the release and its recorded scope.
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -36,20 +35,25 @@
   "semanticCommitScope": "deps",
   "dependencyDashboard": true,
   "includePaths": [".config/devsecops/.copier-answers.yml", "project/**"],
-  "allowedCommands": [
-    "^sh \\.config/copier/renovate-update\\.sh \\S+$"
-  ],
   "packageRules": [
     {
-      "description": "DevSecOps Toolbox: update .copier-answers.yml and run task copier:update to regenerate all files",
+      "description": "DevSecOps Toolbox: {% if install_scope == 'publication' %}update the publication component{% else %}update .copier-answers.yml and run task devsecops:code:sync-templates to regenerate all files{% endif %}",
       "matchManagers": ["copier"],
       "matchFileNames": [".config/devsecops/.copier-answers.yml"],
+      "ignoreScripts": false,
+{%- if install_scope == 'publication' %}
+      "skipArtifactsUpdate": true,
+{%- endif %}
       "semanticCommitType": "feat",
       "semanticCommitScope": "devsecops",
       "commitMessageTopic": "DevSecOps Toolbox",
       "postUpgradeTasks": {
         "commands": [
+{%- if install_scope == 'publication' %}
           "sh .config/copier/renovate-update.sh {% raw %}{{{newVersion}}}{% endraw %}"
+{%- else %}
+          "task devsecops:code:sync-templates:renovate TASK_COPIER_CLI_OPTS='--skip-answered --defaults --vcs-ref {% raw %}{{{newVersion}}}{% endraw %}'"
+{%- endif %}
         ],
         "fileFilters": ["**/*"],
         "executionMode": "branch"
