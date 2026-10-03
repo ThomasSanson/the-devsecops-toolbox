@@ -655,6 +655,17 @@ storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose a
   if (!readRendered('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to contain "networks:"')
 })
 
+storyboardStep(Then, 'the storyboard manual is installed while the toolbox root README stays out', async () => {
+  const manual = '.config/codeceptjs/README.md'
+  if (!fs.existsSync(renderedPath(manual))) throw new Error(`Expected the generated project to include ${manual}`)
+  if (fs.existsSync(renderedPath('README.md'))) throw new Error('The toolbox root README must stay out of the generated project')
+  if (readRendered(manual) !== fs.readFileSync(`/workspace/${manual}`, 'utf8')) {
+    throw new Error('The generated storyboard manual must match the framework manual')
+  }
+  const command = `ls ${manual} README.md`
+  await renderPreFrame(I, 'defaults-storyboard-manual', `$ ${command}\n${runCaptured(command, rendered)}`)
+})
+
 storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compose toolchain', async () => {
   const content = readRendered('Taskfile.yml')
   const grepped = runCaptured('grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml', rendered)

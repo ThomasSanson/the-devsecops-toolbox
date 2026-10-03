@@ -69,6 +69,43 @@ function push () {
   }
 }
 
+async function waitForPushedBranch () {
+  const branch = 'feat/hybrid-runner-proof'
+  const expected = git('rev-parse', 'HEAD').trim()
+  const deadline = Date.now() + 60000
+  let observed = 'missing'
+  while (Date.now() < deadline) {
+    const response = await freshGet(
+      `${BASE_URL}/api/v4/projects/${state.projectId}/repository/branches/${encodeURIComponent(branch)}`,
+      state.headers
+    )
+    assert.ok(response.status === 200 || response.status === 404,
+      `Reading the pushed branch returned ${response.status}`)
+    observed = response.data?.commit?.id || 'missing'
+    if (observed === expected) return
+    await I.wait(2)
+  }
+  throw new Error(`GitLab never exposed ${branch} at ${expected}; got ${observed}`)
+}
+
+async function createPushedMergeRequest (payload) {
+  const deadline = Date.now() + 60000
+  let response
+  do {
+    await waitForPushedBranch()
+    response = await createMergeRequest(state.projectName, payload, state.headers)
+    // GitLab 19.4 can still report a missing branch here after the branch API
+    // returns its exact pushed SHA. Retry only that inconsistent response.
+    const errors = response.data?.message
+    const missingSource = response.status === 400 && Object.keys(errors || {}).length === 1 &&
+      Array.isArray(errors.source_branch) && errors.source_branch.length === 1 &&
+      errors.source_branch[0] === 'does not exist'
+    if (!missingSource) return response
+    await I.wait(2)
+  } while (Date.now() < deadline)
+  return response
+}
+
 async function publishProject () {
   const root = await getRootHeaders()
   state.projectName = `e2e-hybrid-ci-${crypto.randomBytes(4).toString('hex')}`
@@ -168,12 +205,12 @@ storyboardStep(When, 'I add the web application without changing the generated p
   git('add', '-A')
   git('commit', '--quiet', '-m', 'feat: demonstrate separate runners for checks and containers')
   push()
-  const mr = await createMergeRequest(state.projectName, {
+  const mr = await createPushedMergeRequest({
     source_branch: 'feat/hybrid-runner-proof',
     target_branch: 'main',
     title: 'Run file checks and the web application on separate runners'
-  }, state.headers)
-  assert.ok(mr.status < 400, `Merge request creation returned ${mr.status}`)
+  })
+  assert.ok(mr.status < 400, `Merge request creation returned ${mr.status}: ${JSON.stringify(mr.data?.message || mr.data?.error)}`)
   state.mr = mr.data.iid
   const lint = await lintProjectCi(state.projectName, state.headers, 'feat/hybrid-runner-proof')
   assert.equal(lint.data.valid, true, JSON.stringify(lint.data.errors))
@@ -291,26 +328,30 @@ function savePipelineEvidence (id, jobs) {
 
 async function captureJob (name, frame) {
   const current = job(name)
+  const command = {
+    'code:commitlint': '$ task commitlint',
+    'code:megalinter': '$ task megalinter:ci',
+    test: '$ task test'
+  }[name]
+  assert.ok(command, `Missing task command for job ${name}`)
   I.resizeWindow(1440, 1000)
   await I.amOnPage(`/${process.env.TASK_GITLAB_LAMBDA_USER}/${state.projectName}/-/jobs/${current.id}`)
   await I.waitForElement('[data-testid="job-log-content"]', 60)
   await I.waitForText(current.status === 'success' ? 'Job succeeded' : 'Job failed', 60)
   await maskPipelinePage(I, state.projectName, { keepContext: true })
-  if (name === 'code:megalinter' || name === 'test') {
-    const expanded = name === 'test' ? 'Executing "step_script"' : 'Preparing the "docker" executor'
-    await I.waitForText(name === 'test' ? '$ task test' : '$ task megalinter:ci', 60)
-    // Use GitLab's own folding controls. Keep the relevant section expanded
-    // and retain every other section header and the job verdict.
-    await I.executeScript(expanded => {
-      document.querySelectorAll('.job-log-line-header').forEach(header => {
-        if (!header.textContent.includes(expanded) &&
-            header.querySelector('[data-testid="chevron-lg-down-icon"]')) header.click()
-      })
-    }, expanded)
-    await I.waitForFunction(expanded => Array.from(document.querySelectorAll('.job-log-line-header'))
-      .every(header => header.textContent.includes(expanded) ||
-        !header.querySelector('[data-testid="chevron-lg-down-icon"]')), [expanded], 15)
-  }
+  const expanded = name === 'code:megalinter' ? 'Preparing the "docker" executor' : 'Executing "step_script"'
+  await I.waitForText(command, 60)
+  // Use GitLab's own folding controls. Keep the task output, every section
+  // header and the verdict. Cache helper messages can interleave differently.
+  await I.executeScript(expanded => {
+    document.querySelectorAll('.job-log-line-header').forEach(header => {
+      if (!header.textContent.includes(expanded) &&
+          header.querySelector('[data-testid="chevron-lg-down-icon"]')) header.click()
+    })
+  }, expanded)
+  await I.waitForFunction(expanded => Array.from(document.querySelectorAll('.job-log-line-header'))
+    .every(header => header.textContent.includes(expanded) ||
+      !header.querySelector('[data-testid="chevron-lg-down-icon"]')), [expanded], 15)
   await I.executeScript(({ projectName, command, showImage }) => {
     // Same-stage jobs finish in a different order on each run. Retain all
     // native jobs and statuses, with a stable name order for the screenshot.
@@ -341,7 +382,7 @@ async function captureJob (name, frame) {
     })
   }, {
     projectName: state.projectName,
-    command: name === 'code:commitlint' ? '$ task commitlint' : name === 'code:megalinter' ? '$ task megalinter:ci' : '$ task test',
+    command,
     showImage: name === 'code:megalinter'
   })
   await I.executeScript(() => {

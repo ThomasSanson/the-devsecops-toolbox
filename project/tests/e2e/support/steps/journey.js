@@ -462,7 +462,7 @@ Then('the terminal from {string} should visually match {string}', async (marker,
 // question. The full-framework journey accepts it (default affirmative).
 const TOOLCHAIN_PROMPT = 'Install gum and glow?'
 const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
-const AGENT_DONE_MARKER = 'Installed the AI agent context only'
+const AGENT_DONE_MARKER = 'Agent mode installed.'
 // install.sh prints this when the scope resolves to "none" — the exact symptom
 // of the multi-select trap (declined the framework, the lone item never toggled).
 const NOTHING_MARKER = 'Nothing selected'
@@ -665,11 +665,17 @@ storyboardStep(When, 'the installer installs only the AI agent files', async () 
     ).output || ''
   )
   const deadline = Date.now() + 240000
+  let completed = false
   while (Date.now() < deadline) {
     const log = readLog()
-    if (log.includes(AGENT_DONE_MARKER) || log.includes(NOTHING_MARKER)) break
+    if (log.includes(AGENT_DONE_MARKER)) {
+      completed = true
+      break
+    }
+    if (log.includes(NOTHING_MARKER)) break
     await I.wait(2)
   }
+  if (!completed) throw new Error(`The installer never reported "${AGENT_DONE_MARKER}"`)
   await waitForTerminalSettle(I)
   // Two frames: the installer's own delivery lines first (the ~50-row tree
   // would scroll them out of the viewport before a single capture), then the

@@ -256,7 +256,19 @@ class GitLabMergeRequestPage {
   async gotoChangesAndMask (projectPath, iid, projectName, waitPath, { keepContext = true } = {}) {
     await I.amOnPage(`/${projectPath}/-/merge_requests/${iid}/diffs`)
     await I.waitForElement('body', 30)
-    if (waitPath) await I.waitForText(waitPath, 60)
+    if (waitPath) {
+      // GitLab can serve an empty diff while its file tree already contains the
+      // new paths. Refresh that stale view while keeping the same required file.
+      const deadline = Date.now() + 60000
+      let ready = false
+      while (Date.now() < deadline) {
+        ready = await I.executeScript(text => document.body.innerText.includes(text), waitPath)
+        if (ready) break
+        await I.wait(5)
+        await I.refreshPage()
+      }
+      if (!ready) throw new Error(`The Changes page never displayed ${waitPath}`)
+    }
     // The file-tree panel on the left is part of what the reviewer reads. GitLab
     // collapses it for a single-file diff, so open it: every Changes card then
     // shows the same layout, and the tree itself says how many files are in play.

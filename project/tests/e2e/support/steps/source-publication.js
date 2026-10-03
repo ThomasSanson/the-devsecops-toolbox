@@ -414,7 +414,7 @@ function buildPrivateProjectTree () {
 
 /** Push the rendered tree to the (empty) private project, tagged like a release. */
 function pushPrivateProject (root, token) {
-  const url = `http://${lambdaUser()}:${encodeURIComponent(token)}@gitlab/${lambdaUser()}/${global.pubPrivate}.git`
+  const url = sourceUrl(token)
   sh('git init --quiet --initial-branch=main', root)
   sh('git config user.email "lambda@test.local" && git config user.name "Lambda User"', root)
   sh('git add -A', root)
@@ -458,7 +458,7 @@ async function terminalCard (command, marker, frameName) {
 
 /** Re-open the live terminal after a card that navigated to a GitLab page. */
 async function backToTerminal () {
-  I.amOnPage(`http://${global.pubContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.pubContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
   I.waitForElement('.xterm-screen', 10)
   await I.wait(2)
   await typeCommandAndWait(I, 'clear')
@@ -546,7 +546,10 @@ function inSource (cmd) {
 }
 
 function sourceUrl (token) {
-  return `http://${lambdaUser()}:${encodeURIComponent(token)}@gitlab/${lambdaUser()}/${global.pubPrivate}.git`
+  const url = new URL(`/${lambdaUser()}/${global.pubPrivate}.git`, BASE_URL)
+  url.username = lambdaUser()
+  url.password = token
+  return url.href
 }
 
 /**
@@ -748,7 +751,7 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
   fs.writeFileSync(envPath, fs.readFileSync(envPath, 'utf8')
     .replace(/^TASK_PUBLICATION_ENABLED=.*$/m, 'TASK_PUBLICATION_ENABLED=true')
     .replace(/^TASK_PUBLICATION_TARGET_URL=.*$/m,
-      `TASK_PUBLICATION_TARGET_URL=http://gitlab/${lambdaUser()}/${global.pubPublic}.git`))
+      `TASK_PUBLICATION_TARGET_URL=${new URL(`/${lambdaUser()}/${global.pubPublic}.git`, BASE_URL).href}`))
 
   // The runner comes first: the push below starts the pipeline this chapter is
   // about, and a pipeline with nobody to run it would sit pending for ever.
@@ -924,12 +927,23 @@ storyboardStep(When, 'an owner reopens the question and answers it instead', asy
     throw new Error(`The thread must now be resolved by ${OWNER_USERNAME}, got ${JSON.stringify(signer && signer.resolved_by)}`)
   }
   I.resizeWindow(1024, 680)
-  await GitLabMergeRequestPage.gotoAndMaskMerged(
-    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate
-  )
-  await maskProjectName()
+  const note = `#note_${signer.id}`
+  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/merge_requests/${global.pubMrIid}${note}`)
+  await I.waitForElement(note, 30)
+  await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
+  await I.executeScript(({ selector, owner }) => {
+    let discussion = document.querySelector(selector)
+    while (discussion && !discussion.innerText.includes(owner)) discussion = discussion.parentElement
+    if (!discussion || discussion === document.body) {
+      throw new Error(`The approval discussion does not show ${owner}`)
+    }
+    discussion.setAttribute('data-publication-approval', '')
+    discussion.scrollIntoView({ block: 'center' })
+  }, { selector: note, owner: OWNER_NAME })
+  await I.see(OWNER_NAME, '[data-publication-approval]')
+  await I.see('Resolved', '[data-publication-approval]')
   await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-owner-answered'))
+  await addStoryboardFrame(I, await captureElementFrame(I, 'publication-owner-answered', '[data-publication-approval]'))
   I.resizeWindow(1024, 768)
 })
 
@@ -1336,7 +1350,7 @@ storyboardStep(When, 'the developer says where the source goes and hands over th
   I.pressKey('Enter')
 
   await waitForTerminalText(I, 'The PUBLIC repository', COMMAND_TIMEOUT_MS)
-  I.type(`http://gitlab/${lambdaUser()}/${global.pubPublic}.git`)
+  I.type(new URL(`/${lambdaUser()}/${global.pubPublic}.git`, BASE_URL).href)
   I.pressKey('Enter')
 
   await waitForTerminalText(I, 'A token that may push to it', COMMAND_TIMEOUT_MS)

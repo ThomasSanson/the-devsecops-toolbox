@@ -86,6 +86,15 @@ const CREDENTIAL = 'src/cluster.kubeconfig'
 
 const ownsScenario = test => Boolean(test && test.tags && test.tags.includes('@publication-update'))
 
+function repositoryUrl (project, token) {
+  const url = new URL(`/${lambdaUser()}/${project}.git`, BASE_URL)
+  if (token) {
+    url.username = lambdaUser()
+    url.password = token
+  }
+  return url.href
+}
+
 Before(test => {
   if (!ownsScenario(test)) return
   global.pubUpdateContainer = null
@@ -302,7 +311,7 @@ async function terminalCard (command, marker, frameName) {
 
 /** Re-open the live terminal after a card that navigated to a GitLab page. */
 async function backToTerminal () {
-  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
   I.waitForElement('.xterm-screen', 10)
   await I.wait(2)
 }
@@ -347,7 +356,7 @@ function runFeedback (cloneUrl, token) {
     'PATH="$HOME/.local/bin:$PATH"',
     'TASK_RENOVATE_PLATFORM=gitlab',
     `TASK_RENOVATE_REPOSITORY=${lambdaUser()}/${global.pubUpdateProject}`,
-    'TASK_RENOVATE_ENDPOINT=http://gitlab/api/v4',
+    `TASK_RENOVATE_ENDPOINT=${shellEscape(new URL('/api/v4', BASE_URL).href)}`,
     `TASK_RENOVATE_TOKEN=${token}`
   ].join(' ')
   try {
@@ -421,19 +430,21 @@ storyboardStep(Given, 'a project that installed source publication and nothing e
     }
   }
 
-  const authed = (project) =>
-    `http://${lambdaUser()}:${encodeURIComponent(global.pubUpdateToken)}@gitlab/${lambdaUser()}/${project}.git`
-  const plain = (project) => `http://gitlab/${lambdaUser()}/${project}.git`
+  const authed = (project) => repositoryUrl(project, global.pubUpdateToken)
+  const plain = (project) => repositoryUrl(project)
+  const credentials = new URL(BASE_URL)
+  credentials.username = lambdaUser()
+  credentials.password = global.pubUpdateToken
 
   global.pubUpdateTemplate = buildTwoReleaseTemplate()
   pushTemplate(global.pubUpdateTemplate, authed(global.pubUpdateToolbox))
   global.pubUpdateContainer = setupUpdateTerminal(
     plain(global.pubUpdateToolbox),
     plain(global.pubUpdateProject),
-    `http://${lambdaUser()}:${global.pubUpdateToken}@gitlab`
+    credentials.href
   )
 
-  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
+  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
   I.waitForElement('.xterm-screen', 10)
   await I.wait(3)
   await typeCommandAndWait(I, 'clear')
@@ -454,9 +465,9 @@ storyboardStep(Given, 'what it would publish today, cluster credential included'
     'before the release, the credential is among the files that would be published')
 })
 
-storyboardStep(When, 'the nightly check runs and Renovate finds the new release', async () => {
+storyboardStep(When, 'the feedback task runs and Renovate finds the new release', async () => {
   const { output, exitCode } = runFeedback(
-    `http://${lambdaUser()}:${encodeURIComponent(global.pubUpdateToken)}@gitlab/${lambdaUser()}/${global.pubUpdateProject}.git`,
+    repositoryUrl(global.pubUpdateProject, global.pubUpdateToken),
     global.pubUpdateToken
   )
   if (exitCode !== 0) {

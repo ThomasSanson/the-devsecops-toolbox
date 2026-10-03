@@ -244,7 +244,7 @@ Feature: Publishing the source of a private project, without the parts that must
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     When an owner reopens the question and answers it instead
     # Note: The pipeline runs once more and this time the publication goes through. The job says what it did: approved by the owner, three files published, two withheld, pushed to the public project.
-    # Note: Nobody typed a command. The approval is what changed, and the pipeline noticed on its own.
+    # Note: The test starts a new pipeline on the same commit after the owner answers. The job checks the current approval before publishing.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
     Then the pipeline publishes the approved files, and only them
     # Note: The public project now carries the source: README.md and src/. This page is readable by anyone, which is the whole purpose, and the one commit on it is named after the release.

@@ -9,7 +9,7 @@ Feature: A toolbox release reaches a project that installed only source publicat
   # A component installed on its own would be a dead copy: no version, no way to
   # learn a new release exists, no way to apply it. So the install keeps the
   # framework's OWN update machinery rather than inventing a second one. It is
-  # 22 files against 199 for a full install: the copier answers file that records
+  # the copier answers file that records
   # the template and the version, the handful of files `task copier:update` needs
   # to run, the Renovate config that watches that answers file, and the component.
   #
@@ -22,7 +22,7 @@ Feature: A toolbox release reaches a project that installed only source publicat
   # wrote themselves are still theirs.
   @publication-update
   Scenario: the release updates the component and its spine, spares the team's rules, and brings nothing else
-    # Note: A project that ticked source publication on the installer's checklist and nothing else. Its own README and src are there; the install added four things beside them, .config, .env.dist, .gitlab-ci.yml and Taskfile.yml, and six entries under .config. Twenty-two files in all, and the last line is the release they came from.
+    # Note: A project that ticked source publication on the installer's checklist and nothing else. Its own README and src are there; the install added .config, .env.dist, .gitlab-ci.yml and Taskfile.yml. The last line is the release they came from.
     # Note: What is NOT there is the point: no linter, no container runtime, no forge tooling, and not even the phase orchestrators a full project gets. Only what runs the publication and what keeps it up to date.
     # Copy: ls -A1 && ls .config && grep _commit .config/devsecops/.copier-answers.yml
     Given a project that installed source publication and nothing else
@@ -30,10 +30,10 @@ Feature: A toolbox release reaches a project that installed only source publicat
     # Note: Remember this list. The same command answers differently four cards from here, without anyone touching a single rule.
     # Copy: task publication:check
     And what it would publish today, cluster credential included
-    # Note: A new toolbox release lands, and nobody in this team knows yet. What runs is the feedback phase, the same task the nightly schedule runs in CI: it starts Renovate, Renovate reads the release recorded in the answers file, asks the template what exists now, and finds 1.0.1.
+    # Note: The test runs task feedback directly. Renovate reads the release recorded in the answers file, checks the template, and finds 1.0.1. This proves the update task; execution by GitLab's nightly schedule needs a separate CI test.
     # Note: This is the real thing, against the real GitLab in the picture below. The last lines are Renovate saying it opened a merge request.
     # Copy: task feedback
-    When the nightly check runs and Renovate finds the new release
+    When the feedback task runs and Renovate finds the new release
     # Note: The merge request Renovate opened, on the project, by itself. It is not a note saying a release exists: the release is applied inside it, so the diff is the update, ready to read and to merge.
     # Note: Three files, and all three are the framework's: the release the project tracks, the publication floor, and the update machinery itself. That is what makes an update reviewable — a human reads a diff of what actually changes, not a version number and a promise.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1

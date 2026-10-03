@@ -24,6 +24,9 @@ Feature: Template rendering matrix — every Copier answer renders the expected 
     # Note: The default render: docker-ce and compose are present, podman and ansible are absent, project/ is delivered.
     # Copy: ls -1A; ls -1A .config
     Then the rendered tree delivers the canonical docker, compose and project layout
+    # Note: The storyboard engine arrives with its own manual. The toolbox's root README stays out of the generated project, which keeps its own introduction.
+    # Copy: ls .config/codeceptjs/README.md README.md
+    And the storyboard manual is installed while the toolbox root README stays out
     # Note: The generated root Taskfile includes the docker-ce and project taskfiles, never podman.
     # Copy: grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml
     And the root Taskfile wires in the default docker-ce and compose toolchain
