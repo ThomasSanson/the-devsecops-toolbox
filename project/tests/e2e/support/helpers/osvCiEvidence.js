@@ -239,21 +239,21 @@ class OsvCiEvidence {
     await this.I.wait(1)
     await this.I.executeScript(() => {
       window.scrollTo(0, 0)
-      document.querySelectorAll('main, .content-wrapper, .layout-page, .job-log, [data-testid="job-log-content"]').forEach(el => { el.scrollTop = 0 })
+      document.querySelectorAll('main, .content-wrapper, .layout-page, .js-static-panel-inner, .job-log, [data-testid="job-log-content"]').forEach(el => { el.scrollTop = 0 })
     })
     await this.I.wait(0.5)
-    await this.I.moveCursorTo('body', 1, 1)
-    // GitLab may introduce the repository tree after the page has loaded.
-    // Close its real onboarding hint so it cannot cover the captured file.
-    await this.I.executeScript(() => {
-      const title = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, strong, div'))
-        .find(el => Array.from(el.childNodes).some(node => node.nodeType === 3 && node.nodeValue.trim() === 'File tree navigation'))
-      let hint = title
-      while (hint && hint !== document.body && !hint.querySelector('button')) hint = hint.parentElement
-      if (hint && hint !== document.body) hint.querySelector('button')?.click()
-    })
-    await this.I.waitForInvisible('//*[normalize-space(text())="File tree navigation"]', 10)
-    await this.I.dontSee('File tree navigation')
+    // Close GitLab's real onboarding hints so they cannot cover the captured file.
+    for (const hintTitle of ['File tree navigation', 'Blame is now in page']) {
+      await this.I.executeScript(text => {
+        const title = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, strong, div'))
+          .find(el => Array.from(el.childNodes).some(node => node.nodeType === 3 && node.nodeValue.trim() === text))
+        let hint = title
+        while (hint && hint !== document.body && !hint.querySelector('button')) hint = hint.parentElement
+        if (hint && hint !== document.body) hint.querySelector('button')?.click()
+      }, hintTitle)
+      await this.I.waitForInvisible(`//*[normalize-space(text())="${hintTitle}"]`, 10)
+      await this.I.dontSee(hintTitle)
+    }
     if (logMarker) {
       await this.I.executeScript(marker => {
         const line = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
@@ -269,6 +269,9 @@ class OsvCiEvidence {
         return box && box.top >= 0 && box.bottom <= window.innerHeight
       }, [logMarker], 15)
     } else if (focus) await this.I.scrollTo(focus, 0, -300)
+    await this.I.usePlaywrightTo('move the cursor away from the captured content', async ({ page }) => {
+      await page.mouse.move(1, 1)
+    })
     await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
     this.I.resizeWindow(1024, 768)
   }
