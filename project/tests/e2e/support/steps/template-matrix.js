@@ -549,7 +549,7 @@ storyboardStep(Then, "Renovate's post-upgrade command runs without a shell and b
     }
     let run
     try {
-      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf-8' })
+      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf8' })
     } catch (e) {
       throw new Error(`Renovate's post-upgrade command failed without a shell, exit=${e.exitCode}\n$ ${compiled}\n${e.stderr || e.message}`)
     }
