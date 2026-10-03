@@ -376,7 +376,9 @@ async function captureJob (name, frame) {
       return box && box.top >= 0 && box.bottom < window.innerHeight
     }, 15)
   }
-  await I.moveCursorTo('h1')
+  await I.usePlaywrightTo('move the cursor away from the job log', async ({ page }) => {
+    await page.mouse.move(1, 1)
+  })
   await addStoryboardFrame(I, await capturePageFrame(I, frame))
   I.resizeWindow(1024, 768)
 }
