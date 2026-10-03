@@ -52,6 +52,8 @@ Feature: a freshly generated project passes its own quality gate
     Given a task emits real output before failing
     # Note: The real GitLab job is Failed. The test checks that the worker forwards every byte of the task output and preserves its failure.
     When the worker reports the output and keeps the failed task status
+    # Note: Delete the disposable project, then read its saved CI trace. The real task output and failure remain available, with fixture credentials redacted.
+    Then the failed CI job trace remains available after project cleanup
 
   @framework-dependencies
   Scenario: the toolbox ships dependencies that pass its own OSV scan

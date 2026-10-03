@@ -9,6 +9,7 @@ const {
 } = require('../helpers/copierRender')
 const { runTask } = require('../helpers/taskProcess')
 const { OsvCiEvidence } = require('../helpers/osvCiEvidence')
+const { renderPreFrame } = require('../helpers/capturedOutput')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I, GitLabUserPage } = inject()
 
@@ -250,8 +251,32 @@ storyboardStep(When, 'the worker reports the output and keeps the failed task st
   assert.notEqual(result.exitCode, 0, 'Task failures must remain failures')
   assert.ok(result.raw.includes('native task output'))
   assert.ok(result.raw.includes('exit status 7'))
+  state.taskResult = result
   await state.ci.taskResult(result)
   await state.ci.pipelineFrame('failed-task-progress')
+})
+
+storyboardStep(Then, 'the failed CI job trace remains available after project cleanup', async () => {
+  const evidence = state.ci
+  const file = path.join(__dirname, '../../_output/osv-reports', `ci-${evidence.job.id}-trace.log`)
+  const credentials = [...Object.values(evidence.headers), ...Object.values(evidence.rootHeaders)]
+  state.ci = null
+  await evidence.close()
+  assert.equal(fs.existsSync(evidence.directory), false, 'The disposable checkout must be removed')
+  assert.ok(fs.existsSync(file), 'The CI job trace must survive project cleanup')
+  const trace = fs.readFileSync(file, 'utf8')
+  assert.ok(trace.includes('native task output'), 'The saved trace must contain the actual task output')
+  assert.ok(trace.includes(`Worker task exit code: ${state.taskResult.exitCode}`), 'The saved trace must preserve the failure')
+  for (const credential of credentials) assert.ok(!trace.includes(credential), 'Saved diagnostics must redact fixture credentials')
+  // Keep timestamps in the saved diagnostic. The picture shows the complete,
+  // contiguous task output, without GitLab's per-run clock and stream prefix.
+  const output = trace.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \d{2}[OE] /gm, '').replace(/\r/g, '')
+  const taskOutput = evidence.redact(state.taskResult.raw).replace(/\r/g, '').trim()
+  const start = output.indexOf(taskOutput)
+  const verdict = `Worker task exit code: ${state.taskResult.exitCode}`
+  const end = output.indexOf(verdict, start)
+  assert.ok(start >= 0 && end >= start, 'The saved trace must preserve the complete task output and verdict together')
+  await renderPreFrame(I, 'failed-job-trace', output.slice(start, end + verdict.length))
 })
 
 storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {

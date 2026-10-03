@@ -11,6 +11,7 @@ const {
 const { registerScopedRunner, teardownScopedRunner, maskPipelinePage, PIPELINE_TIMEOUT_MS } = require('./pipelineRunner')
 const { freshDelete } = require('./http')
 const { stableJobLog } = require('./stableJobLog')
+const { stripAnsiEscapeSequences } = require('./docker')
 const { addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Repeat the existing local scan in a real CI job. The local regression checks
@@ -127,10 +128,36 @@ class OsvCiEvidence {
   }
 
   artifact (jobId, file) {
-    return execFileSync('curl', [
-      '--fail', '--silent', '--show-error', '--header', `PRIVATE-TOKEN: ${this.headers['PRIVATE-TOKEN']}`,
-      `${BASE_URL}/api/v4/projects/${encodedProjectPath(this.name)}/jobs/${jobId}/artifacts/${file}`
-    ], { encoding: 'utf8', stdio: 'pipe', timeout: 120000 })
+    return this.jobText(jobId, `artifacts/${file}`)
+  }
+
+  redact (text) {
+    const secrets = [
+      ...Object.values(this.headers || {}), ...Object.values(this.rootHeaders || {}), this.runner?.runnerToken,
+      ...Object.entries(process.env).filter(([key]) => /(?:TOKEN|PASSWORD|SECRET|API_KEY)$/.test(key)).map(([, value]) => value)
+    ].filter(value => typeof value === 'string' && value.length >= 4)
+    let safe = stripAnsiEscapeSequences(text)
+    for (const secret of secrets) safe = safe.split(secret).join('[REDACTED]')
+    return safe.replace(/gl(?:pat|rt|dt)-[A-Za-z0-9_-]+/g, '[REDACTED]')
+      .replace(/(https?:\/\/)[^ /@\n]+:[^ /@\n]+@/g, '$1[REDACTED]@')
+  }
+
+  jobText (jobId, endpoint) {
+    try {
+      return execFileSync('curl', [
+        '--fail', '--silent', '--show-error', '--header', `PRIVATE-TOKEN: ${this.headers['PRIVATE-TOKEN']}`,
+        `${BASE_URL}/api/v4/projects/${encodedProjectPath(this.name)}/jobs/${jobId}/${endpoint}`
+      ], { encoding: 'utf8', stdio: 'pipe', timeout: 120000 })
+    } catch (error) {
+      // The child-process error includes curl's authenticated arguments.
+      throw new Error(`CI job ${jobId}: cannot read ${endpoint}: ${this.redact(String(error.stderr || error.code || error.status))}`)
+    }
+  }
+
+  saveTrace (job) {
+    const reports = path.join(__dirname, '../../_output/osv-reports')
+    fs.mkdirSync(reports, { recursive: true })
+    fs.writeFileSync(path.join(reports, `ci-${job.id}-trace.log`), this.redact(this.jobText(job.id, 'trace')))
   }
 
   async run (jobName = 'code:megalinter') {
@@ -150,6 +177,9 @@ class OsvCiEvidence {
     const jobs = (await listPipelineJobs(this.name, pid, this.headers)).data
     const job = jobs.find(job => job.name === jobName)
     assert.ok(job, `CI must run the actual ${jobName} job`)
+    // Preserve evidence before status assertions or missing scanner artifacts
+    // can fail. Cleanup deletes the disposable project, including its job logs.
+    this.saveTrace(job)
     assert.equal(job.status, status)
     assert.equal(job.commit.id, this.sha, 'CI must run the published dependency snapshot')
     this.jobId = job.id
@@ -160,16 +190,17 @@ class OsvCiEvidence {
 
   async scan (result) {
     const job = await this.run()
-    assert.equal(job.status, result.exitCode === 0 ? 'success' : 'failed', 'CI must preserve the native scanner verdict')
     // Read the original CI artifact, rather than trusting a red or green icon.
+    // Keep it before assertions too, alongside the trace saved by run().
     const report = this.artifact(job.id, result.file)
+    fs.writeFileSync(path.join(__dirname, '../../_output/osv-reports', `ci-${job.id}.log`), this.redact(report))
+    assert.equal(job.status, result.exitCode === 0 ? 'success' : 'failed', 'CI must preserve the native scanner verdict')
     const localScans = result.report.split('\n').filter(line => line.startsWith('Scanned ')).sort()
     const remoteScans = report.split('\n').filter(line => line.startsWith('Scanned ')).sort()
     assert.deepEqual(remoteScans, localScans, 'CI must scan exactly the same dependency paths and package counts')
     for (const verdict of ['No issues found', 'GHSA-35jh-r3h4-6jhm']) {
       assert.equal(report.includes(verdict), result.report.includes(verdict), 'CI must reproduce the actual OSV finding')
     }
-    fs.writeFileSync(path.join(__dirname, '../../_output/osv-reports', `ci-${job.id}.log`), report)
   }
 
   async repositoryFrame (name, file, text, { height = 900, focus = null } = {}) {
