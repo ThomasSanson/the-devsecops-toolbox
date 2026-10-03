@@ -69,6 +69,43 @@ function push () {
   }
 }
 
+async function waitForPushedBranch () {
+  const branch = 'feat/hybrid-runner-proof'
+  const expected = git('rev-parse', 'HEAD').trim()
+  const deadline = Date.now() + 60000
+  let observed = 'missing'
+  while (Date.now() < deadline) {
+    const response = await freshGet(
+      `${BASE_URL}/api/v4/projects/${state.projectId}/repository/branches/${encodeURIComponent(branch)}`,
+      state.headers
+    )
+    assert.ok(response.status === 200 || response.status === 404,
+      `Reading the pushed branch returned ${response.status}`)
+    observed = response.data?.commit?.id || 'missing'
+    if (observed === expected) return
+    await I.wait(2)
+  }
+  throw new Error(`GitLab never exposed ${branch} at ${expected}; got ${observed}`)
+}
+
+async function createPushedMergeRequest (payload) {
+  const deadline = Date.now() + 60000
+  let response
+  do {
+    await waitForPushedBranch()
+    response = await createMergeRequest(state.projectName, payload, state.headers)
+    // GitLab 19.4 can still report a missing branch here after the branch API
+    // returns its exact pushed SHA. Retry only that inconsistent response.
+    const errors = response.data?.message
+    const missingSource = response.status === 400 && Object.keys(errors || {}).length === 1 &&
+      Array.isArray(errors.source_branch) && errors.source_branch.length === 1 &&
+      errors.source_branch[0] === 'does not exist'
+    if (!missingSource) return response
+    await I.wait(2)
+  } while (Date.now() < deadline)
+  return response
+}
+
 async function publishProject () {
   const root = await getRootHeaders()
   state.projectName = `e2e-hybrid-ci-${crypto.randomBytes(4).toString('hex')}`
@@ -168,12 +205,12 @@ storyboardStep(When, 'I add the web application without changing the generated p
   git('add', '-A')
   git('commit', '--quiet', '-m', 'feat: demonstrate separate runners for checks and containers')
   push()
-  const mr = await createMergeRequest(state.projectName, {
+  const mr = await createPushedMergeRequest({
     source_branch: 'feat/hybrid-runner-proof',
     target_branch: 'main',
     title: 'Run file checks and the web application on separate runners'
-  }, state.headers)
-  assert.ok(mr.status < 400, `Merge request creation returned ${mr.status}`)
+  })
+  assert.ok(mr.status < 400, `Merge request creation returned ${mr.status}: ${JSON.stringify(mr.data?.message || mr.data?.error)}`)
   state.mr = mr.data.iid
   const lint = await lintProjectCi(state.projectName, state.headers, 'feat/hybrid-runner-proof')
   assert.equal(lint.data.valid, true, JSON.stringify(lint.data.errors))
