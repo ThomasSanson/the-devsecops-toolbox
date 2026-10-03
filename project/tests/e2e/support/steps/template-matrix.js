@@ -173,7 +173,8 @@ function runRenovateExtract (dir, gitEnv, version) {
   }
   const clean = stripAnsiEscapeSequences(raw)
   return {
-    command,
+    // Only the displayed command is normalized; execution uses the real pin.
+    command: version ? command.replace(`renovate@${version}`, 'renovate@x.x.x') : command,
     output: raw.replace(/("durationMs":\s*)\d+/g, '$1<ms>').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').trim(),
     packageFiles: [...new Set([...clean.matchAll(/"packageFile":\s*"([^"]+)"/g)].map(m => m[1]))].sort()
   }
@@ -548,7 +549,7 @@ storyboardStep(Then, "Renovate's post-upgrade command runs without a shell and b
     }
     let run
     try {
-      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf-8' })
+      run = await rawExec(compiled, { shell: false, cwd: dir, env: getChildProcessEnv(), encoding: 'utf8' })
     } catch (e) {
       throw new Error(`Renovate's post-upgrade command failed without a shell, exit=${e.exitCode}\n$ ${compiled}\n${e.stderr || e.message}`)
     }
