@@ -176,19 +176,9 @@ storyboardStep(Then, 'GitLab validates the complete generated pipeline', async (
   assert.ok(config['code:megalinter'].artifacts.paths.includes('megalinter-reports/'))
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   await I.amOnPage(`/${process.env.TASK_GITLAB_LAMBDA_USER}/${state.projectName}/-/ci/editor`)
-  await I.waitForText('Pipeline syntax is correct', 60)
-  await I.executeScript(() => {
-    const text = Array.from(document.querySelectorAll('span, p, div'))
-      .find(el => el.textContent.trim().length <= 140 && el.textContent.includes('Pipeline syntax is correct'))
-    if (!text) throw new Error('GitLab syntax verdict was not found')
-    let box = text
-    for (let i = 0; i < 3 && box.parentElement; i++) {
-      if (box.querySelector('svg')) break
-      box = box.parentElement
-    }
-    box.id = 'hybrid-ci-valid'
-  })
-  await addStoryboardFrame(I, await captureElementFrame(I, 'generated-pipeline-valid', '#hybrid-ci-valid'))
+  await I.waitForText('Pipeline syntax is correct', 60, '[data-testid="validation-segment"]')
+  await addStoryboardFrame(I, await captureElementFrame(I, 'generated-pipeline-valid',
+    '.gl-card-body:has([data-testid="validation-segment"])'))
 })
 
 storyboardStep(When, 'I add the web application without changing the generated pipeline', async () => {
