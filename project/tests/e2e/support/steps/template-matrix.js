@@ -173,7 +173,8 @@ function runRenovateExtract (dir, gitEnv, version) {
   }
   const clean = stripAnsiEscapeSequences(raw)
   return {
-    command,
+    // Only the displayed command is normalized; execution uses the real pin.
+    command: version ? command.replace(`renovate@${version}`, 'renovate@x.x.x') : command,
     output: raw.replace(/("durationMs":\s*)\d+/g, '$1<ms>').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').trim(),
     packageFiles: [...new Set([...clean.matchAll(/"packageFile":\s*"([^"]+)"/g)].map(m => m[1]))].sort()
   }

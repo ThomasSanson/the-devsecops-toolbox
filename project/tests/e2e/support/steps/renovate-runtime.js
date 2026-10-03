@@ -26,7 +26,8 @@ function task (args, env = environment) {
 }
 
 function stable (output) {
-  return output.replaceAll(project, '<project>')
+  // Keep captures stable across upgrades; assertions below check the real pin.
+  return output.replaceAll(project, '<project>').replaceAll(version, 'x.x.x')
 }
 
 storyboardStep(Given, 'a project has an invalid configuration and no installed Renovate', async () => {
@@ -39,6 +40,7 @@ storyboardStep(Given, 'a project has an invalid configuration and no installed R
   const output = execFileSync('sh', ['-c', 'cat .config/renovate/config.json .config/renovate/version; command -v npx'],
     { cwd: project, encoding: 'utf8', env: environment })
   await renderPreFrame(I, 'runtime-setup', `$ cat .config/renovate/config.json .config/renovate/version; command -v npx\n${stable(output)}`)
+  await I.see('x.x.x', 'pre')
 })
 
 storyboardStep(When, 'the pinned Renovate download rejects the invalid option', async () => {
