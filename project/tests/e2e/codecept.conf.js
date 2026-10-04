@@ -103,7 +103,8 @@ exports.config = {
       './support/steps/publication-update.js',
       './support/steps/env-layering.js',
       './support/steps/lychee-settings.js',
-      './support/steps/go-install-zsh.js'
+      './support/steps/go-install-zsh.js',
+      './support/steps/deploy-only.js'
     ]
   },
   plugins: {
