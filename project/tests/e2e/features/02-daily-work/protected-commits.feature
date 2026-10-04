@@ -96,3 +96,25 @@ Feature: the framework guards what reaches the repository — clean commits and 
     # Note: The same private key, committed on a fresh branch, scanned by the very same command a developer types. The scan says which scanner it used, then gives the verdict word for word as the container gives it: "Betterleaks detected secrets in your branch commits!" No container was started at any point.
     # Copy: task betterleaks:scan-branch
     Then the scan runs from that binary and blocks the same committed key
+
+  @scanner-log-redaction
+  Scenario: a secret is blocked without copying its value into the scan log
+    # Chapter: Ordinary work passes in both modes
+    # Note: The install answer chooses Docker or the checksum-verified binary. Both projects have a clean commit and a clean staged change; no scan is empty.
+    Given clean framework projects use Docker and binary scanners from their install answers
+    # Copy: task betterleaks:scan-full
+    Then full scans pass on ordinary files in both modes
+    # Copy: task betterleaks:protect
+    And staged scans pass on ordinary changes in both modes
+    # Copy: task betterleaks:scan-branch
+    And branch scans pass on ordinary commits in both modes
+    # Chapter: A detected value stays out of the log
+    # Note: Only a synthetic password is used. One line is committed and a second is staged, so all three scan paths have a real finding to block.
+    When a synthetic password is committed and staged in both projects
+    # Note: The complete native output is checked before any display normalization. All six scans must fail, name the file and line, identify generic-password, and hide the value.
+    # Copy: task betterleaks:scan-full
+    Then full scans block the secret and redact its value in both modes
+    # Copy: task betterleaks:protect
+    And staged scans block the secret and redact its value in both modes
+    # Copy: task betterleaks:scan-branch
+    And branch scans block the secret and redact its value in both modes

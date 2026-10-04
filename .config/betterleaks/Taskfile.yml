@@ -118,6 +118,7 @@ tasks:
           if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
             betterleaks dir "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your code!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets and use environment variables instead.{{.NC}}"
@@ -145,6 +146,7 @@ tasks:
       - cmd: |
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" dir "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your code!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets and use environment variables instead.{{.NC}}"
@@ -197,6 +199,7 @@ tasks:
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --staged \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your staged files!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets before committing.{{.NC}}"
@@ -224,6 +227,7 @@ tasks:
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" git "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
             --staged \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your staged files!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets before committing.{{.NC}}"
@@ -303,6 +307,7 @@ tasks:
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your branch commits!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets from the commits.{{.NC}}"
@@ -334,6 +339,7 @@ tasks:
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" git "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \
+            --redact=100 \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your branch commits!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets from the commits.{{.NC}}"
