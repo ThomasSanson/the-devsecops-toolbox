@@ -531,7 +531,9 @@ storyboardStep(Then, 'the gate reads that comment and refuses it just the same',
     console.log(`── ${GATE_JOB} said:\n${gateSection(trace)}`)
     throw new Error(`Expected the comment to change nothing; pipeline=${status}, jobs=${jobs.map(j => `${j.name}:${j.status}`).join(', ')}`)
   }
-  await captureGateJobFrame(gate.id, 'gate-refuses-the-comment', 690)
+  await captureGateJobFrame(gate.id, 'gate-refuses-the-comment', 690, {
+    waitText: 'it captured no picture'
+  })
 })
 
 storyboardStep(When, 'the author adds the card and the picture it captured', async () => {
