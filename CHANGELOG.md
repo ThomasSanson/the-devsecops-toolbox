@@ -2,6 +2,36 @@
 
 # Changelog
 
+## 24.2.0 (2026-10-04)
+
+### Feat
+
+- **publication**: a doctor that names what is missing, and offers to fix it
+- **install**: say what each tool is for, and ask before installing it
+- **publication**: scan what leaves, and choose what leaves and when
+- **publication**: wire the forge at install time, and keep the feedback phase
+- **install**: take source publication alone, with the spine that keeps it updated
+- **publication**: publish a private project's source to a public repository
+
+### Fix
+
+- **publication**: follow the latest toolbox release
+- **publication**: align update jobs with the current toolbox release
+- **publication**: verify updates with Renovate 44
+- **publication**: verify updates and approval on GitLab 19.4
+- **publication**: restore component updates and fresh test reports
+- **test**: normalize minute durations in the TDD storyboard
+- **publication**: validate approvals and complete test runs
+- **publication**: enforce approved snapshots and preserve projects
+- **install**: ask only about a tool that is actually missing
+- **publication**: open the approval onto the branch being published
+- **publication**: run the CI jobs through task, like everything else
+- **test**: keep the fixture secret detectable, and the cards free of a commit
+- **lint**: teach the linters the publication's own words and fixture
+- **test**: make the two new cards read the same on any machine
+- **renovate**: apply the toolbox release inside the merge request it opens
+- **test**: take the GitLab and runner containers of this compose stack
+
 ## 24.1.13 (2026-10-03)
 
 ### Fix
