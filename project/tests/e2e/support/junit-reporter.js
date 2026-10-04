@@ -25,14 +25,30 @@
 const fs = require('fs')
 const path = require('path')
 const { threadId } = require('worker_threads')
+const { stripVTControlCharacters } = require('util')
 const { event, output } = require('../../../../.config/codeceptjs/node_modules/codeceptjs')
 
+// XML 1.0 character ranges: https://www.w3.org/TR/xml/#charsets
+function xmlText (value) {
+  return Array.from(stripVTControlCharacters(String(value == null ? '' : value)))
+    .filter(character => {
+      const code = character.codePointAt(0)
+      return code === 9 || code === 10 || code === 13 ||
+        (code >= 32 && code <= 0xd7ff) ||
+        (code >= 0xe000 && code <= 0xfffd) ||
+        (code >= 0x10000 && code <= 0x10ffff)
+    }).join('')
+}
+
 const esc = (s) =>
-  String(s == null ? '' : s)
+  xmlText(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/\t/g, '&#9;')
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#13;')
 
 module.exports = function junitReporter () {
   const cases = []

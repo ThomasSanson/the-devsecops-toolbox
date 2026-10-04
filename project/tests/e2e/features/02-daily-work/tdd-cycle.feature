@@ -99,3 +99,14 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Chapter: A filter that selects nothing is an error
     # Note: A real successful launch seeds reports again. A filter matching no scenario must fail clearly and leave no result from that earlier launch.
     And a zero-match filter fails clearly and removes earlier reports
+
+  @junit-control-characters
+  Scenario: GitLab can read a real failure report even when assertions contain terminal colours
+    # Note: This disposable project uses the real test engine and JUnit reporter. One scenario passes; two fail with the same readable message. The second failure adds terminal colours and characters that XML forbids.
+    Given a disposable test project contains a passing scenario and plain and coloured failures
+    # Note: The task runs all three scenarios. Both failures must still fail the run, and the passing scenario must still be recorded. The complete native output is kept as an artifact.
+    When the real test task runs the passing scenario and both failures
+    # Note: Python reads the actual XML report. It must find three results and two failures, with the original punctuation, Unicode and line breaks preserved. Terminal colours and forbidden XML characters must be gone from the report.
+    Then the JUnit report is valid XML and keeps both failures readable
+    # Note: The RED guard reads that same report and accepts the coloured assertion as a real failure. Cleaning the message must not turn a failed scenario into a success or bypass the existing test guard.
+    And the RED guard still accepts the coloured assertion as a genuine failure
