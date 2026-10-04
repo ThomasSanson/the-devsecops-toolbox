@@ -79,7 +79,6 @@ exports.config = {
     steps: [
       '../../../.config/codeceptjs/step_definitions/steps.js',
       './support/steps/tdd-cycle.js',
-      './support/steps/junit-control-characters.js',
       './support/steps/init-baseline.js',
       './support/steps/init-guidance.js',
       './support/steps/glab-auth-ensure.js',
@@ -104,6 +103,7 @@ exports.config = {
       './support/steps/test-discipline.js',
       './support/steps/source-publication.js',
       './support/steps/publication-contracts.js',
+      './support/steps/junit-control-characters.js',
       './support/steps/publication-update.js'
     ]
   },
