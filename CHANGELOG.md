@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 24.2.6 (2026-10-05)
+
+### Fix
+
+- make Betterleaks log redaction configurable
+- redact values in all Betterleaks code scans
+
 ## 24.2.5 (2026-10-05)
 
 ### Fix
