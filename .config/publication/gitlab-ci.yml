@@ -103,7 +103,7 @@ publish-source:
 # `task` and copier already live.
 feedback:
   stage: feedback
-  image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:24.2.3
+  image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:24.2.4
   variables:
     RENOVATE_TOKEN: $TASK_RENOVATE_TOKEN
     # The complete framework sets these three in its own CI variables file, which

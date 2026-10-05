@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.4 (2026-10-05)
+
+### Fix
+
+- preserve job helpers when registering a runner
+
 ## 24.2.3 (2026-10-04)
 
 ### Fix
