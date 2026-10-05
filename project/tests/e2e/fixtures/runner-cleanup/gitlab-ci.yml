@@ -1,0 +1,10 @@
+---
+preserve-helper:
+  image: alpine:3.24
+  tags: [saas-linux-medium-amd64]
+  script:
+    - touch /tmp/job-ready
+    - while [ ! -f /tmp/job-release ]; do sleep 1; done
+    - echo 'The first job kept its helper.' > result.txt
+  artifacts:
+    paths: [result.txt]

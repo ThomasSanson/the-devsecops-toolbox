@@ -59,14 +59,10 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   // otherwise be picked first and register the runner on the neighbour's GitLab.
   const svc = composeService('gitlab-runner')
   if (!svc) throw new Error('gitlab-runner compose service is not running')
-  // ONE job slot, deliberately: every docker-using job spawns a dind service
-  // named 'docker' on the SHARED network, so two concurrent services collide (a
-  // job reaches the other job's dind and fails TLS: x509 unknown authority).
-  // Purge only STALE (exited) job containers from an aborted run — never a live
-  // one, which would belong to the other scenario sharing this service. The
-  // anchored pattern can never match the compose service itself (its name starts
-  // with the project prefix).
-  runCommandWithResult("docker ps -a --filter status=exited --format '{{.Names}}' | grep -E '^runner-' | xargs -r docker rm -f")
+  // A stopped checkout helper can still belong to a running job: GitLab Runner
+  // reuses it for cache and artifact upload. Registration must leave every job
+  // container alone and let its runner own the lifecycle. Keep concurrent=1
+  // so Docker services on the shared network never collide.
   const reg = runCommandWithResult(
     `docker exec ${svc} gitlab-runner register --non-interactive ` +
     `--url http://gitlab --token ${glrt} --executor docker ` + // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.

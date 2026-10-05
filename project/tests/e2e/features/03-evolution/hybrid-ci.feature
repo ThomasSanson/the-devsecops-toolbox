@@ -37,3 +37,16 @@ Feature: Choose a runner according to the work a job does
     # Chapter: Containers keep their own runner
     # Note: The build, deploy and test jobs use the tagged Docker runner. The HTTP test talks to the running Compose service and checks the response body.
     And the Docker runner builds and tests the web application
+
+  @runner-cleanup
+  Scenario: Register another project runner while a job still needs its checkout helper
+    # Note: concurrent = 1 keeps Docker jobs serial. The job waits after checkout and must later upload result.txt.
+    Given two projects share a serial test runner and the first job must upload an artifact
+    # Note: Docker shows the build container running and the checkout helper exited with code 0. Exited does not mean the job has finished: GitLab Runner reuses this helper to upload artifacts.
+    When the first job is running while its checkout helper is stopped
+    # Note: The real registration helper registers the second runner. Docker discovery is bounded to this scenario's containers so the regression cannot delete a neighbour's containers; both project runners remain inside that boundary.
+    When the second project registers its own runner without restarting the first job
+    # Note: The same Docker inspection still shows the stopped helper and running build. Registering a runner must leave the other project's job containers alone.
+    Then the first job still has its stopped checkout helper and its running build container
+    # Note: The real GitLab job finishes its artifact upload and passes. The downloaded result.txt contains the first job's message.
+    Then GitLab accepts the first job artifact and marks the job as passed

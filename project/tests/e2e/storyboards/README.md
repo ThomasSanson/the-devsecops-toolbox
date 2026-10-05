@@ -81,6 +81,9 @@ Read the acts in order and you follow one developer from an empty project all th
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@publication-update"`
 
+- [**Runner cleanup**](03-evolution/runner-cleanup.svg) — Registering another project runner preserves the stopped helper of a live job, and GitLab accepts its artifact.
+  Replay: `task project:test:e2e -- --grep "@runner-cleanup"`
+
 ## The two tests with no story to tell
 
 `features/03-evolution/cspell.feature` and `version-pins.feature` stay classic tests, not storyboards: cspell compares two lint outputs (before and after an update), version-pins compares two version numbers — neither walks a journey, so there is nothing visual to narrate.

@@ -99,6 +99,7 @@ exports.config = {
       './support/steps/renovate-runtime.js',
       './support/steps/generated-ci.js',
       './support/steps/hybrid-ci.js',
+      './support/steps/runner-cleanup.js',
       './support/steps/test-discipline.js',
       './support/steps/source-publication.js',
       './support/steps/publication-contracts.js',
