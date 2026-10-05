@@ -22,12 +22,12 @@ const CUSTOM = [
   'DISABLE_LINTERS:',
   '  # Keep the supported exclusions.',
   '  - JSON_V8R',
-  '  - REPOSITORY_GITLEAKS',
-  '  - SQL_TSQLLINT',
+  '  - REPOSITORY_GITLEAKS # Keep the reason for this project exclusion.',
+  '  - SQL_TSQLLINT # Keep this project explanation.',
   '  - REPOSITORY_KICS',
   '  - YAML_V8R',
-  'REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml',
-  'SQL_TSQLLINT_CONFIG_FILE: .config/tsqllint/config.json',
+  'REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml # Keep the configuration rationale.',
+  'SQL_TSQLLINT_CONFIG_FILE: .config/tsqllint/config.json # Keep the legacy path explanation.',
   'FORMATTERS_DISABLE_ERRORS: false',
   'ERROR_ON_MISSING_EXEC_BIT: true',
   ''
@@ -125,6 +125,11 @@ storyboardStep(Then, 'the project settings and their explanations survive the mi
   const raw = await task(['cat .config/megalinter/config.yml'])
   assert.ok(raw.includes('# Keep the project settings and this explanation.'))
   assert.ok(raw.includes('# Keep the supported exclusions.'))
+  for (const comment of ['# Keep the reason for this project exclusion.',
+    '# Keep this project explanation.', '# Keep the configuration rationale.',
+    '# Keep the legacy path explanation.']) {
+    assert.ok(raw.includes(comment), 'Copier must preserve inline project comments: ' + comment)
+  }
   assert.ok(raw.includes('FORMATTERS_DISABLE_ERRORS: false'))
   assert.ok(raw.includes('ERROR_ON_MISSING_EXEC_BIT: true'))
   RETIRED.forEach(name => assert.ok(!raw.includes(name), name))

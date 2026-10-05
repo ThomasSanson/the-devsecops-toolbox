@@ -13,6 +13,26 @@ def retired_key(name):
     return any(name == item or name.startswith(item + "_") for item in RETIRED)
 
 
+def comments_only(text, start, end):
+    """Keep YAML comments, without mistaking a scalar's hash for a comment."""
+    spans = [
+        (token.start_mark.index, token.end_mark.index)
+        for token in yaml.scan(text, Loader=yaml.SafeLoader)
+    ]
+    comments = []
+    offset = start
+    for line in text[start:end].splitlines(True):
+        for column, character in enumerate(line):
+            if character == "#" and not any(
+                left <= offset + column < right for left, right in spans
+            ):
+                indentation = line[: len(line) - len(line.lstrip())]
+                comments.append(indentation + line[column:])
+                break
+        offset += len(line)
+    return "".join(comments)
+
+
 def remove_empty_lines(text, edits):
     """Do not leave indentation behind when a removed item occupied a line."""
     for start, end, _ in sorted(edits):
@@ -62,7 +82,10 @@ def selection_edits(text, offsets, key, value, remaining):
     for item in value.value:
         if item.value in RETIRED:
             end = item.end_mark.line + bool(item.end_mark.column)
-            edits.append((offsets[item.start_mark.line], offsets[end], ""))
+            start = offsets[item.start_mark.line]
+            edits.append(
+                (start, offsets[end], comments_only(text, start, offsets[end]))
+            )
     if not remaining:
         colon = text.index(":", key.end_mark.index)
         edits.append((colon + 1, colon + 1, " []"))
@@ -85,7 +108,10 @@ def cleaned(text):
         if retired_key(key.value):
             expected.pop(key.value, None)
             end = value.end_mark.line + bool(value.end_mark.column)
-            edits.append((offsets[key.start_mark.line], offsets[end], ""))
+            start = offsets[key.start_mark.line]
+            edits.append(
+                (start, offsets[end], comments_only(text, start, offsets[end]))
+            )
         elif key.value in SELECTIONS and isinstance(value, yaml.SequenceNode):
             remaining = [item for item in original[key.value] if item not in RETIRED]
             if remaining == original[key.value]:
