@@ -88,3 +88,8 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The developer runs the same Copier update again. Copier succeeds without another cleanup announcement, and every MegaLinter configuration file keeps exactly the same bytes.
     # Copy: task copier:update
     Then repeating the Copier update leaves the migrated configuration unchanged
+
+  @retired-linters-paths
+  Scenario: a configuration migration refuses a link to another project's file
+    # Note: The real Task command refuses z-linked.yml, which points outside the generated project. The same file hashes appear before and after the refusal: the target and an earlier regular configuration have not changed.
+    Then migrating inherited configurations refuses a linked file before changing any configuration

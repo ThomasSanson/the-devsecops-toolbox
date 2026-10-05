@@ -128,6 +128,9 @@ storyboardStep(Given, 'every framework tool in a generated project contains the 
     const directory = path.join(state.project, '.config', tool)
     for (const file of fs.readdirSync(directory)) {
       if (/^requirements.*\.txt$/.test(file)) {
+        // Copier migrations need the actual Copier environment. Its vulnerable
+        // fixture lockfile still proves the same ownership boundary.
+        if (tool === 'copier') continue
         // Root Task variables read these files even when only MegaLinter runs.
         fs.writeFileSync(path.join(directory, file), '# Dependencies replaced by the OSV fixture lockfile.\n')
       } else if (/^(package-lock\.json|.*\.lock|go\.(mod|sum))$/.test(file)) {

@@ -130,7 +130,13 @@ def cleaned(text):
 def main():
     """Validate every candidate before writing any inherited configuration."""
     updates = []
+    root = Path.cwd().resolve()
     for file in sorted(Path(".config/megalinter").glob("*.yml")):
+        if file.is_symlink() or not file.resolve().is_relative_to(root):
+            raise ValueError(
+                "Refusing to migrate linked or external MegaLinter configuration: "
+                + str(file)
+            )
         original = file.read_text()
         result = cleaned(original)
         if result != original:

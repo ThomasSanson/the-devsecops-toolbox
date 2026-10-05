@@ -157,3 +157,37 @@ storyboardStep(Then, 'repeating the Copier update leaves the migrated configurat
   assert.deepEqual(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8')), saved)
   await renderPreFrame(I, 'repeated-copier-update', result.raw, { colour: true })
 })
+
+storyboardStep(Then, 'migrating inherited configurations refuses a linked file before changing any configuration', async () => {
+  template = prepareVersionedTemplate()
+  project = renderProjectFromTemplate(template, '1.0.0')
+  const outside = path.join(template, 'outside-megalinter.yml')
+  const regular = path.join(project, '.config/megalinter/a-regular.yml')
+  fs.writeFileSync(outside, CUSTOM)
+  fs.writeFileSync(regular, CUSTOM)
+  fs.symlinkSync(outside, path.join(project, '.config/megalinter/z-linked.yml'))
+  const savedOutside = fs.readFileSync(outside)
+  const savedRegular = fs.readFileSync(regular)
+  await task(['uv run --quiet --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python -c pass'])
+  const file = path.join(project, 'tmp/retired-linters/task.json')
+  const hashes = 'sha256sum .config/megalinter/a-regular.yml "' + outside + '"'
+  fs.writeFileSync(file, JSON.stringify({
+    version: '3',
+    tasks: {
+      probe: {
+        dir: project,
+        cmds: [
+          { defer: hashes },
+          hashes,
+          'uv run --quiet --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python .config/megalinter/cleanup-removed-linters.py'
+        ]
+      }
+    }
+  }))
+  const result = await runTask(project, ['--silent', '--taskfile', file, 'probe'])
+  assert.deepEqual(fs.readFileSync(outside), savedOutside, 'The migration must leave a file outside the project untouched')
+  assert.deepEqual(fs.readFileSync(regular), savedRegular, 'Refusal must happen before writing any configuration')
+  assert.notEqual(result.exitCode, 0, 'A linked configuration must refuse the migration')
+  assert.ok(result.raw.includes('Refusing to migrate linked or external MegaLinter configuration: .config/megalinter/z-linked.yml'), result.raw)
+  await renderPreFrame(I, 'linked-configuration-refused', result.raw.replaceAll(project, '<project>').replaceAll(template, '<template>'), { colour: true })
+})

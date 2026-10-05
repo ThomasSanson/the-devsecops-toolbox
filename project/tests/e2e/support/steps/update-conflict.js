@@ -130,6 +130,20 @@ storyboardStep(When, 'the developer hand-edits that framework file and commits t
 })
 
 storyboardStep(When, 'a newer release moves the same line and the developer runs the toolbox update', async () => {
+  // A fresh runner must not record dependency setup that a warm runner omits.
+  const warmup = path.join(rendered, 'tmp/copier-warmup.json')
+  fs.mkdirSync(path.dirname(warmup), { recursive: true })
+  fs.writeFileSync(warmup, JSON.stringify({
+    version: '3',
+    tasks: {
+      warm: {
+        dir: rendered,
+        cmds: ['uv run --quiet --no-project --with-requirements .config/copier/requirements.txt python -c pass']
+      }
+    }
+  }))
+  const warmed = await runTask(rendered, ['--silent', '--taskfile', warmup, 'warm'])
+  if (warmed.exitCode !== 0) throw new Error(warmed.raw)
   const options = '--defaults --skip-answered --skip-tasks --quiet --conflict=rej --vcs-ref 1.0.1'
   updateResult = await runTask(rendered, ['--silent', 'copier:update',
     'TASK_COPIER_PYTHON_VERSION=3.14', 'TASK_COPIER_CLI_OPTS=' + options])
