@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 24.2.7 (2026-10-05)
+
+### Fix
+
+- keep the linter migration inside its project
+- **megalinter**: preserve inline project comments
+- **megalinter**: clean retired references during Copier updates
+
 ## 24.2.6 (2026-10-05)
 
 ### Fix
