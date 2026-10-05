@@ -48,8 +48,9 @@ const FLOW = [
 let template
 let project
 let before
+let linked
 
-Before(() => { template = null; project = null; before = null })
+Before(() => { template = null; project = null; before = null; linked = null })
 After(() => { if (project) removeRendered(project); if (template) removeRendered(template) })
 
 async function task (commands, cleanup) {
@@ -158,7 +159,7 @@ storyboardStep(Then, 'repeating the Copier update leaves the migrated configurat
   await renderPreFrame(I, 'repeated-copier-update', result.raw, { colour: true })
 })
 
-storyboardStep(Then, 'migrating inherited configurations refuses a linked file before changing any configuration', async () => {
+storyboardStep(Given, 'a generated project links a MegaLinter configuration to a file outside the project', async () => {
   template = prepareVersionedTemplate()
   project = renderProjectFromTemplate(template, '1.0.0')
   const outside = path.join(template, 'outside-megalinter.yml')
@@ -166,8 +167,19 @@ storyboardStep(Then, 'migrating inherited configurations refuses a linked file b
   fs.writeFileSync(outside, CUSTOM)
   fs.writeFileSync(regular, CUSTOM)
   fs.symlinkSync(outside, path.join(project, '.config/megalinter/z-linked.yml'))
-  const savedOutside = fs.readFileSync(outside)
-  const savedRegular = fs.readFileSync(regular)
+  linked = { outside, regular, savedOutside: fs.readFileSync(outside), savedRegular: fs.readFileSync(regular) }
+  const raw = await task([
+    'cat .config/megalinter/a-regular.yml',
+    'readlink .config/megalinter/z-linked.yml',
+    'cat .config/megalinter/z-linked.yml'
+  ])
+  assert.equal(fs.readlinkSync(path.join(project, '.config/megalinter/z-linked.yml')), outside)
+  assert.ok(!outside.startsWith(project + path.sep))
+  await renderPreFrame(I, 'linked-configuration-inputs', raw.replaceAll(project, '<project>').replaceAll(template, '<template>'), { colour: true })
+})
+
+storyboardStep(Then, 'migrating inherited configurations refuses a linked file before changing any configuration', async () => {
+  const { outside, regular, savedOutside, savedRegular } = linked
   await task(['uv run --quiet --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python -c pass'])
   const file = path.join(project, 'tmp/retired-linters/task.json')
   const hashes = 'sha256sum .config/megalinter/a-regular.yml "' + outside + '"'

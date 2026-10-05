@@ -27,6 +27,8 @@ Read the acts in order and you follow one developer from an empty project all th
 
 ## Act 2 — Daily work (`02-daily-work`)
 
+- [**retired-linters-paths**](02-daily-work/retired-linters-paths.svg) — A linked configuration points outside the generated project. The migration refuses it before changing either file.
+  Replay: `task project:test:e2e -- --grep "@retired-linters-paths"`
 - [**retired-linters**](02-daily-work/retired-linters.svg) — A real Copier update removes retired MegaLinter references while preserving project controls and comments. Repeating the update leaves the configuration unchanged.
   Replay: `task project:test:e2e -- --grep "@retired-linters"`
 - [**framework-dependencies**](02-daily-work/framework-dependencies.svg) — The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.

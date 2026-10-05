@@ -91,5 +91,8 @@ Feature: a freshly generated project passes its own quality gate
 
   @retired-linters-paths
   Scenario: a configuration migration refuses a link to another project's file
+    # Note: The real configuration contains retired references. The link points to a second configuration outside the generated project; both files must survive a refused migration unchanged.
+    # Copy: cat .config/megalinter/a-regular.yml ; readlink .config/megalinter/z-linked.yml ; cat .config/megalinter/z-linked.yml
+    Given a generated project links a MegaLinter configuration to a file outside the project
     # Note: The real Task command refuses z-linked.yml, which points outside the generated project. The same file hashes appear before and after the refusal: the target and an earlier regular configuration have not changed.
     Then migrating inherited configurations refuses a linked file before changing any configuration
