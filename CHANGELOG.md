@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.5 (2026-10-05)
+
+### Fix
+
+- keep coloured assertion reports valid XML
+
 ## 24.2.4 (2026-10-05)
 
 ### Fix
