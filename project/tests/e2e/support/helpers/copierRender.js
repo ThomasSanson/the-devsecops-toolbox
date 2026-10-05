@@ -111,8 +111,10 @@ function prepareCspellMigrationTemplate () {
   oldCfg.words = JSON.parse(realBase).words
   fs.writeFileSync(`${dir}/config.json`, JSON.stringify(oldCfg, null, 2) + '\n')
   for (const f of ['config.base.json', 'config.project.json', 'migrate-words.py']) fs.rmSync(`${dir}/${f}`, { force: true })
+  // Remove the historical cspell migration, but retain the list header for
+  // later migrations that are unrelated to this dictionary fixture.
   fs.writeFileSync(`${tpl}/copier.yml`, realCopier
-    .replace(/\n# cspell vocabulary migration[\s\S]*?migrate-words\.py dedup"\n/, '\n')
+    .replace(/\n# cspell vocabulary migration[\s\S]*?migrate-words\.py dedup"\n/, '\n_migrations:\n')
     .replace('  - .config/cspell/config.project.json\n', ''))
   // 22.0.0 pins its CI base image to the matching old toolbox version.
   pinCiImage(tpl, '22.0.0')

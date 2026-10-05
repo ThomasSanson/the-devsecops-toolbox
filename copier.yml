@@ -48,6 +48,11 @@ _migrations:
       - "git add -- .config/cspell/config.json"
     after:
       - "python3 .config/cspell/migrate-words.py dedup"
+  # Run on every update: old project overrides survive Copier's three-way merge.
+  - command: >-
+      uv run --quiet --no-project --with-requirements .config/copier/requirements.txt
+      python .config/megalinter/cleanup-removed-linters.py
+    when: "{{ _stage == 'after' and install_scope != 'publication' }}"
 
 # Questions — CI/CD platform
 ci_platform:

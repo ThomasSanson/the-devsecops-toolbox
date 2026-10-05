@@ -22,9 +22,9 @@ const {
   CI_IMAGE_RE,
   prepareConflictTemplate,
   renderProjectFromTemplate,
-  updateProjectAllowingConflict,
   removeRendered
 } = require('../helpers/copierRender')
+const { runTask } = require('../helpers/taskProcess')
 const { renderPreFrame } = require('../helpers/capturedOutput')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
@@ -130,12 +130,16 @@ storyboardStep(When, 'the developer hand-edits that framework file and commits t
 })
 
 storyboardStep(When, 'a newer release moves the same line and the developer runs the toolbox update', async () => {
-  updateResult = updateProjectAllowingConflict(rendered, '1.0.1')
-  const output = updateResult.output
+  const options = '--defaults --skip-answered --skip-tasks --quiet --conflict=rej --vcs-ref 1.0.1'
+  updateResult = await runTask(rendered, ['--silent', 'copier:update',
+    'TASK_COPIER_PYTHON_VERSION=3.14', 'TASK_COPIER_CLI_OPTS=' + options])
+  const output = updateResult.raw
     .replace(/\/tmp\/[A-Za-z0-9._-]+/g, '<tmp>')
     .replace(/[0-9a-f]{7,40}/g, '<sha>')
     .replace(/\n+$/, '')
-  await renderPreFrame(I, 'update-runs', `$ task copier:update --vcs-ref 1.0.1\n${output}`)
+  const command = 'task --silent copier:update TASK_COPIER_PYTHON_VERSION=3.14 ' +
+    `TASK_COPIER_CLI_OPTS='${options}'`
+  await renderPreFrame(I, 'update-runs', `$ ${command}\n${output}`, { colour: true })
 })
 
 storyboardStep(Then, 'the update keeps the new line and saves my change in a reject file', async () => {

@@ -63,3 +63,28 @@ Feature: a freshly generated project passes its own quality gate
     When the maintainer uses the toolbox's own scanner configuration
     # Note: GitLab shows the OSV job log with the shipped CodeceptJS lockfile and No issues found. The toolbox scans its own dependencies and passes.
     Then the toolbox's dependency scan reports no known vulnerabilities
+
+  @retired-linters
+  Scenario: a framework update removes retired linters and preserves project controls
+    # Note: The generated project's configuration contains three retired linters alongside supported exclusions, strict formatter checks and executable permission checks.
+    # Copy: cat .config/megalinter/config.yml
+    Given a generated project keeps its own settings and references three retired linters
+    # Note: A second project configuration uses a compact YAML list with an explanation next to JSON_V8R. The retired Gitleaks reference shares that list with two supported exclusions.
+    # Copy: cat .config/megalinter/config.flow.yml
+    And the project also keeps an explanation inside a compact YAML linter list
+    # Note: The actual MegaLinter configuration loader reports the three retired references. The same output shows the supported controls before the update.
+    When MegaLinter reads the project settings before the framework update
+    # Note: The developer runs the project's real Copier update task. The framework owns this migration, so the developer does not edit inherited files by hand.
+    # Copy: task copier:update
+    When the developer updates the framework through the real Copier task
+    # Note: The same MegaLinter loader now reports an empty list of retired references. Supported exclusions and strict checks retain their previous values.
+    Then MegaLinter reports no retired references and keeps the same supported controls
+    # Note: The actual compact configuration still contains its explanation and both supported exclusions. MegaLinter reads the cleaned list without any retired reference.
+    # Copy: cat .config/megalinter/config.flow.yml
+    And the compact YAML list keeps its explanation and supported exclusions
+    # Note: The actual configuration still contains the project's comments and strict checks. Only references to the retired linters have disappeared.
+    # Copy: cat .config/megalinter/config.yml
+    Then the project settings and their explanations survive the migration
+    # Note: The developer runs the same Copier update again. Copier succeeds without another cleanup announcement, and every MegaLinter configuration file keeps exactly the same bytes.
+    # Copy: task copier:update
+    Then repeating the Copier update leaves the migrated configuration unchanged

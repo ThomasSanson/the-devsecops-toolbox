@@ -20,12 +20,6 @@ APPLY_FIXES:
   - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
-  # MegaLinter deprecated gitleaks in 9.6 in favour of betterleaks — same author,
-  # same rules, same config format — and this framework followed it everywhere:
-  # the standalone scan (`task betterleaks:scan-branch`, the `code:betterleaks`
-  # job) and the pre-commit hook run betterleaks too. One scanner, one verdict,
-  # one allowlist.
-  - REPOSITORY_GITLEAKS
   - JSON_V8R
   - YAML_V8R
   - COPYPASTE_JSCPD
@@ -78,7 +72,6 @@ REPOSITORY_OSV_SCANNER_ARGUMENTS:
   - "--experimental-exclude=.config/megalinter"
   - "--experimental-exclude=.config/yamllint"
 REPOSITORY_GRYPE_CONFIG_FILE: .config/grype/config.yml
-REPOSITORY_KICS_CONFIG_FILE: .config/kics/config.yml
 REPOSITORY_KINGFISHER_ARGUMENTS:
   - "--exclude=.ansible"
   - "--exclude=.cache"
