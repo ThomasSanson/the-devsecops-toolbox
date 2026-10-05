@@ -5,6 +5,7 @@ vars:
   TASK_BETTERLEAKS_ENABLED: '{{.TASK_BETTERLEAKS_ENABLED | default "true"}}'
   TASK_BETTERLEAKS_IMAGE: '{{.TASK_BETTERLEAKS_IMAGE | default "ghcr.io/betterleaks/betterleaks:latest"}}'
   TASK_BETTERLEAKS_CONFIG: '{{.TASK_BETTERLEAKS_CONFIG | default ".config/betterleaks/config.toml"}}'
+  TASK_BETTERLEAKS_REDACT: '{{.TASK_BETTERLEAKS_REDACT | default "100"}}'
   TASK_BETTERLEAKS_VERBOSE: '{{.TASK_BETTERLEAKS_VERBOSE | default "true"}}'
   TASK_BETTERLEAKS_CONTAINER_NAME: '{{.TASK_BETTERLEAKS_CONTAINER_NAME | default "betterleaks-container"}}'
 
@@ -52,6 +53,7 @@ tasks:
         - TASK_BETTERLEAKS_ENABLED: Enable or disable betterleaks. Default: "true"
         - TASK_BETTERLEAKS_IMAGE: Docker image for betterleaks. Default: "ghcr.io/betterleaks/betterleaks:latest"
         - TASK_BETTERLEAKS_CONFIG: Path to betterleaks configuration file. Default: ".config/betterleaks/config.toml"
+        - TASK_BETTERLEAKS_REDACT: Percentage of detected values hidden in scan output. Default: "100"
         - TASK_BETTERLEAKS_VERBOSE: Enable verbose output. Default: "true"
 
       🔄 Execution:
@@ -118,7 +120,7 @@ tasks:
           if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
             betterleaks dir "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your code!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets and use environment variables instead.{{.NC}}"
@@ -146,7 +148,7 @@ tasks:
       - cmd: |
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" dir "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your code!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets and use environment variables instead.{{.NC}}"
@@ -199,7 +201,7 @@ tasks:
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --staged \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your staged files!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets before committing.{{.NC}}"
@@ -227,7 +229,7 @@ tasks:
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" git "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
             --staged \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your staged files!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets before committing.{{.NC}}"
@@ -307,7 +309,7 @@ tasks:
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your branch commits!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets from the commits.{{.NC}}"
@@ -339,7 +341,7 @@ tasks:
           if ! "{{.TASK_BETTERLEAKS_BIN_DIR}}/betterleaks" git "." \
             --config="{{.TASK_BETTERLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \
-            --redact=100 \
+            --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
             {{.VERBOSE_FLAG}}; then
             echo -e "{{.RED}}❌ Betterleaks detected secrets in your branch commits!{{.NC}}"
             echo -e "{{.YELLOW}}⚠️  Please remove any secrets from the commits.{{.NC}}"
