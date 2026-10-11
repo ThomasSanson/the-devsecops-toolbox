@@ -2,7 +2,7 @@
 
 Review dates: 2026-09-04–2026-09-05.
 
-This report records the review baseline for [MR !282][mr] and [issue #215][issue],
+This report records the review baseline for MR !282 and [issue #215][issue],
 followed by the corrective branch's implementation and validation record.
 The reviewed head is `52ce1cc75eb9d3816d019559a300714af4593e3a`, on
 `add-source-publication`. The comparison is fixed to:
@@ -815,7 +815,6 @@ race described above. The first quality attempt could not resolve a Git
 worktree's external metadata from its scanner container, so validation moved
 to a separate full clone. No gate or assertion was disabled for these problems.
 
-[mr]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/merge_requests/282
 [issue]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/issues/215
 [pub-approval]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/blob/52ce1cc75eb9d3816d019559a300714af4593e3a/.config/publication/publish.sh#L670-703
 [pub-request]: https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/blob/52ce1cc75eb9d3816d019559a300714af4593e3a/.config/publication/publish.sh#L725-805
