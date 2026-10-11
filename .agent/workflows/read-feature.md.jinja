@@ -1,10 +1,10 @@
 {% raw %}---
-description: List existing template domains and features
+description: List existing domains and features of the project
 ---
 
 # Read Feature Workflow
 
-Use this workflow to discover existing domains and features in the template.
+Use this workflow to discover existing domains and features in the project.
 
 ## Workflow Steps
 
@@ -37,6 +37,5 @@ grep -r "Feature:" project/tests/application/features/
 To see the implementation status or configuration for a domain:
 
 - **Step Definitions:** `cat project/tests/application/steps/{domain}.js`
-- **Template Files:** `ls .config/{domain}/`
-- **Copier Configuration:** `grep -A 10 "{domain}" copier.yml`
+- **Code:** the files under `project/` that these steps exercise
 {% endraw %}

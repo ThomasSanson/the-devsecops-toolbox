@@ -1,10 +1,10 @@
 {% raw %}---
-description: Delete a template feature and its related files
+description: Delete a feature of the project and its related files
 ---
 
 # Delete Feature Workflow
 
-This workflow guides you through the safe removal of a feature from the template.
+This workflow guides you through the safe removal of a feature from the project.
 
 ## Workflow Steps
 
@@ -14,8 +14,7 @@ Identify all files related to the feature:
 
 - **Tests:** `project/tests/application/features/{domain}/{feature}.feature`
 - **Step Definitions:** `project/tests/application/steps/{domain}.js` (Note: multiple features might share one domain file)
-- **Templates:** `.config/{domain}/`
-- **Configuration:** `copier.yml`
+- **Code:** the files under `project/` that only this feature uses
 
 ### 2. Remove Tests
 
@@ -38,19 +37,11 @@ If the domain steps file `project/tests/application/steps/{domain}.js` is no lon
 1. Remove it: `rm project/tests/application/steps/{domain}.js`
 2. Remove the entry from `project/tests/application/codecept.conf.js`.
 
-### 4. Remove Template Files
+### 4. Remove the Code
 
-Remove the configuration directory for the domain if it's no longer needed:
+Remove the code under `project/` that only this feature used. Leave `.config/` alone: it belongs to the toolbox.
 
-```bash
-rm -rf .config/{domain}/
-```
-
-### 5. Update Copier Configuration
-
-Remove the relevant questions and logic from `copier.yml`.
-
-### 6. Verify
+### 5. Verify
 
 Run the full test suite to ensure no regressions:
 
@@ -59,7 +50,7 @@ Run the full test suite to ensure no regressions:
 task test
 ```
 
-### 7. Lint
+### 6. Lint
 
 Run linters to ensure no orphan references or config issues:
 

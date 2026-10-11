@@ -1,10 +1,10 @@
 {% raw %}---
-description: Add functionality to an existing template feature
+description: Add functionality to an existing feature of the project
 ---
 
 # Update Feature Workflow
 
-This workflow guides you through adding new functionality to an **existing** template feature.
+This workflow guides you through adding new functionality to an **existing** feature of the project.
 
 ## Prerequisites
 
@@ -19,8 +19,7 @@ This workflow guides you through adding new functionality to an **existing** tem
 Analyze the current implementation by reading files in:
 - **Feature file:** `project/tests/application/features/{domain}/{feature}.feature`
 - **Steps:** `project/tests/application/steps/{domain}.js`
-- **Templates:** `.config/{domain}/`
-- **Config:** `copier.yml`
+- **Code:** the files under `project/` that the feature covers
 
 ### 2. Add or Update Tests (TDD)
 
@@ -36,11 +35,17 @@ Follow the existing Gherkin style in the feature file. Use the `@new-functionali
 task test -- --grep "@{domain}"
 ```
 
+Then prove the failure is real:
+
+```bash
+task devsecops:test:check:red-is-real -- @{domain}
+```
+
+It must pass. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
+
 ### 4. Implement Changes
 
-#### Updating Logic
-- Edit `copier.yml` for new questions.
-- Update templates in `.config/{domain}/`.
+Write the minimal code under `project/` that makes the test pass. `.config/` belongs to the toolbox: never edit it here.
 
 **Instruction:**
 Use the codebase as the source of truth for syntax and logic patterns.

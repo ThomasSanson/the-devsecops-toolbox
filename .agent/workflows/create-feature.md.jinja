@@ -1,16 +1,16 @@
 {% raw %}---
-description: Implement a new template feature using TDD with Gherkin tests
+description: Implement a new feature of the project using TDD with Gherkin tests
 ---
 
 # Create Feature Workflow
 
-This workflow guides you through implementing a new template feature using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
+This workflow guides you through implementing a new feature of the project using Test-Driven Development (TDD) with Gherkin/CodeceptJS tests.
 
 ## Prerequisites
 
 - Understand the feature requirements
 - Identify the domain and feature name for DDD organization
-- Have a clear picture of the expected Copier question(s) and template changes
+- Have a clear picture of the expected behaviour
 
 ## Test Architecture
 
@@ -31,7 +31,7 @@ Read an existing feature file in `project/tests/application/features/` to unders
 **Mandatory Rules:**
 - NO Background block.
 - Use: `Given a clean temporary directory for "{domain}/{feature}" tests`.
-- Use descriptive tags: `@copier`, `@scaffolding`, `@{domain}`, `@{feature}`.
+- Use descriptive tags: `@{domain}`, `@{feature}`.
 
 ### 2. Add Step Definitions
 
@@ -52,28 +52,26 @@ Analyze existing files in `project/tests/application/steps/*.js` to see how to:
 task test -- --grep "@{feature}"
 ```
 
-### 4. Implement Copier Configuration
+Then prove the failure is real:
 
-Edit `copier.yml` to add questions.
+```bash
+task devsecops:test:check:red-is-real -- @{feature}
+```
 
-**Instruction:**
-See existing definitions in `copier.yml` for patterns (type, help, choices, default).
+It must pass. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
 
-### 5. Create/Modify Jinja Templates
+### 4. Implement the Code
 
-Update files in `.config/{domain}/`.
+Write the minimal code under `project/` that makes the test pass. `.config/` belongs to the toolbox: never edit it here.
 
-**Instruction:**
-Explore `.config/` to see how Jinja conditions (`{% if %}`) and template naming conventions (e.g., `.jinja` suffix) are used.
-
-### 6. Run Tests (Should Pass)
+### 5. Run Tests (Should Pass)
 
 ```bash
 // turbo
 task test -- --grep "@{feature}"
 ```
 
-### 7. Global Verification
+### 6. Global Verification
 
 ```bash
 // turbo

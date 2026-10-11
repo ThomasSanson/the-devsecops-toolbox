@@ -9,7 +9,7 @@ description: Implement minimal code to make the failing test pass. Nothing more.
 
 ## Prerequisites
 
-- Test exists and **FAILS** (RED phase completed)
+- Test exists and **FAILS**, and `red-is-real` accepted the failure (RED phase completed)
 - You know exactly what the test expects
 
 ## Step 1: Implement Minimal Code
@@ -47,4 +47,4 @@ task test -- --grep "@your-tag"
 
 ## Next Step
 
-Once test passes, proceed to REFACTOR phase (optional but recommended).
+Once test passes, proceed to the REFACTOR phase. It is not optional: it is also where `task code` and the full `task test` run.

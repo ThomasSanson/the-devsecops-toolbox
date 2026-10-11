@@ -50,6 +50,14 @@ task test -- --grep "@your-tag"
 ```
 **CHECKPOINT:** ❌ Test MUST fail. If it passes, fix the test.
 
+Then prove the failure is real:
+
+```bash
+task devsecops:test:check:red-is-real -- @your-tag
+```
+
+It must pass. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
+
 ### STEP 4: IMPLEMENT CODE
 Write minimal code to pass the test. Nothing more.
 

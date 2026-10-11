@@ -38,6 +38,14 @@ scenarios or baselines.
 task test -- --grep "@e2e-{feature}"
 ```
 
+Then prove the failure is real:
+
+```bash
+task devsecops:test:check:red-is-real -- @e2e-{feature}
+```
+
+It must pass. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
+
 ### 4. Implement Changes
 
 #### Updating Logic

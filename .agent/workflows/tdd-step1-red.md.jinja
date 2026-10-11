@@ -51,11 +51,18 @@ task test -- --grep "@your-tag"
 - ❌ **Step not implemented** → Create step definition
 - ❌ **Element not found** → Feature UI doesn't exist yet
 - ❌ **Assertion failed** → Logic not implemented yet
-- ❌ **Timeout** → Page/component doesn't exist
 
 ### ⛔ FAILURE of this phase
 
 - ✅ Test passes → **BUG!** Test is wrong or feature already exists
+
+## Step 4: Prove the Failure Is Real
+
+```bash
+task devsecops:test:check:red-is-real -- @your-tag
+```
+
+It must pass. It reads the report the run left behind and accepts only a scenario that ran and failed. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
 
 ## Checkpoint
 
@@ -64,6 +71,7 @@ task test -- --grep "@your-tag"
 1. Test file exists in correct location
 2. Test runs (no syntax errors)
 3. Test **FAILS** for the right reason
+4. `red-is-real` accepts the failure
 
 ---
 
