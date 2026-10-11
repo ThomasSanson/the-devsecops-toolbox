@@ -58,7 +58,9 @@ exports.config = {
     // when the test ends — see .config/codeceptjs/storyboard.js.
     storyboard: {
       require: '../../../.config/codeceptjs/storyboard.js',
-      enabled: true
+      enabled: true,
+      format: 'svg',
+      replayCommand: 'task test -- --grep "{tag}"'
     },
     pageInfo: {
       enabled: true,

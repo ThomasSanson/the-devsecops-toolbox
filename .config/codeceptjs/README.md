@@ -2,6 +2,7 @@
 # Storyboard engine (`.config/codeceptjs/storyboard.js`)
 
 A CodeceptJS plugin that turns one Gherkin scenario into one human-readable SVG storyboard, straight from the real screenshots the test captures.
+The engine ships as the npm package [`@digital-commons-official/codeceptjs-storyboard`](https://gitlab.com/digital-commons/software/libraries/npm/codeceptjs-storyboard): `storyboard.js` is a one-line bridge to it, so step files outside this folder can require it by path.
 
 ## What it does
 
@@ -28,10 +29,16 @@ gherkin: {
 plugins: {
   storyboard: {
     require: '../../../.config/codeceptjs/storyboard.js',
-    enabled: true
+    enabled: true,
+    format: 'svg',
+    replayCommand: 'task test -- --grep "{tag}"'
   }
 }
 ```
+
+`format: 'svg'` keeps one SVG board per scenario: the package writes Markdown when it is left out.
+`replayCommand` is the command each storyboard prints to replay its scenario.
+When a run ends, `_output/index.html` lists the storyboards it rendered.
 
 No companion plugin to enable: baseline-update mode probes the visual assert with `tryTo`, which since CodeceptJS 4 is an effect the engine imports itself (`codeceptjs/effects`) rather than a plugin exposing a global.
 A copy-ready `codecept.conf.sample.js` with this block already in place sits next to this file.

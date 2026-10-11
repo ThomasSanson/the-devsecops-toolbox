@@ -123,7 +123,9 @@ exports.config = {
     // re-run command) from each scenario's Gherkin metadata — see the module.
     storyboard: {
       require: '../../../.config/codeceptjs/storyboard.js',
-      enabled: true
+      enabled: true,
+      format: 'svg',
+      replayCommand: 'task test -- --grep "{tag}"'
     },
     // Writes a JUnit XML per worker under _output/junit/ so GitLab renders the
     // MR "Test summary" widget (artifacts:reports:junit). See the module header
