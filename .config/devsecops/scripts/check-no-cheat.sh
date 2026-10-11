@@ -126,7 +126,8 @@ add_rule tests "${TEST_PATHS}" '^[[:space:]]*(Scenario|Feature|Data|describe|con
   'only this one runs: every other scenario is silently dropped'
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]]*\(' \
   'a disabled scenario: it never runs again'
-add_rule tests "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[1-9]' \
+# Any non-zero digit counts: 0.1 accepts a difference just as much as 1 does.
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*tolerance:[[:space:]]*[0-9.]*[1-9]' \
   'a picture check that accepts a difference: it stops proving anything'
 # MODIFIED files only, and the reason is worth stating: turning an EXISTING job
 # into one that may fail is the cheat. A file that arrives whole — installing

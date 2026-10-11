@@ -63,6 +63,16 @@ const CONFIG = 'project/tests/e2e/codecept.conf.js'
 const JUNIT_DIR = 'project/tests/e2e/_output/junit'
 const GATE = `task devsecops:test:check:red-is-real -- ${TAG}`
 const VERIFY = 'task devsecops:test:verify'
+// The guard alone, on the working tree. Not `verify`: if the guard let a cheat
+// through, verify would go on to start the whole suite inside this container.
+const GUARD = 'task devsecops:test:check:no-cheat BASE=HEAD'
+
+// Blob ids and the line where the configuration's hunk starts move with any
+// unrelated edit of those files; what the diff says does not.
+const DIFF_MASKS = [
+  [/\bindex [0-9a-f]{7,}\.\.[0-9a-f]{7,}/g, 'index <sha>..<sha>'],
+  [/^@@ -[1-9]\d*,(\d+) \+[1-9]\d*,(\d+) @@/g, '@@ -<line>,$1 +<line>,$2 @@']
+]
 
 const FEATURE_BODY = `@e2e
 Feature: A toolbox that says hello
@@ -156,12 +166,7 @@ storyboardStep(Given, 'a developer writes the test for a greeting the toolbox ca
   // Tall: the real failure prints its report twice (the worker's, then the
   // run's), and the card holds the whole run.
   tdd.closeTerminal = await openLocalTerminal(I, { cwd: FIXTURE, env: tdd.env, port: 7690, height: 1500 })
-  // Blob ids and the line where the configuration's hunk starts move with
-  // any unrelated edit of those files; what the diff says does not.
-  const screen = await card('the-test-comes-first', 'git add -N . && git diff', [
-    [/\bindex [0-9a-f]{7,}\.\.[0-9a-f]{7,}/g, 'index <sha>..<sha>'],
-    [/^@@ -[1-9]\d*,(\d+) \+[1-9]\d*,(\d+) @@/g, '@@ -<line>,$1 +<line>,$2 @@']
-  ])
+  const screen = await card('the-test-comes-first', 'git add -N . && git diff', DIFF_MASKS)
   for (const said of ["const { greeting } = require('../helpers/greeting')", "+      './support/steps/greeting.js',", '+  @greeting']) {
     assert.ok(screen.includes(said), `Expected the diff to show ${said}:\n${screen}`)
   }
@@ -250,6 +255,22 @@ storyboardStep(Then, 'the test phase refuses to certify itself, the moment a che
     'Failed to run task "devsecops:test:verify"']) {
     assert.ok(screen.includes(said), `Expected verify to refuse the switched-off scenario with "${said}":\n${screen}`)
   }
+})
+
+storyboardStep(Then, 'the guard refuses a picture check loosened to 0.1 just the same', async () => {
+  // The scenario goes back as it was, so the only cheat left is the tolerance.
+  fs.writeFileSync(path.join(FIXTURE, FEATURE), FEATURE_BODY)
+  const conf = path.join(FIXTURE, CONFIG)
+  fs.writeFileSync(conf, fs.readFileSync(conf, 'utf8').replace(/^(\s*)tolerance: 0,$/m, '$1tolerance: 0.1,'))
+  assert.ok(fs.readFileSync(conf, 'utf8').includes('tolerance: 0.1,'), `No "tolerance: 0," line to loosen in ${CONFIG}`)
+
+  const screen = await card('guard-refuses-a-loosened-picture-check', `git diff -- ${CONFIG} && ${GUARD}`, DIFF_MASKS)
+  for (const said of ['+      tolerance: 0.1,', `${CONFIG}:`, 'a picture check that accepts a difference',
+    'Failed to run task "devsecops:test:check:no-cheat"']) {
+    assert.ok(screen.includes(said), `Expected the guard to refuse tolerance 0.1 with "${said}":\n${screen}`)
+  }
+  const guard = tddRun(GUARD)
+  assert.notEqual(guard.code, 0, `The guard must refuse tolerance 0.1:\n${guard.output}`)
 })
 
 // ===========================================================================

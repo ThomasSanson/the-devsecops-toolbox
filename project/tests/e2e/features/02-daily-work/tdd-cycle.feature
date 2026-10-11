@@ -52,6 +52,10 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: It names the file, the line and what that line does, then offers the only way past it: a No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing it.
     # Copy: cat project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:verify
     Then the test phase refuses to certify itself, the moment a check is switched off
+    # Note: The assistant puts the scenario back and tries a quieter road. In the suite's configuration, the picture check now accepts a difference: its tolerance goes from 0 to 0.1. The diff at the top shows that line, next to the step file the developer registered at the start.
+    # Note: The guard behind the test phase reads the working tree, and it stops on that line too. It names the file and the line, and says what the line does: "a picture check that accepts a difference: it stops proving anything".
+    # Copy: git diff -- project/tests/e2e/codecept.conf.js && task devsecops:test:check:no-cheat BASE=HEAD
+    And the guard refuses a picture check loosened to 0.1 just the same
 
 
   @baseline-mode
