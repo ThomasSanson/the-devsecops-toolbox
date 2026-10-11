@@ -5,10 +5,7 @@ exports.config = {
   // inject()/codecept_dir/output_dir survive — the rest is imported.
   noGlobals: true,
   include: {
-    I: '../../../.config/codeceptjs/steps_file.js',
-    Admin: './actors/Admin.js',
-    ApplicationLoginPage: './pages/LoginPage.js',
-    ApplicationHomePage: './pages/HomePage.js'
+    I: '../../../.config/codeceptjs/steps_file.js'
   },
   helpers: {
     Playwright: {
@@ -48,6 +45,12 @@ exports.config = {
     ]
   },
   plugins: {
+    // The JUnit report `task devsecops:test:check:red-is-real` reads.
+    junitReporter: {
+      enabled: true,
+      output: './_output/junit',
+      outputName: 'results-1.xml'
+    },
     screenshot: { enabled: true },
     retryFailedStep: { enabled: true },
     // ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline: fills

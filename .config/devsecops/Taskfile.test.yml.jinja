@@ -390,14 +390,15 @@ tasks:
 
       🔧 Variables:
         - REPORT_DIR: where the JUnit reports are (default:
-          project/tests/e2e/_output/junit)
+          project/tests/application/_output/junit, where the CodeceptJS
+          sample writes them once copied into project/tests/application/)
 
       📊 Exit codes:
         - 0: the scenario ran and failed on its own check
         - 1: no report, no such scenario, or the scenario passed
         - 2: no scenario tag given
     cmds:
-      - bash .config/devsecops/scripts/check-red-is-real.sh {{.CLI_ARGS}}
+      - REPORT_DIR={{.REPORT_DIR | default "project/tests/application/_output/junit"}} bash .config/devsecops/scripts/check-red-is-real.sh {{.CLI_ARGS}}
 
   check:no-cheat:
     desc: |
