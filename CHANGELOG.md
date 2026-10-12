@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.20 (2026-10-12)
+
+### Fix
+
+- **agent**: align the workflows with the TDD rule
+
 ## 24.2.19 (2026-10-12)
 
 ### Fix
