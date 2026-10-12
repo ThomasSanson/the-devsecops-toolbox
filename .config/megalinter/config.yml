@@ -8,3 +8,7 @@ EXTENDS: .config/megalinter/config.base.yml
 REPOSITORY_CHECKOV_ARGUMENTS:
   - "--skip-check"
   - "CKV_DOCKER_2,CKV2_DOCKER_1"
+
+# The e2e fixtures copy third-party data as it is, like an OSV advisory. Their
+# links are not documentation, and github.com often answers 503 to CI runners.
+SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(^|/)package-lock\.json$|(^|/)project/tests/e2e/fixtures/'
