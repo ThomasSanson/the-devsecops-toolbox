@@ -297,18 +297,22 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     const rowNodes = Array.from(document.querySelectorAll('.xterm-rows > div'))
     if (rowNodes.length === 0) return { kept: 0, error: 'no-rows' }
 
-    const sampleStyles = window.getComputedStyle(rowNodes[0])
-    let rowHeight = parseFloat(sampleStyles.height) || 0
-    if (!rowHeight || rowHeight < 4) {
-      const sorted = rowNodes
+    // The height of one terminal row: its own style first, then the gap between
+    // two rows, then a fixed fallback.
+    function measureRowHeight (rows) {
+      const own = parseFloat(window.getComputedStyle(rows[0]).height) || 0
+      if (own >= 4) return own
+      const sorted = rows
         .map(function (row) { return parseFloat(row.style.top || '0') || 0 })
         .sort(function (a, b) { return a - b })
       for (let i = 1; i < sorted.length; i++) {
         const delta = sorted[i] - sorted[i - 1]
-        if (delta > 0) { rowHeight = delta; break }
+        if (delta > 0) return delta >= 4 ? delta : 17
       }
+      return 17
     }
-    if (!rowHeight || rowHeight < 4) rowHeight = 17
+
+    const rowHeight = measureRowHeight(rowNodes)
 
     let sortedRows = rowNodes
       .map(function (row) {
