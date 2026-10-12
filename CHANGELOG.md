@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.13 (2026-10-12)
+
+### Fix
+
+- **deps**: clear the CodeceptJS runner's OSV advisories
+
 ## 24.2.12 (2026-10-05)
 
 ### Fix
