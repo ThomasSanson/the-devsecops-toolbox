@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.23 (2026-10-13)
+
+### Refactor
+
+- **e2e**: measure the terminal row height in its own function
+
 ## 24.2.22 (2026-10-12)
 
 ### Fix
