@@ -7,8 +7,8 @@ description: Mandatory TDD cycle for any code change
 
 ## When this applies — no rationalization allowed
 
-The cycle triggers on ANY edit matching these patterns, regardless of motivation
-(new feature, bugfix, CI incident, hotfix, refactor, "simple tweak", "ops work"):
+The cycle triggers on ANY code change, regardless of motivation
+(new feature, bugfix, CI incident, hotfix, refactor, "simple tweak", "ops work").
 
 The cycle does **NOT** trigger on:
 
@@ -44,19 +44,8 @@ run the validator on top.
 
 ## ⛔ MANDATORY FOR ANY CODE CHANGE
 
-For ANY feature, bug fix, or modification, execute these steps IN ORDER:
-
-| Step | Action                         | Command                                         | Expected             |
-|------|--------------------------------|-------------------------------------------------|----------------------|
-| 1    | Write test (Gherkin, @tag)     | —                                               | Feature file created |
-| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"`                    | FAIL                 |
-| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS                 |
-| 4    | Implement minimal code         | —                                               | Code written         |
-| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"`                    | PASS                 |
-| 6    | Refactor (DO NOT touch test)   | —                                               | Code improved        |
-| 7    | Verify after refactor          | `task test -- --grep "@tag"`                    | PASS                 |
-| 8    | Quality check                  | `task code`                                     | PASS                 |
-| 9    | Full test suite                | `task test`                                     | ALL PASS             |
+For ANY feature, bug fix, or modification, run the nine steps of the table in
+[`AGENTS.md`](../../AGENTS.md) (section Testing) IN ORDER.
 
 ## Checkpoints
 

@@ -123,33 +123,27 @@ Detailed rules: [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md) | Skill
 
 Every code change MUST follow this cycle:
 
-| Step | Action                                      | Command                                         | Expected          |
-|------|---------------------------------------------|-------------------------------------------------|-------------------|
-| 1    | Write test specification with unique `@tag` | —                                               | Test file created |
-| 2    | **RED** — Verify test fails                 | `task test -- --grep "@tag"`                    | FAIL              |
-| 3    | **Prove the failure is real**               | `task devsecops:test:check:red-is-real -- @tag` | PASS              |
-| 4    | Implement minimal code                      | —                                               | Code written      |
-| 5    | **GREEN** — Verify test passes              | `task test -- --grep "@tag"`                    | PASS              |
-| 6    | Refactor (DO NOT touch test)                | —                                               | Code improved     |
-| 7    | Verify after refactor                       | `task test -- --grep "@tag"`                    | PASS              |
-| 8    | Quality check                               | `task code`                                     | PASS              |
-| 9    | Full test suite                             | `task test`                                     | ALL PASS          |
+| Step | Action                         | Command                                         | Expected      |
+|------|--------------------------------|-------------------------------------------------|---------------|
+| 1    | Write a test tagged `@tag`     | —                                               | Test written  |
+| 2    | **RED** — Verify test fails    | `task test -- --grep "@tag"`                    | FAIL          |
+| 3    | **Prove the failure is real**  | `task devsecops:test:check:red-is-real -- @tag` | PASS          |
+| 4    | Implement minimal code         | —                                               | Code written  |
+| 5    | **GREEN** — Verify test passes | `task test -- --grep "@tag"`                    | PASS          |
+| 6    | Refactor (DO NOT touch test)   | —                                               | Code improved |
+| 7    | Verify after refactor          | `task test -- --grep "@tag"`                    | PASS          |
+| 8    | Quality check                  | `task devsecops:code:verify`                    | PASS          |
+| 9    | Full test suite                | `task devsecops:test:verify`                    | ALL PASS      |
 
-**Each phase of the loop certifies itself**: one command, one exit code, nothing taken on trust.
+Step 1 accepts a Gherkin scenario or a unit test whose name starts with the tag.
 
-### What certifies each phase
-
-| Phase  | The command that settles it  | It guarantees                                         |
-|--------|------------------------------|-------------------------------------------------------|
-| `code` | `task devsecops:code:verify` | the linter passes, and the change silenced none of it |
-| `test` | `task devsecops:test:verify` | the tests pass, and no check was switched off         |
+Steps 8 and 9 each certify a phase with one exit code: the linter passes and the change silenced none of it, then the tests pass and no check was switched off.
 
 Handing work to an AI assistant? The whole contract — including what an
 orchestrator delegating to a cheaper model must check — is one page:
 [`.agent/rules/ai-delegation.md`](.agent/rules/ai-delegation.md).
 
-
-Test specifications are written in Gherkin, in the language configured for the project.
+Gherkin scenarios are written in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) ships under `.config/codeceptjs/`; use its sample config to wire up `project/tests/` if you want visual E2E coverage.
 
 ---
@@ -166,8 +160,8 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org), enfo
 
 - Run all commands via `task` from the repository root
 - Follow the TDD cycle (RED → GREEN → REFACTOR) for any code change
-- Run `task code` before committing
-- Run `task test` to verify no regressions
+- Run `task devsecops:code:verify` before committing
+- Run `task devsecops:test:verify` to verify no regressions
 - Mirror the user's language in conversation
 - Add new tasks in `project/Taskfile.yml` if missing
 

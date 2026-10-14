@@ -47,4 +47,4 @@ task test -- --grep "@your-tag"
 
 ## Next Step
 
-Once test passes, proceed to the REFACTOR phase. It is not optional: it is also where `task code` and the full `task test` run.
+Then go to the REFACTOR phase. It is not optional: it ends on `task devsecops:code:verify` and `task devsecops:test:verify`.

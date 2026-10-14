@@ -14,7 +14,7 @@ description: Run E2E tests with CodeceptJS and Playwright. Use when running test
 
 ## How to run tests
 
-### Full test suite (deploys first)
+### Whole suite (deploys first)
 
 ```bash
 task test

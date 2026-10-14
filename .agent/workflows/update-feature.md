@@ -66,9 +66,9 @@ task test -- --grep "@e2e-{feature}"
 
 ```bash
 // turbo
-task test
+task devsecops:test:verify
 // turbo
-task code
+task devsecops:code:verify
 ```
 
 ## Checklist
@@ -76,5 +76,5 @@ task code
 - [ ] New tests added for new functionality
 - [ ] Implementation follows existing patterns in the codebase
 - [ ] New visual baselines inspected by a human
-- [ ] All tests pass (`task test`)
-- [ ] All linters pass (`task code`)
+- [ ] All tests pass (`task devsecops:test:verify`)
+- [ ] All linters pass (`task devsecops:code:verify`)

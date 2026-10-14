@@ -44,5 +44,5 @@ This runs Mega-Linter with all configured linters.
 
 - ❌ NEVER skip linting
 - ❌ NEVER disable rules without justification
-- ✅ ALWAYS run `task code` before commit
+- ✅ ALWAYS run `task devsecops:code:verify` before commit
 - ✅ Fix ALL errors, not just some

@@ -67,7 +67,7 @@ The former legacy suites `tests/{template,bootstrap,gitlab}/` were deleted after
 ### Framework test commands
 
 ```bash
-task test                              # Full test suite (deploy + guards + e2e)
+task test                              # Whole suite (deploy + guards + e2e)
 task test -- --grep "@my-tag"          # Run tests filtered by tag
 task test:tdd                          # TDD mode (no rebuild)
 task project:test:e2e                  # E2E suite only (no guards)

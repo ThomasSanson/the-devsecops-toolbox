@@ -48,9 +48,10 @@ task test -- --grep "@your-tag"
 
 ### ✅ Expected Outcomes (any of these = success)
 
-- ❌ **Step not implemented** → Create step definition
 - ❌ **Element not found** → Feature UI doesn't exist yet
 - ❌ **Assertion failed** → Logic not implemented yet
+
+An undefined step is not a RED: define it and run again.
 
 ### ⛔ FAILURE of this phase
 

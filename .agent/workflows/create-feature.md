@@ -85,9 +85,9 @@ task test -- --grep "@e2e-{feature}"
 
 ```bash
 // turbo
-task test
+task devsecops:test:verify
 // turbo
-task code
+task devsecops:code:verify
 ```
 
 ## Constraints Checklist
@@ -99,4 +99,4 @@ task code
 - [ ] Steps are parameterized and reusable
 - [ ] New steps file (if any) added to `codecept.conf.js`
 - [ ] New visual baselines inspected by a human
-- [ ] All linters pass (`task code`)
+- [ ] All linters pass (`task devsecops:code:verify`)

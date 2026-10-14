@@ -59,7 +59,7 @@ Run the full test suite to ensure no regressions:
 
 ```bash
 // turbo
-task test
+task devsecops:test:verify
 ```
 
 ### 7. Lint
@@ -68,5 +68,5 @@ Run linters to ensure no orphan references or config issues:
 
 ```bash
 // turbo
-task code
+task devsecops:code:verify
 ```

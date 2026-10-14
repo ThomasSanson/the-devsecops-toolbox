@@ -48,7 +48,7 @@ task test -- --grep "@your-tag"
 
 // turbo
 ```bash
-task code
+task devsecops:code:verify
 ```
 
 If any linter errors are found, you MUST fix them following the [code skill](file://.agent/skills/code/SKILL.md).
@@ -57,7 +57,7 @@ If any linter errors are found, you MUST fix them following the [code skill](fil
 
 // turbo
 ```bash
-task test
+task devsecops:test:verify
 ```
 
 Ensure no regressions.

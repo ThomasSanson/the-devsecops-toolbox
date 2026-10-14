@@ -26,14 +26,6 @@ This will:
 3. Wait for health checks
 4. Display access URLs
 
-### Light deploy (no rebuild)
-
-```bash
-task project:deploy:light
-```
-
-Use when containers exist but are stopped.
-
 ### Remote deploy
 
 ```bash

@@ -13,20 +13,13 @@ description: Test-Driven Development workflow. Use when implementing new feature
 
 ## The TDD cycle
 
-```txt
-DEPLOY → RED → GREEN → REFACTOR
-```
+Run the nine steps of the table in [`AGENTS.md`](../../../AGENTS.md) (section Testing) IN ORDER.
+The sections below explain them.
 
 ### 1. DEPLOY — Environment ready
 
 ```bash
 task deploy
-```
-
-Or light restart:
-
-```bash
-task project:deploy:light
 ```
 
 ### 2. RED — Write failing test FIRST
@@ -44,6 +37,12 @@ task test -- --grep "@my-tag"
 ```
 
 > ❌ If test passes, the test is wrong!
+
+4. **Prove the failure is real**
+
+```bash
+task devsecops:test:check:red-is-real -- @my-tag
+```
 
 ### 3. GREEN — Minimal code to pass
 
@@ -71,19 +70,9 @@ task test -- --grep "@my-tag"
 ### 5. FINALIZE
 
 ```bash
-task code  # Lint check
-task test  # Full suite
+task devsecops:code:verify  # Lint check
+task devsecops:test:verify  # Whole suite
 ```
-
-## Quick reference
-
-| Phase    | Command                      | Expected    |
-|----------|------------------------------|-------------|
-| DEPLOY   | `task deploy`                | Services up |
-| RED      | `task test -- --grep "@tag"` | FAIL        |
-| GREEN    | `task test -- --grep "@tag"` | PASS        |
-| REFACTOR | `task test -- --grep "@tag"` | PASS        |
-| FINAL    | `task test`                  | ALL PASS    |
 
 ## Rules
 

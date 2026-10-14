@@ -79,14 +79,14 @@ task test -- --grep "@your-tag"
 ### STEP 8: QUALITY CHECK
 // turbo
 ```bash
-task code
+task devsecops:code:verify
 ```
 **CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](file://.agent/skills/code/SKILL.md).
 
 ### STEP 9: FULL TEST SUITE
 // turbo
 ```bash
-task test
+task devsecops:test:verify
 ```
 **CHECKPOINT:** ✅ ALL tests pass. No regressions.
 
