@@ -1,41 +1,43 @@
 @hybrid-ci
 Feature: Choose a runner according to the work a job does
-  The toolbox runs its file checks on an ordinary runner and keeps Docker
+  The toolbox runs its file checks on an unprivileged runner and keeps Docker
   available for project tasks, without editing the generated pipeline.
+  It also guards issue #162: the words a project adds to its own spelling
+  dictionary survive a toolbox update.
 
   Scenario: Generate a self-hosted project with separate runners for checks and Docker
     # Chapter: Choose the Docker runners
-    # Note: Copier keeps the existing runner tag exactly as entered. The project does not need a private copy of the toolbox to choose its Docker runners.
-    Given I generate a self-hosted project using the saas-linux-medium-amd64 Docker runner tag
-    # Note: GitLab resolves the whole generated pipeline. File checks have no tag and no service; project tasks retain Docker because their commands may start containers.
-    Then GitLab validates the complete generated pipeline
+    # Note: GitLab's page for .config/gitlab/ci/tags.yml on the main branch of the generated project. The file keeps the runner tag given to Copier, ["saas-linux-medium-amd64"], and its comment says who uses it: "Runner selection for Docker jobs. Native checks use .native-job instead."
+    # Note: The project's random name shows as "project". Its only commit is "chore: initial render".
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/gitlab/ci/tags.yml
+    Given I generate a self-hosted project using the saas-linux-medium-amd64 Docker runner tag and push it to GitLab
     # Chapter: Add the application
-    # Note: The project Taskfile defines the application tasks. The generated pipeline stays unchanged and keeps Docker available to those tasks.
-    When I add the web application without changing the generated pipeline
-    # Note: The input is visible before the verdict: a project word, a misspelled word, and an insecure URL. Both project lint hooks must still run.
-    Then my project has its own lint settings and two mistakes to catch
+    # Note: The merge request's Changes tab. The file tree lists the 11 files it adds or changes, and .gitlab-ci.yml is not one of them: the web application runs on the generated pipeline as it is.
+    # Note: The first diff gives the project dictionary .config/cspell/config.project.json its own word, "hybridciword". The diff of project/code/transport.js holds the first deliberate mistake, an http URL. The second, a misspelled word in project/README.md, is further down the page.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
+    When I open a merge request that adds the web application, its own lint settings and two deliberate mistakes
     # Chapter: Run the checks on real runners
-    # Note: The job runs with privileged mode disabled, without a Docker socket or a Docker service. The real job page identifies its runner; only the bootstrap before the check is collapsed.
-    Then Commitlint passes on the unprivileged runner
-    # Note: The job page and the observed container agree: MegaLinter runs directly in its own image with privileged mode disabled and no Docker socket. Only image preparation is expanded; GitLab keeps the other log sections folded.
-    And MegaLinter starts directly in its own image on the unprivileged runner
-    # Note: This is the full spelling report downloaded from the job artifacts. The project dictionary accepts its own word, but the deliberate spelling mistake still fails the job.
-    And MegaLinter rejects a spelling mistake and publishes its reports
-    # Note: The full security report points at the HTTP URL in the project source. The security scanner is active on the ordinary runner too.
-    And the security scan also rejects the insecure URL
+    # Note: Settings, CI/CD, Runners, once the merge request pipeline has run. The project has two runners of its own: "Docker jobs" with the saas-linux-medium-amd64 tag, and "Unprivileged file checks" with no tag. The job counter beside each one reads 9: each took 9 of the pipeline's 18 jobs.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    When the project gets an unprivileged runner for file checks and a Docker runner for containers
+    # Note: The code:megalinter job of that pipeline. Its open section, "Preparing the "docker" executor", says "Using Docker executor with image ghcr.io/oxsecurity/megalinter": the check runs straight in MegaLinter's image, and no Docker service starts. The side panel names the runner: Unprivileged file checks.
+    # Note: Under "Related jobs", code:megalinter is the only red one. Commitlint and the other file checks passed.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<code:megalinter job>
+    Then MegaLinter starts directly in its own image on the unprivileged runner
+    # Note: The same job further down its log, with two MegaLinter sections open. devskim reports "warning: Insecure URL" at project/code/transport.js:1:18. cspell reports "Unknown word (spellling)" in project/README.md, and does not flag "hybridciword", the project's own word.
+    # Note: The job failed, and its side panel still offers the reports under "Job artifacts".
+    And MegaLinter rejects the misspelled word and the insecure URL and keeps its reports
     # Chapter: Keep the project settings through an update
-    # Note: Copier advances the toolbox version. The Docker runner tag, project dictionary, lint hooks and Task settings are preserved exactly.
-    When I update the project through Copier and keep my own settings
-    # Note: I fix the misspelled word and switch the URL to HTTPS. The rules, project dictionary and lint hooks stay in place.
-    When I correct both mistakes without changing the lint configuration
-    # Note: The same GitLab job page now shows a passing job. Its image, runner, project hooks and downloadable reports are unchanged.
-    Then MegaLinter passes on the unprivileged runner
-    # Note: This is the same spelling report as before, downloaded after the correction. The project dictionary remains active and the scan passes.
-    And the spelling scan accepts the corrected file
-    # Note: The same security scanner now passes. The change fixed the source file; no security rule was disabled.
-    And the security scan accepts the corrected HTTPS URL
+    # Note: GitLab compares the merge request before and after the next push, which brought two commits: "chore: update the toolbox through Copier" and "fix: correct spelling and use HTTPS".
+    # Note: Only four files changed. In .copier-answers.yml, _commit moves from 1.0.0 to 1.0.1, and the toolbox's own .config/jq/Taskfile.yml gains the line "# e2e-update-marker". The README and transport.js carry the two fixes. The runner tag, the project dictionary and the lint settings are not in the list: Copier kept them.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/compare/<before the push>...<after the push>
+    When I update the project through Copier and correct both mistakes in the same merge request
+    # Note: The code:megalinter job of the new pipeline, seen from the same place in its log. devskim and cspell now pass, and the README still holds "hybridciword": the project dictionary came through the update. The reports are kept again under "Job artifacts", and the runner is still Unprivileged file checks.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<code:megalinter job>
+    Then MegaLinter passes on the unprivileged runner and accepts both corrections
     # Chapter: Containers keep their own runner
-    # Note: The build, deploy and test jobs use the tagged Docker runner. The HTTP test talks to the running Compose service and checks the response body.
+    # Note: The test job of the same pipeline. Its side panel says "Runner: Docker jobs" and "Tags: saas-linux-medium-amd64". Its log starts the web application with Docker Compose, checks it and prints "PASS: the Compose web application returns the expected HTTP response".
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<test job>
     And the Docker runner builds and tests the web application
 
   @runner-cleanup
