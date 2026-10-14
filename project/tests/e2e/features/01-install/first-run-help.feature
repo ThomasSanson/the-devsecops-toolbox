@@ -43,6 +43,6 @@ Feature: On the first run, the toolbox names the exact thing to fix
     # Copy: git remote set-url origin https://gitlab.com/acme/widgets.git && task devsecops:init
     When the developer points the remote back at GitLab and runs init, it stops at the sign-in and names the command to run
     # Note: A project that stays on GitHub has no GitLab to sign in to. It turns the GitLab part of the toolbox off with TASK_GLAB_ENABLED=false and runs init on its GitHub remote.
-    # Note: The card starts on the same line as the card before. This time init skips its GitLab step (the task runner says devsecops:init:configure "is up to date") and goes straight to "DevSecOps project initialization completed". No sign-in question, no refusal of the remote.
+    # Note: Most of the card is init checking every tool again and finding each one already installed. Versions show as X.Y.Z. Then init skips its GitLab step: the task runner says devsecops:init:configure "is up to date". It ends on "DevSecOps project initialization completed", with no sign-in question and no refusal of the remote.
     # Copy: git remote set-url origin https://github.com/acme/widgets.git && TASK_GLAB_ENABLED=false task devsecops:init
     Then a project that stays on GitHub turns the GitLab integration off, and init finishes cleanly

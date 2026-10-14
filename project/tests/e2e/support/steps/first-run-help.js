@@ -27,7 +27,6 @@ const {
   openTerminal,
   clearTerminal,
   terminalCard,
-  typeCommandAndWait,
   waitForTerminalText,
   waitForPromptReturn,
   captureTerminalFrame,
@@ -54,12 +53,20 @@ const OPT_OUT_LINE = `git remote set-url origin ${GITHUB_REMOTE} && TASK_GLAB_EN
 const SIGN_IN_QUESTION = 'Continue and sign in now?'
 const SIGN_IN_CARD = 'GitLab Authentication Required'
 const CHECK_FAILED = 'task: Failed to run task "glab:auth:ensure"'
-// init installs every tool first, a long run that scrolls off the screen: the
-// init cards start at its last line, the same row on both.
+// The first init installs every tool, a long run that scrolls off the screen:
+// its card starts at the last line of that install.
 const SETUP_DONE = '🎉 Development environment setup completed successfully'
-// The pinned gum, glow and glab versions (and glab's build commit) move with
-// every Renovate bump and say nothing about the check.
+// The pinned tool versions (and glab's build commit) move with every Renovate
+// bump and say nothing about the check.
 const VERSION_MASK = [[/\d+\.\d+\.\d+/g, 'X.Y.Z'], [/\(([0-9a-f]{7,40})\)/g, '(<commit>)']]
+// The init rerun lists every tool it finds installed: docker adds its build
+// commit, uv its build date, and lefthook names its hooks in map order.
+const RERUN_MASK = [
+  ...VERSION_MASK,
+  [/build [0-9a-f]{7,40}/g, 'build <commit>'],
+  [/\d{4}-\d{2}-\d{2}/g, 'YYYY-MM-DD'],
+  [/commit-msg, pre-commit|pre-commit, commit-msg/g, 'commit-msg, pre-commit']
+]
 
 let container = null
 
@@ -177,6 +184,7 @@ storyboardStep(Then, 'a GitHub remote is refused, with the exact command to poin
   expectOnScreen(screen, [
     'https://github.com/acme/widgets.git (fetch)',
     'No GitLab repository remote was detected.',
+    'Align your repository remote, then rerun:',
     'git remote set-url origin https://gitlab.com/<namespace>/<project>.git',
     CHECK_FAILED
   ], 'GitHub refusal')
@@ -185,7 +193,9 @@ storyboardStep(Then, 'a GitHub remote is refused, with the exact command to poin
 
 // The developer follows that advice and runs init: the one full toolchain
 // install of the story, then init reaches the sign-in, the developer answers
-// No and init pauses with the commands to run.
+// No and init pauses with the commands to run. The card ends on the second of
+// them: go-task's nested failure line under it is wider than the terminal and
+// would wrap in the middle of a word, so it is checked on the screen text.
 storyboardStep(When, 'the developer points the remote back at GitLab and runs init, it stops at the sign-in and names the command to run', async () => {
   await clearTerminal(I)
   I.type(INIT_LINE)
@@ -194,21 +204,22 @@ storyboardStep(When, 'the developer points the remote back at GitLab and runs in
   I.click('.xterm-screen')
   I.pressKey('n')
   await waitForPromptReturn(I, INIT_LINE)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'init-stops-at-signin', { fromMarker: SETUP_DONE, mask: VERSION_MASK }))
   const screen = await terminalScreenText(I)
+  const rows = screen.split('\n')
+  const from = rows.findIndex((row) => row.includes(SETUP_DONE))
+  const to = rows.findIndex((row, i) => i > from && /^\s*then\s+task devsecops:init/.test(row))
+  if (from === -1 || to === -1) throw new Error(`Expected the init card to run from the setup line to "then task devsecops:init":\n${screen}`)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'init-stops-at-signin', { fromMarker: SETUP_DONE, maxRows: to - from + 1, mask: VERSION_MASK }))
   expectOnScreen(screen, ['Configuring GitLab project', 'Initialization paused', 'task glab:auth', 'task: Failed to run task "devsecops:init:default"'], 'init sign-in')
   expectOnScreen(signInCardRows(screen), ['Target Host: gitlab.com'], 'init sign-in')
   expectOffScreen(screen, ['DevSecOps project initialization completed'], 'init sign-in')
 })
 
-// Same anchor as the card before, so the two read row by row: with the GitLab
-// part turned off, init goes straight from the setup to "completed", even on a
-// GitHub remote the check would refuse.
+// The whole rerun, from the typed line with the flag: every tool is already
+// there, and with the GitLab part turned off init goes straight from the setup
+// to "completed", even on a GitHub remote the check would refuse.
 storyboardStep(Then, 'a project that stays on GitHub turns the GitLab integration off, and init finishes cleanly', async () => {
-  await clearTerminal(I)
-  await typeCommandAndWait(I, OPT_OUT_LINE, COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'init-gitlab-off', { fromMarker: SETUP_DONE }))
-  const screen = await terminalScreenText(I)
+  const screen = await terminalCard(I, 'init-gitlab-off', OPT_OUT_LINE, { mask: RERUN_MASK })
   expectOnScreen(screen, ['task: Task "devsecops:init:configure" is up to date', 'DevSecOps project initialization completed'], 'GitLab off')
   expectOffScreen(screen, ['Configuring GitLab project', 'No GitLab repository remote', SIGN_IN_CARD, 'Failed to run task'], 'GitLab off')
   const origin = runInFreshUbuntu(container, 'git remote get-url origin', { timeout: 60000 })
