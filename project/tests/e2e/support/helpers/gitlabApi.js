@@ -431,3 +431,57 @@ async function compareRefs (projectName, from, to, headers) {
 }
 
 module.exports.compareRefs = compareRefs
+
+// The files a merge request changes, as its Changes tab lists them. GitLab
+// computes them after the push: poll until they are there.
+async function listMergeRequestDiffs (projectName, iid, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/merge_requests/${iid}/diffs?per_page=100`,
+    headers
+  )
+  if (res.status >= 400) throw new Error(`Diffs of merge request !${iid}: HTTP ${res.status}`)
+  return res.data
+}
+
+// A file's metadata on a ref (size, blob id, content_sha256), without its
+// content: the twin of a binary file, an image, that a text read would mangle.
+async function getRepositoryFileMeta (projectName, filePath, ref, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/files/` +
+      `${encodeURIComponent(filePath)}?ref=${encodeURIComponent(ref)}`,
+    headers
+  )
+  if (res.status >= 400) throw new Error(`${filePath}@${ref}: HTTP ${res.status}`)
+  return res.data
+}
+
+module.exports.listMergeRequestDiffs = listMergeRequestDiffs
+module.exports.getRepositoryFileMeta = getRepositoryFileMeta
+
+// GitLab's own reading of a pipeline's JUnit reports, as its Tests tab shows
+// them: counts, suites and every test case with its system_output. GitLab
+// parses the reports after the pipeline ends, so poll until total_count is set.
+async function getPipelineTestReport (projectName, pipelineId, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/pipelines/${pipelineId}/test_report`,
+    headers
+  )
+  if (res.status >= 400) throw new Error(`Test report of pipeline ${pipelineId}: HTTP ${res.status}`)
+  return res.data
+}
+
+module.exports.getPipelineTestReport = getPipelineTestReport
+
+// createMergeRequest right after a push: GitLab can answer "source_branch does
+// not exist" for a moment while it records the new branch, so ask again.
+async function createMergeRequestAfterPush (projectName, payload, headers, tries = 20) {
+  let res
+  for (let i = 0; i < tries; i++) {
+    res = await createMergeRequest(projectName, payload, headers)
+    if (!(res.status === 400 && JSON.stringify(res.data).includes('does not exist'))) return res
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  return res
+}
+
+module.exports.createMergeRequestAfterPush = createMergeRequestAfterPush

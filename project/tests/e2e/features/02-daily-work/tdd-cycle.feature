@@ -1,3 +1,4 @@
+# cspell:ignore greting
 @e2e
 Feature: The toolbox checks the test really failed first, instead of taking anyone's word for it
   As a maintainer whose repository is written by people and by AI assistants alike
@@ -24,89 +25,93 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
   @tdd-cycle
   Scenario: The toolbox tells a real failure apart from a run that died on its way to the test
     # Chapter: A failure that proves nothing
-    # Note: A developer starts a new feature the honest way: the test first. Two files are new here, and the picture is their whole content, line by line.
-    # Note: The test asks for a greeting the toolbox cannot give yet, so it is meant to fail. But look at the second line of the step file: it asks for a helper file, ../helpers/greeting, that has not been written yet either.
+    # Note: A developer starts a new feature the honest way: the test first. The terminal shows, as git sees them, the two new files and the one line that registers the step file with the test suite.
+    # Note: The test asks for a greeting the toolbox cannot give yet, so it is meant to fail. But look at the second line of the step file: it also asks for a helper file, ../helpers/greeting, that nobody has written yet.
     # Copy: git add -N . && git diff
     Given a developer writes the test for a greeting the toolbox cannot give yet
-    # Note: The test suite is started, and it never reaches the test. Node stops on the missing helper: "Cannot find module '../helpers/greeting'", and names the file that asked for it.
-    # Note: The run then exits with the code 1, which is the same code a genuinely failed test returns. On a screen, at a glance, this looks like the proof the method asks for.
-    # Note: The last line is the tell. The suite writes a report of every scenario it ran into project/tests/e2e/_output/junit/, and here that folder does not even exist. Nothing ran.
-    # Copy: TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature codeceptjs run-workers 1 --features --by pool --config project/tests/e2e/codecept.conf.js --grep '@greeting'
-    Then the run dies on its way to the test, and still exits like a failed test
-    # Note: This is the new check, and this is the command a developer types: task devsecops:test:check:red-is-real -- @greeting. It reads the report the run left behind, and it finds none.
-    # Note: Its verdict says so in plain words: "no report at all: the run stopped before a single scenario". The toolbox refuses to accept this failure as proof, and says what it would take instead.
-    # Copy: task devsecops:test:check:red-is-real -- @greeting
-    Then the toolbox refuses to call that a proof, because no scenario was ever recorded
+    # Note: One typed line does the whole check: what git sees, the test run, its exit code, the report folder, then the toolbox's check. The run is the line task project:test:e2e runs inside its test container.
+    # Note: The run never reaches the test. Node stops on "Cannot find module '../helpers/greeting'", the toolbox's wrapper reports "Worker completion: FAIL", and the exit code is 1, the code a failed test returns. At a glance, this looks like the proof the method asks for.
+    # Note: The report folder does not even exist, because nothing ran. The check reads that folder and refuses: "The run left no report at all: it stopped before a single scenario ran."
+    # Copy: TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greeting; task devsecops:test:check:red-is-real -- @greeting
+    Then the run dies on its way to the test, exits like a failed test, and the toolbox refuses to call that a proof
     # Chapter: A failure that proves something
-    # Note: The developer writes the missing helper, and nothing else. The test is untouched, and the greeting it asks for still does not exist.
-    # Note: Same command as two pictures ago, and this time the suite reaches the test: "0 passed, 1 failed". The scenario ran, and it failed on what it was checking, in its own words: expected 'Hello, Lambda', got ''.
-    # Note: The report folder now holds results-1.xml, the record of that one scenario.
-    # Copy: TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature codeceptjs run-workers 1 --features --by pool --config project/tests/e2e/codecept.conf.js --grep '@greeting'
-    When the missing helper is written and the test finally reaches its own check
-    # Note: Same check as two pictures ago, same command, and the verdict has turned: "the scenario ran and failed on its own check".
-    # Note: It quotes the sentence of the scenario it found in the report, and the failure that scenario recorded. The developer never had to be believed: the proof was on disk, and the toolbox read it.
-    # Copy: task devsecops:test:check:red-is-real -- @greeting
-    Then the toolbox accepts the failure as proof, and quotes the check that produced it
+    # Note: The developer writes the missing helper, and nothing else: git now lists helpers/greeting.js next to the test, which is untouched. The greeting the test asks for still does not exist.
+    # Note: Same line as the card before. This time the suite reaches the test and fails on its own check: "expected 'Hello, Lambda', got ''". The engine prints that failure twice, once for its worker and once for the whole run, and the report folder now holds results-1.xml, the record of that one scenario.
+    # Note: The verdict has turned: "The failure is real: the scenario ran and failed on its own check", and it quotes that check. Nobody had to be believed: the proof was on disk, and the toolbox read it.
+    # Copy: TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greeting; task devsecops:test:check:red-is-real -- @greeting
+    When the developer writes the missing helper, the test fails on its own check, and the toolbox accepts that failure as proof
+    # Chapter: Yesterday's proof does not count
+    # Note: The report of the card before is still on disk: the first ls lists results-1.xml. The developer runs the suite again with a typo in the tag, and @greting selects no scenario at all.
+    # Note: The run stops at once: "No Gherkin scenario matches this selection", exit code 1. The toolbox emptied the report folder before anything else, so the second ls finds nothing.
+    # Note: Asked about @greeting again, the same check now refuses. The failure it accepted a minute ago went away with its report: only the latest run counts as proof.
+    # Copy: TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greting; task devsecops:test:check:red-is-real -- @greeting
+    Then a run that selects no scenario wipes that report, and the toolbox refuses the old failure
     # Chapter: The phase refuses to certify itself
-    # Note: The assistant is asked to make the suite green, and it takes the cheapest road there: one word, @skip, above the scenario it could not satisfy. The suite will now report that scenario without ever running it.
-    # Note: Each phase of the loop has one command that settles it. For the test phase it is this one, and it answers with a single exit code: the tests passed, and nothing was switched off to get there. The guard runs first, so this stops in a second instead of after twenty minutes of test suite.
-    # Note: It names the file, the line and what that line does, then offers the only way past it: a visible No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing at it.
-    # Copy: task devsecops:test:verify
+    # Note: Asked to make the suite green, the assistant takes the cheapest road: one word, @skip, above the scenario it could not satisfy. The file on screen is the test as it now stands.
+    # Note: task devsecops:test:verify is the one command that certifies the test phase: the tests passed, and nothing was switched off to get there. Its guard runs first, so it stops in a second instead of after the whole test suite.
+    # Note: It names the file, the line and what that line does, then offers the only way past it: a No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing it.
+    # Copy: cat project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:verify
     Then the test phase refuses to certify itself, the moment a check is switched off
 
 
   @baseline-mode
   Scenario: Only an explicit local request may replace an image reference
     # Chapter: A visible difference must fail
-    # Note: The reference contains two blue rectangles. Chromium then captures the same page with an orange rectangle on the right. The fixture keeps both real captures in a disposable copy of the toolbox.
+    # Note: The page under test, as Chromium captures it: the box labelled Current is now orange. The committed reference image of this page has both boxes in blue, so the two images differ in their pixels.
+    # Note: A throwaway copy of the toolbox holds that reference twice, once for each of the suite's two visual checks, and one test that compares the page with both.
     Given a reference image and a captured page differ visibly in their pixels
-    # Note: With no regeneration variable, both visual helpers must reject the changed pixels. The task preview shows the actual container command; the real engine output below shows each failed comparison. Neither reference file may change.
-    # Copy: env -u TASK_E2E_UPDATE_BASELINES task project:test:e2e
-    Then an unset regeneration flag refuses the pixel difference and preserves the reference
-    # Note: Setting the variable to 0 must keep the same strict behavior. A nonempty value is not permission to accept a visual regression, and the task must not turn that value into 1.
-    # Copy: TASK_E2E_UPDATE_BASELINES=0 task project:test:e2e
-    And a regeneration flag set to zero still refuses the difference and preserves the reference
-    # Chapter: Regeneration requires an explicit local request
-    # Note: The value 1 authorizes regeneration in this disposable local copy. Each helper must succeed and replace its blue reference with the exact bytes of the newly captured page.
-    # Copy: TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
-    And an explicit local regeneration request replaces the reference with the captured pixels
-    # Note: The same nested engine now receives CI=true. Both helpers must print their CI refusal and leave the reference untouched, even though the regeneration variable is 1. This checks the runtime guard locally; it does not run a GitLab pipeline.
-    # Copy: CI=true TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
-    And the same explicit regeneration request is forbidden in CI and preserves the reference
+    # Note: Each card types the same line with another setting. First, what task project:test:e2e would hand to its test container: with the flag set to 0, the bare command, so the test never sees the flag.
+    # Note: Then the test itself, run with the 0 anyway. Both checks fail on "Visual mismatch", the run exits with the code 1, and git status prints nothing: both references are untouched. No flag at all gives the same result.
+    # Copy: TASK_E2E_UPDATE_BASELINES=0 task --dry project:test:e2e 2>&1 | grep -o "exec -T.* codeceptjs node"; TASK_E2E_UPDATE_BASELINES=0 codeceptjs run --features --config project/tests/e2e/codecept.conf.js --grep @baseline-probe | grep -E "mismatch|forbidden|passed"; echo "exit code ${PIPESTATUS[0]}"; git status --short project/tests/e2e/screenshots
+    Then a flag set to zero, like no flag at all, is not passed on, and both checks refuse the difference
+    # Note: Same line, as a CI job would run it, with the flag set to 1. The task hands the flag over together with CI=true, so the test knows where it runs.
+    # Note: Both checks refuse at once, "TASK_E2E_UPDATE_BASELINES is forbidden in CI", and git sees no change. In CI, a visual difference can only fail the run.
+    # Copy: CI=true TASK_E2E_UPDATE_BASELINES=1 task --dry project:test:e2e 2>&1 | grep -o "exec -T.* codeceptjs node"; CI=true TASK_E2E_UPDATE_BASELINES=1 codeceptjs run --features --config project/tests/e2e/codecept.conf.js --grep @baseline-probe | grep -E "mismatch|forbidden|passed"; echo "exit code ${PIPESTATUS[0]}"; git status --short project/tests/e2e/screenshots
+    And in CI the flag set to 1 reaches the test with CI set, and both checks refuse to rewrite anything
+    # Chapter: A developer rewrites the references, a reviewer accepts them
+    # Note: Same line on the developer's machine, with the flag set to 1. The task hands the flag over, and both checks pass: each one wrote the captured page over its reference.
+    # Note: git status now lists the two references as modified. Nothing is accepted yet: someone still has to look at them.
+    # Copy: TASK_E2E_UPDATE_BASELINES=1 task --dry project:test:e2e 2>&1 | grep -o "exec -T.* codeceptjs node"; TASK_E2E_UPDATE_BASELINES=1 codeceptjs run --features --config project/tests/e2e/codecept.conf.js --grep @baseline-probe | grep -E "mismatch|forbidden|passed"; echo "exit code ${PIPESTATUS[0]}"; git status --short project/tests/e2e/screenshots
+    When the flag is exactly 1 on the developer's machine, both references are rewritten with the captured pixels
+    # Note: The developer commits the two references on a branch and opens a merge request, a change a reviewer accepts or refuses. For each image, GitLab shows the old reference, all blue, next to the new capture with its orange box.
+    # Note: That is the only road for a new reference: rewritten on a developer's machine, then looked at by a person before it reaches the main branch.
+    # Copy: http://gitlab/<user>/<project>/-/merge_requests/1/diffs
+    Then the merge request shows each old reference next to its new pixels, for a reviewer to accept
 
   @worker-completion
   Scenario: Every selected scenario must finish before a parallel run can succeed
     # Chapter: A worker can disappear before its result exists
-    # Note: These disposable features use the real CodeceptJS engine and the repository JUnit reporter. One step exits its own worker; a second feature has two Outline examples. A third file outside the shard throws if it is selected accidentally.
+    # Note: A throwaway copy of the toolbox gets three test files and one step file. One scenario's only step ends its own worker with the code 23 when WORKER_PROBE_STOP is 1, the way a crash would. Two examples always pass. The third file, Outside this shard, must never run.
+    # Note: The export selects worker-stopped.feature and worker-completed.feature, the way a CI shard does, and turns the crash on for the rest of the session.
+    # Copy: export TASK_CODECEPTJS_FEATURES=./features/worker-stopped.feature,./features/worker-completed.feature WORKER_PROBE_STOP=1 && cat project/tests/e2e/features/worker-*.feature project/tests/e2e/support/steps/worker-probe.js
     Given parallel test files contain an interruptible worker and two completing examples
-    # Note: The real engine runs twice: first with the interruptible feature alone, then alongside the completing examples. Each run loses a worker. Before testing the task entrypoint, a genuine successful run leaves earlier JUnit reports behind, including the scenario that will now be interrupted.
-    When a worker exits early both alone and alongside a worker that completes its examples
-    # Chapter: A current and complete result is required
-    # Note: The task must refuse both incomplete executions, even when the engine returns zero and even when an earlier launch passed. Its verdict names the missing scenario. Worker reports from the earlier launch must be gone.
-    Then the task rejects both incomplete runs and cannot reuse earlier successful reports
-    # Note: Selecting only the completing examples with grep succeeds; inverting a grep for the interrupted scenario selects the same two examples. The feature list still excludes the third file. The guard must follow those real selections, not demand every feature in the repository.
-    And complete selections pass with either a grep filter or its inverse
-
-  @junit-freshness
-  Scenario: A launch that cannot reach its scenarios cannot reuse an earlier report
-    # Chapter: An earlier failure is not proof for the next launch
-    # Note: A disposable scenario really fails on an assertion. The repository's reporter writes its failure, and the RED gate accepts that current evidence.
-    Given an earlier launch has a genuine failed scenario and accepted RED evidence
-    # Note: The next launch throws while loading its configuration, before it can execute any scenario. This uses the engine command from the task's own preview.
-    When the next launch crashes before loading its scenarios
-    # Note: The same RED command must now refuse the proof. The previous report must be gone, even though configuration loading failed before a new report could be written.
-    Then the RED gate refuses the old failure and no worker report remains
-    # Chapter: A filter that selects nothing is an error
-    # Note: A real successful launch seeds reports again. A filter matching no scenario must fail clearly and leave no result from that earlier launch.
-    And a zero-match filter fails clearly and removes earlier reports
+    # Note: The selected scenarios run twice, with two workers. First the engine alone: it loses a worker, "Worker exited with code 23", and still exits with the code 0 after "OK | 2 passed". A pipeline would call that a success.
+    # Note: Then the line task project:test:e2e really runs: the same engine inside the toolbox's guard. The guard counts 2 of the 3 selected scenarios finished, names the missing one and exits with the code 1.
+    # Note: Off camera, the guard refuses the same way when the interrupted scenario runs alone, and when an earlier successful run left its reports behind: it empties the report folder first.
+    # Copy: codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > engine.log; echo "exit code $?"; tail -n 1 engine.log; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > guarded.log; echo "exit code $?"; tail -n 3 guarded.log
+    When a worker exits early, the engine alone still says OK, and the toolbox guard fails the same run
+    # Chapter: A complete selection still passes
+    # Note: The guard follows the real selection, not every scenario of the repository. A grep on the two examples passes, 2 of 2, and so does the inverse grep that leaves the interrupted scenario out.
+    # Note: The interrupted scenario is never selected, so no worker stops, and the third file stays out as the export said.
+    # Copy: node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js --grep @worker-ok; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js --grep @worker-stop --invert
+    Then complete selections pass with either a grep filter or its inverse
 
   @junit-control-characters
   Scenario: GitLab can read a real failure report even when assertions contain terminal colours
-    # Note: This disposable project uses the real test engine and JUnit reporter. One scenario passes; two fail with the same readable message. The second failure adds terminal colours and characters that XML forbids.
-    Given a disposable test project contains a passing scenario and plain and coloured failures
-    # Note: The task runs all three scenarios. Both failures must still fail the run, and the passing scenario must still be recorded. The complete native output is kept as an artifact.
-    When the real test task runs the passing scenario and both failures
-    # Note: Python reads the actual XML report. It must find three results and two failures, with the original punctuation, Unicode and line breaks preserved. Terminal colours and forbidden XML characters must be gone from the report.
-    Then the JUnit report is valid XML and keeps both failures readable
-    # Note: The RED guard reads that same report and accepts the coloured assertion as a real failure. Cleaning the message must not turn a failed scenario into a success or bypass the existing test guard.
+    # Chapter: GitLab reads the report of a merge request
+    # Note: A merge request adds three probe scenarios to a throwaway copy of the toolbox, with the steps behind them. One passes. Two fail with the same message: quotes, an accent, an emoji, a tab and a line break included.
+    # Note: The last step also wraps its message in terminal colours, the escape code before [31m, and adds every control character XML forbids: the kind of text a test tool really prints.
+    # Copy: http://gitlab/<user>/<project>/-/merge_requests/1/diffs
+    Given a merge request adds one passing scenario, one plain failure and one failure in terminal colours
+    # Note: The merge request's pipeline runs the three scenarios with the toolbox's own test engine and JUnit reporter, on the very image the test suite runs in, and hands the report to GitLab.
+    # Note: GitLab reads it without a complaint: 3 tests, 2 failures, 0 errors, and one line per scenario on the junit-probes suite.
+    # Copy: http://gitlab/<user>/<project>/-/pipelines/<id>/test_report
+    When its pipeline runs the three scenarios, and GitLab counts one pass and two failures
+    # Note: The details of the coloured failure, as a reviewer opens them on that tab. The message reads as it was written, with no escape code and none of the forbidden characters.
+    # Copy: http://gitlab/<user>/<project>/-/pipelines/<id>/test_report
+    Then GitLab shows the coloured failure as readable text, without the terminal colours
+    # Chapter: The RED gate reads the same report
+    # Note: The same three scenarios, run on the developer's machine, leave the same report in project/tests/e2e/_output/junit. The RED gate reads it and accepts the coloured failure as real: the scenario ran and failed on its own check.
+    # Note: It quotes that check on one readable line: the line break and the tab become spaces, and nothing of the colours is left.
+    # Copy: ls project/tests/e2e/_output/junit && task devsecops:test:check:red-is-real -- @report-colour
     And the RED guard still accepts the coloured assertion as a genuine failure

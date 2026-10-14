@@ -37,4 +37,35 @@ function toolboxRepository (dir) {
   return dir
 }
 
-module.exports = { REPO, copyFramework, toolboxRepository }
+/**
+ * A fresh copy at `dir` that can run the test engine itself: the engine's
+ * dependencies are baked into the image, never carried in the tree, so the copy
+ * borrows the image's, exactly what the runner uses. The committed storyboards
+ * (tens of MB of SVG) are left out: no nested run reads them. The files belong
+ * to whoever extracts them, so git trusts the copy without a safe.directory.
+ */
+function copyFrameworkWithEngine (dir) {
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(dir, { recursive: true })
+  execSync(
+    `tar -C ${REPO} --exclude=.git --exclude=node_modules --exclude=.cache --exclude=tmp ` +
+    '--exclude=megalinter-reports --exclude="project/tests/e2e/screenshots" --exclude="project/tests/e2e/storyboards" ' +
+    `--exclude="project/tests/e2e/_output" -cf - . | tar -C ${dir} --no-same-owner -xf -`
+  )
+  fs.symlinkSync('/app/.config/codeceptjs/node_modules', path.join(dir, '.config/codeceptjs/node_modules'))
+}
+
+/**
+ * The line `task project:test:e2e` ends on inside the test container, read from
+ * the task's own preview in `cwd`, so a card can never show a command the task
+ * no longer runs. The task itself cannot run there: it drives the very
+ * container the suite runs in.
+ */
+function engineCommand (cwd, env, { workers = 1, args = '' } = {}) {
+  const preview = execSync(`task --dry project:test:e2e TASK_E2E_WORKERS=${workers} -- ${args} 2>&1`, { cwd, env, encoding: 'utf8' })
+  const line = preview.split('\n').find(l => l.includes('codeceptjs run-workers'))
+  if (!line) throw new Error('The task preview did not expose its engine command:\n' + preview)
+  return line.slice(line.indexOf(' codeceptjs ') + ' codeceptjs '.length).replace(/\s+/g, ' ').trim()
+}
+
+module.exports = { REPO, copyFramework, copyFrameworkWithEngine, engineCommand, toolboxRepository }

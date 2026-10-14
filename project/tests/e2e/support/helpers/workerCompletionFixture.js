@@ -1,15 +1,23 @@
+/**
+ * @worker-completion fixture: a throwaway copy of the framework whose only
+ * features are two probes, run by the real engine and the repository's JUnit
+ * reporter. One probe step ends its own worker process when WORKER_PROBE_STOP
+ * is 1, the way a crash would.
+ *
+ * The cards type their lines in a real terminal (tdd-cycle.js); the functions
+ * below are their twins: the same runs, off camera, checked on disk.
+ */
 const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
-const { copyFramework } = require('./frameworkCopy')
-const { stripAnsi } = require('./capturedOutput')
+const { copyFrameworkWithEngine, engineCommand } = require('./frameworkCopy')
 
 const ROOT = '/tmp/e2e-worker-completion'
 const E2E = 'project/tests/e2e'
 const JUNIT = E2E + '/_output/junit'
 const CONFIG = E2E + '/codecept.conf.js'
-const NATIVE = '/usr/local/bin/codeceptjs run-workers 2 --features --by pool --config ' + CONFIG
+const NATIVE = 'codeceptjs run-workers 2 --features --by pool --config ' + CONFIG
 const SELECTED = './features/worker-stopped.feature,./features/worker-completed.feature'
 const STOPPED = `Feature: Interrupted worker
   @worker-stop
@@ -28,7 +36,6 @@ const COMPLETED = `Feature: Completed worker
 const STEPS = `/* global Then */
 Then('the worker exits before completing when requested', () => {
   if (process.env.WORKER_PROBE_STOP === '1') process.exit(23)
-  if (process.env.WORKER_PROBE_FAIL === '1') require('assert/strict').fail('Previous launch: the greeting is missing')
 })
 Then('the worker completes example {int}', number => {
   require('assert/strict').ok(number === 1 || number === 2)
@@ -38,14 +45,16 @@ Then('the excluded scenario must never run', () => {
 })
 `
 
-function quote (text) {
-  return "'" + text.replace(/'/g, "'\\''") + "'"
-}
+// The selection a CI shard would pass, exported on camera by the setup card
+// (the rest of the session inherits it), and the three probe files: the third
+// one is outside the selection.
+const SETUP_LINE = `export TASK_CODECEPTJS_FEATURES=${SELECTED} WORKER_PROBE_STOP=1 && cat ${E2E}/features/worker-*.feature ${E2E}/support/steps/worker-probe.js`
 
 function environment (stop, features = SELECTED) {
   const env = { ...process.env, WORKER_PROBE_STOP: stop ? '1' : '0', TASK_CODECEPTJS_FEATURES: features, FORCE_COLOR: '0' }
   delete env.TASK_CODECEPTJS_GREP
   delete env.TASK_E2E_UPDATE_BASELINES
+  delete env.CI
   return env
 }
 
@@ -59,10 +68,7 @@ function run (command, env) {
 }
 
 function prepareWorkerFixture () {
-  fs.rmSync(ROOT, { recursive: true, force: true })
-  fs.mkdirSync(ROOT, { recursive: true })
-  copyFramework(ROOT)
-  fs.symlinkSync('/app/.config/codeceptjs/node_modules', path.join(ROOT, '.config/codeceptjs/node_modules'))
+  copyFrameworkWithEngine(ROOT)
   for (const [name, body] of [['stopped', STOPPED], ['completed', COMPLETED], ['excluded',
     'Feature: Outside this shard\n  Scenario: never selected\n    Then the excluded scenario must never run\n']]) {
     fs.writeFileSync(path.join(ROOT, E2E, 'features/worker-' + name + '.feature'), body)
@@ -75,20 +81,9 @@ function prepareWorkerFixture () {
     '\nexports.config.helpers = {}\nexports.config.include = {}\n' +
     "exports.config.gherkin.steps = ['./support/steps/worker-probe.js']\n" +
     "exports.config.plugins = { junit: { require: './support/junit-reporter.js', enabled: true } }\n")
-  const source = run('cat ' + E2E + '/features/worker-stopped.feature ' + E2E +
-    '/features/worker-completed.feature ' + E2E + '/support/steps/worker-probe.js', environment(false))
-  assert.equal(source.code, 0, source.output)
-  return source
 }
 
-function taskCommand (env, options = '') {
-  const preview = run('task --dry project:test:e2e TASK_E2E_WORKERS=2 -- ' + options, env)
-  assert.equal(preview.code, 0, preview.output)
-  const line = preview.output.split('\n').find(line => line.includes('codeceptjs run-workers'))
-  assert.ok(line, 'The task preview did not expose its real engine command:\n' + preview.output)
-  const service = line.indexOf('codeceptjs ')
-  return line.slice(service + 'codeceptjs '.length).trim()
-}
+const guarded = (options = '') => engineCommand(ROOT, environment(true), { workers: 2, args: options })
 
 function reportSnapshot () {
   const dir = path.join(ROOT, JUNIT)
@@ -96,7 +91,9 @@ function reportSnapshot () {
   return fs.readdirSync(dir).sort().map(name => ({ name, xml: fs.readFileSync(path.join(dir, name), 'utf8') }))
 }
 
-function seedReports (env) {
+// A genuine successful launch of every selected scenario, the interrupted one
+// included: the earlier reports a later launch must not reuse.
+function seedReports (env = environment(true)) {
   fs.rmSync(path.join(ROOT, JUNIT), { recursive: true, force: true })
   const result = run(NATIVE, { ...env, WORKER_PROBE_STOP: '0' })
   assert.equal(result.code, 0, result.output)
@@ -105,34 +102,22 @@ function seedReports (env) {
   return reports
 }
 
-function nativeRun (env, name) {
-  const file = 'worker-' + name + '.log'
-  const result = run(NATIVE + ' > ' + file, env)
-  result.output = fs.readFileSync(path.join(ROOT, file), 'utf8')
-  result.excerpt = run("sed -n '/^\\[Main\\] Worker exited/,+1p' " + file + '; tail -n 2 ' + file, env)
-  assert.equal(result.excerpt.code, 0, result.excerpt.output)
-  return result
-}
-
+// The interrupted scenario alone, then beside the two examples: each run bare,
+// then guarded right after a successful launch left its reports behind.
 function runInterruptedCases () {
   const cases = []
   for (const [name, features] of [['empty', './features/worker-stopped.feature'], ['partial', SELECTED]]) {
     const env = environment(true, features)
     fs.rmSync(path.join(ROOT, JUNIT), { recursive: true, force: true })
-    const native = nativeRun(env, name)
+    const native = run(NATIVE, env)
+    assert.equal(native.code, 0, 'The bare engine is expected to exit 0 here, which is the hole the guard closes:\n' + native.output)
     assert.match(native.output, /Worker exited with code 23/, native.output)
     assert.match(native.output, name === 'partial' ? /2 passed/ : /0 passed/, native.output)
-    const current = reportSnapshot()
-    assert.equal(current.some(report => report.xml.includes('@worker-stop')), false,
+    assert.equal(reportSnapshot().some(report => report.xml.includes('@worker-stop')), false,
       'The stopped scenario must have no completion record in this actual run')
     const previous = seedReports(env)
-    const guarded = run(taskCommand(env), env)
-    const proof = path.join(global.codecept_dir, '_output/worker-completion')
-    fs.mkdirSync(proof, { recursive: true })
-    fs.writeFileSync(path.join(proof, name + '-native.log'), native.output)
-    fs.writeFileSync(path.join(proof, name + '-guarded.log'), guarded.output)
-    fs.writeFileSync(path.join(proof, name + '-earlier-reports.json'), JSON.stringify(previous, null, 2) + '\n')
-    cases.push({ name, native, previous, guarded, reports: reportSnapshot() })
+    const guard = run(engineCommand(ROOT, env, { workers: 2 }), env)
+    cases.push({ name, previous, guarded: guard, reports: reportSnapshot() })
   }
   return cases
 }
@@ -150,81 +135,47 @@ function assertInterruptedCases (cases) {
   }
 }
 
-function runCompletedSelections () {
-  const results = []
-  for (const option of ['--grep ' + quote('@worker-ok'), '--grep ' + quote('@worker-stop') + ' --invert']) {
-    const env = environment(true)
-    seedReports(env)
-    const result = run(taskCommand(env, option), env)
-    assert.equal(result.code, 0, result.output)
-    assert.match(result.output, /Worker completion: PASS \(2\/2 selected scenarios\)/, result.output)
-    const reports = reportSnapshot()
-    assert.equal(reports.some(report => report.xml.includes('@worker-stop')), false)
-    assert.equal(reports.reduce((count, report) => count + (report.xml.match(/<testcase /g) || []).length, 0), 2,
-      'Both Outline examples, and only the selected examples, must complete')
-    results.push(result)
-  }
-  return results
+// Both runs of one launch, side by side: the bare engine, its exit code and its
+// own verdict; then the guarded command the task runs, its exit code and its
+// verdict. Two workers print in any order, so each log goes to a file and only
+// its last lines are read; the engine reports the lost worker on stderr, which
+// stays on screen.
+function interruptedLine () {
+  return `${NATIVE} > engine.log; echo "exit code $?"; tail -n 1 engine.log; ` +
+    `${guarded()} > guarded.log; echo "exit code $?"; tail -n 3 guarded.log`
 }
 
-function transcript (result, verdictOnly = false) {
-  if (result.excerpt) {
-    return '$ ' + result.command + '\n$ echo $?\n' + result.code + '\n$ ' + result.excerpt.command + '\n' +
-      result.excerpt.output.trimEnd().replace(/\/\/ \d+(\.\d+)?m?s/g, '// <duration>')
-  }
-  const output = stripAnsi(result.output).replace(/\r/g, '').trimEnd()
-  const start = verdictOnly ? output.indexOf('Worker completion:') : output.indexOf('[Main] Worker exited')
-  const visible = start < 0 ? output : output.slice(start)
-  return '$ ' + result.command + '\n' + visible
-    .replace(/\[\d+\]/g, '[worker]')
-    .replace(/\/\/ \d+(\.\d+)?m?s/g, '// <duration>')
-    .replace(/\s+\(\d+(\.\d+)?m?s\)/g, ' (<duration>)') + '\n$ echo $?\n' + result.code
+function selectedLine () {
+  return ['--grep @worker-ok', '--grep @worker-stop --invert']
+    .map((option, i) => `${guarded(option)} > selected-${i + 1}.log; echo "exit code $?"; tail -n 2 selected-${i + 1}.log`)
+    .join('; ')
+}
+
+// The twin of the selection card, read on screen and on disk: both selections
+// pass, and the reports left behind hold the two examples and nothing else.
+function assertSelectedReports (screen) {
+  const rows = screen.split('\n').map(row => row.trim())
+  assert.deepEqual(rows.filter(row => /^exit code \d+$/.test(row)), ['exit code 0', 'exit code 0'], screen)
+  assert.equal(rows.filter(row => row === 'Worker completion: PASS (2/2 selected scenarios)').length, 2, screen)
+  const reports = reportSnapshot()
+  assert.equal(reports.some(report => report.xml.includes('@worker-stop')), false, 'An earlier report survived the selected run')
+  assert.equal(reports.reduce((count, report) => count + (report.xml.match(/<testcase /g) || []).length, 0), 2,
+    'Both Outline examples, and only the selected examples, must complete')
 }
 
 function removeWorkerFixture () {
   fs.rmSync(ROOT, { recursive: true, force: true })
 }
 
-function seedFailedLaunch () {
-  prepareWorkerFixture()
-  const env = { ...environment(false), WORKER_PROBE_FAIL: '1' }
-  const command = taskCommand(env, '--grep @worker-stop')
-  const result = run(command, env)
-  assert.notEqual(result.code, 0, result.output)
-  assert.ok(reportSnapshot().some(report => report.xml.includes('Previous launch: the greeting is missing')),
-    'The previous launch must really fail and record its assertion')
-  const proof = run('task devsecops:test:check:red-is-real -- @worker-stop', env)
-  assert.equal(proof.code, 0, proof.output)
-  return proof
+module.exports = {
+  ROOT,
+  SETUP_LINE,
+  prepareWorkerFixture,
+  seedReports,
+  runInterruptedCases,
+  assertInterruptedCases,
+  interruptedLine,
+  selectedLine,
+  assertSelectedReports,
+  removeWorkerFixture
 }
-
-function crashBeforeScenarios () {
-  const env = environment(false)
-  const command = taskCommand(env, '--grep @worker-stop')
-  fs.appendFileSync(path.join(ROOT, CONFIG), '\nthrow new Error("Freshness probe: config failed before execution")\n')
-  const result = run(command, env)
-  assert.notEqual(result.code, 0, result.output)
-  assert.match(result.output, /Freshness probe: config failed before execution/)
-  return result
-}
-
-function redAfterCrash () {
-  const result = run('task devsecops:test:check:red-is-real -- @worker-stop', environment(false))
-  assert.notEqual(result.code, 0, 'A config crash reused an earlier failed report as RED evidence:\n' + stripAnsi(result.output))
-  assert.deepEqual(reportSnapshot(), [], 'A previous worker report survived the config crash')
-  assert.match(result.output, /no report at all/)
-  return result
-}
-
-function zeroMatchSelection () {
-  prepareWorkerFixture()
-  const env = environment(false)
-  seedReports(env)
-  const result = run(taskCommand(env, '--grep @no-such-scenario'), env)
-  assert.notEqual(result.code, 0, result.output)
-  assert.match(result.output, /No Gherkin scenario matches this selection/)
-  assert.deepEqual(reportSnapshot(), [], 'A zero-match selection retained earlier results')
-  return result
-}
-
-module.exports = { prepareWorkerFixture, runInterruptedCases, assertInterruptedCases, runCompletedSelections, transcript, removeWorkerFixture, seedFailedLaunch, crashBeforeScenarios, redAfterCrash, zeroMatchSelection }
