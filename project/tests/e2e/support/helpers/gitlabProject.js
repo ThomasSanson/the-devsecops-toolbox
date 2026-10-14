@@ -36,7 +36,9 @@ function git (dir, args, what) {
  * dir: a git repository (its HEAD is pushed as is) or a plain directory (it is
  * committed first, as one commit named `message`).
  * project: extra fields for the create-project call (shared_runners_enabled…);
- * Auto DevOps is off unless asked, so no stray pipeline repaints a card.
+ * Auto DevOps is off unless asked, so no stray pipeline repaints a card. The
+ * project always lives in the lambda user's namespace: the teardown, gitlabUrl
+ * and the API twins resolve a bare name there, so a namespace is refused.
  * pushOptions: e.g. ['ci.skip']. On GitLab 19.4 ci.skip still records a
  * "skipped" pipeline, which shows its own status icon on the commit.
  * Returns { projectName, projectId, headers, token, tokenId, push(branch), teardown() }:
@@ -53,6 +55,9 @@ async function publishToGitLab (dir, {
   project = {},
   pushOptions = []
 } = {}) {
+  if ('namespace_id' in project || 'namespace_path' in project) {
+    throw new Error('publishToGitLab: the project lives in the lambda user\'s namespace; do not pass namespace_id or namespace_path')
+  }
   const root = await getRootHeaders()
   const { token, id: tokenId } = await createLambdaPersonalAccessToken(`publish-${name}`, ['api', 'write_repository'], root)
   const headers = { 'PRIVATE-TOKEN': token }
