@@ -104,6 +104,6 @@ Baselines are regenerated locally then inspected; `TASK_E2E_UPDATE_BASELINES` is
 
 ## Git discipline in this repository
 
-- Work on a feature branch and open a merge request; `main` is protected — never push to it directly and never `-o ci.skip`.
+- Here this section overrides `version-control.md`: when the person asks you to commit, work on a feature branch and open a merge request. `main` is protected — never push to it directly and never `-o ci.skip`.
 - Commit messages follow Conventional Commits (commitlint is a CI gate); `task release` (semantic-release) derives the version, with tags in the `${version}` format (no `v` prefix).
 - Do not merge your own MR without explicit agreement — deliver a green pipeline and let review follow the project flow.

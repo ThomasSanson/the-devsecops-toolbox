@@ -81,7 +81,7 @@ honestly costs one turn; a refusal hidden costs the whole task.
 
 ## When switching a check off is genuinely right
 
-It happens. Make it visible rather than quiet — add a trailer to the commit:
+It happens. Do not decide it alone: tell the reviewer why, and they add the trailer:
 
 ```text
 No-cheat-exempt: <why switching this off is the honest thing to do>

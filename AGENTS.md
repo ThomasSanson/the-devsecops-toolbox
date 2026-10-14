@@ -26,7 +26,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 | [`.agent/rules/naming-conventions.md`](.agent/rules/naming-conventions.md) | Task names follow `project:{phase}:{service}:{action}`. Taskfile variables start with `TASK_`.                              |
 | [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
 | [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
-| [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Git conventions for this repository.                                                                                        |
+| [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Agents only read git. The person commits.                                                                                   |
 
 ---
 
@@ -150,7 +150,7 @@ A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) 
 
 ## Commit Conventions
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org), enforced by commitlint in CI; `task release` (semantic-release) derives the version and changelog from them, with git tags in the `${version}` format (no `v` prefix). Use `commitizen` to compose a compliant message if unsure.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org), enforced by commitlint in CI; `task release` (semantic-release) derives the version and changelog from them, with git tags in the `${version}` format (no `v` prefix). Who runs git is set by `version-control.md`. `commitizen` helps compose a compliant message.
 
 ---
 

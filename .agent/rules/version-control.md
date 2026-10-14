@@ -1,4 +1,7 @@
-
+---
+trigger: always_on
+description: Agents only read git and never change the repository state
+---
 
 # Version Control
 
