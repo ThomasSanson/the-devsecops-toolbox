@@ -29,16 +29,19 @@ Feature: Installing only the AI agent files (agent mode)
     # Note: The project's random name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     Given a fresh GitLab project with only a README on its main branch
-    # Note: The terminal, from the typed installer command down. The installer lists its two choices, "Complete framework" and "Pick components", then asks "Install the complete DevSecOps framework?".
+    # Note: The terminal, from the typed installer command down. The installer lists its two choices, "Complete framework" and "Choose components", then asks "Install the complete DevSecOps framework?".
     # Note: The developer has moved to the answer "Choose components", the highlighted button, and is about to press Enter.
-    # Copy: bash /tmp/devsecops-install.sh
+    # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && bash /tmp/devsecops-install.sh
     When the developer starts the installer and picks "Choose components" instead of the complete framework
     # Note: The same terminal once that answer is given. The question is gone, and a checklist headed "Select what to install" takes its place.
     # Note: Its first line, "✓ Agent mode", is already ticked, and "Source publication" below it is not.
     Then a checklist opens with the AI agent line already ticked
     # Note: The developer presses Enter on the checklist as it is, and the checklist clears itself. The installer then says "Agent mode installed." and "Installed the AI agent context: .agent/, CLAUDE.md, AGENTS.md.", and gives the prompt back.
     And once the developer confirms the ticked line, the installer installs only the AI agent files
-    # Note: The same GitLab page as the first card, after the developer commits the new files and pushes them to the main branch with the command below. The table now lists .agent, AGENTS.md and CLAUDE.md on the commit "chore: install the AI agent guardrails", and README.md is still on "Initial commit".
+    # Note: Agent mode leaves the commit to the developer. The same terminal, cleared, then one typed line: it adds the new files, commits them as "chore: install the AI agent guardrails" and pushes them to the main branch on GitLab.
+    # Note: Git answers "Your branch is up to date with 'origin/main'." and "nothing to commit, working tree clean": everything is on GitLab now.
+    # Copy: git add -A && git commit -q -m "chore: install the AI agent guardrails" && git push -q origin main && git status
+    When the developer commits the new files and pushes them to the main branch
+    # Note: The same GitLab page as the first card. The table now lists .agent, AGENTS.md and CLAUDE.md on the commit "chore: install the AI agent guardrails", and README.md is still on "Initial commit".
     # Note: The Files panel opens .agent to show the rules and skills it holds.
-    # Copy: git add -A && git commit -q -m "chore: install the AI agent guardrails" && git push -q origin main
-    And after one push to the main branch, GitLab shows the AI agent files beside the README and nothing else
+    Then GitLab shows the AI agent files beside the README on the main branch, and nothing else

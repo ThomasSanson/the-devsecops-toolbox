@@ -74,9 +74,10 @@ const {
   captureTerminalFrame,
   terminalScreenText,
   openTerminal,
+  terminalCard,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
-const { gitlabUrl, gitlabFrame, unfoldFileTree } = require('../helpers/gitlabCard')
+const { gitlabUrl, gitlabFrame, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
 const {
@@ -484,11 +485,11 @@ const COPIER_PROMPTS = [
 // Re-open the live terminal (a GitLab-page capture may have navigated away),
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
-// `height` opens the terminal at that size through openTerminal (the big-card
-// stories); without it, the terminal keeps the default window.
-async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0 } = {}) {
+// `height` (and `width`) open the terminal at that size through openTerminal
+// (the big-card stories); without them, the terminal keeps the default window.
+async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0, width } = {}) {
   if (height) {
-    await openTerminal(I, global.journeyContainer, { height })
+    await openTerminal(I, global.journeyContainer, { height, width })
   } else {
     I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
     I.waitForElement('.xterm-screen', 10)
@@ -564,6 +565,8 @@ async function runWorkingBranchInstaller () {
 // ============================================
 
 const AGENT_COMMIT = 'chore: install the AI agent guardrails'
+// The line the developer types after the install, and the card's # Copy.
+const AGENT_PUSH = `git add -A && git commit -q -m "${AGENT_COMMIT}" && git push -q origin main && git status`
 // Tall enough for the Files panel with .agent, its rules and its skills unfolded.
 const AGENT_PAGE_HEIGHT = 1040
 
@@ -616,20 +619,26 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
   if (status) throw new Error(`Expected a clean clone, git status says:\n${status}`)
 })
 
-// The terminal opens tall, before ttyd loads, and keeps that size for the
-// whole session. ArrowRight moves the gum focus onto "Choose components", and
-// the card catches the question with that answer highlighted, before Enter:
+// The terminal opens tall, and 1440 wide so the push line of card 5 fits on
+// one row, before ttyd loads, and keeps that size for the whole session.
+// ArrowRight moves the gum focus onto "Choose components", and the card
+// catches the question with that answer highlighted, before Enter:
 // gum erases a menu the moment it is answered. The twins read the screen: the
 // scope card rendered by glow (never its markdown source), and the focus on
-// "Choose components" (gum paints the focused button's background).
+// "Choose components" (gum paints the focused button's background). The card
+// and the button call the choice by the same name, and no dash stands in for a
+// colon.
 storyboardStep(When, 'the developer starts the installer and picks "Choose components" instead of the complete framework', async () => {
-  await launchWorkingBranchInstaller(SCOPE_PROMPT, { height: 1200 })
+  await launchWorkingBranchInstaller(SCOPE_PROMPT, { height: 1200, width: 1440 })
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
   const screen = await terminalScreenText(I)
   if (!screen.includes('• Complete framework') || screen.includes('**')) {
     throw new Error(`Expected the installer's scope card rendered by glow, not its markdown source:\n${screen}`)
+  }
+  if (!screen.includes('• Choose components') || screen.includes('—')) {
+    throw new Error(`Expected the scope card to name the choice "Choose components", like its button, with no dash:\n${screen}`)
   }
   const focused = await I.executeScript(() => Array.from(document.querySelectorAll('.xterm-rows span'))
     .filter(span => span.textContent.includes('Choose components'))
@@ -649,6 +658,7 @@ storyboardStep(Then, 'a checklist opens with the AI agent line already ticked', 
   if (screen.includes(SCOPE_PROMPT) || !screen.includes('✓ Agent mode') || screen.includes('✓ Source publication')) {
     throw new Error(`Expected the question gone and a checklist with only the AI agent line ticked:\n${screen}`)
   }
+  if (screen.includes('—')) throw new Error(`Expected the checklist lines with no dash:\n${screen}`)
 })
 
 // Enter takes the ticked line. The installer's own words are the proof, from
@@ -676,15 +686,29 @@ storyboardStep(Then, 'once the developer confirms the ticked line, the installer
   }
 })
 
-// Agent mode never commits or pushes: the developer does, with the command the
-// card's # Copy line shows. It runs here through exec over the clone's origin,
-// which already carries the token, so nothing secret is ever typed. Its effect
-// is the card: the same page as the Given, the AI agent files on the push's
-// commit, the README still on "Initial commit". The twins: the remote tree, the
-// commit title on the main branch, and no merge request opened.
-storyboardStep(Then, 'after one push to the main branch, GitLab shows the AI agent files beside the README and nothing else', async () => {
-  inProject(`git add -A && git commit -q -m ${shellEscape(AGENT_COMMIT)} && git push -q origin main`)
-  await agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agent', 'rules', 'skills'])
+// Agent mode never commits or pushes: the developer does, in the same terminal,
+// with ONE typed line (the card's # Copy). The clone's origin already carries
+// the token, so nothing secret is ever typed or printed. The twins: before the
+// line, the clone still sits on "Initial commit" (agent mode left the commit to
+// the developer); after it, git says the branch is up to date with GitLab, and
+// GitLab's main branch points at the new commit.
+storyboardStep(When, 'the developer commits the new files and pushes them to the main branch', async () => {
+  const before = inProject('git log -1 --format=%s').trim()
+  if (before !== 'Initial commit') throw new Error(`Expected agent mode to leave the commit to the developer, the clone is on "${before}"`)
+  const screen = await terminalCard(I, 'terminal-5-push', AGENT_PUSH)
+  for (const said of ["Your branch is up to date with 'origin/main'.", 'nothing to commit, working tree clean']) {
+    if (!screen.includes(said)) throw new Error(`Expected git to say "${said}" after the push:\n${screen}`)
+  }
+  const title = await branchCommitTitle('main')
+  if (title !== AGENT_COMMIT) throw new Error(`Expected main to point at "${AGENT_COMMIT}", found "${title}"`)
+})
+
+// The same page as the Given, taken in a second tab so the terminal keeps its
+// session and its size: the AI agent files on the push's commit, the README
+// still on "Initial commit". The twins: the remote tree and no merge request
+// opened.
+storyboardStep(Then, 'GitLab shows the AI agent files beside the README on the main branch, and nothing else', async () => {
+  await inNewTab(I, () => agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agent', 'rules', 'skills']))
   await assertRootTreeExactly('main', ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
   const headers = await getRootHeaders()
   const res = await listRepositoryTree(global.journeyProjectName, headers, '?ref=main&path=.agent&per_page=100')
@@ -694,8 +718,6 @@ storyboardStep(Then, 'after one push to the main branch, GitLab shows the AI age
       throw new Error(`Expected the remote .agent tree to contain "${dir}". Entries: ${JSON.stringify(names)}`)
     }
   }
-  const title = await branchCommitTitle('main')
-  if (title !== AGENT_COMMIT) throw new Error(`Expected main to point at "${AGENT_COMMIT}", found "${title}"`)
   await assertNoOpenMr()
 })
 
