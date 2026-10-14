@@ -381,6 +381,11 @@ install_ui_tools() {
 # ---------------------------------------------------------------------------
 scaffold_project() {
   copier_command=""
+  # No terminal to answer Copier (CI, curl piped into bash with no tty): it
+  # would stop on "Interactive session required", so it takes every default,
+  # as the questions before it already do.
+  copier_defaults=""
+  has_interactive_tty || copier_defaults=" --defaults"
 
   if [ -f "Taskfile.yml" ]; then
     log_ok "Taskfile.yml already exists — skipping Copier scaffolding."
@@ -391,9 +396,9 @@ scaffold_project() {
   log_info "Template source: ${TEMPLATE_URL}"
   if [ -n "${TEMPLATE_VCS_REF}" ]; then
     log_info "Template ref: ${TEMPLATE_VCS_REF}"
-    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks --vcs-ref \"${TEMPLATE_VCS_REF}\" 2>&1"
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks${copier_defaults} --vcs-ref \"${TEMPLATE_VCS_REF}\" 2>&1"
   else
-    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks 2>&1"
+    copier_command="uvx --python \"${PYTHON_VERSION}\" --from \"${COPIER_VERSION}\" copier copy \"${TEMPLATE_URL}\" . --trust --skip-tasks${copier_defaults} 2>&1"
   fi
 
   run_with_interactive_input "$copier_command"
