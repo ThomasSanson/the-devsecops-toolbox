@@ -74,6 +74,13 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Copy: CI=true TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e
     And the same explicit regeneration request is forbidden in CI and preserves the reference
 
+  @storyboard-wide-card
+  Scenario: A whole GitLab page gets a row of its own in a storyboard, at its real size
+    # Note: A storyboard drawn by the real engine from four pictures: a short terminal capture, a whole GitLab page 1440 pixels wide, a long output strip 960 pixels wide and a second terminal capture.
+    # Note: The page takes the full width of the board and keeps its real size, so its small text stays readable. Its long note wraps at a comfortable width instead of running across the whole board.
+    # Note: The pictures around it share rows two by two. The 960 pixel strip is not a page, so it is shrunk into its half of the row instead of taking a row of its own.
+    Then a storyboard gives a whole GitLab page a full row at its real size and keeps shorter captures two per row
+
   @worker-completion
   Scenario: Every selected scenario must finish before a parallel run can succeed
     # Chapter: A worker can disappear before its result exists

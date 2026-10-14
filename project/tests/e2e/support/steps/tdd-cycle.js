@@ -26,7 +26,7 @@
  */
 const fs = require('fs')
 const path = require('path')
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const { copyFramework } = require('../helpers/frameworkCopy')
 const { stripAnsi, renderPreFrame } = require('../helpers/capturedOutput')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
@@ -289,7 +289,7 @@ storyboardStep(Then, 'the test phase refuses to certify itself, the moment a che
 // the RED-proof story above does. Its reference and actual images come from the
 // browser; each inner run starts from the same blue reference.
 const baselineMode = require('../helpers/baselineModeFixture')
-const { captureElementFrame, addStoryboardFrame } = require('../../../../../.config/codeceptjs/storyboard')
+const { captureElementFrame, capturePageFrame, addStoryboardFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 After((test) => {
   if (test && test.tags && test.tags.includes('@baseline-mode')) baselineMode.removeBaselineFixture()
@@ -319,6 +319,86 @@ for (const [sentence, value, ci, frame] of baselineCases) {
     baselineMode.assertBaselineCase(result)
   })
 }
+
+// The storyboard's layout contract, on the real engine. The engine keeps ONE
+// board per process and this scenario's own board is being drawn, so the
+// fixture board is rendered by a child node process from four pictures of the
+// sizes the suite produces, drawn by the browser.
+
+const LAYOUT_DIR = '/tmp/e2e-storyboard-layout'
+const LAYOUT_FRAMES = [
+  { name: 'terminal-short', w: 520, h: 120, label: 'A short terminal capture, 520 px wide' },
+  { name: 'gitlab-page', w: 1440, h: 300, label: 'A whole GitLab page, 1440 px wide', page: true },
+  { name: 'output-strip', w: 960, h: 70, label: 'A long output strip, 960 px wide' },
+  { name: 'terminal-second', w: 520, h: 160, label: 'A second terminal capture, 520 px wide' }
+]
+const LAYOUT_NOTE = 'The note under a whole page is long on purpose. It must wrap at a width a reader ' +
+  'can follow from the end of one line to the start of the next, never across the whole board, even ' +
+  'though the picture above it is as wide as the board. Long lines of small grey text are where a ' +
+  'reader loses their place, so the card keeps them short.'
+const RENDER_LAYOUT = `
+const [engine, dir, out, note, frames] = process.argv.slice(1)
+const storyboard = require(engine)
+storyboard.begin({ feature: 'Four pictures of the sizes the suite produces', scenario: 'The storyboard layout' })
+for (const f of JSON.parse(frames)) {
+  storyboard.panel(f.label, f.page ? { note } : {})
+  storyboard.frame(dir + '/' + f.name + '.png')
+}
+storyboard.render(out)
+`
+
+storyboardStep(Then, 'a storyboard gives a whole GitLab page a full row at its real size and keeps shorter captures two per row', async () => {
+  fs.rmSync(LAYOUT_DIR, { recursive: true, force: true })
+  fs.mkdirSync(LAYOUT_DIR, { recursive: true })
+  await I.resizeWindow(1600, 800)
+  await I.usePlaywrightTo('draw the four pictures', async ({ page }) => {
+    for (const f of LAYOUT_FRAMES) {
+      const [bg, fg, edge] = f.page ? ['#fbfafd', '#28272d', '#7aa2f7'] : ['#1e1e1e', '#d4d4d4', '#9ece6a']
+      await page.setContent('<body style="margin:0;background:#000">' +
+        `<div id="f" style="box-sizing:border-box;width:${f.w}px;height:${f.h}px;padding:16px;` +
+        `font:22px monospace;background:${bg};color:${fg};border:3px solid ${edge}">${f.label}</div></body>`)
+      await page.locator('#f').screenshot({ path: path.join(LAYOUT_DIR, f.name + '.png') })
+    }
+  })
+  const svgFile = path.join(LAYOUT_DIR, 'board.svg')
+  const engine = require.resolve('../../../../../.config/codeceptjs/storyboard')
+  const drawn = spawnSync(process.execPath, ['-e', RENDER_LAYOUT, engine, LAYOUT_DIR, svgFile, LAYOUT_NOTE, JSON.stringify(LAYOUT_FRAMES)], { encoding: 'utf8' })
+  if (drawn.status !== 0) throw new Error(`The engine could not draw the fixture board:\n${drawn.stdout}${drawn.stderr}`)
+  const svg = fs.readFileSync(svgFile, 'utf8')
+
+  // The twin: the geometry the engine wrote, card by card, in reading order.
+  const cards = [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="12" fill="#181a24"/g)]
+    .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4] }))
+  const images = [...svg.matchAll(/<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)].map(m => +m[3])
+  const [shortTerm, gitlabPage, strip, secondTerm] = cards
+  const layout = JSON.stringify({ cards, images })
+  if (cards.length !== 4) throw new Error(`Expected 4 cards, the engine drew ${cards.length}: ${layout}`)
+  if (gitlabPage.w !== 1440 || gitlabPage.x !== 32 || images[1] !== 1440) {
+    throw new Error(`Expected the GitLab page to fill a 1440 px row at its real size: ${layout}`)
+  }
+  if (!(shortTerm.y < gitlabPage.y && gitlabPage.y < strip.y)) {
+    throw new Error(`Expected the GitLab page on a row of its own, between the short capture and the strip: ${layout}`)
+  }
+  if ([shortTerm, strip, secondTerm].some(c => c.w !== 708) || strip.y !== secondTerm.y || secondTerm.x !== 32 + 708 + 24) {
+    throw new Error(`Expected the other pictures to share 708 px cards two by two, the strip beside the second capture: ${layout}`)
+  }
+  const noteLines = [...svg.matchAll(/<text x="50" y="([\d.]+)"[^>]*font-size="12.8"[^>]*>([^<]*)<\/text>/g)]
+    .filter(m => +m[1] > gitlabPage.y && +m[1] < gitlabPage.y + gitlabPage.h).map(m => m[2])
+  if (noteLines.length < 3 || noteLines.some(line => line.length > 120)) {
+    throw new Error(`Expected the page's note to wrap at 120 characters at most: ${JSON.stringify(noteLines)}`)
+  }
+
+  // The card: the board itself, as a browser shows it.
+  const [, width, height] = svg.match(/<svg [^>]*width="(\d+)" height="(\d+)"/).map(Number)
+  await I.resizeWindow(width, height)
+  await I.usePlaywrightTo('show the drawn board', async ({ page }) => {
+    await page.setContent('<body style="margin:0"><img id="board" src="data:image/svg+xml;base64,' +
+      Buffer.from(svg).toString('base64') + '"></body>')
+    await page.waitForFunction(() => document.getElementById('board').complete)
+  })
+  await addStoryboardFrame(I, await capturePageFrame(I, 'storyboard-wide-card'))
+  await I.resizeWindow(1024, 768)
+})
 
 const workerCompletion = require('../helpers/workerCompletionFixture')
 let interruptedRuns = null
