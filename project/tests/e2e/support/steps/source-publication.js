@@ -28,7 +28,6 @@ const path = require('path')
 const { execSync } = require('child_process')
 const { I, GitLabRepositoryPage, GitLabMergeRequestPage, GitLabUserPage } = inject()
 const {
-  ttydPort,
   shellEscape,
   execInContainerAsUser,
   stripAnsiEscapeSequences
@@ -433,35 +432,6 @@ function inProjectOrThrow (script) {
     throw new Error(`Command failed in the private project (\`${script}\`):\n${res.output}`)
   }
   return stripAnsiEscapeSequences(res.output || '')
-}
-
-/**
- * What the live terminal currently SAYS — the same rows the card photographs,
- * read back as text. The twin of every terminal card: the picture proves it to a
- * human, this proves it to the suite.
- */
-async function terminalText () {
-  const rows = await I.executeScript(function () {
-    return Array.from(document.querySelectorAll('.xterm-rows > div'))
-      .map(function (row) { return row.textContent || '' })
-      .join('\n')
-  })
-  return String(rows || '')
-}
-
-/** Type a command in the live shell and keep the moment as a storyboard frame. */
-async function terminalCard (command, marker, frameName) {
-  await typeCommandAndWait(I, command, COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask: TERMINAL_MASKS }))
-  return terminalText()
-}
-
-/** Re-open the live terminal after a card that navigated to a GitLab page. */
-async function backToTerminal () {
-  I.amOnPage(`http://${global.pubContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
-  I.waitForElement('.xterm-screen', 10)
-  await I.wait(2)
-  await typeCommandAndWait(I, 'clear')
 }
 
 /**
@@ -1087,57 +1057,123 @@ storyboardStep(Then, 'the publication never ran, and the public project still ho
   }
 })
 
+
 // ===========================================================================
-// @publication-only — the component installed on its own.
+// @publication-only and @publication-existing-framework: the component
+// installed on its own, and refused where a complete framework already lives.
 //
 // The same journey engine as agent mode: a real clone of a real test-GitLab
 // project, the REAL working-branch installer, and its live gum checklist caught
-// while it is on screen. What this story adds is the proof that the component
-// stands alone: it lands in a project with no Taskfile and no `task`, and its
-// script still runs there with nothing but a shell and git.
+// while it is on screen. GitLab opens and closes the story: the main branch
+// before (README alone) and after the push (the component and its spine, and
+// the answers file that records the release). The modes of the project's own
+// files are working-tree facts git cannot carry, so the terminal shows them.
 // ===========================================================================
+
+// Namespaced: the top of this file belongs to the @source-publication story.
+const gitlabCards = require('../helpers/gitlabCard')
+const ttyCapture = require('../terminal/capture')
+const gitlabApi = require('../helpers/gitlabApi')
 
 const SCOPE_PROMPT = 'Install the complete DevSecOps framework?'
 const CHECKLIST_HEADER = 'Select what to install'
-const PUBLICATION_DONE = 'Source publication installed.'
 const WIRING_PROMPT = 'Say where the source goes'
-const WIRING_DONE = 'nightly schedule'
-
-const EXISTING_TOOL = '.config/existing-tool.sh'
-const EXISTING_PRIVATE_FILE = '.config/private-data.txt'
-const EXISTING_TOOL_CONTENT = '#!/bin/sh\nprintf "%s\\n" "existing tool works"\n'
-const EXISTING_PRIVATE_CONTENT = 'Private project data for the installation test.\n'
-const EXISTING_FILE_ARGS = EXISTING_TOOL + ' ' + EXISTING_PRIVATE_FILE
-const EXISTING_FILE_COMMAND = "stat -c '%a %n' " + EXISTING_FILE_ARGS +
-  ' && sha256sum ' + EXISTING_FILE_ARGS + ' && ./' + EXISTING_TOOL
+const INSTALLER_LINE = `bash ${WRAPPER_PATH}`
+const PUBLICATION_COMMIT = 'chore: install source publication'
+const FRAMEWORK_COMMIT = 'chore: install the complete DevSecOps framework'
 const ANSWERS_FILE = '.config/devsecops/.copier-answers.yml'
-const ANSWERS_COMMAND = "grep -E '^(install_scope|source_publication|container_runtime|project_enabled):' " +
-  ANSWERS_FILE
-const EXISTING_PROJECT_COMMAND = ANSWERS_COMMAND + ' && sha256sum ' + ANSWERS_FILE +
-  " && stat -c '%a %n' " + ANSWERS_FILE + ' && ' + EXISTING_FILE_COMMAND
+// Tall enough for the Files panel of the pushed install, publication unfolded.
+const REPO_PAGE_HEIGHT = 1040
 
+const OWN_TOOL = '.config/own-tool.sh'
+const PRIVATE_FILE = '.config/private.txt'
+const OWN_TOOL_CONTENT = '#!/bin/sh\nprintf "%s\\n" "own tool works"\n'
+const PRIVATE_CONTENT = 'Private project data for the installation test.\n'
+// What the cards type: the modes, then the tool. With `task publication:check`
+// after it, still one row of the 1440 px terminal.
+const OWN_FILES_COMMAND = `stat -c '%a %n' ${OWN_TOOL} ${PRIVATE_FILE} && ${OWN_TOOL}`
+// What the twin compares: the same, plus the contents.
+const OWN_FILES_STATE = `${OWN_FILES_COMMAND} && sha256sum ${OWN_TOOL} ${PRIVATE_FILE}`
+
+// A clean clone of a public README project (Auto DevOps off), the lambda token,
+// the staged working-branch installer and template, and its toolchain, all off
+// camera. The template is tagged as a release: copier records the tag it
+// rendered from in the answers file, and that recorded release is what makes
+// the component updatable later. `withDestination` adds the empty public
+// project the source is told to go to; the install only has to be TOLD where to
+// publish, publishing is the daily-work story's job.
+async function componentJourneySetup ({ withDestination }) {
+  const rootHeaders = await getRootHeaders()
+  await GitLabUserPage.ensureUserViaApi(
+    BASE_URL, process.env.TASK_GITLAB_ROOT_USER, process.env.TASK_GITLAB_ROOT_PASSWORD,
+    {
+      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
+      username: lambdaUser(),
+      name: 'Lambda User',
+      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
+    }
+  )
+  const suffix = crypto.randomBytes(4).toString('hex')
+  global.pubPrivate = `e2e-journey-${suffix}`
+  global.pubLambdaToken = await personalAccessTokenFor(lambdaUser(), `publication-only-${suffix}`, rootHeaders)
+  const headers = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+  const created = await createProject(
+    { name: global.pubPrivate, visibility: 'public', initialize_with_readme: true, auto_devops_enabled: false },
+    headers
+  )
+  if (created.status >= 400) {
+    throw new Error(`Failed to create the project: ${created.status} ${JSON.stringify(created.data)}`)
+  }
+  if (withDestination) {
+    global.pubPublic = `${global.pubPrivate}-public`
+    const createdPublic = await createProject({ name: global.pubPublic, visibility: 'public' }, headers)
+    if (createdPublic.status >= 400) {
+      throw new Error(`Failed to create the public project: ${createdPublic.status} ${JSON.stringify(createdPublic.data)}`)
+    }
+  }
+
+  global.pubContainer = setupClonedProjectTerminal(global.pubPrivate, global.pubLambdaToken)
+  prepareWorkingBranchInstaller(global.pubContainer)
+  const released = execInContainerAsUser(global.pubContainer, 'bootstrap', [
+    'set -e',
+    'cd /tmp/toolbox-template',
+    'git init -q -b main .',
+    'git config user.email "e2e@test.local" && git config user.name "E2E"',
+    'git add -A',
+    'git commit -q --no-verify -m "chore: toolbox release 1.0.0"',
+    'git tag 1.0.0'
+  ].join('\n'), { timeout: 300000 })
+  if (released.exitCode !== 0) {
+    throw new Error(`Failed to tag the staged template as a release:\n${released.output}`)
+  }
+  preinstallToolchain(global.pubContainer)
+}
+
+// The project's own tool (0750) and private file (0600), which no install may
+// touch. The private file never leaves the developer's machine: git ignores it.
 function prepareExistingPublicationFiles () {
   inProjectOrThrow([
     'mkdir -p -m 755 .config',
-    'printf %s ' + shellEscape(EXISTING_TOOL_CONTENT) + ' > ' + EXISTING_TOOL,
-    'printf %s ' + shellEscape(EXISTING_PRIVATE_CONTENT) + ' > ' + EXISTING_PRIVATE_FILE,
-    'chmod 750 ' + EXISTING_TOOL,
-    'chmod 600 ' + EXISTING_PRIVATE_FILE
+    `printf %s ${shellEscape(OWN_TOOL_CONTENT)} > ${OWN_TOOL}`,
+    `printf %s ${shellEscape(PRIVATE_CONTENT)} > ${PRIVATE_FILE}`,
+    `chmod 750 ${OWN_TOOL}`,
+    `chmod 600 ${PRIVATE_FILE}`,
+    `echo /${PRIVATE_FILE} >> .git/info/exclude`
   ].join(' && '))
-  const state = inProjectOrThrow(EXISTING_FILE_COMMAND)
-  mustContain(state, ['750 ' + EXISTING_TOOL, '600 ' + EXISTING_PRIVATE_FILE, 'existing tool works'],
-    'the pre-existing files must start with their intended permissions and executable behavior')
-  for (const content of [EXISTING_TOOL_CONTENT, EXISTING_PRIVATE_CONTENT]) {
+  const state = inProjectOrThrow(OWN_FILES_STATE)
+  mustContain(state, [`750 ${OWN_TOOL}`, `600 ${PRIVATE_FILE}`, 'own tool works'],
+    'the project files must start with their intended permissions and behaviour')
+  for (const content of [OWN_TOOL_CONTENT, PRIVATE_CONTENT]) {
     mustContain(state, crypto.createHash('sha256').update(content).digest('hex'),
-      'the pre-existing files must start with their exact fixture contents')
+      'the project files must start with their exact fixture contents')
   }
   global.pubExistingFiles = state
 }
 
 function assertExistingPublicationFiles () {
-  const state = inProjectOrThrow(EXISTING_FILE_COMMAND)
+  const state = inProjectOrThrow(OWN_FILES_STATE)
   if (state !== global.pubExistingFiles) {
-    throw new Error('Installing source publication changed a pre-existing file, its permissions or its execution:\n' + state)
+    throw new Error('Installing source publication changed a file of the project, its permissions or its execution:\n' + state)
   }
 }
 
@@ -1161,6 +1197,34 @@ function assertExistingProject () {
   assertExistingPublicationFiles()
 }
 
+// Off camera, the way a developer pushes: everything git does not ignore. The
+// clone's remote already carries the token, so nothing secret is typed, and
+// ci.skip keeps a pipeline from waiting forever on a runner these projects do
+// not have: the story is about files.
+function pushToMain (message) {
+  inProjectOrThrow(`git add -A && git commit -q -m ${shellEscape(message)} && git push -q -o ci.skip origin main`)
+  if (inProjectOrThrow('git status --porcelain').trim()) {
+    throw new Error('The push must leave a clean working tree')
+  }
+}
+
+// A page of the main branch, its Files panel unfolded on `unfold`. Public
+// project: the anonymous view, no login. The skipped pipeline's icon is hidden.
+async function mainBranchCard (frameName, url, waitText, unfold = []) {
+  await gitlabCards.gitlabFrame(I, frameName, url, {
+    waitText,
+    height: REPO_PAGE_HEIGHT,
+    hide: ['[data-testid="ci-icon"]', '.ci-status-link'],
+    prepare: unfold.length ? () => gitlabCards.unfoldFileTree(I, unfold) : null
+  })
+}
+
+async function treeNames (dir = '') {
+  const res = await listRepositoryTree(global.pubPrivate, { 'PRIVATE-TOKEN': global.pubLambdaToken },
+    `?ref=main&per_page=100${dir ? `&path=${encodeURIComponent(dir)}` : ''}`)
+  return (res.data || []).map(entry => entry.name).sort()
+}
+
 async function waitInstallerLog (needle, timeoutMs = 300000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -1173,173 +1237,63 @@ async function waitInstallerLog (needle, timeoutMs = 300000) {
   throw new Error(`The installer never printed "${needle}" (see ${INSTALL_LOG})`)
 }
 
-storyboardStep(Given, 'a project that carries no framework at all', async () => {
-  const rootHeaders = await getRootHeaders()
-  await GitLabUserPage.ensureUserViaApi(
-    BASE_URL, process.env.TASK_GITLAB_ROOT_USER, process.env.TASK_GITLAB_ROOT_PASSWORD,
-    {
-      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
-      username: lambdaUser(),
-      name: 'Lambda User',
-      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
-    }
-  )
-  const suffix = crypto.randomBytes(4).toString('hex')
-  global.pubPrivate = `e2e-journey-${suffix}`
-  global.pubLambdaToken = await personalAccessTokenFor(lambdaUser(), `publication-only-${suffix}`, rootHeaders)
-  const created = await createProject(
-    { name: global.pubPrivate, visibility: 'public', initialize_with_readme: true },
-    { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  )
-  if (created.status >= 400) {
-    throw new Error(`Failed to create the project: ${created.status} ${JSON.stringify(created.data)}`)
+storyboardStep(Given, 'a project on GitLab whose main branch holds only its README', async () => {
+  await componentJourneySetup({ withDestination: true })
+  await mainBranchCard('publication-only-gitlab-before', gitlabCards.gitlabUrl.tree(global.pubPrivate), 'Initial commit')
+  const root = await treeNames()
+  if (JSON.stringify(root) !== JSON.stringify(['README.md'])) {
+    throw new Error(`The main branch must hold only README.md, found ${JSON.stringify(root)}`)
   }
-  // Where the source will go. Empty, and never touched by this story: what the
-  // install has to prove is that the project can be TOLD where to publish, not
-  // that it publishes — that is the daily-work story's job.
-  global.pubPublic = `${global.pubPrivate}-public`
-  const createdPublic = await createProject(
-    { name: global.pubPublic, visibility: 'public' },
-    { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  )
-  if (createdPublic.status >= 400) {
-    throw new Error(`Failed to create the public project: ${createdPublic.status} ${JSON.stringify(createdPublic.data)}`)
-  }
-
-  global.pubContainer = setupClonedProjectTerminal(global.pubPrivate, global.pubLambdaToken)
-  prepareWorkingBranchInstaller(global.pubContainer)
-  // The staged template becomes a RELEASED one: copier records the tag it
-  // rendered from in the answers file, and that recorded release is what makes
-  // the component updatable later. A plain directory would record nothing.
-  const released = execInContainerAsUser(global.pubContainer, 'bootstrap', [
-    'set -e',
-    'cd /tmp/toolbox-template',
-    'git init -q -b main .',
-    'git config user.email "e2e@test.local" && git config user.name "E2E"',
-    'git add -A',
-    'git commit -q --no-verify -m "chore: toolbox release 1.0.0"',
-    'git tag 1.0.0'
-  ].join('\n'), { timeout: 300000 })
-  if (released.exitCode !== 0) {
-    throw new Error(`Failed to tag the staged template as a release:\n${released.output}`)
-  }
-  // The toolchain download is volatile output; it happens off camera so the
-  // first frame can start on the empty project instead of on a wall of progress.
-  preinstallToolchain(global.pubContainer)
-
-  I.amOnPage(`http://${global.pubContainer}:${ttydPort()}`) // DevSkim: ignore DS162092
-  I.waitForElement('.xterm-screen', 10)
-  await I.wait(3)
-  await typeCommandAndWait(I, 'clear')
-  const screen = await terminalCard('ls -A1 && git status --short', 'ls -A1', 'publication-only-before')
-  mustContain(screen, 'README.md', 'the project starts with its README and nothing else')
+  if (inProjectOrThrow('git status --porcelain').trim()) throw new Error('The clone must start clean')
 })
 
-storyboardStep(Given, 'the project already has an executable tool and an owner-only file under its configuration directory', async () => {
-  inProjectOrThrow('test ! -e ' + ANSWERS_FILE)
+// The terminal opens 1440 wide, so the longest typed line of the story fits on
+// one row, and tall enough for the whole installer run.
+storyboardStep(Given, "the developer's copy already has its own executable tool and an owner-only file under its configuration directory", async () => {
   prepareExistingPublicationFiles()
-  await typeCommandAndWait(I, 'clear')
-  await terminalCard(EXISTING_FILE_COMMAND, 'stat -c', 'publication-only-existing-before')
+  await ttyCapture.openTerminal(I, global.pubContainer, { width: 1440 })
+  const screen = await ttyCapture.terminalCard(I, 'publication-only-own-files-before', OWN_FILES_COMMAND, { mask: TERMINAL_MASKS })
+  mustContain(screen, [`750 ${OWN_TOOL}`, `600 ${PRIVATE_FILE}`, 'own tool works'],
+    'the card must show the modes and the tool running')
 })
 
-storyboardStep(Then, 'the existing tool still runs and both existing files keep their contents and permissions', async () => {
-  await typeCommandAndWait(I, 'clear')
-  await terminalCard(EXISTING_FILE_COMMAND, 'stat -c', 'publication-only-existing-after')
-  assertExistingPublicationFiles()
-})
-
-storyboardStep(Given, 'that project was generated with the complete framework and its own Copier choices', async () => {
-  inProjectOrThrow(
-    'umask 022 && export PATH="$HOME/.local/bin:$PATH" && ' +
-    COPIER + ' copy --trust --skip-tasks --defaults --quiet --overwrite --vcs-ref 1.0.0' +
-    ' --data install_scope=everything --data container_runtime=podman --data project_enabled=true' +
-    ' --data use_docker_compose=false --data source_publication=false ' + TEMPLATE_DIR + ' .'
-  )
-  prepareExistingPublicationFiles()
-  const answers = inProjectOrThrow(ANSWERS_COMMAND)
-  mustContain(answers, ['install_scope: everything', 'container_runtime: podman',
-    'project_enabled: true', 'source_publication: false'],
-  'the fixture must use real Copier answers for a complete project')
-  global.pubExistingProject = projectFileState()
-  await typeCommandAndWait(I, 'clear')
-  await terminalCard(
-    EXISTING_PROJECT_COMMAND,
-    'grep -E', 'publication-existing-framework-before'
-  )
-})
-
-storyboardStep(Then, 'the installer refuses the component install and explains how to update the existing project', async () => {
-  // The old installer reaches setup instead of refusing. Decline that prompt so
-  // RED is an assertion on its real exit status, not a timeout waiting for an
-  // error message that the old product never printed.
-  await waitInstallerLog('Say where the source goes\\|COMMAND_EXIT_CODE')
-  let log = execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output
-  if (log.includes(WIRING_PROMPT)) {
-    await waitForTerminalText(I, WIRING_PROMPT, COMMAND_TIMEOUT_MS)
-    I.type('n')
-    I.pressKey('Enter')
-  }
-  await waitInstallerLog('COMMAND_EXIT_CODE')
-  await waitForTerminalSettle(I)
-  log = execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output
-  await typeCommandAndWait(I, 'clear')
-  // script(1) records the installer's status even though its wrapper itself
-  // does not propagate it. Sed selects the real guidance and that exit record,
-  // leaving the volatile session timestamp out of the visual proof.
-  await terminalCard(
-    "sed -n '/\\.copier-answers.yml/p; /task copier:update/p; " +
-    's/.*\\[\\(COMMAND_EXIT_CODE="[0-9]*"\\)\\].*/\\1/p\' ' + INSTALL_LOG,
-    'sed -n', 'publication-existing-framework-refused'
-  )
-  const exit = log.match(/COMMAND_EXIT_CODE="(\d+)"/)
-  if (!exit) throw new Error('The installer session did not record its exit status:\n' + log)
-  if (Number(exit[1]) === 0) {
-    throw new Error('Component installation must refuse an existing full Copier project, but the installer returned 0')
-  }
-  mustContain(log, ['.copier-answers.yml', 'task copier:update', '--data source_publication=true'],
-    'the refusal must identify the existing answers and give the supported update command')
-})
-
-storyboardStep(Then, 'the complete project keeps every original file and permission without gaining a component copy', async () => {
-  await typeCommandAndWait(I, 'clear')
-  await terminalCard(
-    EXISTING_PROJECT_COMMAND,
-    'grep -E', 'publication-existing-framework-unchanged'
-  )
-  assertExistingProject()
-})
-
+// The checklist, caught live, from the typed command down: gum erases it the
+// moment it is answered. The AI agent line opens ticked: untick it, move down,
+// tick source publication. Shared by both stories.
 storyboardStep(When, 'the developer ticks source publication on the checklist', async () => {
   I.click('.xterm-screen')
-  I.type(`bash ${WRAPPER_PATH}`)
+  I.type(INSTALLER_LINE)
   I.pressKey('Enter')
   await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  // Move onto "Choose components" and submit it: the checklist opens.
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
   I.pressKey('Enter')
   await waitForTerminalText(I, CHECKLIST_HEADER, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  // The AI agent line opens ticked. Tick source publication, untick the other,
-  // and photograph the checklist while it is still on screen — it erases itself
-  // the instant the answer is given.
+  I.pressKey('Space')
   I.pressKey('ArrowDown')
   I.pressKey('Space')
-  await waitForTerminalSettle(I)
-  I.pressKey('ArrowUp')
-  I.pressKey('Space')
+  // A tick changes no line length, so wait for the tick itself, not for quiet.
+  await I.waitForFunction(() => {
+    const text = document.querySelector('.xterm-screen').textContent
+    return text.includes('✓ Source publication') && !text.includes('✓ Agent mode')
+  }, 30)
   await waitForTerminalSettle(I)
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'publication-only-checklist', {
-    fromMarker: CHECKLIST_HEADER, mask: TERMINAL_MASKS
+    fromMarker: INSTALLER_LINE, mask: TERMINAL_MASKS
   }))
+  const screen = await ttyCapture.terminalScreenText(I)
+  if (screen.includes(SCOPE_PROMPT) || !screen.includes('✓ Source publication') || screen.includes('✓ Agent mode')) {
+    throw new Error(`Expected the question gone and only source publication ticked:\n${screen}`)
+  }
   I.pressKey('Enter')
 })
 
 // The installer's last act, and the only one that needs a forge: it asks where
 // the source goes and for the two tokens that get it there, then does the whole
-// GitLab side with them. The tokens are typed into a terminal with echo off, so
-// this card can be a picture of the real thing without a secret in it.
+// GitLab side with them. The tokens are typed with echo off, so this card can be
+// a picture of the real thing without a secret in it.
 storyboardStep(When, 'the developer says where the source goes and hands over the tokens', async () => {
   await waitForTerminalText(I, WIRING_PROMPT, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
@@ -1362,82 +1316,60 @@ storyboardStep(When, 'the developer says where the source goes and hands over th
   await waitForTerminalText(I, 'Refuse to publish when the secret scan', COMMAND_TIMEOUT_MS)
   I.pressKey('Enter')
 
-  await waitInstallerLog(WIRING_DONE)
+  await ttyCapture.waitForPromptReturn(I, INSTALLER_LINE, 300000)
   await waitForTerminalSettle(I)
-  const screen = await terminalText()
-  mustContain(screen, ['TASK_RENOVATE_TOKEN created', 'nightly schedule', 'scanned for secrets first'],
-    'the install must do the GitLab side, not just ask about it')
+  const screen = await ttyCapture.terminalScreenText(I)
+  mustContain(screen, ['Source publication installed, with the spine that keeps it up to date.',
+    'TASK_RENOVATE_TOKEN created', 'nightly schedule', 'scanned for secrets first', 'Installation complete!'],
+  'the install must do the GitLab side, not just ask about it')
+  mustNotContain(screen, global.pubLambdaToken, 'a token typed blind must never reach the screen')
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'publication-only-wiring', {
-    fromMarker: 'This repository needs to be told', mask: TERMINAL_MASKS
+    fromMarker: 'Installing source publication', mask: TERMINAL_MASKS
   }))
 })
 
-storyboardStep(Then, 'the project holds the publication component and the spine that carries it', async () => {
-  await waitInstallerLog(PUBLICATION_DONE)
-  await waitForTerminalSettle(I)
-  await typeCommandAndWait(I, 'clear')
-  await terminalCard('ls -A1 && ls .config', 'ls -A1', 'publication-only-installed')
-
-  const entries = stripAnsiEscapeSequences(
-    inProjectOrThrow("ls -A1 | grep -v '^.git$' | sort")
-  ).split('\n').map(l => l.trim()).filter(Boolean).sort()
-  const expected = ['.config', '.env.dist', '.gitlab-ci.yml', 'README.md', 'Taskfile.yml'].sort()
-  if (JSON.stringify(entries) !== JSON.stringify(expected)) {
-    throw new Error(`The project must hold exactly ${JSON.stringify(expected)} (plus .git), found ${JSON.stringify(entries)}`)
-  }
-  const component = stripAnsiEscapeSequences(inProjectOrThrow('ls -A1 .config/publication | sort'))
-  for (const file of ['allowlist', 'denylist', 'denylist.base', 'manifest', 'owners', 'publish.sh']) {
-    mustContain(component, file, 'the component must arrive whole')
-  }
-  // The spine, and not one tool: what makes the component updatable is here,
-  // what would make it a full install is not.
-  const config = stripAnsiEscapeSequences(inProjectOrThrow('ls -A1 .config | sort'))
-  mustContain(config, ['copier', 'devsecops', 'publication', 'python', 'renovate'],
-    'the update spine must travel with the component')
-  mustNotContain(config, ['megalinter', 'docker', 'glab', 'codeceptjs'],
-    'a component-only install must bring no tooling')
+// Before the push: once committed, every installed file is tracked and the
+// check would list them all.
+storyboardStep(Then, "the project's own files are untouched, and the component says what would become public", async () => {
+  const screen = await ttyCapture.terminalCard(I, 'publication-only-own-files-after',
+    `${OWN_FILES_COMMAND} && task publication:check`, { mask: TERMINAL_MASKS })
+  assertExistingPublicationFiles()
+  mustContain(screen, [`750 ${OWN_TOOL}`, `600 ${PRIVATE_FILE}`, 'own tool works',
+    'Source publication', 'README.md', 'no approved list yet'],
+  'the project files must be untouched and the component must answer on its own')
 })
 
-/**
- * The CI/CD settings page opens with every section folded, so a plain capture
- * photographs a table of contents. Open the one this card is about, the way a
- * reader clicks it, and frame the variables themselves.
- */
-async function variablesCard () {
-  I.resizeWindow(1024, 900)
-  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/settings/ci_cd`)
-  await I.waitForElement('body', 30)
-  await I.executeScript(() => {
-    const heading = Array.from(document.querySelectorAll('h2, h4'))
-      .find(h => h.textContent.trim() === 'Variables')
-    if (!heading) return
-    const section = heading.closest('section') || heading.parentElement
-    const toggle = section && section.querySelector('button')
-    if (toggle) toggle.click()
-  })
-  await I.waitForElement('[data-testid="ci-variable-table"]', 30)
-  await I.wait(2)
-  await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
-  await settlePageChrome()
-  // The table itself is the frame, not the viewport around it: the section sits
-  // at a different height depending on what GitLab decides to show above it, and
-  // a scrolled page crop would drift by those pixels between two machines.
-  await I.executeScript(() => {
-    const table = document.querySelector('[data-testid="ci-variable-table"]')
-    if (table) table.scrollIntoView({ block: 'center' })
-  })
-  await I.wait(1)
-  await addStoryboardFrame(
-    I, await captureElementFrame(I, 'publication-only-variables', '[data-testid="ci-variable-table"]')
-  )
-  I.resizeWindow(1024, 768)
-}
+// The push is off camera; its proof is the main branch on GitLab. The twins read
+// the same branch over REST: the five root entries, the component whole, the
+// spine there and no tool, the private file absent, the release recorded.
+storyboardStep(When, 'the developer pushes the install to the main branch, GitLab shows the component, its update spine and the release it came from', async () => {
+  pushToMain(PUBLICATION_COMMIT)
+  await mainBranchCard('publication-only-gitlab-after',
+    gitlabCards.gitlabUrl.file(global.pubPrivate, 'main', ANSWERS_FILE), PUBLICATION_COMMIT, ['publication'])
+
+  const root = await treeNames()
+  const expected = ['.config', '.env.dist', '.gitlab-ci.yml', 'README.md', 'Taskfile.yml']
+  if (JSON.stringify(root) !== JSON.stringify(expected)) {
+    throw new Error(`The main branch must hold exactly ${JSON.stringify(expected)}, found ${JSON.stringify(root)}`)
+  }
+  const config = await treeNames('.config')
+  mustContain(config.join('\n'), ['copier', 'devsecops', 'publication', 'python', 'renovate', 'task'],
+    'the update spine must travel with the component')
+  mustNotContain(config.join('\n'), ['megalinter', 'docker', 'glab', 'codeceptjs', 'private.txt'],
+    'a component-only install must bring no tooling, and the private file must stay local')
+  mustContain((await treeNames('.config/publication')).join('\n'),
+    ['allowlist', 'denylist', 'denylist.base', 'manifest', 'owners', 'publish.sh'], 'the component must arrive whole')
+  const answers = await gitlabApi.getRepositoryFile(global.pubPrivate, ANSWERS_FILE, 'main',
+    { 'PRIVATE-TOKEN': global.pubLambdaToken })
+  mustContain(answers, ['_commit: 1.0.0', 'install_scope: publication'],
+    'the main branch must record the release that rendered it')
+})
 
 storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () => {
   // The settings the install just wrote are private to the project: an anonymous
-  // browser is answered with a 404, not with a sign-in page. The developer who
-  // ran the installer is the one who gets to look.
+  // browser is answered with a 404. The developer who ran the installer looks.
   await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await gitlabCards.ciVariablesFrame(I, 'publication-only-variables', global.pubPrivate)
   const headers = { 'PRIVATE-TOKEN': global.pubLambdaToken }
   for (const name of ['TASK_PUBLICATION_TOKEN', 'TASK_RENOVATE_TOKEN', 'TASK_PUBLICATION_SOURCE_TOKEN']) {
     const variable = await readProjectVariable(global.pubPrivate, name, headers)
@@ -1462,36 +1394,77 @@ storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () =
   if (project.status !== 200 || project.data.only_allow_merge_if_all_discussions_are_resolved !== true) {
     throw new Error('Publication setup must enable the discussion merge gate in GitLab')
   }
-  await variablesCard()
 })
 
 storyboardStep(Then, 'a nightly check will bring the next toolbox release in', async () => {
+  await gitlabCards.gitlabFrame(I, 'publication-only-schedule',
+    `${gitlabCards.gitlabUrl.project(global.pubPrivate)}/-/pipeline_schedules`, { waitText: '0 4 * * *', height: 480 })
   const schedules = await listPipelineSchedules(global.pubPrivate, { 'PRIVATE-TOKEN': global.pubLambdaToken })
   const nightly = (schedules.data || []).find(s => s.description.startsWith('Source publication'))
   if (!nightly) {
     throw new Error(`No pipeline schedule was created: ${JSON.stringify(schedules.data)}`)
   }
-  if (nightly.ref !== 'main' && nightly.ref !== 'refs/heads/main') {
-    throw new Error(`The schedule must run on main, got ${nightly.ref}`)
+  if ((nightly.ref !== 'main' && nightly.ref !== 'refs/heads/main') || nightly.cron !== '0 4 * * *' || nightly.active !== true) {
+    throw new Error(`The schedule must run every night at four on main, got ${JSON.stringify(nightly)}`)
   }
-  await gitlabCard(`/${projectPath(global.pubPrivate)}/-/pipeline_schedules`, 'publication-only-schedule', 330)
 })
 
-storyboardStep(Then, 'it runs, and says what would become public', async () => {
-  // Cleared first: the installer's own hint above prints the very command this
-  // card is about, and an anchor that appears twice frames the wrong one.
-  await backToTerminal()
-  const screen = await terminalCard('task publication:check', 'task publication:check', 'publication-only-check')
-  mustContain(screen, ['Source publication', 'README.md', 'no approved list yet'],
-    'the component must answer on its own, with no framework around it')
-})
-
-storyboardStep(Then, 'it records the toolbox release it came from', async () => {
-  await typeCommandAndWait(I, 'clear')
-  const screen = await terminalCard(
-    'grep _commit .config/devsecops/.copier-answers.yml',
-    'grep _commit',
-    'publication-only-release'
+// A real copier render with the complete scope, its own choices (podman, the
+// project workspace, publication off), and the project's own two files,
+// committed and pushed to the main branch off camera. The card is the answers
+// file the refusal names; the twin reads it on the main branch. Then the whole
+// project's files, contents and modes are recorded for the refusal's twin, and
+// a fresh terminal opens for the installer.
+storyboardStep(Given, 'a project whose main branch already carries the complete framework and its own Copier choices', async () => {
+  await componentJourneySetup({ withDestination: false })
+  inProjectOrThrow(
+    'umask 022 && export PATH="$HOME/.local/bin:$PATH" && ' +
+    COPIER + ' copy --trust --skip-tasks --defaults --quiet --overwrite --vcs-ref 1.0.0' +
+    ' --data install_scope=everything --data container_runtime=podman --data project_enabled=true' +
+    ' --data use_docker_compose=false --data source_publication=false ' + TEMPLATE_DIR + ' .'
   )
-  mustContain(screen, '_commit:', 'the project must record the release that rendered it')
+  prepareExistingPublicationFiles()
+  pushToMain(FRAMEWORK_COMMIT)
+  global.pubExistingProject = projectFileState()
+  await mainBranchCard('publication-existing-framework-before',
+    gitlabCards.gitlabUrl.file(global.pubPrivate, 'main', ANSWERS_FILE), FRAMEWORK_COMMIT)
+  const answers = await gitlabApi.getRepositoryFile(global.pubPrivate, ANSWERS_FILE, 'main',
+    { 'PRIVATE-TOKEN': global.pubLambdaToken })
+  mustContain(answers, ['install_scope: everything', 'container_runtime: podman',
+    'project_enabled: true', 'source_publication: false'],
+  'the main branch must carry real Copier answers for a complete project')
+  await ttyCapture.openTerminal(I, global.pubContainer, { width: 1440 })
+})
+
+// The refusal, live, from the typed command down, then the developer's own
+// `git status`. The installer's exit status is read from its session log:
+// script(1) records it, its wrapper does not propagate it.
+storyboardStep(Then, 'the installer refuses, names the update path, and leaves the project exactly as the main branch holds it', async () => {
+  // The old installer reaches setup instead of refusing. Decline that prompt so
+  // RED is an assertion on its real exit status, not a timeout waiting for an
+  // error message that the old product never printed.
+  await waitInstallerLog(`${WIRING_PROMPT}\\|COMMAND_EXIT_CODE`)
+  if (execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output.includes(WIRING_PROMPT)) {
+    await waitForTerminalText(I, WIRING_PROMPT, COMMAND_TIMEOUT_MS)
+    I.type('n')
+    I.pressKey('Enter')
+  }
+  await waitInstallerLog('COMMAND_EXIT_CODE')
+  await ttyCapture.waitForPromptReturn(I, INSTALLER_LINE, 60000)
+  const log = execInContainerAsUser(global.pubContainer, 'bootstrap', 'cat ' + INSTALL_LOG).output
+  await typeCommandAndWait(I, 'git status', COMMAND_TIMEOUT_MS)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'publication-existing-framework-refused', {
+    fromMarker: INSTALLER_LINE, mask: TERMINAL_MASKS
+  }))
+
+  const exit = log.match(/COMMAND_EXIT_CODE="(\d+)"/)
+  if (!exit) throw new Error('The installer session did not record its exit status:\n' + log)
+  if (Number(exit[1]) === 0) {
+    throw new Error('Component installation must refuse an existing full Copier project, but the installer returned 0')
+  }
+  const screen = await ttyCapture.terminalScreenText(I)
+  mustContain(screen, ['already describes a complete framework installation', 'task copier:update',
+    '--data source_publication=true', "Your branch is up to date with 'origin/main'.", 'nothing to commit, working tree clean'],
+  'the refusal must name the existing answers and the supported update, and git must find nothing changed')
+  assertExistingProject()
 })

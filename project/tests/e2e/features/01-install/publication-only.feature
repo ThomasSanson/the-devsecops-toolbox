@@ -18,64 +18,61 @@ Feature: Installing only the source publication component
   # answers file. 22 files against 199 for a full install, and not one tool: no
   # linter, no container runtime, no forge CLI. A component nobody can update
   # would be worse than no component, which is why the spine travels with it.
+  #
+  # The story opens and closes on GitLab: the main branch with its README alone,
+  # then the same branch once the install is pushed, its CI/CD variables and its
+  # schedule. In between is one live terminal: the project's own files, the
+  # checklist caught before its answer, the installer's own words and the
+  # component's first run. Every card is paired with a check of the same fact
+  # (the screen, the working tree, REST on the main branch), so a regression
+  # fails loud even without eyes.
   @publication-only
   Scenario: Ticking source publication on the checklist installs it with its update spine, and nothing else
-    # Note: A terminal on a freshly cloned project. There is a README and nothing else, and git reports no changes: no framework, no task runner, no configuration of any kind.
-    # Copy: ls -A1 && git status --short
-    Given a project that carries no framework at all
-    # Note: The project already has its own configuration directory. Its tool is executable with mode 0750, and its private data file has mode 0600. Neither file comes from the toolbox, and the project has no Copier answers yet.
-    # Note: The terminal reads their real permissions and SHA-256 hashes, then executes the tool. Installing a component must preserve all three properties.
-    # Copy: stat -c '%a %n' .config/existing-tool.sh .config/private-data.txt && sha256sum .config/existing-tool.sh .config/private-data.txt && ./.config/existing-tool.sh
-    And the project already has an executable tool and an owner-only file under its configuration directory
-    # Note: The installer asks whether to install everything. Saying no opens the checklist, and this time the cursor moves down to the second line and ticks source publication instead of the AI agent files.
-    # Note: Two lines, two parts that stand on their own. The tick is what decides; pressing enter takes exactly what is ticked.
-    # Copy: bash /tmp/devsecops-install.sh
+    # Note: GitLab's page for the main branch of a new project. The Files panel on the left lists one file, README.md, and the table shows it on the commit "Initial commit".
+    # Note: The project's random name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
+    Given a project on GitLab whose main branch holds only its README
+    # Note: The developer's copy of the project already has two files of its own under .config, and neither comes from the toolbox. The terminal shows their permissions: 750 for the tool, which only its owner and group may run, and 600 for the private file, which only its owner may read.
+    # Note: Then the tool runs and answers "own tool works". Installing a component must leave both files exactly as they are.
+    # Copy: stat -c '%a %n' .config/own-tool.sh .config/private.txt && .config/own-tool.sh
+    And the developer's copy already has its own executable tool and an owner-only file under its configuration directory
+    # Note: The developer downloads the installer and runs it. It asks whether to install everything, the developer answers "Choose components", and a checklist opens.
+    # Note: The developer unticks "Agent mode", moves down and ticks "Source publication". The picture is taken before Enter, because the checklist erases itself once it is answered.
+    # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && bash /tmp/devsecops-install.sh
     When the developer ticks source publication on the checklist
-    # Note: The installer says what it installed and what to do next: name the people who approve, say what may leave, then run the check.
-    # Note: The installer's last questions: where the source goes, the two tokens to get it there, and how strict to be. Both tokens are typed blind, neither is echoed, and neither is written to a file.
-    # Note: What it does with them is the whole GitLab side. It stores the push token as a masked variable, creates a project token so that Renovate and the approval never need a person's own, and schedules the nightly check that brings the next toolbox release in. The last answer decides what happens when the secret scan cannot run at all: enter keeps the strict one, no publication. The same four questions are task publication:init on any later day.
-    # Copy: bash /tmp/devsecops-install.sh
+    # Note: The installer's own words after Enter. It says "Source publication installed, with the spine that keeps it up to date." and what to do next: name the people who approve, say what may leave, then run task publication:check.
+    # Note: Then it asks where the source goes, for two tokens to get it there, and how strict to be. The tokens are typed blind: neither shows on screen, and neither is written to a file.
+    # Note: With them it does the GitLab side. The push token becomes a masked CI/CD variable, a project token is created for Renovate and for the approval, merging now waits until every discussion is resolved, and a nightly schedule is set up. The same questions are task publication:init on any later day.
+    # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && bash /tmp/devsecops-install.sh
     And the developer says where the source goes and hands over the tokens
-    # Note: Beside the README and configuration files it started with, the install added .env.dist, .gitlab-ci.yml and Taskfile.yml, and its own files under .config. Taskfile.yml runs the publication, .env.dist holds its settings, and .gitlab-ci.yml was written because there was none — a project that already has a pipeline keeps it, and is told the one line to add. Under .config, publication is the component itself, and copier, devsecops, python, renovate and task are the spine that will bring the next toolbox release in and run it.
-    # Note: No megalinter, no docker, no glab: not one tool came along, and nothing that a project taking a single component has no use for.
-    # Copy: ls -A1 && ls .config
-    Then the project holds the publication component and the spine that carries it
-    # Note: The same files are inspected after installation. Their hashes must match the preparation card, their modes must remain 0750 and 0600, and the tool must still execute successfully.
-    # Copy: stat -c '%a %n' .config/existing-tool.sh .config/private-data.txt && sha256sum .config/existing-tool.sh .config/private-data.txt && ./.config/existing-tool.sh
-    And the existing tool still runs and both existing files keep their contents and permissions
-    # Note: The project's CI/CD variables, as GitLab holds them. The one that was typed is there, the token that may push to the public repository; the other two are the project token the install created, under the two names that use it — Renovate, and the sign-off that reads who approved.
-    # Note: All three are masked and protected: GitLab redacts their literal values in job logs and restricts their availability to protected refs. Jobs that receive a token can still use or expose it, and authorized API clients can retrieve it. The personal setup token is not stored in CI.
-    # Copy: Settings > CI/CD > Variables
-    And GitLab holds the tokens, masked and protected
-    # Note: And the schedule that runs it. Every night at four, this project asks whether a new toolbox release exists, and Renovate opens the merge request when one does.
-    # Note: A repository can be quiet for a month; the rules deciding what becomes public still cannot be allowed to go stale for a month.
-    # Copy: Build > Pipeline schedules
+    # Note: The same line as the second card, with task publication:check added at the end. The permissions are still 750 and 600, and the tool still answers "own tool works".
+    # Note: Then the component runs on its own. It names the public repository it was given, says nobody has approved a list yet, and shows what would become public today: README.md, the only file the project tracks so far.
+    # Copy: stat -c '%a %n' .config/own-tool.sh .config/private.txt && .config/own-tool.sh && task publication:check
+    Then the project's own files are untouched, and the component says what would become public
+    # Note: The developer commits everything and pushes it to the main branch. The private file stays on the developer's machine, because git ignores it.
+    # Note: GitLab's page for the answers file on the main branch. The Files panel on the left held a single README.md on the first card. It now shows the component under .config/publication, and copier, devsecops, python, renovate and task, the spine that brings the next toolbox release in, beside .env.dist, .gitlab-ci.yml and Taskfile.yml. The project's own-tool.sh is there too, and no linter or container tool came along.
+    # Note: The file itself records "_commit: 1.0.0", the toolbox release that rendered it, and "install_scope: publication". That line is what lets task copier:update and Renovate bring the next release in.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/devsecops/.copier-answers.yml
+    When the developer pushes the install to the main branch, GitLab shows the component, its update spine and the release it came from
+    # Note: The project's CI/CD variables, in GitLab's settings. TASK_PUBLICATION_TOKEN is the token that was typed, the one that may push to the public repository. TASK_RENOVATE_TOKEN and TASK_PUBLICATION_SOURCE_TOKEN hold the project token the install created, under the two names that use it: Renovate, and the check that reads who approved.
+    # Note: All three carry the labels Protected and Masked: GitLab hides their values in job logs and hands them only to protected branches and tags. The developer's own token, the first one typed, is not among them.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    Then GitLab holds the tokens, masked and protected
+    # Note: The project's pipeline schedules. The one the install created runs on the main branch at "0 4 * * * UTC", every night at four. It has not run yet: its last pipeline is "None".
+    # Note: Each night it asks whether a new toolbox release exists, and Renovate opens the merge request when one does. A quiet repository still gets the latest rules on what may become public.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/pipeline_schedules
     And a nightly check will bring the next toolbox release in
-    # Note: It runs, with nothing else installed. The lists that just landed answer the only question that matters, what would become public, and right now that is the README, because the shipped allowlist publishes everything tracked and the README is all there is.
-    # Note: The destination it was just given is on the first line, and under it the only thing still missing: nobody has approved a list yet, so nothing has ever been published from here.
-    # Copy: task publication:check
-    And it runs, and says what would become public
-    # Note: And it knows where it came from. One line in the answers file records the toolbox release that rendered it.
-    # Note: That line is what makes the component maintainable rather than a dead copy: a later release comes in with task copier:update, and Renovate opens the merge request that offers it.
-    # Copy: grep _commit .config/devsecops/.copier-answers.yml
-    And it records the toolbox release it came from
 
   @publication-existing-framework
   Scenario: A complete project cannot be replaced by a component install
-    # Chapter: The project already has a framework and its own choices
-    # Note: A fresh clone provides the same real installer terminal as the component journey. The next step generates the complete framework with the working template before attempting installation.
-    Given a project that carries no framework at all
-    # Note: This is a real Copier render with the complete install scope, Podman, an enabled project workspace, and source publication disabled. The answers are generated by Copier, not written by the test.
-    # Note: The executable tool and private file are also present. The test records the entire project's file hashes, inventory and permissions, excluding Git's internal directory.
-    # Copy: grep -E '^(install_scope|source_publication|container_runtime|project_enabled):' .config/devsecops/.copier-answers.yml
-    And that project was generated with the complete framework and its own Copier choices
-    # Chapter: Choose the component and receive a safe refusal
-    # Note: The developer chooses source publication in the real installer checklist. That choice must not replace the answers or copy any part of the component into an existing complete project.
-    # Copy: bash /tmp/devsecops-install.sh
+    # Note: GitLab's page for the answers file on the main branch of a project that already uses the complete framework. Copier wrote it, the developer pushed it, and it records the project's own choices: "container_runtime: podman", "project_enabled: true", "source_publication: false" and "install_scope: everything".
+    # Note: The developer's copy also holds a tool and a private file of its own. Before the installer runs, the test records every file of the project, its content and its permissions.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/devsecops/.copier-answers.yml
+    Given a project whose main branch already carries the complete framework and its own Copier choices
+    # Note: The same installer and the same checklist as when source publication is installed on its own. The developer ticks "Source publication" alone.
+    # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && bash /tmp/devsecops-install.sh
     When the developer ticks source publication on the checklist
-    # Note: The installer must return a failure before copying files. Its own session log records the exit status and explains how to enable publication through the existing project's update mechanism.
+    # Note: The installer stops before copying anything. It says the answers file "already describes a complete framework installation", and gives the command that turns publication on through the project's own update: task copier:update with --data source_publication=true.
+    # Note: Then the developer types git status. Git answers "nothing to commit, working tree clean": the project is still exactly what the main branch on GitLab holds. The test also compares every file, its content and its permissions with what it recorded first.
     # Copy: task copier:update TASK_COPIER_CLI_OPTS="--data source_publication=true"
-    Then the installer refuses the component install and explains how to update the existing project
-    # Note: The real answer values, file hashes, permissions and tool execution are inspected again. The assertions compare every original file and directory with the initial state, and reject extra files as well as overwritten files.
-    # Copy: grep -E '^(install_scope|source_publication|container_runtime|project_enabled):' .config/devsecops/.copier-answers.yml
-    And the complete project keeps every original file and permission without gaining a component copy
+    Then the installer refuses, names the update path, and leaves the project exactly as the main branch holds it
