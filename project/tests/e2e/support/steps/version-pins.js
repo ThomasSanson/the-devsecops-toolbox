@@ -1,95 +1,103 @@
-/* global inject Then */
+/* global inject Then After */
 /**
- * Framework-integrity VISUAL proof: the curl|sh installer's bootstrap version
- * pins must stay aligned with the canonical .config/<tool>/version files.
+ * Storyboard for @publication-ci-version (features/03-evolution/version-pins.feature).
  *
- * install.sh runs standalone (before .config/ is fetched by Copier), so it has
- * to hardcode the versions it bootstraps. That duplication is deliberate but
- * dangerous if it drifts (copier already had: install.sh 9.13.1 vs framework
- * 9.14.3). Renovate is configured to bump both via the same datasource; this
- * pixel baseline (tolerance:0) is the legible safety net — the "aligned/DRIFT"
- * verdict is rendered per tool, so any divergence is a visible regression. An
- * aligned version is masked: it moves on every bump and proves nothing.
- *
- * Reads from /workspace — the working tree tarred into the codeceptjs container
- * by `task project:test:e2e` before the suite runs.
+ * The toolbox's full pipeline (.gitlab-ci.yml) and its publication update job
+ * (.config/publication/gitlab-ci.yml) run on the toolbox image of the current
+ * release, and the version bump moves both. Proven on GitLab: a throwaway copy
+ * of the toolbox takes one fix commit, then the real `task commitizen:bump`,
+ * and the card is the bump commit as GitLab shows it.
  */
+const assert = require('assert/strict')
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
-const assert = require('assert/strict')
-const { assertTextVisualMatch } = require('../helpers/textRender')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { execFileSync } = require('child_process')
+const { REPO, copyFramework } = require('../helpers/frameworkCopy')
+const { publishToGitLab } = require('../helpers/gitlabProject')
+const { gitlabFrame, gitlabUrl } = require('../helpers/gitlabCard')
+const { BASE_URL, encodedProjectPath, getRepositoryFile } = require('../helpers/gitlabApi')
+const { freshGet } = require('../helpers/http')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const { I } = inject()
-const REPO = '/workspace'
 
-function readInstallPin (varName) {
-  const sh = fs.readFileSync(path.join(REPO, '.config/devsecops/install.sh'), 'utf8')
-  const match = sh.match(new RegExp(`^${varName}="([^"]+)"`, 'm'))
-  if (!match) throw new Error(`Pin ${varName} not found in install.sh`)
-  return match[1].replace(/^copier==/, '')
-}
+const CI_FILES = ['.gitlab-ci.yml', '.config/publication/gitlab-ci.yml']
+const CZ_CONFIG = '.config/commitizen/cz.yaml'
+const IMAGE_RE = /^(\s*image: registry\.gitlab\.com\/digital-commons\/devsecops\/the-devsecops-toolbox:)(\S+)$/m
+// The copy starts at a fixture release, so the card never moves when the
+// toolbox releases; commitizen bumps it like any other.
+const FROM = '1.0.0'
+const TO = '1.0.1'
 
-function readVersionFile (relative) {
-  return fs.readFileSync(path.join(REPO, relative), 'utf8').trim()
-}
+let pub = null
+let dir = null
 
-function readCopierRequirement (relative) {
-  const match = fs.readFileSync(path.join(REPO, relative), 'utf8').match(/copier==([0-9][0-9.]*)/)
-  if (!match) throw new Error(`No "copier==<version>" requirement in ${relative}`)
-  return match[1]
-}
-
-// tool | install.sh pin var | canonical framework source + reader
-const PINS = [
-  { tool: 'task', pinVar: 'TASK_VERSION', source: '.config/task/version', read: readVersionFile },
-  { tool: 'copier', pinVar: 'COPIER_VERSION', source: '.config/copier/requirements.txt', read: readCopierRequirement },
-  { tool: 'gum', pinVar: 'GUM_VERSION', source: '.config/gum/version', read: readVersionFile },
-  { tool: 'glow', pinVar: 'GLOW_VERSION', source: '.config/glow/version', read: readVersionFile }
-]
-
-function buildPinReport () {
-  const rows = PINS.map(({ tool, pinVar, source, read }) => {
-    const pin = readInstallPin(pinVar)
-    const canonical = read(source)
-    const aligned = pin === canonical
-    const status = aligned ? 'aligned' : `DRIFT ${pin} != ${canonical}`
-    // What this picture proves is the STATUS column: the installer pins what the
-    // framework pins. Printing the version itself proved nothing extra and cost
-    // a regenerated baseline on every bump of task, copier, gum or glow — four
-    // dependencies Renovate moves constantly, each one blocking its own merge
-    // request on a picture. So an aligned pin is masked, and a drifted one is
-    // spelled out twice over: in this column, and in the DRIFT verdict beside it.
-    const shown = aligned ? '<version>' : pin
-    return [tool.padEnd(8), shown.padEnd(10), source.padEnd(40), status].join(' ')
-  })
-  return [
-    'install.sh bootstrap pins vs framework canonical versions',
-    '',
-    ['tool'.padEnd(8), 'pin'.padEnd(10), 'framework source'.padEnd(40), 'status'].join(' '),
-    ...rows
-  ].join('\n')
-}
-
-Then('the install.sh bootstrap pins should visually match {string}', async (baselineName) => {
-  await assertTextVisualMatch(I, baselineName, buildPinReport())
+After(async () => {
+  if (pub) await pub.teardown()
+  if (dir) fs.rmSync(dir, { recursive: true, force: true })
+  pub = null
+  dir = null
 })
 
-storyboardStep(Then, 'the full pipeline and publication update job use the current toolbox image', async () => {
-  const version = readVersionFile('VERSION')
-  const files = ['.gitlab-ci.yml', '.config/publication/gitlab-ci.yml']
-  const rows = files.map(file => {
-    const content = readVersionFile(file)
-    const image = content.match(/^\s*image: registry\.gitlab\.com\/digital-commons\/devsecops\/the-devsecops-toolbox:(\S+)/m)
+function read (root, file) {
+  return fs.readFileSync(path.join(root, file), 'utf8')
+}
+
+function git (...args) {
+  return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: 'pipe' }).trim()
+}
+
+storyboardStep(Then, 'GitLab shows the version bump moving the full pipeline and the publication update job to the new toolbox image', async () => {
+  // Twins on the real working tree: both image lines are on the current
+  // release, and the bump keeps updating both files.
+  const version = read(REPO, 'VERSION').trim()
+  for (const file of CI_FILES) {
+    const image = read(REPO, file).match(IMAGE_RE)
     assert.ok(image, `The toolbox image must be declared in ${file}`)
-    assert.equal(image[1], version, `${file} must use the current toolbox release`)
-    return `${file}\n  image: the-devsecops-toolbox:<current VERSION>\n  verdict: aligned`
-  })
-  const release = readVersionFile('.config/commitizen/cz.yaml')
-  for (const file of files) {
-    assert.ok(release.split('\n').some(line => line.trim() === `- ${file}`),
-      `Release bumps must keep updating ${file}`)
+    assert.equal(image[2], version, `${file} must use the current toolbox release`)
+    assert.ok(read(REPO, CZ_CONFIG).split('\n').some(line => line.trim() === `- ${file}`), `The version bump must keep updating ${file}`)
   }
-  await renderPreFrame(I, 'framework-image-version', rows.join('\n\n') + '\n\nBoth files are tracked by the release bump.')
+
+  // Off camera: the copy at release 1.0.0 in its four version places, one fix
+  // commit on main, then the bump task release runs, without the changelog.
+  dir = fs.mkdtempSync('/tmp/e2e-toolbox-release-')
+  copyFramework(dir)
+  fs.rmSync(path.join(dir, 'project/tests/e2e/storyboards'), { recursive: true, force: true })
+  execFileSync('chown', ['-R', `${process.getuid()}:${process.getgid()}`, dir])
+  for (const file of ['VERSION', CZ_CONFIG, ...CI_FILES]) {
+    const text = read(dir, file)
+    assert.ok(text.includes(version), `${file} must hold the current release ${version}`)
+    fs.writeFileSync(path.join(dir, file), text.replaceAll(version, FROM))
+  }
+  git('init', '--quiet', '--initial-branch=main')
+  git('config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local')
+  git('config', 'user.name', 'Lambda User')
+  git('config', 'core.hooksPath', '/dev/null')
+  git('add', '-A')
+  git('commit', '--quiet', '-m', `chore: the toolbox at release ${FROM}`)
+  git('tag', FROM)
+  git('commit', '--quiet', '--allow-empty', '-m', 'fix: a change worth a release')
+  // A CI job's branch variables would turn the bump into a dev release.
+  const env = { ...process.env }
+  for (const name of ['CI_COMMIT_REF_NAME', 'GITHUB_REF_NAME', 'GIT_BRANCH']) delete env[name]
+  execFileSync('task', ['commitizen:bump', 'TASK_COMMITIZEN_BUMP_YES=true', 'TASK_COMMITIZEN_BUMP_DRY_RUN=false'],
+    { cwd: dir, env, encoding: 'utf8', stdio: 'pipe', timeout: 300000 })
+  assert.equal(git('log', '-1', '--format=%s'), `build: bump version ${FROM} → ${TO}`)
+
+  pub = await publishToGitLab(dir, { name: `e2e-toolbox-release-${crypto.randomBytes(4).toString('hex')}`, project: { jobs_enabled: false } })
+  const sha = git('rev-parse', 'HEAD')
+  // The parent, branch, tag and merge request box goes, so the four diffs fit.
+  await gitlabFrame(I, 'framework-image-version', gitlabUrl.commit(pub.projectName, sha), {
+    waitText: CI_FILES[1], height: 1100, hide: ['.info-well']
+  })
+
+  // Twins on GitLab: the bump commit changes exactly the four version places,
+  // and both image lines on main name the new release.
+  const diff = (await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(pub.projectName)}/repository/commits/${sha}/diff`, pub.headers)).data || []
+  assert.deepEqual(diff.map(change => change.new_path).sort(), [...CI_FILES, CZ_CONFIG, 'VERSION'].sort())
+  for (const file of CI_FILES) {
+    const image = (await getRepositoryFile(pub.projectName, file, 'main', pub.headers)).match(IMAGE_RE)
+    assert.ok(image && image[2] === TO, `${file} on GitLab must run on the ${TO} toolbox image`)
+  }
 })

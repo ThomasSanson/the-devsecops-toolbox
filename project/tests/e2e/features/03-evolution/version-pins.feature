@@ -1,19 +1,13 @@
 @e2e @e2e-template-version-pins
-Feature: The curl|sh installer pins the same tool versions as the framework
-  install.sh bootstraps task / copier / gum / glow BEFORE .config/ exists
-  (Copier fetches the framework afterwards), so it must self-contain versions.
-  Those bootstrap pins MUST stay equal to the canonical .config/<tool>/version
-  files — otherwise the installer drifts from the framework. Renovate keeps them
-  aligned automatically; this pixel baseline (tolerance:0) shows the per-tool
-  aligned/DRIFT verdict, so any divergence regresses visibly. An aligned version
-  is masked and a drifted one is spelled out: the number moves on every bump and
-  proves nothing, the verdict beside it proves everything.
-
-  @e2e-template-version-pins-aligned
-  Scenario: install.sh bootstrap pins stay aligned with the framework
-    Then the install.sh bootstrap pins should visually match "template/version-pins"
+Feature: A toolbox release moves its CI files to the new toolbox image
+  The toolbox's own full pipeline (.gitlab-ci.yml) and its publication update
+  job (.config/publication/gitlab-ci.yml) run on the toolbox image of the
+  current release. The version bump must move both image lines together with
+  VERSION, or one of them keeps running the tools of the release before.
 
   @publication-ci-version
-  Scenario: The publication update job follows the current toolbox release
-    # Note: Read the actual CI files and VERSION. Check both image tags before displaying their shared version as a placeholder, and check that release bumps track both files.
-    Then the full pipeline and publication update job use the current toolbox image
+  Scenario: A toolbox version bump moves both of its CI files to the new toolbox image
+    # Note: Off camera, a throwaway copy of the toolbox, set to release 1.0.0 in its four version places so the picture never moves when the toolbox releases. One fix commit lands on its main branch, then the version bump task release runs, without the changelog. Before bumping, commitizen checks that both image lines hold 1.0.0, and refuses otherwise.
+    # Note: On screen, the bump commit as GitLab received it. The image line of .gitlab-ci.yml, the full pipeline, and the one of .config/publication/gitlab-ci.yml, the publication update job, move from 1.0.0 to 1.0.1, together with VERSION and cz.yaml.
+    # Copy: task commitizen:bump TASK_COMMITIZEN_BUMP_YES=true TASK_COMMITIZEN_BUMP_DRY_RUN=false
+    Then GitLab shows the version bump moving the full pipeline and the publication update job to the new toolbox image
