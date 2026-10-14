@@ -1,92 +1,79 @@
 @e2e
 Feature: the framework repairs its own GitLab setup when something breaks it
   As a maintainer relying on the toolbox
-  I want `task devsecops:init` to fix its own GitLab plumbing — the project
-  access token, the CI/CD variable, the branch it authenticates against — no
-  matter what damage happened behind its back, and `task devsecops:reload` to
-  put a project that drifted back to what its own answers describe
+  I want `task devsecops:init` to fix its own GitLab setup, the project access
+  tokens and the CI/CD variables that carry them, whatever happened behind its
+  back, and `task devsecops:reload` to put a project that drifted back to what
+  its own answers describe
   So that one command always leaves a working setup in place.
 
-  # ONE story in three chapters, each on its OWN fresh project. ONE Gherkin
-  # sentence = ONE card = ONE pixel baseline, asserted inside the step
-  # (tolerance: 0). An automation token is the credential the framework uses to
-  # act on GitLab; a CI/CD variable holds its value for the pipeline. Each Then
-  # twins its GitLab page or terminal frame with a REST check of the SAME fact,
-  # so a regression fails loud even without eyes. Dates and secrets that change
-  # every run are masked.
+  # ONE story in three chapters. Chapters 1 and 2 share one project, set up by a
+  # first `task devsecops:init`. Chapter 3 has its own project, generated from
+  # the template so the reload has answers to read. ONE Gherkin sentence = ONE
+  # card = ONE pixel baseline, asserted inside the step (tolerance: 0), and every
+  # card is a real GitLab page: the access tokens, the CI/CD variables, the
+  # protected branches or a commit.
   #
-  # Chapter 1 — the token is revoked behind init's back: init re-creates it, the
-  # CI/CD variable follows, the healed token really clones the repository, and a
-  # second run changes nothing. Chapter 2 — the other two break modes: a
-  # tampered CI/CD variable and a planted duplicate token are both repaired.
-  # Chapter 3 — a project that drifted the way a live project does: someone
-  # loosened the default branch in the GitLab settings, someone edited a
-  # framework file in place, and the tokens are the ones from install day. A
-  # single `task devsecops:reload` re-applies the project's own answers and
-  # redoes the whole GitLab setup, tokens included — the difference with init,
-  # which leaves a working token alone, is exactly what chapter 1 proves.
+  # The release token is TASK_COMMITIZEN_TOKEN, the token the release job pushes
+  # with. The other token on the access-tokens page, TASK_RENOVATE_TOKEN, belongs
+  # to the dependency robot. A CI/CD variable of the same name holds each token
+  # for the pipeline. Each card is paired with a check of the same fact: REST on
+  # the tokens, the variables, the branch and the commits, a real clone with
+  # each token, and the lines the command printed. What changes on every run is
+  # masked: dates, last use, addresses, commit ids, the pipeline, and the secret
+  # part of each token.
+  #
+  # Chapter 1: init rebuilds a revoked release token, and a second init changes
+  # nothing. Chapter 2: one more init repairs a planted duplicate and a tampered
+  # variable. Chapter 3: a project that drifted the way a live one does is put
+  # back by one `task devsecops:reload`, which also replaces both tokens even
+  # though they still worked. init leaves a working token alone, as chapter 1
+  # shows: that is the difference between the two commands.
   @self-healing
   Scenario: init heals a revoked token, a tampered variable and a duplicate token, and reload puts a drifted project back
-    # Chapter: A revoked token is rebuilt
-    # Note: A fresh project after its first `task devsecops:init`: the access-tokens page shows the automation token init created.
+    # Chapter: A revoked release token is rebuilt
+    # Note: GitLab's access-tokens page of a project after its first `task devsecops:init`. That run created two tokens, the release token TASK_COMMITIZEN_TOKEN and the dependency robot's TASK_RENOVATE_TOKEN.
+    # Note: Someone has since revoked the release token in GitLab. "Active project access tokens" lists only TASK_RENOVATE_TOKEN, and the release token sits under "Inactive project access tokens", marked "Revoked". Dates, last use and expiry change on every run, so they are blanked.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Given a project the framework has already set up with its automation token
-    # Note: The token is revoked from outside the framework, as if someone deleted it in GitLab: the access-tokens page no longer lists the automation token.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    When the developer revokes the automation token behind the framework's back
-    # Note: A single `task devsecops:init` re-run: the finishing message shows it noticed the token was missing and created a new one.
+    Given a project the framework set up, whose release token someone then revoked in GitLab
+    # Note: The developer runs `task devsecops:init` again. "Active project access tokens" lists TASK_COMMITIZEN_TOKEN once more: a new token, while the old one stays below, still "Revoked".
+    # Note: The same run stored the new token in the CI/CD variable of the same name. The test checks that this variable, like the dependency robot's, really clones the repository.
     # Copy: task devsecops:init
-    And the developer runs the framework's init again
-    # Note: The access-tokens page shows the automation token again, a different one from the token that was revoked.
+    When the developer runs the framework's init again, a brand-new release token takes the revoked one's place
+    # Note: A second `task devsecops:init` on the healed project. The page has not changed: the same release token is active, and "Inactive project access tokens" still holds one row. The init run found a working token and left it alone.
+    # Copy: task devsecops:init
+    When the developer runs init a second time, GitLab keeps that release token and revokes nothing
+    # Chapter: A duplicate token and a tampered variable are repaired
+    # Note: The same project. Someone creates a second token named TASK_COMMITIZEN_TOKEN in GitLab, so "Active project access tokens" now lists two release tokens where there should be one.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Then GitLab now holds a brand-new automation token
-    # Note: The CI/CD variables page shows the variable again, now pointing at the new token.
+    When someone plants a second release token with the same name in GitLab
+    # Note: Someone also overwrites the release token's CI/CD variable. The project's CI/CD settings, values shown with "Reveal values": TASK_COMMITIZEN_TOKEN now holds "tampered-by-e2e", which no pipeline can sign in with.
+    # Note: TASK_RENOVATE_TOKEN still holds a real token. It starts with "glpat-" like every GitLab token, and its secret part is masked as "*****".
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
-    And GitLab's CI/CD variable now matches the new token
-    # Note: The healed token signs in to GitLab and lists the repository over HTTPS (the secret and commit IDs are masked).
-    # Copy: git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git
-    And the healed token clones the repository over HTTPS
-    # Note: A second `task devsecops:init` on the already-healed project: the finishing message reports the token is already in place, nothing to recreate.
+    And someone overwrites the release token's CI/CD variable with a bad value
+    # Note: One more `task devsecops:init`. "Active project access tokens" lists a single release token again, and "Inactive project access tokens" now holds three.
+    # Note: The first is the token revoked in chapter 1. The second is the older of the two duplicates, which the init run revoked. The third is the one it kept, which it then replaced with a new token because the CI/CD variable no longer matched it.
     # Copy: task devsecops:init
-    When the developer runs init a second time
-    # Note: The access-tokens page has not changed: still one automation token. init does not quietly replace the token on every run.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Then the second run leaves the healed token untouched
-    # Chapter: A tampered variable and a duplicate token are repaired
-    # Note: A fresh project after its first `task devsecops:init`, working correctly: one automation token on the access-tokens page.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Given a project the framework already set up and is healthy
-    # Note: A second token with the same name is created from outside the framework: the access-tokens page now lists two automation tokens where there should be one.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    When a duplicate automation token is planted behind the framework's back
-    # Note: The CI/CD variable is tampered with, its value replaced by a bad string that GitLab hides on screen: the CI/CD variables page still lists it.
+    When the developer runs the framework's init once more, a single release token is left
+    # Note: The same CI/CD settings page, values revealed. TASK_COMMITIZEN_TOKEN holds a GitLab token again, "glpat-" with its secret part masked, where it held "tampered-by-e2e". The test checks that this new value clones the repository.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
-    And the CI/CD variable is overwritten with a bad value
-    # Note: A single `task devsecops:init` re-run: the finishing message shows it removed the duplicate token and put the CI/CD variable back.
-    # Copy: task devsecops:init
-    And the developer runs the framework's init once more
-    # Note: The access-tokens page is back to a single automation token — the duplicate is gone.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Then only one automation token survives the purge
-    # Note: The variable no longer carries the bad value: it signs in to GitLab again and lists the repository (the secret and commit IDs are masked).
-    # Copy: git clone http://<lambda-user>:<token>@gitlab/<lambda-user>/<project>.git
-    And the healed CI/CD variable clones the repository again
+    Then the CI/CD variable holds a GitLab token again instead of the bad value
     # Chapter: A project that drifted is put back in one command
-    # Note: A project the framework set up on install day: the access-tokens page lists the two automation tokens it created, one for the release, one for the dependency robot.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    Given a project the framework set up, carrying both its automation tokens
-    # Note: Someone went into the settings and loosened the default branch by hand: maintainers may push to it again, which the toolbox never leaves that way.
+    # Note: A new project, generated from the toolbox and set up on install day. Its repository settings, "Protected branches": the main branch says "Allowed to push and merge: Maintainers".
+    # Note: The toolbox sets that to "No one", so every change reaches the main branch through a merge request. Someone loosened it by hand.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository
-    And someone loosened its default branch by hand
-    # Note: And a framework file was edited in the copy on disk: the pipeline file now ends with a line nobody from the toolbox wrote.
-    # Copy: tail -4 .gitlab-ci.yml
-    And a framework file was edited in place
-    # Note: One command. It re-applies the project's own answers, then redoes the GitLab setup from scratch: it revokes both automation tokens and creates new ones, even though they still worked, and resets the branch protection.
+    Given a project the framework set up, whose main branch someone then loosened by hand
+    # Note: That loosening lets someone push a hand edit straight to the main branch. GitLab's page for the commit "chore: tweak the pipeline by hand": one changed file, .gitlab-ci.yml, with one green line added at its end, "# a hand-edited line the toolbox never wrote".
+    # Copy: git commit -am "chore: tweak the pipeline by hand" && git push origin main
+    And someone pushed a hand edit of the pipeline file straight to the main branch
+    # Note: The developer runs `task devsecops:reload`. It re-applies the project's own answers to the framework files, then redoes the GitLab setup. On the access-tokens page both tokens are active, and both install-day tokens sit under "Inactive project access tokens", marked "Revoked".
+    # Note: The reload replaced them even though they still worked. `task devsecops:init` never does that, as chapter 1 showed.
     # Copy: task devsecops:reload
-    When the developer reloads the framework
-    # Note: The pipeline file is back to the bytes the toolbox ships — the hand-written line is gone.
-    # Copy: tail -4 .gitlab-ci.yml
-    Then the framework file is back to what the toolbox ships
-    # Note: The default branch is strict again: no one may push to it, maintainers may merge.
+    When the developer reloads the framework, both automation tokens are revoked and replaced by new ones
+    # Note: The same "Protected branches" settings as before the reload. The main branch says "Allowed to push and merge: No one" again, and "Allowed to merge: Maintainers": a change now reaches the main branch only through a merge request.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository
-    And the default branch is locked down again
+    Then the main branch is locked down again
+    # Note: The reload also put .gitlab-ci.yml back on disk, without the hand-written line. The main branch is locked, so the developer commits it on a branch and opens a merge request with the push.
+    # Note: GitLab's page for that commit, the same kind of page as the hand edit: "1 merge request", one changed file, .gitlab-ci.yml, and the red line "# a hand-edited line the toolbox never wrote" removed.
+    # Copy: git switch -c reload-framework && git commit -am "chore: put the framework files back" && git push -o merge_request.create -o merge_request.target=main origin reload-framework
+    And the developer sends the restored pipeline file back through a merge request
