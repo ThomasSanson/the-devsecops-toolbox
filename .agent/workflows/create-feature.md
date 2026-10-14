@@ -48,7 +48,6 @@ If new steps are needed, create or extend a steps file under `project/tests/e2e/
 ### 3. Run Tests (Should Fail)
 
 ```bash
-// turbo
 task test -- --grep "@e2e-{feature}"
 ```
 
@@ -77,16 +76,13 @@ Explore `.config/` to see how Jinja conditions (`{% if %}`) and template naming 
 ### 6. Run Tests (Should Pass)
 
 ```bash
-// turbo
 task test -- --grep "@e2e-{feature}"
 ```
 
 ### 7. Global Verification
 
 ```bash
-// turbo
 task devsecops:test:verify
-// turbo
 task devsecops:code:verify
 ```
 

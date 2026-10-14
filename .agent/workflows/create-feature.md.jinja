@@ -48,7 +48,6 @@ Analyze existing files in `project/tests/application/steps/*.js` to see how to:
 ### 3. Run Tests (Should Fail)
 
 ```bash
-// turbo
 task test -- --grep "@{feature}"
 ```
 
@@ -67,16 +66,13 @@ Write the minimal code under `project/` that makes the test pass. `.config/` bel
 ### 5. Run Tests (Should Pass)
 
 ```bash
-// turbo
 task test -- --grep "@{feature}"
 ```
 
 ### 6. Global Verification
 
 ```bash
-// turbo
 task devsecops:test:verify
-// turbo
 task devsecops:code:verify
 ```
 

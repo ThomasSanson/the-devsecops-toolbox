@@ -31,7 +31,6 @@ Follow the existing Gherkin style in the feature file. Use the `@new-functionali
 ### 3. Run Tests (Should Fail)
 
 ```bash
-// turbo
 task test -- --grep "@{domain}"
 ```
 
@@ -53,16 +52,13 @@ Use the codebase as the source of truth for syntax and logic patterns.
 ### 5. Run Tests (Should Pass)
 
 ```bash
-// turbo
 task test -- --grep "@{domain}"
 ```
 
 ### 6. Global Verification
 
 ```bash
-// turbo
 task devsecops:test:verify
-// turbo
 task devsecops:code:verify
 ```
 

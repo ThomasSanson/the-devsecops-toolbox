@@ -46,7 +46,6 @@ task test -- --grep "@your-tag"
 
 ## Step 4: Quality Check
 
-// turbo
 ```bash
 task devsecops:code:verify
 ```
@@ -55,7 +54,6 @@ Fix every linter error following the [code skill](../skills/code/SKILL.md).
 
 ## Step 5: Full Test Suite
 
-// turbo
 ```bash
 task devsecops:test:verify
 ```

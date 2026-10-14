@@ -58,7 +58,6 @@ Remove the relevant questions and logic from `copier.yml`.
 Run the full test suite to ensure no regressions:
 
 ```bash
-// turbo
 task devsecops:test:verify
 ```
 
@@ -67,6 +66,5 @@ task devsecops:test:verify
 Run linters to ensure no orphan references or config issues:
 
 ```bash
-// turbo
 task devsecops:code:verify
 ```

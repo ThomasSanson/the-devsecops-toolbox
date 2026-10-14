@@ -34,7 +34,6 @@ scenarios or baselines.
 ### 3. Run Tests (Should Fail)
 
 ```bash
-// turbo
 task test -- --grep "@e2e-{feature}"
 ```
 
@@ -58,16 +57,13 @@ Use the codebase as the source of truth for syntax and logic patterns.
 ### 5. Run Tests (Should Pass)
 
 ```bash
-// turbo
 task test -- --grep "@e2e-{feature}"
 ```
 
 ### 6. Global Verification
 
 ```bash
-// turbo
 task devsecops:test:verify
-// turbo
 task devsecops:code:verify
 ```
 
