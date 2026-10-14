@@ -75,7 +75,10 @@ module.exports = function junitReporter () {
     const body = cases
       .map((c) => {
         const open = `    <testcase name="${esc(c.name)}" classname="e2e" time="${c.time.toFixed(3)}">`
-        if (c.status === 'failed') return `${open}\n      <failure message="${esc(c.err)}"/>\n    </testcase>`
+        // The message twice: as the attribute the RED gate reads, and as the
+        // text GitLab shows. An empty <failure/> reaches GitLab's test case
+        // details as a Ruby hash, {"message"=>"..."}, instead of the message.
+        if (c.status === 'failed') return `${open}\n      <failure message="${esc(c.err)}">${esc(c.err)}</failure>\n    </testcase>`
         if (c.status === 'skipped') return `${open}<skipped/></testcase>`
         return `${open}</testcase>`
       })
