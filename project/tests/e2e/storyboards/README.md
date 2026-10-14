@@ -64,6 +64,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@worker-completion"`
 - [**junit-freshness**](02-daily-work/junit-freshness.svg) — A config crash cannot reuse an earlier failure as RED evidence. A filter matching no scenario fails clearly.
   Replay: `task project:test:e2e -- --grep "@junit-freshness"`
+- [**storyboard-wide-card**](02-daily-work/storyboard-wide-card.svg): A whole GitLab page gets a row of its own and shows at its real size. Smaller captures share rows two by two, and a card alone on its row sits in the middle.
+  Replay: `task project:test:e2e -- --grep "@storyboard-wide-card"`
 
 ## Act 3 — Evolution (`03-evolution`)
 
