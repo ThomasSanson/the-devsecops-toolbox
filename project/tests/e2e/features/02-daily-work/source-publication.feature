@@ -15,9 +15,9 @@ Feature: Publishing the source of a private project, without the parts that must
   @publication-contracts
   Scenario: Publication keeps its safety promises from source selection to repeated releases
     # Chapter: Exactly the committed files, or nothing
-    # Note: A real Git repository built for this story, in a real terminal. It tracks src/message.txt and the publication's own files under .config/publication. Its ignore file, .gitignore, also matches src/message.txt: the last chapter comes back to that.
-    # Note: The allowlist lets src/ and .gitignore leave, the manifest says both were approved, and publication-owner is the one person who may approve. The .env file holds the settings: a public repository next door, two throwaway tokens, and fixture-forge, the stand-in for GitLab's API. Every other repository in this story is a copy of this one with one thing changed.
-    # Copy: tail -n +1 .gitignore .config/publication/allowlist .config/publication/manifest .config/publication/owners
+    # Note: A real Git repository built for this story, in a real terminal. Git tracks src/message.txt, the file to publish, even though the ignore file, .gitignore, matches it: the last chapter comes back to that.
+    # Note: The allowlist lets src/ and .gitignore leave, the manifest says both were approved, and publication-owner is the one person who may approve. The .env file holds the settings: source-public.git, an empty public repository next door, two throwaway tokens, and fixture-forge, the stand-in for GitLab's API. Every other repository in this story is a copy of this one with one thing changed, and its own public repository.
+    # Copy: tail -n +1 .gitignore .config/publication/allowlist .config/publication/manifest .config/publication/owners .env
     Given a throwaway source repository whose files are approved for publication
     # Note: This copy adds -public/message.txt, in a folder whose name starts with a dash, which a careless shell command would read as an option. It also sets a smudge filter, a local Git setting that rewrites a file when Git writes it to disk: the working copy of src/message.txt says UNCOMMITTED CONTENT.
     # Note: The export writes what would be published into ../snapshot and prints 3, the number of files. Both files there hold the committed text: the filter changed nothing, and the dash folder arrived whole. The task is this repository's own name for the line below, which any project with the publication can run.
@@ -37,7 +37,7 @@ Feature: Publishing the source of a private project, without the parts that must
     # Copy: TASK_PUBLICATION_SOURCE_REF=absent task publication:check
     And the dry run never contacts the forge: it passes offline and refuses an absent ref instead of fetching it
     # Note: TASK_PUBLICATION_SCAN=done is not a mode: nobody can tell the publication that the secret scan already happened. It refuses.
-    # Note: The next two copies run a stand-in git, printed on the card, ahead of the real one. In export-fails, every read of a file's contents fails: the publication stops before the scan, which never ran (0 lines in scan.log). In index-fails, the reads fail only after the scan passed (1 line): the publication still stops, and says Nothing was pushed. Both public repositories have 0 commits.
+    # Note: The next two copies put a stand-in git, printed on the card, and a stand-in scanner, which writes one line to scan.log when it runs, ahead of the real tools. In export-fails, every read of a file's contents fails: the publication stops before the scan, which never ran (0 lines in scan.log). In index-fails, the reads fail only after the scan passed (1 line): the publication still stops, and says Nothing was pushed. Both public repositories have 0 commits.
     # Copy: TASK_PUBLICATION_SCAN=done task publication:publish
     And publication refuses to skip the secret scan, and stops before the push when Git cannot read a file
     # Chapter: Approval names the exact list
@@ -46,7 +46,7 @@ Feature: Publishing the source of a private project, without the parts that must
     # Copy: task publication:approve
     Then only an owner's answer that names the current manifest and was not edited afterwards approves publication, and approval asks the owner again
     # Note: This copy adds src/new.txt, a file nobody approved, so task publication:approve has to open a merge request. The stand-in forge is told to refuse every API request, then only the POST of the sign-off thread.
-    # Note: Both runs fail and say so: The forge refused the approval request. Nothing was approved. The request log shows where each run stopped, marked 403, the code a forge answers when it refuses: at the very first request, then at the very last one.
+    # Note: Both runs fail and say so: The forge refused the approval request. Nothing was approved. The request log marks each refusal 403, the code a forge answers when it refuses. The first run is refused from its first request and gives up at the fourth, when it tries to commit the new list. The second run gets as far as the very last request, the POST of the sign-off thread.
     # Copy: task publication:approve
     And approval fails loudly when the forge refuses every request, or only the sign-off thread
     # Chapter: Tokens and setup failures stay safe
@@ -55,7 +55,7 @@ Feature: Publishing the source of a private project, without the parts that must
     # Copy: TASK_PUBLICATION_TARGET_URL=https://fixture-url-token@example.invalid/public.git task publication:check
     Then neither token shows up, in process arguments or in the refusal of a target URL that carries one
     # Note: task publication:init is the one-time setup. It asks two questions, answered with Enter, then replaces the project's token and stores the new one in two CI/CD variables. The stand-in forge refuses the new token, then, on the second run, the update of the variables.
-    # Note: Both runs fail and say so. The request log has no DELETE: the token CI still uses was not revoked, and no variable was deleted. .env.dist records the destination, but publication is not switched on.
+    # Note: Both runs fail. The first says why. The second only shows the refused request. The request log has no DELETE: the token CI still uses was not revoked, and no variable was deleted. .env.dist records the destination, but publication is not switched on.
     # Copy: task publication:init
     And setup keeps the working token and CI variables when the forge refuses their replacement
     # Note: This copy sits on a branch called onboarding. Setup succeeds, and its own lines say what it changed: GitLab now requires all discussions to be resolved before merging, and a nightly schedule runs on main, not on onboarding.

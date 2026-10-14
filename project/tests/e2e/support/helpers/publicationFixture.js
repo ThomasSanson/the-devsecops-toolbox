@@ -4,9 +4,9 @@
  *
  * The repositories are built off camera by FIXTURE_SCRIPT, one directory per
  * contract under the bootstrap user's home, each with its own `.env` (the
- * settings a developer keeps there) and its own bare "public" repository next
- * to it (`~/<name>.git`). The cards then type the shipped tasks into the live
- * terminal.
+ * settings a developer keeps there) and its own bare public repository next
+ * to it (`~/<name>-public.git`). The cards then type the shipped tasks into the
+ * live terminal.
  *
  * The stand-in forge runs in the test runner and answers the container as
  * http://fixture-forge:8080. It is a stand-in on purpose: a real GitLab cannot
@@ -18,6 +18,7 @@
  * The source-publication journey covers the real GitLab API.
  */
 const crypto = require('crypto')
+const fs = require('fs')
 const http = require('http')
 const os = require('os')
 const { execFileSync } = require('child_process')
@@ -144,13 +145,18 @@ async function startFixtureForge () {
   return forge
 }
 
-// The runner's own address on the compose network, for the container's
-// /etc/hosts: a fixed name keeps every URL on the cards the same from run to run.
-function runnerAddress () {
-  const candidates = Object.values(os.networkInterfaces()).flat()
+// The runner's address on a network it shares with the container, for the
+// container's /etc/hosts: a fixed name keeps every URL on the cards the same
+// from run to run.
+function runnerAddress (container) {
+  const toInt = ip => ip.split('.').reduce((n, byte) => ((n << 8) | Number(byte)) >>> 0, 0)
+  const theirs = runCommand(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' ${shellEscape(container)}`)
+    .split(/\s+/).filter(Boolean).map(toInt)
+  const mine = Object.values(os.networkInterfaces()).flat()
     .filter(i => i && i.family === 'IPv4' && !i.internal)
-  if (!candidates.length) throw new Error('publication contracts: the runner has no IPv4 address for the stand-in forge')
-  return candidates[0].address
+    .find(i => theirs.some(ip => ((ip & toInt(i.netmask)) >>> 0) === ((toInt(i.address) & toInt(i.netmask)) >>> 0)))
+  if (!mine) throw new Error(`publication contracts: the runner shares no IPv4 network with ${container} for the stand-in forge`)
+  return mine.address
 }
 
 // Built off camera, as the bootstrap user, in $HOME. Dates are pinned so the
@@ -193,20 +199,20 @@ git remote add origin https://example.invalid/team/private.git
 cat > .env <<'EOF'
 TASK_PUBLICATION_ENABLED=true
 TASK_PUBLICATION_SOURCE_REF=main
-TASK_PUBLICATION_TARGET_URL=../source.git
+TASK_PUBLICATION_TARGET_URL=../source-public.git
 TASK_PUBLICATION_TOKEN=fixture-target-token
 TASK_PUBLICATION_SOURCE_TOKEN=fixture-source-token
 TASK_PUBLICATION_API_URL=http://${FORGE_HOST}:${FORGE_PORT}/api/v4
 TASK_PUBLICATION_SCAN=off
 EOF
 cd "$HOME"
-git init -q --bare source.git
+git init -q --bare source-public.git
 
-# One copy of the base per contract, each publishing to its own bare repository.
+# One copy of the base per contract, each publishing to its own public repository.
 variant () {
   cp -a source "$1"
-  sed -i "s#^TASK_PUBLICATION_TARGET_URL=.*#TASK_PUBLICATION_TARGET_URL=../$1.git#" "$1/.env"
-  git init -q --bare "$1.git"
+  sed -i "s#^TASK_PUBLICATION_TARGET_URL=.*#TASK_PUBLICATION_TARGET_URL=../$1-public.git#" "$1/.env"
+  git init -q --bare "$1-public.git"
 }
 
 variant bytes
@@ -307,11 +313,11 @@ function setupPublicationTerminal () {
   const name = containerName()
   runCommand(`cd /workspace/project && docker compose run -d --name ${shellEscape(name)} ubuntu`, { timeout: 300000 })
   try {
-    const task = runCommand('command -v task').trim()
+    const task = fs.realpathSync(runCommand('command -v task').trim())
     runCommand(`docker cp ${shellEscape(task)} ${shellEscape(`${name}:/usr/local/bin/task`)}`)
     runCommand(`docker cp /workspace/.config/publication ${shellEscape(`${name}:/tmp/publication`)}`)
     const root = execInContainer(name, [
-      `echo ${shellEscape(`${runnerAddress()} ${FORGE_HOST}`)} >> /etc/hosts`,
+      `echo ${shellEscape(`${runnerAddress(name)} ${FORGE_HOST}`)} >> /etc/hosts`,
       'chown -R bootstrap:bootstrap /tmp/publication'
     ].join(' && '), { user: 'root' })
     if (root.exitCode !== 0) throw new Error(`Could not prepare the publication terminal:\n${root.output}`)
@@ -349,15 +355,16 @@ function inContainer (container, script) {
 /**
  * Every commit id the container's repositories hold, with the label a card
  * shows in its place: `<source-commit-N>` for the Nth commit of a source
- * repository, `<public-commit-N>` for the Nth of a public one (the bare
- * repositories, and `publicCommits`, oldest first, for GitLab's). The base
+ * repository, `<public-commit-N>` for the Nth of a public one (the
+ * `*-public.git` repositories, and `publicCommits`, oldest first, for
+ * GitLab's). The base
  * commit is the first of every source repository, so it reads the same on
  * every card.
  */
 function commitLabels (container, publicCommits = []) {
   const listed = inContainer(container, [
-    'for r in "$HOME"/*/; do [ -d "$r.git" ] && git -C "$r" rev-list --all --topo-order --reverse | awk \'{print "source", NR, $1}\'; done',
-    'for r in "$HOME"/*.git; do git --git-dir="$r" rev-list --all --topo-order --reverse 2>/dev/null | awk \'{print "public", NR, $1}\'; done',
+    'for r in "$HOME"/*/; do [ -d "$r/.git" ] && git -C "$r" rev-list --all --topo-order --reverse | awk \'{print "source", NR, $1}\'; done',
+    'for r in "$HOME"/*-public.git; do git --git-dir="$r" rev-list --all --topo-order --reverse 2>/dev/null | awk \'{print "public", NR, $1}\'; done',
     'true'
   ].join('\n'))
   const labels = new Map()

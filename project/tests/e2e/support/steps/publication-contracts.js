@@ -12,15 +12,7 @@
  */
 const assert = require('assert/strict')
 const { storyboardStep, addStoryboardFrame } = require('../../../../../.config/codeceptjs/storyboard')
-const {
-  openTerminal,
-  clearTerminal,
-  typeCommandAndWait,
-  waitForPromptReturn,
-  waitForTerminalSettle,
-  captureTerminalFrame,
-  terminalScreenText
-} = require('../terminal/capture')
+const { openTerminal, clearTerminal, captureTerminalFrame, terminalScreenText } = require('../terminal/capture')
 const { gitlabFrame, gitlabUrl, inNewTab } = require('../helpers/gitlabCard')
 const { listRepositoryTree, getRepositoryFile, listCommits, listProjectTags, createRepositoryTag } = require('../helpers/gitlabApi')
 const { removeContainer } = require('../helpers/docker')
@@ -46,25 +38,37 @@ const PAGE_HEIGHT = 560
 
 let ctx = null
 
-// Type a command whose task asks questions, and answer each with Enter, the
-// way a developer accepts the defaults. Each question is waited for as a NEW
-// occurrence on screen: an earlier run of the same task may already show it.
-async function typeAndAnswer (command, questions) {
-  const count = (text, question) => text.split(question).length - 1
+const count = (text, part) => text.split(part).length - 1
+const promptRows = screen => screen.split('\n').filter(row => PROMPT_ROW.test(row)).length
+
+/**
+ * Type one command and press Enter, answer each listed question with Enter the
+ * way a developer accepts the defaults, and return as soon as the shell prints
+ * a NEW bare prompt: bash prints it only once the command is done, so no fixed
+ * pause is needed. A question counts when a new occurrence shows up, since an
+ * earlier run of the same task may already show it.
+ */
+async function run (command, questions = [], timeoutMs = 180000) {
   const before = await terminalScreenText(I)
-  await I.click('.xterm-screen')
-  await I.type(command)
+  await I.type(command, 0)
   await I.pressKey('Enter')
-  for (const question of questions) {
-    const deadline = Date.now() + 60000
-    while (count(await terminalScreenText(I), question) <= count(before, question)) {
-      if (Date.now() > deadline) throw new Error(`"${command}" never asked "${question}":\n${await terminalScreenText(I)}`)
-      await I.wait(0.3)
+  const pending = [...questions]
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const screen = await terminalScreenText(I)
+    const last = screen.split('\n').filter(Boolean).pop() || ''
+    if (pending.length && count(screen, pending[0]) > count(before, pending[0])) {
+      await I.pressKey('Enter')
+      pending.shift()
+      continue
     }
-    await I.pressKey('Enter')
+    if (promptRows(screen) > promptRows(before) && (last.match(PROMPT_ROW) || [])[1] === '') {
+      if (pending.length) throw new Error(`"${command}" never asked "${pending[0]}":\n${screen}`)
+      return
+    }
+    if (Date.now() > deadline) throw new Error(`"${command}" did not finish in ${timeoutMs} ms:\n${screen}`)
+    await I.wait(0.2)
   }
-  await waitForPromptReturn(I, command, 120000)
-  await waitForTerminalSettle(I)
 }
 
 // The screen, cut at each prompt: the output of every typed command, in order.
@@ -89,10 +93,7 @@ async function card (frameName, lines) {
   ctx.forge.reset()
   await clearTerminal(I)
   const commands = lines.map(line => typeof line === 'string' ? { command: line, answers: [] } : line)
-  for (const { command, answers } of commands) {
-    if (answers.length) await typeAndAnswer(command, answers)
-    else await typeCommandAndWait(I, command, 180000)
-  }
+  for (const { command, answers } of commands) await run(command, answers)
   const screen = await terminalScreenText(I)
   const outputs = commandOutputs(screen)
   assert.deepEqual(outputs.map(o => o.command), commands.map(c => c.command),
@@ -114,17 +115,19 @@ storyboardStep(Given, 'a throwaway source repository whose files are approved fo
   ctx = { forge: await startFixtureForge() }
   ctx.container = setupPublicationTerminal()
   await openTerminal(I, ctx.container, { width: 1440, height: 1400 })
-  const [files, lists, env] = await card('publication-contract-fixture', [
-    'cd ~/source && git ls-files',
-    'tail -n +1 .gitignore .config/publication/allowlist .config/publication/manifest .config/publication/owners',
-    'cat .env'
+  const [files, lists] = await card('publication-contract-fixture', [
+    'cd ~/source && git ls-files src .gitignore',
+    'tail -n +1 .gitignore .config/publication/allowlist .config/publication/manifest .config/publication/owners .env'
   ])
-  for (const path of ['.gitignore', 'src/message.txt', '.config/publication/denylist.base', 'Taskfile.yml']) {
-    assert.ok(files.split('\n').includes(path), `The base repository does not track ${path}:\n${files}`)
+  assert.equal(files, '.gitignore\nsrc/message.txt\n', 'The base repository does not track the file its ignore file matches')
+  const tracked = inContainer(ctx.container, 'git -C source ls-files').split('\n')
+  for (const path of ['.config/publication/denylist.base', 'Taskfile.yml']) {
+    assert.ok(tracked.includes(path), `The base repository does not track ${path}`)
   }
   assert.match(lists, /==> \.gitignore <==\nsrc\/\*\.txt\n/, 'The ignore file no longer matches the approved source file')
   assert.match(lists, /==> \.config\/publication\/manifest <==\n\.gitignore\nsrc\/message\.txt\n/)
-  assert.match(env, /^TASK_PUBLICATION_API_URL=http:\/\/fixture-forge:8080\/api\/v4$/m)
+  assert.match(lists, /^TASK_PUBLICATION_TARGET_URL=\.\.\/source-public\.git$/m)
+  assert.match(lists, /^TASK_PUBLICATION_API_URL=http:\/\/fixture-forge:8080\/api\/v4$/m)
   assert.equal(ctx.forge.requests.length, 0)
 })
 
@@ -159,7 +162,7 @@ storyboardStep(Then, 'publication does nothing when it is switched off, or when 
     'cd ~/source && TASK_PUBLICATION_ENABLED=false task publication:publish',
     'CI=true TASK_PUBLICATION_ON=manual task publication:publish',
     'CI=true TASK_PUBLICATION_ON=tag task publication:publish',
-    'git -C ../source.git rev-list --all --count',
+    'git -C ../source-public.git rev-list --all --count',
     'curl -s fixture-forge:8080/fixture/requests | wc -l'
   ])
   assert.match(disabled, /Publication disabled \(TASK_PUBLICATION_ENABLED is not true\)\./)
@@ -169,7 +172,7 @@ storyboardStep(Then, 'publication does nothing when it is switched off, or when 
   assert.equal(commits, '0\n')
   assert.equal(calls, '0\n')
   assert.equal(ctx.forge.requests.length, 0, 'A publication that was not requested contacted the forge')
-  assert.equal(commitCount('source.git'), 0, 'A publication that was not requested reached the public repository')
+  assert.equal(commitCount('source-public.git'), 0, 'A publication that was not requested reached the public repository')
 })
 
 storyboardStep(Then, 'the dry run never contacts the forge: it passes offline and refuses an absent ref instead of fetching it', async () => {
@@ -192,18 +195,18 @@ storyboardStep(Then, 'publication refuses to skip the secret scan, and stops bef
     'cd ~/source && TASK_PUBLICATION_SCAN=done task publication:publish',
     'cd ~/export-fails && cat bin/git && PATH=$PWD/bin:$PATH task publication:publish; wc -l scan.log',
     'cd ~/index-fails && cat bin/git && PATH=$PWD/bin:$PATH task publication:publish; wc -l scan.log',
-    'for r in ~/*-fails.git; do echo "$r: $(git -C $r rev-list --all --count) commits"; done'
+    'for r in ~/*-fails-public.git; do echo "$r: $(git -C $r rev-list --all --count) commits"; done'
   ])
   assert.match(done, /Invalid TASK_PUBLICATION_SCAN: use required or off\./)
   assert.ok(done.includes(FAILED), 'A caller-provided done flag bypassed the required scan')
-  assert.equal(commitCount('source.git'), 0)
+  assert.equal(commitCount('source-public.git'), 0)
   assert.match(early, /Could not export every published file; the snapshot was not scanned\.[\s\S]*\n0 scan\.log\n/)
   assert.equal(fileIn('export-fails/scan.log'), '', 'The scanner ran after a failed read of a file')
   assert.match(late, /Cannot read the approved Git contents: \.gitignore\. Nothing was pushed\.[\s\S]*\n1 scan\.log\n/)
   assert.equal(fileIn('index-fails/scan.log'), 'scan passed\n', 'The fixture must reach a successful scan')
   assert.ok(early.includes(FAILED) && late.includes(FAILED), 'Publication accepted a failed read of a file')
-  assert.equal(counts, `${HOME}/export-fails.git: 0 commits\n${HOME}/index-fails.git: 0 commits\n`)
-  assert.equal(commitCount('export-fails.git') + commitCount('index-fails.git'), 0, 'A failed read reached a public repository')
+  assert.equal(counts, `${HOME}/export-fails-public.git: 0 commits\n${HOME}/index-fails-public.git: 0 commits\n`)
+  assert.equal(commitCount('export-fails-public.git') + commitCount('index-fails-public.git'), 0, 'A failed read reached a public repository')
 })
 
 storyboardStep(Then, 'only an owner\'s answer that names the current manifest and was not edited afterwards approves publication, and approval asks the owner again', async () => {
@@ -220,7 +223,7 @@ storyboardStep(Then, 'only an owner\'s answer that names the current manifest an
   assert.ok(threads.includes(`Publication-manifest: ${hash.trim()}`), 'The edited thread does not name the current manifest')
   assert.match(publish, /The approved list carries no owner signature\./)
   assert.ok(publish.includes(FAILED), 'An unrelated, stale or edited answer approved the publication')
-  assert.equal(commitCount('approval.git'), 0)
+  assert.equal(commitCount('approval-public.git'), 0)
   assert.match(approve, /Merge request !1 asks the owners to approve it: publication-owner/)
   assert.ok(!approve.includes(FAILED), `Approval could not ask again:\n${approve}`)
   assert.equal(requests('POST', '/merge_requests/1/discussions').length, 1, 'Approval did not ask the owner again')
@@ -252,8 +255,9 @@ storyboardStep(Then, 'neither token shows up, in process arguments or in the ref
     'grep -x -e clone -e push argv.log; grep -c -e fixture-target-token -e fixture-source-token argv.log',
     'TASK_PUBLICATION_TARGET_URL=https://fixture-url-token@example.invalid/public.git task publication:check'
   ])
-  assert.match(publish, /Pushed main as \w+ to \.\.\/credentials\.git/)
-  assert.equal(commitCount('credentials.git'), 1)
+  assert.match(publish, /Pushed main as \w+ to \.\.\/credentials-public\.git/)
+  assert.ok(!publish.includes(FAILED), `The publication failed after it pushed:\n${publish}`)
+  assert.equal(commitCount('credentials-public.git'), 1)
   assert.equal(searched, 'clone\npush\n0\n')
   const argv = fileIn('credentials/argv.log')
   assert.ok(argv.includes('push'), 'The argument recorders saw nothing')
@@ -305,6 +309,7 @@ storyboardStep(When, 'the first release is published to an empty public project 
   ])
   assert.match(publish, /^src\/\*\.txt\n/)
   assert.ok(publish.includes(`Pushed main as `) && publish.includes(`to ${ctx.target.url} (branch main)`), `The first release was not pushed:\n${publish}`)
+  assert.ok(!publish.includes(FAILED), `The first release failed after it pushed:\n${publish}`)
   assert.ok(!publish.includes(ctx.target.token), 'The publication printed its token')
 })
 
@@ -334,6 +339,7 @@ storyboardStep(When, 'a tag is added to that release later, then a new release w
   assert.match(late, /The public repository is already up to date at 1\.0\.0\./)
   assert.match(release, /Pushed main as 1\.0\.1 to /)
   assert.match(retry, /The public repository is already up to date at 1\.0\.1\./)
+  for (const output of [late, release, retry]) assert.ok(!output.includes(FAILED), `A release failed:\n${output}`)
 })
 
 storyboardStep(Then, 'the late tag sits on the commit already published, and the new release has its own commit and tag', async () => {
