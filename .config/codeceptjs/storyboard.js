@@ -363,8 +363,9 @@ const THEME = {
 
 // Two-column grid of uniform cards, one card per frame: the image sits
 // full-width at the top of the card in a fixed-height slot (scaled to fit,
-// letterboxed on the slot colour), the texts below. 700x438 keeps the
-// 1024x640 GitLab pages at their exact aspect ratio.
+// letterboxed on the slot colour), the texts below. A frame WIDER than one
+// card (a whole GitLab page) takes a full row instead, so a 1440 px page shows
+// at ~99% rather than at half its size.
 const GRID = {
   cols: 2,
   cardW: 700,
@@ -417,8 +418,13 @@ function render (outFile, options = {}) {
   })
   const keywordColor = { given: t.given, when: t.when, then: t.then }
 
-  const width = 2 * g.pagePad + g.cols * g.cardW + (g.cols - 1) * g.gap
-  const textW = g.cardW - 2 * g.textPad
+  // A full row: every column plus the gaps between them.
+  const rowW = g.cols * g.cardW + (g.cols - 1) * g.gap
+  const width = 2 * g.pagePad + rowW
+  // A frame wider than a card gets the whole row (see the grid notes below).
+  const isWide = (card) => pngSize(card.file).w > g.cardW
+  const cardWOf = (card) => isWide(card) ? rowW : g.cardW
+  const textWOf = (card) => cardWOf(card) - 2 * g.textPad
   const parts = []
 
   const text = (str, x, yy, { size = 14, fill = t.text, font = t.sans, weight = 'normal', anchor = 'start', cls = '' } = {}) => {
@@ -435,8 +441,8 @@ function render (outFile, options = {}) {
   // WHOLE command (user-select:all — Chromium/Safari; inert elsewhere). Each
   // wrapped line is a <tspan>; tspans concatenate with NO separator on copy,
   // so every line but the last keeps a trailing space (xml:space preserves it).
-  const copyText = (str, x, yy, { size = 12.5, fill = t.accent } = {}) => {
-    const lines = wrap(str, textW, 7.6)
+  const copyText = (str, x, yy, { size = 12.5, fill = t.accent, maxW = g.cardW - 2 * g.textPad } = {}) => {
+    const lines = wrap(str, maxW, 7.6)
     const tspans = lines.map((line, i) =>
       `<tspan x="${x}" dy="${i === 0 ? 0 : 18}">${esc(line + (i < lines.length - 1 ? ' ' : ''))}</tspan>`
     ).join('')
@@ -538,6 +544,7 @@ function render (outFile, options = {}) {
   const layoutOf = (card) => {
     const line = lineOf(card.title)
     const keyword = line ? line.keyword : ''
+    const textW = textWOf(card)
     const title = wrap(`${keyword ? keyword + ' ' : ''}${card.title}`, textW, 9.3)
     const note = card.note ? wrap(card.note, textW, 7.2) : []
     const copy = card.copy ? wrap(card.copy, textW, 8.0) : []
@@ -545,21 +552,24 @@ function render (outFile, options = {}) {
   }
 
   // ADAPTIVE slots: the image is shown at natural size (downscaled only when
-  // wider than the card or taller than MAX_SLOT_H — never upscaled, terminal
+  // wider than its card or taller than MAX_SLOT_H — never upscaled, terminal
   // text must stay crisp) and the slot HUGS it: a 3-line verdict gets a short
   // card, a 90-line one gets a tall card. Cards on the same ROW share the
   // row's tallest slot/text so the grid stays aligned without drowning short
-  // frames in letterbox.
+  // frames in letterbox. A wide card's box is the whole row, so a 1440x900
+  // GitLab page keeps its full height and shows at ~99%.
   const MAX_SLOT_H = 1100
   const slotOf = (card) => {
     const { w, h } = pngSize(card.file)
-    const scale = Math.min(1, g.cardW / w, MAX_SLOT_H / h)
+    const scale = Math.min(1, cardWOf(card) / w, MAX_SLOT_H / h)
     return { scale, dispW: w * scale, dispH: h * scale }
   }
   // Cards flow in READING ORDER, two per row, and the two cards of a row are
   // fully UNIFORM: one shared image slot (as tall as the row's tallest frame —
   // a smaller frame is centred inside it) and one shared text zone starting at
-  // the same height in both cards. The top BADGE_BAND of every card is
+  // the same height in both cards. A WIDE frame (wider than one card) closes
+  // the half-filled row before it and takes a row of its own, full width, so
+  // a whole GitLab page is read at its real size. The top BADGE_BAND of every card is
   // reserved for the number badge so it never covers the first line of a
   // frame. A `# Chapter:` comment in the .feature closes the current row and
   // inserts a full-width chapter band — that is how a 20-card story keeps a
@@ -586,6 +596,12 @@ function render (outFile, options = {}) {
       flushRow()
       chapterBands.push({ title: line.chapter, top: rowTop, n: chapterBands.length + 1 })
       rowTop += CHAPTER_BAND + g.gap
+    }
+    if (isWide(card)) {
+      flushRow()
+      row.push(i)
+      flushRow()
+      return
     }
     if (row.length === g.cols) flushRow()
     row.push(i)
@@ -667,23 +683,24 @@ function render (outFile, options = {}) {
     const { scale, dispW, dispH } = slotOf(card)
     const slotH = slots2d[i].slotH
     const cardH = slots2d[i].h
+    const cw = cardWOf(card)
     const cx = g.pagePad + slots2d[i].col * (g.cardW + g.gap)
     const cy = y + slots2d[i].top
 
-    parts.push(`<clipPath id="card${i}"><rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12"/></clipPath>`)
+    parts.push(`<clipPath id="card${i}"><rect x="${cx}" y="${cy}" width="${cw}" height="${cardH}" rx="12"/></clipPath>`)
     parts.push(
-      `<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${cardH}" rx="12" fill="${t.card}"` +
+      `<rect x="${cx}" y="${cy}" width="${cw}" height="${cardH}" rx="12" fill="${t.card}"` +
       (card.failed ? ` stroke="${t.fail}" stroke-width="3"` : '') + '/>'
     )
     parts.push(`<g clip-path="url(#card${i})">`)
     // The image at NATURAL size (downscaled only when oversized), centred both
     // ways inside the ROW's shared slot: the two cards of a row keep the same
     // image zone and the same text zone, whatever each frame's own size.
-    parts.push(`<rect x="${cx}" y="${cy}" width="${g.cardW}" height="${slotH}" fill="${t.slot}"/>`)
+    parts.push(`<rect x="${cx}" y="${cy}" width="${cw}" height="${slotH}" fill="${t.slot}"/>`)
     const data = fs.readFileSync(card.file).toString('base64')
     const iy = cy + BADGE_BAND + (slotH - BADGE_BAND - Math.ceil(dispH)) / 2
     parts.push(
-      `<image x="${(cx + (g.cardW - dispW) / 2).toFixed(1)}" y="${iy.toFixed(1)}"` +
+      `<image x="${(cx + (cw - dispW) / 2).toFixed(1)}" y="${iy.toFixed(1)}"` +
       ` width="${dispW.toFixed(1)}" height="${dispH.toFixed(1)}" href="data:image/png;base64,${data}">` +
       `<title>${esc(path.basename(card.file))}${scale < 1 ? ` (shown at ${(scale * 100).toFixed(0)}%)` : ''}</title></image>`
     )
@@ -710,7 +727,7 @@ function render (outFile, options = {}) {
     }
     if (layout.copy.length) {
       ty += 6
-      copyText(card.copy, cx + g.textPad, ty)
+      copyText(card.copy, cx + g.textPad, ty, { maxW: textWOf(card) })
       ty += layout.copy.length * 18
     }
     parts.push('</g>')
