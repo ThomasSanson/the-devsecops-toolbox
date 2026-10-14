@@ -30,8 +30,9 @@ const SHELL_PROMPT_RE = /bootstrap@workspace:[^\r\n]*\$\s*$/
 const PROMPT_STABILITY_MS = 2000
 const PROMPT_POLL_SECONDS = 1
 const COMMAND_TIMEOUT_MS = 900000
-// The terminal is 1024 px wide everywhere, so a session's column count (and so
-// every wrapped line) never moves; its height is chosen when it opens. 1200 px is
+// The terminal is 1024 px wide unless a story opens it wider, and never resized
+// sideways mid-session, so its column count (and so every wrapped line) never
+// moves; its height is chosen when it opens. 1200 px is
 // about 65 rows of TERMINAL_FONT_SIZE, room for a command and its whole answer
 // on one card.
 const TERMINAL_WIDTH = 1024
@@ -569,17 +570,19 @@ async function terminalScreenText (I) {
 }
 
 /**
- * Open the live terminal of a ttyd container (or URL) at TERMINAL_WIDTH x
- * height, in TERMINAL_FONT_SIZE (ttyd reads its options from the URL). The
+ * Open the live terminal of a ttyd container (or URL) at width x height
+ * (TERMINAL_WIDTH, 113 columns, by default; 1440 gives 159 columns, for a typed
+ * line that would otherwise wrap in the middle of a word), in
+ * TERMINAL_FONT_SIZE (ttyd reads its options from the URL). The
  * window is sized BEFORE ttyd loads and never resized while the session lives:
  * a resize mid-session redraws an interactive menu in the middle of its
  * question. A GitLab card taken in between goes through gitlabCard.inNewTab,
  * which leaves this tab and its size alone.
  */
-async function openTerminal (I, target, { height = TERMINAL_HEIGHT } = {}) {
+async function openTerminal (I, target, { height = TERMINAL_HEIGHT, width = TERMINAL_WIDTH } = {}) {
   const url = new URL(/^https?:\/\//.test(target) ? target : `http://${target}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   url.searchParams.set('fontSize', String(TERMINAL_FONT_SIZE))
-  await I.resizeWindow(TERMINAL_WIDTH, height)
+  await I.resizeWindow(width, height)
   await I.amOnPage(url.href)
   await I.waitForElement('.xterm-screen', 10)
   await waitForPromptReturn(I, 'open the terminal', 30000)
@@ -608,11 +611,12 @@ async function clearTerminal (I) {
  * whole output and the prompt that came back. Throws when the command line
  * scrolled off the top (the terminal was too short for the answer). Returns the
  * screen text for the programmatic twin. `height` resizes the window first,
- * which is safe here: the shell is idle at its prompt.
+ * keeping its width, which is safe here: the shell is idle at its prompt.
  */
 async function terminalCard (I, frameName, command, { mask = [], timeoutMs = COMMAND_TIMEOUT_MS, height = 0 } = {}) {
   if (height) {
-    await I.resizeWindow(TERMINAL_WIDTH, height)
+    const { width } = await I.usePlaywrightTo('read the window size', async ({ page }) => page.viewportSize())
+    await I.resizeWindow(width, height)
     await waitForTerminalSettle(I)
   }
   await clearTerminal(I)
