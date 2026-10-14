@@ -434,7 +434,10 @@ select_install_scope() {
 
 select_install_scope_gum() {
   if command_exists glow; then
-    scope_card="$(mktemp)"
+    echo
+    # Through stdin, not a temporary file: mktemp's random suffix (tmp.Xa3kP9)
+    # reads as a file extension, and glow then prints the card as plain code,
+    # its # and ** showing.
     {
       echo "# 📦 DevSecOps Toolbox"
       echo ""
@@ -444,10 +447,7 @@ select_install_scope_gum() {
       echo "- **Pick components** — choose individual parts:"
       echo "  - the AI agent guardrails"
       echo "  - source publication, to publish a private project's source to a public one"
-    } >"$scope_card"
-    echo
-    glow -s dark -w 76 "$scope_card"
-    rm -f "$scope_card"
+    } | glow -s dark -w 76 -
     echo
   fi
 
