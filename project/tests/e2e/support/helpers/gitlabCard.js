@@ -80,9 +80,9 @@ async function settlePage (I, { quietMs = 800, timeoutMs = 15000 } = {}) {
  * story and is not what the card is about:
  *   - motion: every transition AND animation (GitLab 19.3's "More features" item
  *     carries a moving gradient), spinners;
- *   - the SESSION row of the top bar (search, counters other scenarios move, the
- *     user avatar); with keepContext (default) the breadcrumb stays, so the
- *     reader knows where they are;
+ *   - the SESSION row on top of the page (search, the counters other scenarios
+ *     move, the user avatar); with keepContext (default) the breadcrumb stays,
+ *     so the reader knows where they are, and without it the breadcrumb goes too;
  *   - avatars (their colour derives from a per-run id), never content images;
  *   - tooltips, popovers and "new feature" callouts, the focus ring, the pointer;
  *   - dates, relative times, SHAs, #ids, durations, the runner "#id (token)";
@@ -117,8 +117,11 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
       /#\d+ \([^)]*\)(\s+null)?/g
     ]
     const CONTENT = '.file-content, .blob-viewer, .diff-file, .diff-content, [data-testid="job-log-content"], .md, .description, pre'
-    const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs, .breadcrumbs'
-    const BARS = 'header, .super-topbar, [data-testid="top-bar"], nav.navbar'
+    // GitLab 19.4: the session row is header.super-topbar; the breadcrumb lives
+    // in the page panel, outside any header. Other <header>s are page content
+    // (the commit list's filter bar, the job's name and status).
+    const SESSION = '.super-topbar, [data-testid="top-bar"]'
+    const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs'
     const READER_CHROME_RE = /to-?do|mark as done|notification|subscribe/i
     const names = args.names
       .filter(Boolean)
@@ -139,27 +142,15 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
       // display, not visibility: a child carrying its own visibility:visible
       // (status icons do) would override an inherited hidden.
       '[data-e2e-mask] { display: none !important }',
-      '[data-e2e-session] { visibility: hidden !important }',
+      args.keepContext
+        ? `${SESSION} { visibility: hidden !important }`
+        : `${SESSION}, ${CRUMB} { display: none !important }`,
       ...args.hide.map(sel => `${sel} { display: none !important }`)
     ].join('\n')
     document.head.appendChild(style)
 
     const setText = (node, value) => { if (node.nodeValue !== value) node.nodeValue = value }
     function mask () {
-      // The top area holds a SESSION row (logo, search, create menu, counters)
-      // and a breadcrumb row; the job page adds a third carrying the job's name.
-      // Tell them apart by the search field, which only the session row has.
-      document.querySelectorAll(BARS).forEach(bar => {
-        const crumb = bar.querySelector(CRUMB)
-        const isSession = bar.querySelector('input[type="search"], [placeholder*="Search"], [data-testid*="search"]')
-        if (!args.keepContext && (crumb || isSession)) {
-          bar.setAttribute('data-e2e-mask', '')
-        } else if (crumb) {
-          Array.from(bar.children).forEach(child => { if (!child.contains(crumb)) child.setAttribute('data-e2e-session', '') })
-        } else if (isSession) {
-          bar.setAttribute('data-e2e-session', '')
-        }
-      })
       document.querySelectorAll('button, a[role="button"]').forEach(el => {
         const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('data-testid') || ''}`
         if (READER_CHROME_RE.test(label)) el.setAttribute('data-e2e-mask', '')
@@ -404,8 +395,10 @@ async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, 
     height,
     projectNames,
     prepare: async () => {
-      const shown = await I.grabNumberOfVisibleElements(table)
-      if (!shown) await I.click('Expand', '#js-cicd-variables-settings')
+      // A folded section still lays its table out, so ask the section itself.
+      const open = '#js-cicd-variables-settings.expanded'
+      if (!await I.grabNumberOfVisibleElements(open)) await I.click('Expand', '#js-cicd-variables-settings')
+      await I.waitForElement(open, 30)
       await I.waitForVisible(table, 30)
     },
     scrollTo: table
