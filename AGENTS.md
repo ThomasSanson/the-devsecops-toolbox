@@ -17,7 +17,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 
 | Rule file                                                                  | Description                                                                                                                 |
 |----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)           | All commands MUST go through `task` from the repository root. Never use `docker compose`, `npm run`, or `cd` directly.      |
+| [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)           | Build, lint, test and deploy go through `task` from the repository root. Reading files and read-only git commands do not.   |
 | [`.agent/rules/environment.md`](.agent/rules/environment.md)               | Environment files live at the repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
 | [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Never modify `.config/` or the root `Taskfile.yml`. A failure rooted there is fixed in the toolbox, never here.             |
 | [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                        |
@@ -55,7 +55,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 
 ## Commands
 
-**All commands MUST be run via `task` from the repository root. No exceptions.**
+**Build, lint, test and deploy go through `task` from the repository root. Reading files and read-only git commands do not.**
 
 ```bash
 task            # List every available task
@@ -102,7 +102,7 @@ If the command you need has no task, **create one** in `project/Taskfile.yml`, f
 
 ## Workflows
 
-**Follow workflow steps IN ORDER. Do NOT skip steps. Do NOT stop at planning.**
+**Follow workflow steps IN ORDER. Do NOT skip steps. Do NOT stop at a plan when asked to implement.**
 
 | Workflow                 | File                                                                               | Description                                     |
 |--------------------------|------------------------------------------------------------------------------------|-------------------------------------------------|
@@ -158,7 +158,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org), enfo
 
 ### ✅ Always Do
 
-- Run all commands via `task` from the repository root
+- Build, lint, test and deploy through `task` from the repository root
 - Follow the TDD cycle (RED → GREEN → REFACTOR) for any code change
 - Run `task devsecops:code:verify` before committing
 - Run `task devsecops:test:verify` to verify no regressions

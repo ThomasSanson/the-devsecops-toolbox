@@ -65,6 +65,4 @@ For ANY feature, bug fix, or modification, run the nine steps of the table in
   non-zero `tolerance:`, `allow_failure: true`). The `no-cheat` merge-request job
   reads the lines a change adds and refuses them; the only waiver is a visible
   `No-cheat-exempt: <why>` commit trailer.
-- ❌ Stopping at planning without executing this cycle
-
-**NOTE:** Planning is OK. But after planning, execute this cycle.
+- ❌ Stopping at a plan when asked to implement

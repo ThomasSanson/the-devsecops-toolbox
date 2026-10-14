@@ -54,41 +54,41 @@ for the phase you are in; run both before you say the work is done.
   you have seen the exit code is the one mistake that cannot be fixed in the
   next commit, because it destroys the only thing anyone was relying on.
 
-These four are read mechanically, so a rushed model cannot step over them: the
-phase commands above locally, and the `no-cheat` job on every merge request.
+The first two are checked by the phase commands and the `no-cheat` job (a
+silenced linter only in test files). A deleted test or assertion is left to review.
 
 ## If you are the orchestrator
 
 You were asked to take an issue and hand the work to another assistant. Then:
 
-- **Give it the issue and this page.** Nothing else is needed — the contract is
-  here, and the executor reads it from the repository.
-- **Do not judge the result yourself.** Run the phase's command and read the
-  exit code. You and the executor share the same bias — to conclude — so the
-  only opinion that is not yours is the one that returns 0 or 1.
+- **Give it the issue and point it at AGENTS.md.** The executor reads the
+  contract from the repository.
+- **Do not judge the result yourself.** Run the phase's command, read the exit
+  code and, before calling it done, check that every job of the merge request
+  pipeline is green on that commit.
 - **When it refuses, hand the refusal back verbatim.** It names the file, the
   line and what that line does. An executor that never learns why it was
   rejected repeats the mistake, and you pay for the same turn twice.
-- **Three refusals on the same step means the issue is wrong, not the
-  executor.** Stop and re-read what you asked for. An acceptance criterion that
-  cannot be tested cheaply will loop forever.
+- **Three refusals on the same step: stop and report** what was asked, what
+  was refused and why.
 
 ## If you are the executor
 
 Do the work, run the command for the phase you are in, and report the exit code
-you actually saw. If it refused, say what it said. A refusal handed back
+you actually saw. If it refused, say what it said. If the official command
+cannot reach your test, stop and report BLOCKED with its output: do not run the
+tests another way and do not fake the missing piece. A refusal handed back
 honestly costs one turn; a refusal hidden costs the whole task.
 
 ## When switching a check off is genuinely right
 
-It happens. Do not decide it alone: tell the reviewer why, and they add the trailer:
+It happens. Do not decide alone: tell the reviewer why, and they add the trailer:
 
 ```text
 No-cheat-exempt: <why switching this off is the honest thing to do>
 ```
 
-Review reads the reason. That is the whole difference between a decision and a
-shortcut.
+Review reads the reason: that is the difference between a decision and a shortcut.
 
 ## What this costs you
 

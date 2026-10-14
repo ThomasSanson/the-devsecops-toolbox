@@ -7,7 +7,7 @@ description: Use Task commands only from repository root
 
 ## ⛔ MANDATORY
 
-- ✅ ALWAYS use `task` from repository root
+- ✅ Build, lint, test and deploy go through `task` from the repository root. Reading files and read-only git commands do not.
 - ✅ ALWAYS run commands from repository root
 
 ## ⛔ FORBIDDEN

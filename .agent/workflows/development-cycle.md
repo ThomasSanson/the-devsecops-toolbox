@@ -23,7 +23,7 @@ the rule, but by mentally reclassifying the change ("it's just ops",
 
 ## Execution Order
 
-You MUST execute these steps sequentially. Do NOT skip steps. Do NOT generate plans instead of executing.
+You MUST execute these steps sequentially. Do NOT skip steps. When asked to implement, do not stop at a plan. When asked a question or for an analysis, answer it and change nothing.
 
 ### STEP 1: DEPLOY
 ```bash
@@ -93,7 +93,5 @@ See `rules/task-commands.md` and `rules/tdd-cycle.md` for complete rules.
 
 - ❌ Writing code before the test
 - ❌ Skipping any step
-- ❌ Stopping at planning without executing this cycle
+- ❌ Stopping at a plan when asked to implement
 - ❌ Using `docker compose` directly
-
-**NOTE:** Planning is OK. But after planning, execute this workflow.
