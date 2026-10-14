@@ -25,22 +25,8 @@ task deploy                                      # Deploy all services
 task build                                       # Build all images
 task test                                        # Run all tests
 task code                                        # Quality checks (linters, format)
-
-# Operate
-task project:operate:ssh:{service}               # SSH into container
-task project:operate:db:{service}                # Access DB CLI
-
-# Monitor
-task project:monitor:{service}                   # Logs specific service
-task project:monitor:all                         # Logs all services
-
-# Testing
-task test                                        # Run all tests (guards + e2e)
 task test:tdd                                    # TDD mode (no rebuild)
-task project:test:e2e                            # E2E suite only
-task project:test:e2e -- --grep "@tag"           # Filter by tag
-task project:test:e2e -- --grep "@tag" --steps   # Filtered + verbose
-TASK_E2E_WORKERS=5 task project:test:e2e         # Bump parallelism
+task --list                                      # List the tasks this project defines
 
 # ❌ FORBIDDEN
 docker compose up -d
@@ -48,6 +34,6 @@ docker compose exec backend bash
 cd project && npm run test
 ```
 
-## If a task is missing
+## Missing tasks
 
-Create it in `project/Taskfile.yml` following DevSecOps phases.
+If a command has no task, create one in `project/Taskfile.yml` following DevSecOps phases.

@@ -1,6 +1,6 @@
 {% raw %}---
 name: test
-description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or managing test data. Includes visual regression testing.
+description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or writing new tests. Includes visual regression testing.
 ---
 
 # Test
@@ -9,7 +9,6 @@ description: Run E2E tests with CodeceptJS and Playwright. Use when running test
 
 - Running E2E tests
 - Debugging test failures
-- Managing test data (reset, seed)
 - Writing new tests
 
 ## How to run tests
@@ -32,22 +31,15 @@ task test -- --grep "@my-tag"
 task project:test:tdd
 ```
 
-### Run a single suite
+### Project tests only (no guards)
 
 ```bash
-task project:test:{suite}    # e.g. project:test:e2e (toolbox), project:test:application (your app tests)
+task project:test
 ```
-
-## Test data management
-
-| Need           | Command                         |
-|----------------|---------------------------------|
-| Reset database | `task project:test:reset-db`    |
-| Reset users    | `task project:test:reset-users` |
 
 ## Visual regression
 
-See `rules/tests-integrity.md` for complete rules.
+See [`tests-integrity.md`](../../rules/tests-integrity.md) for complete rules.
 
 ## Page Object Pattern
 
@@ -73,10 +65,9 @@ Study these reference files to understand the correct patterns:
 
 **Test failing?**
 1. Check if environment is deployed (`task deploy`)
-2. Check service logs (`task project:monitor:{service}`)
+2. Check service logs with the project's log task (`task --list`)
 3. Check test data state
-4. Reset data if needed (`task project:test:reset-db`)
-5. Re-run targeted test (`task test -- --grep "@tag"`)
+4. Re-run targeted test (`task test -- --grep "@tag"`)
 
 ## Reference files
 

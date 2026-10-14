@@ -51,7 +51,7 @@ task test -- --grep "@your-tag"
 task devsecops:code:verify
 ```
 
-If any linter errors are found, you MUST fix them following the [code skill](file://.agent/skills/code/SKILL.md).
+Fix every linter error following the [code skill](../skills/code/SKILL.md).
 
 ## Step 5: Full Test Suite
 

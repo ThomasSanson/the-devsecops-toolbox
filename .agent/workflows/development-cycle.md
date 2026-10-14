@@ -33,12 +33,7 @@ Wait for all services to be healthy.
 
 ### STEP 2: WRITE TEST SPECIFICATION
 
-**Choose the correct location:**
-
-| Type                        | Location                                                       |
-|-----------------------------|----------------------------------------------------------------|
-| Frontend/Backend (business) | `project/tests/application/features/{domain}/`                 |
-| Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
+Create the feature in `project/tests/e2e/features/{domain}/` (`01-install`, `02-daily-work` or `03-evolution`).
 
 **Requirements:**
 - Language: **en** (`# language: en`)
@@ -81,7 +76,7 @@ task test -- --grep "@your-tag"
 ```bash
 task devsecops:code:verify
 ```
-**CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](file://.agent/skills/code/SKILL.md).
+**CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](../skills/code/SKILL.md).
 
 ### STEP 9: FULL TEST SUITE
 // turbo

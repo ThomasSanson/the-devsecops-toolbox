@@ -26,14 +26,6 @@ This will:
 3. Wait for health checks
 4. Display access URLs
 
-### Remote deploy
-
-```bash
-task project:deploy:remote
-```
-
-Requires: `SSH_USER`, `SERVER`, `REMOTE_APP_DIR`, `ENV_VARS`
-
 ## Services deployed
 
 Check `project/docker-compose.yml` for the list of services.
@@ -44,8 +36,7 @@ Check `project/docker-compose.yml` for the list of services.
 1. Check Docker daemon running
 2. Check ports not already in use
 3. Check disk space
-4. Run `task project:operate:destroy` then retry
-5. Check service logs after start
+4. Check service logs after start
 
 ## Access URLs
 

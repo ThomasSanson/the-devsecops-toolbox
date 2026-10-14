@@ -32,6 +32,6 @@ description: Project code style conventions
 
 ## File locations
 
-- Page Objects: `project/tests/application/pages/{domain}/`
-- Features: `project/tests/application/features/{domain}/`
-- Step definitions: `project/tests/application/step_definitions/`
+- Page Objects: `project/tests/e2e/pages/`
+- Features: `project/tests/e2e/features/{domain}/`
+- Step definitions: `project/tests/e2e/support/steps/`

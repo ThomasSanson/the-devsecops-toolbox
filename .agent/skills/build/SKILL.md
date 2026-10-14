@@ -20,13 +20,13 @@ description: Build Docker images for project services. Use when images need rebu
 task build
 ```
 
-### Build specific service
+### Build only the project's images
 
 ```bash
-task project:build:{service}
+task project:build
 ```
 
-Available services: Check `project/docker-compose.yml` for the list of services.
+Per-service build tasks, if the project has any, show in `task --list`.
 
 ## Decision tree
 
@@ -35,7 +35,6 @@ Available services: Check `project/docker-compose.yml` for the list of services.
 2. Check Dockerfile syntax
 3. Check base image availability
 4. Check network for dependencies download
-5. Run `task project:operate:prune:all` if cache corrupted
 
 ## Rules
 

@@ -13,45 +13,22 @@ description: Manage infrastructure operations like stopping services, accessing 
 - Database operations
 - Environment initialization
 
-## Service lifecycle
-
-| Action               | Command                          |
-|----------------------|----------------------------------|
-| Stop (keep volumes)  | `task project:operate:down`      |
-| Destroy (delete all) | `task project:operate:destroy`   |
-| Prune Docker         | `task project:operate:prune:all` |
-
-## Shell access
+## How to run
 
 ```bash
-task project:operate:ssh:{service}
+task operate
 ```
 
-Available: Check `project/docker-compose.yml` for the list of services.
-
-## Database operations
-
-| Need      | Command                                 |
-|-----------|-----------------------------------------|
-| Backup DB | `task project:operate:{service}:save`   |
-| Repair DB | `task project:operate:{service}:repair` |
-
-## Environment
-
-| Need            | Command                     |
-|-----------------|-----------------------------|
-| Show env vars   | `task project:operate:env`  |
-| Initialize .env | `task project:operate:init` |
+Operate tasks belong to the project: stopping services, shell access, backups and repairs.
+`task --list` shows the ones `project/Taskfile.yml` defines. If one is missing, add it there as `project:operate:{service}:{action}`.
 
 ## Decision tree
 
 **Need fresh start?**
-1. `task project:operate:down` — Stop containers
-2. `task project:operate:destroy` — If volumes corrupted
-3. `task project:operate:prune:all` — If Docker cache issues
-4. `task deploy` — Restart clean
+1. Stop the services with the project's own operate task
+2. `task deploy` — Restart clean
 
 **Database issues?**
-1. Backup first: `task project:operate:{db-service}:save`
+1. Back up first
 2. Check migrations logs
 3. Repair if needed

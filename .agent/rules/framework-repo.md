@@ -24,7 +24,7 @@ Its own Renovate config (`.config/renovate/config.json`) tracks those tools at b
 Projects generated FROM this template inherit a deliberately LIGHTER Renovate (`config.json.jinja`) that does NOT track `.config/`: it only watches the framework-evolution MR (`.copier-answers.yml` → `task copier:update`) plus its own `project/**` deps.
 So tool upgrades flow framework → generated projects via one Copier MR, never per-tool MRs in every downstream repo. Enforced by `features/03-evolution/renovate.feature`.
 
-Detailed code style for this repository: [`.agent/rules/code-style.md`](.agent/rules/code-style.md) (framework-only; not shipped downstream).
+Detailed code style for this repository: [`.agent/rules/code-style.md`](code-style.md) (framework-only; not shipped downstream).
 
 ### Key directory structure
 
@@ -62,16 +62,19 @@ Every deterministic stage is proven by a pixel baseline (tolerance: 0), terminal
 
 Tests use [CodeceptJS](https://codecept.io) with Gherkin BDD, executed inside the `codeceptjs` container via `task project:test:e2e`.
 See `project/tests/README.md` for capture styles, baseline regeneration and conventions.
-The former legacy suites `tests/{template,bootstrap,gitlab}/` were deleted after their coverage was ported into `e2e/` (recoverable from git history).
 
 ### Framework test commands
 
 ```bash
-task test                              # Whole suite (deploy + guards + e2e)
-task test -- --grep "@my-tag"          # Run tests filtered by tag
-task test:tdd                          # TDD mode (no rebuild)
-task project:test:e2e                  # E2E suite only (no guards)
-task project:test:e2e -- --grep "@tag" # E2E suite filtered by tag
+task test                                        # Whole suite (deploy + guards + e2e)
+task test -- --grep "@my-tag"                    # Run tests filtered by tag
+task test:tdd                                    # TDD mode (no rebuild)
+task project:test:e2e                            # E2E suite only (no guards)
+task project:test:e2e -- --grep "@tag"           # E2E suite filtered by tag
+task project:test:e2e -- --grep "@tag" --steps   # Filtered + verbose
+TASK_E2E_WORKERS=5 task project:test:e2e         # Bump parallelism
+task project:operate:down                        # Stop the containers, keep the volumes
+task project:operate:destroy                     # Stop the containers and delete the volumes
 ```
 
 After any change under `.config/codeceptjs/`, run `task project:build:tests` (the image is baked) before the next E2E run.

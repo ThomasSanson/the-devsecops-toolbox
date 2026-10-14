@@ -23,7 +23,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 | [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                        |
 | [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                               |
 | [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |
-| [`.agent/rules/naming-conventions.md`](.agent/rules/naming-conventions.md) | Naming and code-style conventions, script organisation, minimalism principle.                                               |
+| [`.agent/rules/naming-conventions.md`](.agent/rules/naming-conventions.md) | Task names follow `project:{phase}:{service}:{action}`. Taskfile variables start with `TASK_`.                              |
 | [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
 | [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
 | [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Git conventions for this repository.                                                                                        |
@@ -80,7 +80,7 @@ npm run anything
 npx anything
 ```
 
-If a task you need does not exist, **create it** in `project/Taskfile.yml`, following the DevSecOps phases: `project:{phase}:{service}:{action}` where `{phase}` is one of `plan`, `code`, `build`, `test`, `release`, `deploy`, `operate`, `monitor`, `feedback`.
+If the command you need has no task, **create one** in `project/Taskfile.yml`, following the DevSecOps phases: `project:{phase}:{service}:{action}` where `{phase}` is one of `plan`, `code`, `build`, `test`, `release`, `deploy`, `operate`, `monitor`, `feedback`.
 
 ---
 
@@ -93,10 +93,10 @@ If a task you need does not exist, **create it** in `project/Taskfile.yml`, foll
 | **Build**   | [`.agent/skills/build/SKILL.md`](.agent/skills/build/SKILL.md)     | After Dockerfile changes, dependency updates, or before first deploy |
 | **Code**    | [`.agent/skills/code/SKILL.md`](.agent/skills/code/SKILL.md)       | Running linters, fixing code style, before committing                |
 | **Deploy**  | [`.agent/skills/deploy/SKILL.md`](.agent/skills/deploy/SKILL.md)   | Starting the environment, after pulling changes, before tests        |
-| **Test**    | [`.agent/skills/test/SKILL.md`](.agent/skills/test/SKILL.md)       | Running tests, debugging failures, managing test data                |
+| **Test**    | [`.agent/skills/test/SKILL.md`](.agent/skills/test/SKILL.md)       | Running tests, debugging failures, writing new tests                 |
 | **TDD**     | [`.agent/skills/tdd/SKILL.md`](.agent/skills/tdd/SKILL.md)         | Implementing features, fixing bugs — RED → GREEN → REFACTOR          |
 | **Operate** | [`.agent/skills/operate/SKILL.md`](.agent/skills/operate/SKILL.md) | Stopping services, shell access, database operations                 |
-| **Monitor** | [`.agent/skills/monitor/SKILL.md`](.agent/skills/monitor/SKILL.md) | Investigating failures, checking logs, running diagnostics           |
+| **Monitor** | [`.agent/skills/monitor/SKILL.md`](.agent/skills/monitor/SKILL.md) | Investigating failures, checking logs, debugging                     |
 
 ---
 

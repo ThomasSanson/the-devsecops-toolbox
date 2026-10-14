@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or managing test data. Includes visual regression testing.
+description: Run E2E tests with CodeceptJS and Playwright. Use when running tests, debugging test failures, or writing new tests. Includes visual regression testing.
 ---
 
 # Test
@@ -9,7 +9,6 @@ description: Run E2E tests with CodeceptJS and Playwright. Use when running test
 
 - Running E2E tests
 - Debugging test failures
-- Managing test data (reset, seed)
 - Writing new tests
 
 ## How to run tests
@@ -32,22 +31,15 @@ task test -- --grep "@my-tag"
 task project:test:tdd
 ```
 
-### Run a single suite
+### E2E suite only (no guards)
 
 ```bash
-task project:test:{suite}    # e.g. project:test:e2e (toolbox), project:test:application (your app tests)
+task project:test:e2e
 ```
-
-## Test data management
-
-| Need           | Command                         |
-|----------------|---------------------------------|
-| Reset database | `task project:test:reset-db`    |
-| Reset users    | `task project:test:reset-users` |
 
 ## Visual regression
 
-See `rules/tests-integrity.md` for complete rules.
+See [`tests-integrity.md`](../../rules/tests-integrity.md) for complete rules.
 
 ## Page Object Pattern
 
@@ -55,11 +47,11 @@ Study these reference files to understand the correct patterns:
 
 ### Reference Patterns
 
-| Reference        | Location                                      |
-|------------------|-----------------------------------------------|
-| Page Objects     | `project/tests/application/pages/{domain}/`   |
-| Step definitions | `project/tests/application/step_definitions/` |
-| Config           | `project/tests/application/config/`           |
+| Reference        | Location                             |
+|------------------|--------------------------------------|
+| Page Objects     | `project/tests/e2e/pages/`           |
+| Step definitions | `project/tests/e2e/support/steps/`   |
+| Helpers          | `project/tests/e2e/support/helpers/` |
 
 ### ⛔ FORBIDDEN
 
@@ -73,13 +65,12 @@ Study these reference files to understand the correct patterns:
 
 **Test failing?**
 1. Check if environment is deployed (`task deploy`)
-2. Check service logs (`task project:monitor:{service}`)
+2. Check service logs with the project's log task (`task --list`)
 3. Check test data state
-4. Reset data if needed (`task project:test:reset-db`)
-5. Re-run targeted test (`task test -- --grep "@tag"`)
+4. Re-run targeted test (`task test -- --grep "@tag"`)
 
 ## Reference files
 
-- `project/tests/application/codecept.conf.js` — Configuration
-- `project/tests/application/features/` — Gherkin features
-- `project/tests/application/pages/` — Page Objects
+- `project/tests/e2e/codecept.conf.js` — Configuration
+- `project/tests/e2e/features/` — Gherkin features
+- `project/tests/README.md` — Capture styles, baselines and conventions

@@ -24,11 +24,11 @@ task deploy
 
 ### 2. RED — Write failing test FIRST
 
-1. **Create Gherkin feature** in `project/tests/application/features/{domain}/`
+1. **Create Gherkin feature** in `project/tests/e2e/features/{domain}/`
 - Write in **en**
 - Add unique `@tag`
 
-2. **Create Page Object** if needed in `project/tests/application/pages/{domain}/`
+2. **Create Page Object** if needed in `project/tests/e2e/pages/`
 
 3. **Run test — IT MUST FAIL**
 

@@ -1,6 +1,6 @@
 ---
 name: monitor
-description: Monitor services, check logs, run diagnostics, and debug issues. Use when investigating failures, checking service health, or debugging.
+description: Monitor services, check logs, and debug issues. Use when investigating failures, checking service health, or debugging.
 ---
 
 # Monitor
@@ -9,38 +9,15 @@ description: Monitor services, check logs, run diagnostics, and debug issues. Us
 
 - Investigating service failures
 - Checking container logs
-- Running diagnostics
 - Debugging issues
 
 ## View logs
 
-```bash
-task project:monitor:{service}
-```
-
-Available services: Check `project/docker-compose.yml` for the list.
-
-## Diagnostics
-
-| Need                   | Command                                    |
-|------------------------|--------------------------------------------|
-| Full diagnostic        | `task project:operate:diagnostique:full`   |
-| Full diagnostic report | `task project:monitor:diagnostic-complet`  |
-| Remote diagnostic      | `task project:operate:diagnostique:remote` |
+Use the project's own log tasks: `task --list` shows them. `task monitor` runs `project:monitor` from `project/Taskfile.yml`, which shows no logs until the project fills it.
 
 ## Decision tree
 
 **Service not responding?**
-1. Check logs: `task project:monitor:{service}`
-2. Check if container running: `docker ps`
-3. Run diagnostic: `task project:operate:diagnostique:full`
-4. Check dependencies (DB, Redis, etc.)
-
-## Browser debugging
-
-Use `browser_preview` to:
-- Navigate application and verify UI
-- Check DevTools network tab
-- Verify API responses
-
-Read `.env.dev` for ports and credentials.
+1. Check logs with the project's log task (`task --list`)
+2. Check dependencies (DB, Redis, etc.)
+3. Read `.env.dev` for ports and credentials, then open the service in a browser
