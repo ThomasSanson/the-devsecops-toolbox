@@ -556,8 +556,9 @@ async function runWorkingBranchInstaller () {
 // The normative reference story. GitLab opens and closes it on the SAME page
 // at the SAME size (the repository page of the main branch, before and after),
 // and the terminal in between is ONE tall session: each card shows the whole
-// run since the typed command, not a strip of its last lines. Every card is
-// twinned with a programmatic check of the same fact (the install log and the
+// run since the typed command, not a strip of its last lines, and each gum
+// menu is caught live, before its answer. Every card is twinned with a
+// programmatic check of the same fact (the screen, the install log and the
 // working tree in the container, REST on the remote branch), so a regression
 // fails loud even without eyes.
 // ============================================
@@ -616,29 +617,46 @@ storyboardStep(Given, 'a fresh GitLab project with only a README on its main bra
 })
 
 // The terminal opens tall, before ttyd loads, and keeps that size for the
-// whole session. ArrowRight moves the gum focus onto "Choose components" and
-// Enter answers it: the checklist only exists on that answer. The card is the
-// whole run since the typed command, caught while the checklist is on screen
-// (gum erases it the moment it is answered). Then Enter takes the ticked line.
-storyboardStep(When, 'the developer starts the installer and turns down the complete framework, a checklist opens with the AI agent line already ticked', async () => {
+// whole session. ArrowRight moves the gum focus onto "Choose components", and
+// the card catches the question with that answer highlighted, before Enter:
+// gum erases a menu the moment it is answered. The twins read the screen: the
+// scope card rendered by glow (never its markdown source), and the focus on
+// "Choose components" (gum paints the focused button's background).
+storyboardStep(When, 'the developer starts the installer and picks "Choose components" instead of the complete framework', async () => {
   await launchWorkingBranchInstaller(SCOPE_PROMPT, { height: 1200 })
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  const screen = await terminalScreenText(I)
+  if (!screen.includes('• Complete framework') || screen.includes('**')) {
+    throw new Error(`Expected the installer's scope card rendered by glow, not its markdown source:\n${screen}`)
+  }
+  const focused = await I.executeScript(() => Array.from(document.querySelectorAll('.xterm-rows span'))
+    .filter(span => span.textContent.includes('Choose components'))
+    .some(span => /xterm-bg-212/.test(span.className)))
+  if (!focused) throw new Error(`Expected "Choose components" to be the highlighted answer:\n${screen}`)
   I.pressKey('Enter')
+})
+
+// The checklist, caught live, as the whole run since the typed command. Its
+// twin: the question is gone from the screen and only the AI agent line is
+// ticked.
+storyboardStep(Then, 'a checklist opens with the AI agent line already ticked', async () => {
   await waitForTerminalText(I, 'Select what to install', COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: `bash ${WRAPPER_PATH}` }))
   const screen = await terminalScreenText(I)
-  if (!screen.includes('✓ Agent mode') || screen.includes('✓ Source publication')) {
-    throw new Error(`Expected the checklist to open with only the AI agent line ticked:\n${screen}`)
+  if (screen.includes(SCOPE_PROMPT) || !screen.includes('✓ Agent mode') || screen.includes('✓ Source publication')) {
+    throw new Error(`Expected the question gone and a checklist with only the AI agent line ticked:\n${screen}`)
   }
-  I.pressKey('Enter')
 })
 
-// The installer's own words are the proof, from the typed command down to the
-// prompt that came back. The twin reads the install log and the working tree:
-// the AI agent files were added, the README kept, nothing else.
-storyboardStep(Then, 'the installer installs only the AI agent files', async () => {
+// Enter takes the ticked line. The installer's own words are the proof, from
+// the typed command down to the prompt that came back. The twin reads the
+// install log and the working tree: the AI agent files were added, the README
+// kept, nothing else.
+storyboardStep(Then, 'once the developer confirms the ticked line, the installer installs only the AI agent files', async () => {
+  I.pressKey('Enter')
   const deadline = Date.now() + 240000
   let log = ''
   while (Date.now() < deadline) {
@@ -658,10 +676,12 @@ storyboardStep(Then, 'the installer installs only the AI agent files', async () 
   }
 })
 
-// Agent mode goes straight to the main branch, with no merge request. The push
-// runs off camera (the clone's origin already carries the token, so nothing
-// secret is ever typed); its effect is the card: the same page as the Given,
-// the AI agent files on the push's commit, the README still on "Initial commit".
+// Agent mode never commits or pushes: the developer does, with the command the
+// card's # Copy line shows. It runs here through exec over the clone's origin,
+// which already carries the token, so nothing secret is ever typed. Its effect
+// is the card: the same page as the Given, the AI agent files on the push's
+// commit, the README still on "Initial commit". The twins: the remote tree, the
+// commit title on the main branch, and no merge request opened.
 storyboardStep(Then, 'after one push to the main branch, GitLab shows the AI agent files beside the README and nothing else', async () => {
   inProject(`git add -A && git commit -q -m ${shellEscape(AGENT_COMMIT)} && git push -q origin main`)
   await agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agent', 'rules', 'skills'])
