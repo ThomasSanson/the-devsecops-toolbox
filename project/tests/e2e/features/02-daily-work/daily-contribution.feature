@@ -2,76 +2,53 @@
 Feature: An everyday change goes from an issue to a released version
   As a developer working on a project the toolbox already set up
   I want to open an issue, carry the change through a merge request, and see
-  main release it on its own
+  the main branch release it on its own
   So that the daily contribution loop is proven end to end, from ticket to tag.
 
-  # ONE story, its own shard: a project that already ran the installer gets one
-  # small everyday change, done exactly the way a human developer does it — the
-  # issue first, the merge request created from it and self-assigned, a fresh
-  # clone in a workspace folder, one README line, a conventional feat commit,
-  # the merge request pipeline, the merge, and main's own pipeline stamping the
-  # next version with no manual release. The developer stays signed in on every
-  # GitLab page, and ends by deleting the local clone: nothing survives but
-  # what GitLab holds, ready for a clean start next time. ONE Gherkin sentence
-  # = ONE card = ONE pixel baseline, asserted inside the step (tolerance: 0);
-  # every card twins its frame with a REST/git check of the same fact. A
-  # project-scoped runner runs the real pipelines; it is registered and torn
-  # down for this story alone.
+  # ONE story, on its own shard: a project that already ran the installer gets
+  # one small everyday change, carried the way a developer carries it. The issue
+  # comes first, then the merge request created from it and self-assigned, a
+  # clone on the issue's branch, a one-line README in a conventional feat
+  # commit, the merge request pipeline, the merge, and the main branch's own
+  # pipeline cutting the next version with no manual release. The developer is
+  # signed in on every GitLab page. ONE Gherkin sentence = ONE card = ONE pixel
+  # baseline, asserted inside the step (tolerance: 0), and every card is paired
+  # with a REST or terminal check of the same fact. A project-scoped runner runs
+  # the real pipelines; it is registered and torn down for this story alone.
   #
   # Chapter 1 opens the work as an issue and a merge request created from it.
-  # Chapter 2 clones fresh, carries the change on its branch and turns the
-  # merge request green. Chapter 3 merges into main, watches the release run,
-  # and checks what it left behind.
+  # Chapter 2 writes the change on the issue's branch and shows it on the merge
+  # request. Chapter 3 merges it once its pipeline passes, then shows what the
+  # release job did: its log, then the release commit and its tag.
   @daily-contribution
-  Scenario: An issue becomes a merge request, and main releases the change
+  Scenario: An issue becomes a merge request, and the main branch releases the change
     # Chapter: An issue starts the work
-    # Note: A project that already ran the installer: main carries the whole framework, with its automation tokens wired so the release can run on its own. The developer is signed in — this is where a new day of work begins.
-    # Copy: http://gitlab/<lambda-user>/<project>
+    # Note: GitLab's page for the main branch of a project the installer already set up. The table lists the framework's files and folders, among them .agent, .config, .gitlab-ci.yml, Taskfile.yml and VERSION, all on the commit "chore: scaffold the project from the devsecops toolbox". There is no README.md yet.
+    # Note: The project's name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     Given an installed project with the framework already on its main branch
-    # Note: An issue is a ticket describing the work. This one asks for a short line in the README. Opening it first is how a change starts here — and the issue page already offers the next move: the "Create merge request" button.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/issues/1
-    When the developer opens an issue for a small change
-    # Note: The merge request is created straight from the issue — GitLab names its branch after the ticket and links the two — and the developer takes the work by assigning the merge request to themself.
+    # Note: The developer opened issue #1, "Mention the toolbox in the README", then created its merge request the way the issue's "Create merge request" button does: the branch is named after the issue, and the description says "Closes #1".
+    # Note: On the right, the developer is the Assignee, and "Work items" lists the issue under "Closing". Nothing is written yet: the tabs read Commits 0 and Changes 0, and GitLab says "Merge request contains no changes".
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    And the developer creates the merge request from the issue and takes it
+    When the developer opens an issue and creates its merge request, assigned to themself
     # Chapter: The change rides a merge request
-    # Note: The developer starts from a clean slate, the way real work starts: a workspace folder named after the project's address, a fresh clone inside it, and the issue's branch checked out.
-    # Copy: git clone http://gitlab/<lambda-user>/<project>.git .
-    When the developer clones the project into a fresh workspace folder
-    # Note: The change itself: one line added at the end of the README. This is the everyday edit the whole story is about.
-    # Copy: echo "This project was scaffolded with The DevSecOps Toolbox." >> README.md
-    And the developer adds the line to the README
-    # Note: The commit message follows Conventional Commits (feat: a new feature) — the release tooling reads it later to pick the next version. The card shows the commit command and git's own answer.
-    # Copy: git commit -m "feat: mention the toolbox in the readme"
-    And the developer commits the change as a conventional feat
-    # Note: Pushing the branch updates the merge request and starts its pipeline (the automatic checks that must pass before the change can merge).
-    # Copy: git push
-    And the developer pushes the branch to GitLab
-    # Note: The full inherited pipeline runs on the change and every job passes: the merge request now says so, and the merge button is unlocked. Main only accepts a change once these checks are green.
+    # Note: The developer's clone of the project, in a terminal. Three typed lines: switch to the issue's branch, write a README of one line, then add it, commit it as "feat: mention the toolbox in the readme" and push it.
+    # Note: Git answers "create mode 100644 README.md", so the file is new, and "Your branch is up to date", so GitLab has the commit. The "feat:" prefix follows Conventional Commits, the format the release reads later to pick the next version.
+    # Copy: git switch 1-mention-the-toolbox-in-the-readme && echo "This project was scaffolded with The DevSecOps Toolbox." > README.md && git add README.md && git commit -m "feat: mention the toolbox in the readme" && git push -q && git status
+    When the developer writes a one-line README on the issue's branch, commits it as a conventional feat and pushes it
+    # Note: The merge request's Changes tab, the page a reviewer reads. The tabs now read Commits 1, Pipelines 1 and Changes 1. The only file is README.md, a new one, and its one line shows in green, as an addition.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
+    Then the merge request shows that one-line change
+    # Chapter: The main branch releases it
+    # Note: The same merge request, merged. "Merge request pipeline passed": its nine icons are the nine stages of the pipeline the project inherited, from plan to feedback, and every job in them passed. Then "Merged by Lambda User", "Deleted the source branch." and "Closed #1 (closed)".
+    # Note: The last box, "Pipeline passed" on main, is the main branch's own pipeline. The merge moved the main branch to the developer's commit, and that pipeline ran on it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    Then the merge request's pipeline turns green
-    # Chapter: Main releases it
-    # Note: With the pipeline green, the merge request is merged. The branch joins main through review, never a forced push, and the issue closes itself.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    When the reviewed change merges into main
-    # Note: The project's home page right after the merge: the feat commit sits on top of main and the README now ends with the developer's line.
-    # Copy: http://gitlab/<lambda-user>/<project>
-    Then the project home now shows the change on main
-    # Note: The merge started main's own pipeline, with the release stage in it — no one asked for a release, the pipeline just includes it. It ran green from start to finish.
+    When the merge request's pipeline passes and the developer merges it into the main branch
+    # Note: The release job of that pipeline on the main branch, on its own page. In its log, Commitizen reads the feat commit: "increment detected: MINOR", "build: bump version 0.1.0 → 0.2.0", "tag to create: 0.2.0".
+    # Note: The job then opens push access for a moment, pushes the tag ("[new tag] 0.2.0 -> 0.2.0") and the version commit, locks the main branch again ("push=No one") and ends on "Job succeeded". Nobody asked for a release: every pipeline of the main branch includes this job.
     # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines?ref=main
-    And main's own pipeline runs the release
-    # Note: Inside the release job's log: Commitizen reads the feat commit, moves the version from 0.1.0 to 0.2.0 and stamps the tag. These are the job's own lines.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines?ref=main
-    And the release job's own log confirms the version move
-    # Note: The tags page now shows 0.2.0 — plain, with no v in front — carrying the release commit.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/tags
-    And GitLab's tags page now shows 0.2.0
-    # Note: The release is also visible in the files: main's tree now opens on the bump commit, with the README carrying the developer's line.
-    # Copy: http://gitlab/<lambda-user>/<project>
-    And the project files on main now carry the release
-    # Note: The proof in the files themselves: VERSION reads 0.2.0, and the release commit touched exactly the two files that track the version — VERSION and the Commitizen config inside .config.
-    # Copy: git show origin/main:VERSION
-    And VERSION and the version config really moved to 0.2.0
-    # Note: Work done, the developer deletes the local clone. Nothing is lost — GitLab holds the branch, the merge, the tag — and the next change will start from a fresh clone, exactly like this one did.
-    # Copy: rm -rf ~/workspace/gitlab/<lambda-user>/<project>
-    And the developer removes the local clone, ready to start clean next time
+    Then the release job on the main branch moves the version from 0.1.0 to 0.2.0
+    # Note: GitLab's page for the release commit, "build: bump version 0.1.0 → 0.2.0", the newest on the main branch. The row "Tags" shows 0.2.0, plain, with no "v" in front.
+    # Note: The commit changes three files. The Commitizen config .config/commitizen/cz.yaml records version 0.2.0 (Commitizen rewrites the whole file as it saves it, so two other lines change too). CHANGELOG.md gains a 0.2.0 entry listing "mention the toolbox in the readme", its date hidden so the picture is the same on every run. VERSION goes from 0.1.0 to 0.2.0.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/commits/main
+    And the release commit is tagged 0.2.0 and moves VERSION, the Commitizen config and the CHANGELOG to 0.2.0
