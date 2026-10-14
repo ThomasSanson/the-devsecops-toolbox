@@ -98,8 +98,8 @@ Layout is flat: `storyboards/<act>/<story-tag>.svg`, baselines under `screenshot
 Prefer few BIG stories over many small ones, and split a long one into chapters with `# Chapter: Title` lines inside the Scenario body — the whole film is indexed in `project/tests/e2e/storyboards/README.md`.
 
 - ✅ ONE storyboard SVG tells the whole journey: BEFORE (the state on GitLab) → the acting (the live terminal, ephemeral menus caught live) → AFTER (the remote proof) — cards in reading order, two per
-  row (fully uniform: a shared image slot sized to the row's tallest frame, and a shared text zone; a page, a frame 1000 px wide or more such as a whole GitLab page, takes a full 1440 px row and shows
-  at its real size), a band before each chapter, every title/note/command around the frames selectable and copyable.
+  row (fully uniform: a shared image slot sized to the row's tallest frame, and a shared text zone; a frame still 1000 px wide or more once fitted to the 1100 px height limit, such as a whole GitLab
+  page, takes a full 1440 px row and shows at its real size; a card alone on its row is centred), a band before each chapter, every title/note/command around the frames selectable and copyable.
 - ✅ ONE sentence = ONE card = ONE pixel baseline: EVERY sentence — the Given included — is registered through `storyboardStep(Given|When|Then, sentence, fn)`, whose pattern string is BOTH the scenario line and the card's title, and closes on a real capture asserted in-step (tolerance: 0) — a regression fails on the drifted sentence, and feature and storyboard cannot drift apart.
 - ✅ The `.feature` is the single human-authored source: it carries the sentences AND the comments attached to the sentence right below them — `# Chapter: Title`, `# Note: text` (the card's explanation) and `# Copy: command`. The step file only drives and captures; cards open automatically for every sentence, and JS opts or `annotate()` stay ONLY for a note/copy computed at runtime.
 - ✅ A sentence without a visual proof does not belong in a storyboard scenario; the SVG itself is the human artifact, never the regression target (the plugin renders it when the test ends).

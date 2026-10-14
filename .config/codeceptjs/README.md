@@ -8,7 +8,7 @@ A CodeceptJS plugin that turns one Gherkin scenario into one human-readable SVG 
 ONE Gherkin sentence = ONE card = ONE pixel baseline, asserted inside its step at `tolerance: 0` — a visual regression fails on the exact sentence whose image drifted.
 The plugin opens a card automatically for every sentence (it listens to `bddStep.before`), so the step only drives the app and captures the proof.
 When the scenario ends it assembles the whole story into one SVG: the frames stay bitmap, but every caption, note and reproduce-command around them is real selectable text you can copy from the SVG (Chromium/Safari).
-Cards sit two per row, 708 px each; a page (a frame 1000 px wide or more) takes a full 1440 px row so it is shown at its real size, while a narrower output strip stays in its half of a row, shrunk to fit.
+Cards sit two per row, 708 px each. A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page, a terminal window 1024 px wide) takes a full 1440 px row so it is shown at its real size. A narrower strip stays in its half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
 A `# Chapter:` comment draws a full-width band between cards, so a 20-card story still reads with a beginning, a middle and an end.
 Nothing configures paths: everything is derived from the feature file location — baselines land in `screenshots/base/<feature-dir>/<scenario>/`, the committed SVG in `storyboards/<feature-dir>/<scenario>.svg`.
 A scenario that never calls `addStoryboardFrame` renders no SVG, so plain Gherkin tests are left untouched.

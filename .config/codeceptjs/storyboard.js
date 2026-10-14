@@ -363,12 +363,14 @@ const THEME = {
 
 // Two-column grid of uniform cards, one card per frame: the image sits
 // full-width at the top of the card in a fixed-height slot (scaled to fit,
-// letterboxed on the slot colour), the texts below. A PAGE (a frame at least
-// wideFrom pixels wide: the suite's windows are 1024 and 1440) takes a full
-// row instead, 2 * 708 + 24 = 1440, so a 1440 px GitLab page shows at its real
-// size rather than at half of it. Output strips narrower than a page stay two
-// per row, shrunk into their card, so one long line never moves the layout.
-// The text under a full-row card wraps at wideTextW, a line a reader follows.
+// letterboxed on the slot colour), the texts below. A frame still at least
+// wideFrom pixels wide once fitted to maxSlotH (a 1440 px GitLab page, a
+// terminal window 1024 px wide) takes a full row instead, 2 * 708 + 24 = 1440,
+// so it shows at its real size rather than shrunk into half a row. Narrower
+// strips stay two per row, shrunk into their card, so one long line never
+// moves the layout; a frame so tall that it is shrunk below wideFrom anyway
+// keeps its half row too. A card left alone on its row is centred in it. The
+// text under a full-row card wraps at wideTextW, a line a reader follows.
 const GRID = {
   cols: 2,
   cardW: 708,
@@ -376,7 +378,8 @@ const GRID = {
   gap: 24,
   textPad: 18,
   wideFrom: 1000,
-  wideTextW: 900
+  wideTextW: 900,
+  maxSlotH: 1100
 }
 
 /**
@@ -426,8 +429,12 @@ function render (outFile, options = {}) {
   // A full row: every column plus the gaps between them.
   const rowW = g.cols * g.cardW + (g.cols - 1) * g.gap
   const width = 2 * g.pagePad + rowW
-  // A page gets the whole row (see the grid notes below).
-  const isWide = (card) => pngSize(card.file).w >= g.wideFrom
+  // Wide: still wideFrom pixels wide at its full-row scale (see GRID).
+  const fullRowScale = ({ w, h }) => Math.min(1, rowW / w, g.maxSlotH / h)
+  const isWide = (card) => {
+    const size = pngSize(card.file)
+    return size.w * fullRowScale(size) >= g.wideFrom
+  }
   const cardWOf = (card) => isWide(card) ? rowW : g.cardW
   const textWOf = (card) => Math.min(cardWOf(card), g.wideTextW) - 2 * g.textPad
   const parts = []
@@ -505,7 +512,7 @@ function render (outFile, options = {}) {
     // Red header: which step and sentence regressed.
     parts.push(`<rect x="${g.pagePad}" y="${top}" width="${bandW}" height="${headerH}" rx="12" fill="${t.fail}"/>`)
     parts.push(`<rect x="${g.pagePad}" y="${top + headerH - 12}" width="${bandW}" height="12" fill="${t.fail}"/>`)
-    text(`✖ Visual regression — step ${frame.step}: ${frame.keyword ? frame.keyword + ' ' : ''}${frame.sentence}`,
+    text(`✖ Visual regression at step ${frame.step}: ${frame.keyword ? frame.keyword + ' ' : ''}${frame.sentence}`,
       g.pagePad + 18, top + 30, { size: 16, fill: '#ffffff', weight: '700' })
     text(frame.name, width - g.pagePad - 18, top + 30, { size: 12.5, fill: '#ffffff', font: t.mono, anchor: 'end' })
 
@@ -514,7 +521,7 @@ function render (outFile, options = {}) {
     const slotW = (bandW - 2 * gap) / 3
     const cols = [
       { file: frame.baseline, label: 'Expected (baseline)', pathText: p.expected },
-      { file: frame.diff, label: 'Diff — changed pixels', pathText: p.diff },
+      { file: frame.diff, label: 'Diff: changed pixels', pathText: p.diff },
       { file: frame.actual, label: 'Actual (this run)', pathText: p.actual }
     ]
     cols.forEach((col, ci) => {
@@ -557,24 +564,24 @@ function render (outFile, options = {}) {
   }
 
   // ADAPTIVE slots: the image is shown at natural size (downscaled only when
-  // wider than its card or taller than MAX_SLOT_H — never upscaled, terminal
+  // wider than its card or taller than GRID.maxSlotH — never upscaled, terminal
   // text must stay crisp) and the slot HUGS it: a 3-line verdict gets a short
   // card, a 90-line one gets a tall card. Cards on the same ROW share the
   // row's tallest slot/text so the grid stays aligned without drowning short
-  // frames in letterbox. A page's box is the whole row, so a 1440x900
+  // frames in letterbox. A wide frame's box is the whole row, so a 1440x900
   // GitLab page keeps its full height and shows at 100%.
-  const MAX_SLOT_H = 1100
   const slotOf = (card) => {
     const { w, h } = pngSize(card.file)
-    const scale = Math.min(1, cardWOf(card) / w, MAX_SLOT_H / h)
+    const scale = Math.min(1, cardWOf(card) / w, g.maxSlotH / h)
     return { scale, dispW: w * scale, dispH: h * scale }
   }
   // Cards flow in READING ORDER, two per row, and the two cards of a row are
   // fully UNIFORM: one shared image slot (as tall as the row's tallest frame —
   // a smaller frame is centred inside it) and one shared text zone starting at
-  // the same height in both cards. A PAGE (GRID.wideFrom) closes the
+  // the same height in both cards. A WIDE frame (see GRID) closes the
   // half-filled row before it and takes a row of its own, full width, so a
-  // whole GitLab page is read at its real size. The top BADGE_BAND of every card is
+  // whole GitLab page is read at its real size. A row left with fewer cards
+  // than columns centres them. The top BADGE_BAND of every card is
   // reserved for the number badge so it never covers the first line of a
   // frame. A `# Chapter:` comment in the .feature closes the current row and
   // inserts a full-width chapter band — that is how a 20-card story keeps a
@@ -589,8 +596,10 @@ function render (outFile, options = {}) {
     if (!row.length) return
     const rowSlot = Math.max(...row.map(i => BADGE_BAND + Math.ceil(slotOf(cards[i]).dispH)))
     const rowText = Math.max(...row.map(i => Math.ceil(layoutOf(cards[i]).h)))
+    const used = row.length * g.cardW + (row.length - 1) * g.gap
+    const left = g.pagePad + (isWide(cards[row[0]]) ? 0 : (rowW - used) / 2)
     row.forEach((cardIndex, col) => {
-      slots2d[cardIndex] = { col, top: rowTop, slotH: rowSlot, h: rowSlot + rowText }
+      slots2d[cardIndex] = { x: left + col * (g.cardW + g.gap), top: rowTop, slotH: rowSlot, h: rowSlot + rowText }
     })
     rowTop += rowSlot + rowText + g.gap
     row = []
@@ -653,20 +662,20 @@ function render (outFile, options = {}) {
       fy += 34
       for (const line of failure.notReached) {
         text('○', g.pagePad + 4, fy, { size: 13, fill: t.dim, weight: '600' })
-        text(`${line.keyword} ${line.text} — not reached`, g.pagePad + 26, fy, { size: 13.5, fill: t.dim })
+        text(`${line.keyword} ${line.text} (not reached)`, g.pagePad + 26, fy, { size: 13.5, fill: t.dim })
         fy += 20
       }
     }
     fy += 30
     const proven = board.panels.filter(p => p.images.length).length
     const verdict = failure
-      ? `FAILED — ${proven} of ${(board.lines || []).length || board.panels.length} sentences proven · the red band shows where it broke (expected / diff / actual)`
+      ? `FAILED: ${proven} of ${(board.lines || []).length || board.panels.length} sentences proven · the red band shows where it broke (expected / diff / actual)`
       : `Storyboard e2e · ${board.panels.length} steps · ${cards.length} frames · every frame is its own pixel baseline (tolerance: 0)`
     text(verdict, g.pagePad, fy, { size: failure ? 12.5 : 12, fill: failure ? t.fail : t.dim, weight: failure ? '600' : 'normal' })
     parts.push(
       `<text x="${width - g.pagePad}" y="${fy}" font-family="${t.sans}" font-size="12" fill="${t.dim}" text-anchor="end">` +
-      `<tspan fill="${t.given}">●</tspan> Given — stage   <tspan fill="${t.when}">●</tspan> When — actions   ` +
-      `<tspan fill="${t.then}">●</tspan> Then — proofs</text>`
+      `<tspan fill="${t.given}">●</tspan> Given: stage   <tspan fill="${t.when}">●</tspan> When: actions   ` +
+      `<tspan fill="${t.then}">●</tspan> Then: proofs</text>`
     )
     return fy
   }
@@ -689,7 +698,7 @@ function render (outFile, options = {}) {
     const slotH = slots2d[i].slotH
     const cardH = slots2d[i].h
     const cw = cardWOf(card)
-    const cx = g.pagePad + slots2d[i].col * (g.cardW + g.gap)
+    const cx = slots2d[i].x
     const cy = y + slots2d[i].top
 
     parts.push(`<clipPath id="card${i}"><rect x="${cx}" y="${cy}" width="${cw}" height="${cardH}" rx="12"/></clipPath>`)
@@ -750,7 +759,7 @@ function render (outFile, options = {}) {
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"` + // DevSkim: ignore DS137138 -- SVG namespace identifier, never a network request.
     ' role="img" aria-labelledby="sb-title sb-desc">\n' +
-    `<title id="sb-title">${esc(board.feature)} — ${esc(board.scenario)}</title>\n` +
+    `<title id="sb-title">${esc(board.feature)}: ${esc(board.scenario)}</title>\n` +
     `<desc id="sb-desc">e2e storyboard · ${esc(board.file)} · replay: ${esc(board.rerun)}</desc>\n` +
     '<style>.copy{user-select:all;-webkit-user-select:all;cursor:text}.copy:hover{text-decoration:underline}</style>\n' +
     `<rect width="${width}" height="${height}" fill="${t.bg}"/>\n` +
