@@ -158,7 +158,7 @@ function prepareCspellMigrationTemplate () {
  * CI base image line in .gitlab-ci.yml — a framework file that is NOT
  * skip-if-exists, so copier update 3-way merges it. When a project has itself
  * edited that same line, the two edits collide: the update-conflict story proves
- * the conflict surfaces and can be resolved.
+ * the clash reaches the update merge request and can be settled there.
  */
 function prepareConflictTemplate () {
   const tpl = tmpDir('e2e-conflict')
@@ -204,23 +204,6 @@ function updateProject (dst, vcsRef, data = {}) {
   )
 }
 
-/**
- * Like updateProject, but a merge conflict is an expected outcome, not a
- * failure: copier can exit non-zero when it leaves conflict markers / .rej
- * files. Return the combined output and status instead of throwing, so the
- * caller can prove the conflict was surfaced and then resolve it.
- */
-function updateProjectAllowingConflict (dst, vcsRef, data = {}) {
-  try {
-    return { output: updateProject(dst, vcsRef, data), status: 0 }
-  } catch (error) {
-    return {
-      output: `${error.stdout || ''}${error.stderr || ''}`,
-      status: typeof error.status === 'number' ? error.status : 1
-    }
-  }
-}
-
 function removeRendered (dir) {
   if (!dir || !dir.startsWith('/tmp/')) return
   try {
@@ -233,8 +216,6 @@ function removeRendered (dir) {
 module.exports = {
   TEMPLATE_SRC,
   COPIER,
-  CI_FILE,
-  CI_IMAGE_RE,
   UPDATE_MARKER_FILE,
   UPDATE_MARKER,
   TASKFILE_LINE_RELEASED,
@@ -244,6 +225,5 @@ module.exports = {
   prepareConflictTemplate,
   renderProjectFromTemplate,
   updateProject,
-  updateProjectAllowingConflict,
   removeRendered
 }

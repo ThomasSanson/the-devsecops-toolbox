@@ -268,18 +268,20 @@ function setupToolboxUpdateTerminal (projectName, pushToken, { commitMessage, ow
 }
 
 /**
- * Live terminal for the retired-linters story: a project generated at release
- * 1.0.0 of a two-release template and pushed to its test-GitLab project,
- * sitting on main with glab authenticated. Nothing is exported into the
- * session: `task devsecops:update` has to find the answers file on its own,
- * like it does in a real repository.
+ * Live terminal for the retired-linters and update-conflict stories: a project
+ * generated at release 1.0.0 of a two-release template and pushed to its
+ * test-GitLab project, sitting on main with glab authenticated. Nothing is
+ * exported into the session: `task devsecops:update` has to find the answers
+ * file on its own, like it does in a real repository. `template` swaps the two
+ * releases (prepareConflictTemplate: 1.0.1 moves the CI image line); the caller
+ * then owns it and removes it.
  */
-function setupManualUpdateTerminal (projectName, pushToken) {
+function setupManualUpdateTerminal (projectName, pushToken, { template = null } = {}) {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const template = prepareVersionedTemplate()
+  const rendered = template || prepareVersionedTemplate()
   try {
     const name = setupGeneratedProjectTerminal({
-      template,
+      template: rendered,
       vcsRef: '1.0.0',
       commitMessage: 'chore: project generated from an earlier toolbox release',
       push: { remote: `http://gitlab/${lambdaUser}/${projectName}.git`, user: lambdaUser, token: pushToken } // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
@@ -288,7 +290,7 @@ function setupManualUpdateTerminal (projectName, pushToken) {
     return name
   } finally {
     // The container holds its own copy now.
-    removeRendered(template)
+    if (!template) removeRendered(rendered)
   }
 }
 
