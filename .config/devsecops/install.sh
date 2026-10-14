@@ -39,8 +39,8 @@ GLOW_VERSION="2.1.1"
 # NO COMMA in a label: gum reads --selected as a COMMA-SEPARATED list, so a
 # label containing one is split into fragments that match no option, nothing
 # starts ticked, and a plain Enter then installs nothing at all.
-AGENT_COMPONENT_LABEL="Agent mode — AI agent guardrails: .agent/ AGENTS.md CLAUDE.md"
-PUBLICATION_COMPONENT_LABEL="Source publication — publish this repository's source to a public one"
+AGENT_COMPONENT_LABEL="Agent mode: AI agent guardrails (.agent/ AGENTS.md CLAUDE.md)"
+PUBLICATION_COMPONENT_LABEL="Source publication: publish this repository's source to a public one"
 DEFAULT_TEMPLATE_URL="https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
 TEMPLATE_URL="${DEVSECOPS_TEMPLATE_URL:-$DEFAULT_TEMPLATE_URL}"
 TEMPLATE_VCS_REF="${DEVSECOPS_TEMPLATE_VCS_REF:-}"
@@ -443,8 +443,8 @@ select_install_scope_gum() {
       echo ""
       echo "Choose what to install:"
       echo ""
-      echo "- **Complete framework** — the full DevSecOps pipeline (CI/CD, security scanning, tasks)"
-      echo "- **Pick components** — choose individual parts:"
+      echo "- **Complete framework**: the full DevSecOps pipeline (CI/CD, security scanning, tasks)"
+      echo "- **Choose components**: install only the parts you pick:"
       echo "  - the AI agent guardrails"
       echo "  - source publication, to publish a private project's source to a public one"
     } | glow -s dark -w 76 -
