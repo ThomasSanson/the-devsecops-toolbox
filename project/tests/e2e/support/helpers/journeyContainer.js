@@ -99,7 +99,7 @@ function setupClonedProjectTerminal (projectName, cloneToken) {
  * renders. This is what makes the journey test the CURRENT branch rather than
  * curl-from-main.
  */
-function prepareWorkingBranchInstaller (name, { direct = false, piped = false } = {}) {
+function prepareWorkingBranchInstaller (name, { piped = false } = {}) {
   runCommand(
     `docker cp ${shellEscape(`${CONTAINER_WORKDIR}/.config/devsecops/install.sh`)} ${shellEscape(`${name}:${INSTALLER_PATH}`)}`
   )
@@ -128,17 +128,15 @@ function prepareWorkingBranchInstaller (name, { direct = false, piped = false } 
   // Wrapper that runs install.sh under `script`, recording the FULL session to
   // INSTALL_LOG (kept as a debug artifact) while keeping the terminal fully
   // interactive so the Copier questions render live for visual capture. The
-  // typed command stays clean (`bash /tmp/devsecops-install.sh`).
-  // direct=true exercises the disable flag: init skips the merge-request
-  // delivery (no init-framework-devsecops branch/MR; the framework stays in
-  // the local working tree).
+  // typed command stays clean (`bash /tmp/devsecops-install.sh`), and a
+  // variable typed in front of it (TASK_DEVSECOPS_INIT_DIRECT=true) reaches
+  // the installer through `script`.
   // piped=true exercises the DOCUMENTED `curl … | bash` path: inside the pty
   // session the installer's stdin is a PIPE, so its /dev/tty fallback is what
   // keeps the Copier questions interactive.
-  const directEnv = direct ? 'TASK_DEVSECOPS_INIT_DIRECT=true ' : ''
   const runCommand_ = piped
-    ? `cat ${INSTALLER_PATH} | ${directEnv}DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash`
-    : `${directEnv}DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash ${INSTALLER_PATH}`
+    ? `cat ${INSTALLER_PATH} | DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash`
+    : `DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash ${INSTALLER_PATH}`
   const wrapper = execInContainerAsUser(name, 'bootstrap', [
     `cat > ${WRAPPER_PATH} <<'EOF'`,
     '#!/bin/sh',

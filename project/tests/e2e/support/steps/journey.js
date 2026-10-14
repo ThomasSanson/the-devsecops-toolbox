@@ -102,7 +102,11 @@ function resetJourneyState () {
 
 Before(resetJourneyState)
 
-After(async () => {
+// Release what a journey holds: its installer log (kept as a debug artifact),
+// its container, its GitLab project, its PAT and its runner. The After hook
+// calls it, and so does a story that opens a second journey mid-scenario
+// (@merge-request-safety, chapter 2), so the first one never leaks.
+async function releaseJourney () {
   // Async cleanup can overlap the next scenario. Keep its resources locally
   // and clear shared state before any await, so it cannot erase the next project.
   const { journeyContainer, journeyProjectName, journeyLambdaTokenId, journeyRunner } = global
@@ -155,7 +159,9 @@ After(async () => {
       // Best-effort cleanup.
     }
   }
-})
+}
+
+After(releaseJourney)
 
 // ============================================
 // GIVEN — environment setup
@@ -477,17 +483,14 @@ const COPIER_PROMPTS = [
   'Language for Gherkin test specifications'
 ]
 
-// The README project (openBlankProjectTerminal with initialize_with_readme) and
-// the spike-branch checkout are driven from the init-framework-MR storyboard
-// Given steps (below); their former plain bindings were removed with the
-// storyboard migration.
-
 // Re-open the live terminal (a GitLab-page capture may have navigated away),
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
 // `height` (and `width`) open the terminal at that size through openTerminal
 // (the big-card stories); without them, the terminal keeps the default window.
-async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0, width } = {}) {
+// `line` is what the developer types, on camera (an opt-out in front of the
+// command, a # label after it).
+async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0, width, line = `bash ${WRAPPER_PATH}` } = {}) {
   if (height) {
     await openTerminal(I, global.journeyContainer, { height, width })
   } else {
@@ -496,7 +499,7 @@ async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0
     I.wait(2)
   }
   I.click('.xterm-screen')
-  I.type(`bash ${WRAPPER_PATH}`)
+  I.type(line)
   I.pressKey('Enter')
   await waitForTerminalText(I, stopAt, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
@@ -540,17 +543,6 @@ async function answerAndCompleteInstaller () {
   }
   await waitForInstallerComplete()
 }
-
-async function runWorkingBranchInstaller () {
-  await launchWorkingBranchInstaller()
-  await answerAndCompleteInstaller()
-}
-
-// The "I run the working-branch installer to completion" and "I choose to
-// install the complete framework" plain bindings were removed with the
-// storyboard migration (their only feature callers — piped-install and the
-// flat installer — are now storyboards). runWorkingBranchInstaller stays: the
-// init-framework-mr storyboard steps still call it directly.
 
 // ============================================
 // Agent-mode storyboard — ONE sentence = ONE card = ONE pixel baseline.
@@ -893,13 +885,13 @@ async function assertRootTreeExactly (branch, expected) {
 }
 
 // ============================================
-// Init-framework-MR storyboard — ONE sentence = ONE card = ONE pixel baseline.
-// Four scenarios, one per delivery case (blank / existing-main / other-branch /
-// direct), each keying its own per-tag baseline folder. The Given closes the
-// off-camera stage (lambda user, cloned terminal, staged installer, glab auth)
-// with its visual proof; each Then pairs its page/terminal frame with a
-// programmatic REST assert of the SAME fact, so a regression fails loud even
-// without eyes. Reuses the same masked page captures as the flat scenarios.
+// Init-framework-MR storyboard (@install-complete, the blank project) — ONE
+// sentence = ONE card = ONE pixel baseline. The Given closes the off-camera
+// stage (lambda user, cloned terminal, staged installer, glab auth) with its
+// visual proof; each Then pairs its page/terminal frame with a programmatic
+// REST assert of the SAME fact, so a regression fails loud even without eyes.
+// The other delivery cases (main already there, an experiment branch, the
+// opt-out) are @merge-request-safety, further down.
 // ============================================
 
 // Ensure the lambda user exists (with a password) so the login-gated config
@@ -916,16 +908,6 @@ async function ensureLambdaUser () {
       password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
     }
   )
-}
-
-function checkoutFeatureBranch (branch) {
-  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', [
-    `cd ${PROJECT_DIR}`,
-    `git checkout -b ${shellEscape(branch)}`
-  ].join('\n'))
-  if (res.exitCode !== 0) {
-    throw new Error(`Failed to checkout feature branch "${branch}":\n${res.output}`)
-  }
 }
 
 // Capture a masked GitLab page as a storyboard frame at the storyboard's page
@@ -960,7 +942,7 @@ async function maskProjectName (projectName) {
 // The full masked merge-request overview page — the whole GitLab view a
 // reviewer sees (title, state badge, "requested to merge <source> into
 // <target>"), not a cropped header band. Reused by the flagship story and the
-// merge-request-safety chapters so every MR card reads as a real page.
+// toolbox update so every MR card reads as a real page.
 async function mrPageFrame (frameName) {
   await pageFrame(
     () => GitLabMergeRequestPage.gotoAndMask(
@@ -1162,116 +1144,174 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
   }, 'framework-on-main')
 })
 
-// --- Case B: main already exists --------------------------------------------
+// ============================================
+// Merge-request-safety storyboard — @merge-request-safety. ONE sentence = ONE
+// card = ONE pixel baseline, in two chapters, each in its own fresh project.
+// Chapter 1: the main branch already exists and the developer runs the
+// installer from a local experiment branch with a commit of its own; the
+// branches page opens and closes the chapter (before, after), the terminal in
+// between shows the experiment and the installer's own words, and the merge
+// request's Commits tab shows the one commit it carries. Chapter 2: the opt-out
+// typed on camera, then GitLab after it. Every card is paired with a check of
+// the same fact (REST, the install log, the clone in the container).
+// ============================================
 
-storyboardStep(Given, 'a developer has cloned a project that already has a main branch', async () => {
-  await ensureLambdaUser()
-  await openBlankProjectTerminal(setupClonedProjectTerminal, { initialize_with_readme: true })
+const INIT_BRANCH = 'init-framework-devsecops'
+const INIT_COMMIT = 'chore: initialize devsecops framework'
+const EXPERIMENT_BRANCH = 'spike/poc'
+const EXPERIMENT_COMMIT = 'wip: try an idea'
+// One typed line: the experiment branch, a commit of its own, the history. It
+// changes a tracked file (README.md, which the scaffold never writes), so the
+// installer's switch to the framework branch has something to leave behind.
+const EXPERIMENT_LINE = `git switch -c ${EXPERIMENT_BRANCH} && echo idea >> README.md && git commit -am "${EXPERIMENT_COMMIT}" && git log --oneline --all`
+const DIRECT_SWITCH = 'TASK_DEVSECOPS_INIT_DIRECT=true'
+// The opt-out as typed, labelled; 148 characters with the prompt, so the card
+// is wide enough for a full storyboard row.
+const DIRECT_LINE = `${DIRECT_SWITCH} bash ${WRAPPER_PATH}   # no review: no branch, no merge request`
+// 1440 wide so the experiment line (156 characters with the prompt) never
+// wraps; the same terminal for both chapters. The GitLab cards keep the
+// standard 900 px: shorter, GitLab scrolls its own sidebar under its header.
+const STORY_TERMINAL = { height: 1200, width: 1440 }
+
+// Off camera: a public project of the lambda user (Auto DevOps off, so no
+// pipeline status ever reaches these pages), its clone in a terminal
+// container, the staged installer, its tools and glab signed in.
+async function stageJourney (projectExtra) {
+  await createJourneyProject(setupClonedProjectTerminal, { auto_devops_enabled: false, ...projectExtra })
   prepareWorkingBranchInstaller(global.journeyContainer)
-  // The toolchain comes from the installer's own installers, off camera: what
-  // this story is about starts at the scope question, and a machine that has to
-  // be asked about every tool first would never get there.
   preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'git branch -a')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-existing-main', { fromMarker: 'git branch -a' }))
-})
+}
 
-storyboardStep(When, 'the installer finishes setup on the project that already had main', async () => {
-  await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-existing-main', { fromMarker: 'Installation complete!' }))
-  assertInstallLog('init-framework-devsecops', 'Installation complete!')
-})
+// The branches page, the before and the after of each chapter.
+async function branchesCard (frameName, waitText, prepare = null) {
+  await gitlabFrame(I, frameName, gitlabUrl.branches(global.journeyProjectName), { waitText, prepare })
+}
 
-storyboardStep(Then, 'a merge request into the existing main is now open on GitLab', async () => {
-  await findOpenMr('init-framework-devsecops', 'main')
-  await mrPageFrame('mr-header-existing-main')
-})
+async function assertBranchesExactly (expected) {
+  const headers = await getRootHeaders()
+  const names = ((await listProjectBranches(global.journeyProjectName, headers)).data || []).map(b => b.name).sort()
+  if (JSON.stringify(names) !== JSON.stringify([...expected].sort())) {
+    throw new Error(`Expected GitLab to hold exactly the branches ${JSON.stringify(expected)}, found ${JSON.stringify(names)}`)
+  }
+}
 
-storyboardStep(Then, 'GitLab lists main next to the init-framework-devsecops branch', async () => {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'branches-existing-main')
-  await assertBranchExists('main')
-  await assertBranchExists('init-framework-devsecops')
-})
+async function assertMainOn (title) {
+  const found = await branchCommitTitle('main')
+  if (found !== title) throw new Error(`Expected the main branch on GitLab to stay on "${title}", found "${found}"`)
+}
 
-// --- Case C: run from a spike branch ----------------------------------------
+// The commits of the open merge request, by title. GitLab fills them in once
+// it has computed the merge request's diff, a moment after `glab mr create`.
+async function mrCommitTitles () {
+  const headers = await getRootHeaders()
+  const url = `${BASE_URL}/api/v4/projects/${encodeURIComponent(projectPath(global.journeyProjectName))}` +
+    `/merge_requests/${global.journeyMergeRequestIid}/commits`
+  for (let i = 0; i < 30; i++) {
+    const titles = ((await freshGet(url, headers)).data || []).map(c => c.title)
+    if (titles.length) return titles
+    await I.wait(2)
+  }
+  return []
+}
 
-storyboardStep(Given, 'a developer is working on an experiment branch instead of main', async () => {
+storyboardStep(Given, 'GitLab holds a project whose main branch already has a first commit', async () => {
   await ensureLambdaUser()
-  await openBlankProjectTerminal(setupClonedProjectTerminal, { initialize_with_readme: true })
-  checkoutFeatureBranch('spike/poc')
-  prepareWorkingBranchInstaller(global.journeyContainer)
-  // Off camera, like the story above it: this one is about where the framework
-  // is delivered, not about which tools a bare machine still has to fetch.
-  preinstallToolchain(global.journeyContainer)
-  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'git branch')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-spike-branch', { fromMarker: 'git branch' }))
+  await stageJourney({ initialize_with_readme: true })
+  await branchesCard('branches-before', 'Initial commit')
+  await assertBranchesExactly(['main'])
+  await assertMainOn('Initial commit')
 })
 
-storyboardStep(When, 'the installer finishes setup while on the experiment branch', async () => {
-  await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-spike', { fromMarker: 'Installation complete!' }))
-  assertInstallLog('init-framework-devsecops', 'Installation complete!')
+// The experiment is typed on camera: the commit codes change every run.
+storyboardStep(Given, "the developer's copy is on a local experiment branch with a commit of its own", async () => {
+  await openTerminal(I, global.journeyContainer, STORY_TERMINAL)
+  const screen = await terminalCard(I, 'terminal-experiment-branch', EXPERIMENT_LINE, {
+    mask: [[/\b[0-9a-f]{7,40}\b/g, '<sha>']]
+  })
+  if (!screen.includes(`(HEAD -> ${EXPERIMENT_BRANCH}) ${EXPERIMENT_COMMIT}`) || !/\(.*origin\/main.*\) Initial commit/.test(screen)) {
+    throw new Error(`Expected the history to show the experiment on ${EXPERIMENT_BRANCH} above "Initial commit" on main:\n${screen}`)
+  }
+  const branch = inProject('git branch --show-current').trim()
+  if (branch !== EXPERIMENT_BRANCH) throw new Error(`Expected the clone on ${EXPERIMENT_BRANCH}, it is on "${branch}"`)
+  const ahead = inProject(`git log --format=%s main..${EXPERIMENT_BRANCH}`).trim()
+  if (ahead !== EXPERIMENT_COMMIT) throw new Error(`Expected ${EXPERIMENT_BRANCH} one commit ahead of main, "${EXPERIMENT_COMMIT}", found:\n${ahead}`)
 })
 
-storyboardStep(Then, 'the new merge request targets main, not the experiment branch', async () => {
-  await findOpenMr('init-framework-devsecops', 'main')
-  await mrPageFrame('mr-header-spike')
+// The whole run, every default accepted; the card is its end, from the line
+// where the installer starts its delivery down to the prompt that came back.
+storyboardStep(When, 'the developer runs the installer on the experiment branch, and it builds the framework branch from the main branch', async () => {
+  await launchWorkingBranchInstaller(SCOPE_PROMPT, STORY_TERMINAL)
+  await answerAndCompleteInstaller()
+  await waitForPromptReturn(I, `bash ${WRAPPER_PATH}`, 60000)
+  const preparing = `Preparing ${INIT_BRANCH} from main`
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-opens-mr', {
+    fromMarker: preparing,
+    mask: [[new RegExp(global.journeyProjectName, 'g'), 'project']]
+  }))
+  assertInstallLog(preparing, `Opened merge request ${INIT_BRANCH} → main.`, 'Installation complete!')
 })
 
-storyboardStep(Then, 'GitLab shows only main and the framework branch, never the local experiment branch', async () => {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'branches-spike')
-  await assertBranchExists('main')
-  await assertBranchExists('init-framework-devsecops')
-  await assertBranchAbsent('spike/poc')
+storyboardStep(Then, 'GitLab holds a merge request into the main branch that carries only the framework commit', async () => {
+  await findOpenMr(INIT_BRANCH, 'main')
+  const titles = await mrCommitTitles()
+  if (JSON.stringify(titles) !== JSON.stringify([INIT_COMMIT])) {
+    throw new Error(`Expected merge request !${global.journeyMergeRequestIid} to carry only "${INIT_COMMIT}", it carries ${JSON.stringify(titles)}`)
+  }
+  await gitlabFrame(I, 'mr-commits', gitlabUrl.mr(global.journeyProjectName, global.journeyMergeRequestIid, 'commits'), {
+    prepare: () => I.waitForElement('li.commit', 30),
+    // The day header is a date, the SHA box an empty frame once its SHA is
+    // blanked; the Pipelines and Changes counters move with every run and
+    // every new framework file. The Commits counter stays: it is the proof.
+    hide: ['li.js-commit-header', 'li.commit .commit-actions', '.pipelines-tab .gl-badge', '.diffs-tab .gl-badge']
+  })
 })
 
-// --- Case D: direct delivery (no merge request) -----------------------------
-
-storyboardStep(Given, 'a developer has set the installer to deliver straight to main', async () => {
-  await ensureLambdaUser()
-  await openBlankProjectTerminal()
-  prepareWorkingBranchInstaller(global.journeyContainer, { direct: true })
-  // Off camera, like the story above it: this one is about where the framework
-  // is delivered, not about which tools a bare machine still has to fetch.
-  preinstallToolchain(global.journeyContainer)
-  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'git status')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-direct', { fromMarker: 'git status' }))
+storyboardStep(Then, 'GitLab lists the main branch and the framework branch, never the experiment branch', async () => {
+  // The ahead/behind counts arrive after the page, from their own request.
+  await branchesCard('branches-after', INIT_BRANCH, () => I.waitForElement('.divergence-graph', 30))
+  await assertBranchesExactly([INIT_BRANCH, 'main'])
+  await assertMainOn('Initial commit')
+  const local = inProject(`git log --format=%s main..${EXPERIMENT_BRANCH}`).trim()
+  if (local !== EXPERIMENT_COMMIT) throw new Error(`Expected the experiment still on the developer's machine, ${EXPERIMENT_BRANCH} holds:\n${local}`)
 })
 
-storyboardStep(When, 'the installer finishes setup in direct-delivery mode', async () => {
-  await runWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-complete-direct', { fromMarker: 'Installation complete!' }))
-  assertInstallLog('Installation complete!')
+// Chapter 1 is released first: its container, project and token never leak.
+// The opt-out is typed on camera; the run then goes on off card, every default
+// accepted. Its twin reads the installer's own words: go-task reports the
+// merge-request step "up to date" (skipped on purpose, not crashed), and the
+// branch is never prepared.
+storyboardStep(When, 'another developer starts the installer on a new project with the review switched off', async () => {
+  await releaseJourney()
+  await stageJourney({})
+  await launchWorkingBranchInstaller(SCOPE_PROMPT, { ...STORY_TERMINAL, line: DIRECT_LINE })
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-launch-direct', { fromMarker: `${DIRECT_SWITCH} bash` }))
+  await answerAndCompleteInstaller()
+  assertInstallLog('Task "glab:init-merge-request" is up to date', 'Installation complete!')
+  if (readInstallLog().includes(`Preparing ${INIT_BRANCH}`)) {
+    throw new Error(`Expected no ${INIT_BRANCH} branch to be prepared with ${DIRECT_SWITCH}`)
+  }
 })
 
-storyboardStep(Then, 'GitLab shows main alone, with no review branch and no merge request', async () => {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'branches-direct')
-  await assertBranchExists('main')
-  await assertBranchAbsent('init-framework-devsecops')
+storyboardStep(Then, 'GitLab shows the main branch alone, with no review branch and no merge request', async () => {
+  await branchesCard('branches-direct', 'chore: initialize repository')
+  await assertBranchesExactly(['main'])
+  await assertMainOn('chore: initialize repository')
   await assertNoOpenMr()
 })
 
-storyboardStep(Then, "the project's main holds only the starter README", async () => {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-main-readme')
-  await assertBranchExists('main')
+// The README body renders after the page; the twins: the remote tree, and the
+// framework really installed, waiting uncommitted in the clone.
+storyboardStep(Then, 'the main branch on GitLab holds only the starter README', async () => {
+  await gitlabFrame(I, 'gitlab-main-readme', gitlabUrl.tree(global.journeyProjectName), {
+    waitText: 'chore: initialize repository',
+    prepare: () => I.waitForText('my-project', 30)
+  })
+  await assertRootTreeExactly('main', ['README.md'])
+  const status = inProject('git status --porcelain')
+  if (!status.includes('?? Taskfile.yml')) {
+    throw new Error(`Expected the framework installed and left uncommitted in the clone, git status says:\n${status}`)
+  }
 })
 
 // ============================================
