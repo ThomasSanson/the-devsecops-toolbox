@@ -4,62 +4,45 @@ Feature: On the first run, the toolbox names the exact thing to fix
   I want each check to stop and name the next command to run when something is missing
   So that I am never left guessing what to do next
 
-  # ONE story in three chapters, each in its OWN fresh throwaway machine (they
-  # never share state). ONE Gherkin sentence = ONE card = ONE pixel baseline,
-  # asserted inside the step (tolerance: 0); every verdict card twins its frame
-  # with a check of the same fact — the captured message and the exit code.
-  # The auth check is `task glab:auth:ensure`; init is `task devsecops:init`.
-  #
-  # Chapter 1 — the auth check names each missing tool as the developer installs
-  # them one at a time: gum, then glow, then the glab CLI, then the missing
-  # sign-in. Chapter 2 — the check reads the GitLab host straight from the git
-  # remote, and turns an SSH-style gitlabssh address back into the normal one.
-  # Chapter 3 — init itself guides: it prints the exact sign-in command, refuses
-  # a GitHub remote with the fix, and finishes cleanly when GitLab is turned off.
+  # ONE throwaway machine and ONE live terminal for the whole story: each card
+  # follows the advice the card before it printed. The GitLab check is
+  # `task glab:auth:ensure` and init is `task devsecops:init`. Nobody ever signs
+  # in, so nothing reaches a GitLab server and every card is the terminal: one
+  # typed line (the card's Copy) and its whole answer, in real colours.
+  # ONE Gherkin sentence = ONE card = ONE pixel baseline, asserted inside the
+  # step (tolerance: 0), and every card is twinned with a check of the same fact:
+  # the screen text, and for the GitLab host the non-interactive branch of the
+  # same check (the one CI takes), run off camera.
   @first-run-help
-  Scenario: Every check stops and names the fix, then finishes cleanly once nothing is missing
+  Scenario: Every check stops and names the fix, and init finishes cleanly once GitLab is turned off
     # Chapter: The check names each missing tool
-    # Note: A throwaway toolbox checkout before any setup: gum, glow and the glab CLI are all missing. The card lists the three, none installed.
-    # Copy: command -v gum glow glab
-    Given a fresh toolbox checkout with none of its UI tools installed yet
-    # Note: With nothing installed the check stops at the first tool, gum: "Required UI dependency missing: gum", pointing at task dev:setup-environment.
-    # Copy: task glab:auth:ensure
-    When the developer runs the auth check straight away
-    # Note: With gum in place the check moves on and stops at the next tool, glow: "Required UI dependency missing: glow".
-    # Copy: bash .config/gum/install.sh && task glab:auth:ensure
-    When the developer installs gum and re-runs the check
-    # Note: With gum and glow in place the check clears the UI tools and stops at the CLI: the "GitLab CLI not found" box tells you to install glab.
-    # Copy: bash .config/glow/install.sh && task glab:auth:ensure
-    When the developer adds glow and re-runs, leaving only the CLI missing
-    # Note: Every tool is installed but no GitLab sign-in yet; CI=true takes the non-interactive path: "GitLab authentication required", pointing at task glab:auth.
-    # Copy: task glab:install && CI=true task glab:auth:ensure
-    When the developer installs the CLI and re-runs it in CI mode, still not signed in
+    # Note: A copy of the toolbox on a fresh machine. Its git remote points at the company's own GitLab, gitlab.selfhosted-corp.example.
+    # Note: The toolbox needs three tools: gum, glow and glab, the GitLab command line tool. None of them is installed yet, and the shell answers "command not found" for each.
+    # Copy: git remote -v; gum --version; glow --version; glab --version
+    Given a developer's project points at the company's own GitLab, with none of the toolbox's tools installed yet
+    # Note: The developer runs the GitLab check three times and installs only the tool it names in between. The first run stops at "Required UI dependency missing: gum", the second at glow.
+    # Note: With both installed, the third run stops in a box, "GitLab CLI not found", and says to install glab. Each run ends on "Failed to run task". Tool versions show as X.Y.Z.
+    # Copy: task glab:auth:ensure; .config/gum/install.sh; task glab:auth:ensure; .config/glow/install.sh; task glab:auth:ensure
+    When the developer runs the GitLab check and installs only the tool it names, one at a time
     # Chapter: The check reads the right GitLab host
-    # Note: A throwaway project whose remote points at a self-hosted GitLab host — a company running its own GitLab — with gum, glow and glab installed but no sign-in yet. The card shows the remote.
-    # Copy: git remote -v
-    Given a self-hosted GitLab project with the tools installed but no sign-in yet
-    # Note: CI mode takes the non-interactive path: "GitLab authentication required", naming the exact self-hosted host it read from the remote.
-    # Copy: CI=true task glab:auth:ensure
-    Then the check reads the self-hosted GitLab host straight from the remote
-    # Note: The origin is switched to an SSH-style gitlabssh.* URL — the address a self-hosted GitLab gives out for SSH clones. The card shows the new remote.
-    # Copy: git remote set-url origin git@gitlabssh.selfhosted-corp.example:acme/widgets.git
-    When the same project instead uses an SSH-style gitlabssh remote
-    # Note: The gitlabssh.* remote is turned back into its gitlab.* API host: the message names gitlab.selfhosted-corp.example and never the ssh name.
-    # Copy: CI=true task glab:auth:ensure
-    Then the check turns it back into the gitlab API host
+    # Note: The developer installs glab with task glab:install and runs the check again. Nobody has signed in yet, so the check shows "GitLab Authentication Required".
+    # Note: "Target Host: gitlab.selfhosted-corp.example" is the host it read from the git remote. Below it, the check asks "Continue and sign in now?", and waits for Yes or No.
+    # Copy: task glab:install && task glab:auth:ensure
+    When the developer installs the GitLab CLI, the check names the company's GitLab host and offers to sign in
+    # Note: The developer answered No, and now points the remote at the address the company's GitLab gives for SSH clones. git remote -v shows git@gitlabssh.selfhosted-corp.example.
+    # Note: The check still says "Target Host: gitlab.selfhosted-corp.example". It turns the gitlabssh name back into the gitlab one, the address where you sign in.
+    # Copy: git remote set-url origin git@gitlabssh.selfhosted-corp.example:acme/widgets.git && git remote -v && task glab:auth:ensure
+    Then an SSH-style gitlabssh remote still leads the check to the same GitLab host
+    # Note: Now the remote points at github.com. The check stops at once with "No GitLab repository remote was detected." It never asks to sign in.
+    # Note: It prints the exact line that points the remote back at GitLab, git remote set-url origin https://gitlab.com/<namespace>/<project>.git, and then task devsecops:init.
+    # Copy: git remote set-url origin https://github.com/acme/widgets.git && git remote -v && task glab:auth:ensure
+    Then a GitHub remote is refused, with the exact command to point it back at GitLab
     # Chapter: init names the exact fix, then bows out cleanly
-    # Note: A throwaway project whose only link to GitLab is a remote the CLI never signed into. Set up off-camera: a fresh Ubuntu box with the toolbox and this git remote.
-    # Copy: git remote -v
-    Given a developer's new project points at a GitLab remote the CLI never signed into
-    # Note: init installs its tools, reaches the sign-in check and stops with "GitLab authentication required", pointing at task glab:auth.
-    # Copy: task devsecops:init
-    Then init stops and prints the exact GitLab sign-in command to run
-    # Note: A new project whose remote points at github.com — a non-GitLab host init must never push to. The card shows the remote.
-    # Copy: git remote -v
-    When another developer's project points at a GitHub remote instead
-    # Note: init finds no GitLab remote and stops with "No GitLab repository remote was detected.", giving the exact git remote set-url line to fix it.
-    # Copy: task devsecops:init
-    Then init refuses the non-GitLab remote and shows how to fix it
-    # Note: TASK_GLAB_ENABLED=false makes every glab step skip, so init reaches "DevSecOps project initialization completed" and never asks about sign-in.
-    # Copy: TASK_GLAB_ENABLED=false task devsecops:init
-    Then init finishes cleanly once the GitLab integration is turned off
+    # Note: The developer follows that advice with gitlab.com and runs init. It first installs every tool the project needs, a long run that scrolls off the screen, so the card starts at its last line, "Development environment setup completed successfully".
+    # Note: Then init reaches its GitLab step and shows the same sign-in card, now for "Target Host: gitlab.com". The developer answers No, and init pauses with the two commands to run, "task glab:auth" and then "task devsecops:init".
+    # Copy: git remote set-url origin https://gitlab.com/acme/widgets.git && task devsecops:init
+    When the developer points the remote back at GitLab and runs init, it stops at the sign-in and names the command to run
+    # Note: A project that stays on GitHub has no GitLab to sign in to. It turns the GitLab part of the toolbox off with TASK_GLAB_ENABLED=false and runs init on its GitHub remote.
+    # Note: The card starts on the same line as the card before. This time init skips its GitLab step (the task runner says devsecops:init:configure "is up to date") and goes straight to "DevSecOps project initialization completed". No sign-in question, no refusal of the remote.
+    # Copy: git remote set-url origin https://github.com/acme/widgets.git && TASK_GLAB_ENABLED=false task devsecops:init
+    Then a project that stays on GitHub turns the GitLab integration off, and init finishes cleanly

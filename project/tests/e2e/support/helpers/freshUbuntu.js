@@ -1,15 +1,9 @@
 /**
- * Helper to spawn a fresh Ubuntu container with the toolbox repo mounted
- * inside, without starting ttyd. Used by guidance / pre-flight scenarios
- * where we only need to run `task <something>` and capture stdout (the
- * output is then rendered as a <pre> block in the browser for visual
- * regression — same pattern as init-baseline.js).
- *
- * Why no ttyd? The challenger audit recommended against the ttyd+xterm
- * round-trip for output-only scenarios: it doubles wall-clock per test
- * and introduces a flaky-by-design prompt-detection loop. For scenarios
- * that don't depend on TUI rendering (gum/glow) we capture the command
- * output directly and skip the browser terminal entirely.
+ * A fresh Ubuntu container holding a copy of the toolbox repo itself (the
+ * template is self-hosting: the source repo IS a valid generated project), with
+ * a live ttyd terminal rooted in it. The first-run-help story drives that
+ * terminal as the developer would, so gum and glow draw their real boxes and
+ * questions; runInFreshUbuntu runs the same checks off camera for the twins.
  */
 const fs = require('fs')
 const path = require('path')
@@ -19,12 +13,15 @@ const {
   runCommandWithResult,
   containerName,
   execInContainer,
-  removeContainer
+  execInContainerAsUser,
+  removeContainer,
+  waitForTtyd
 } = require('./docker')
 
 const CONTAINER_WORKDIR = '/workspace'
 const CONTAINER_USER = 'bootstrap'
 const SETUP_TIMEOUT = 300000
+const TTYD_READY_TIMEOUT = 30000
 
 /**
  * Resolve the repo root accessible to the codeceptjs container.
@@ -41,12 +38,13 @@ function repoRoot () {
 
 /**
  * Spawn a fresh Ubuntu container preloaded with the repo and the `task`
- * binary, with optional extra packages and an optional git remote.
+ * binary (git and unzip are baked into the image), commit the repo with
+ * `gitRemote` as its origin, and serve a bash session in it through ttyd.
  *
  * Returns the container name (caller is responsible for cleanup via
- * teardownFreshUbuntu / removeContainer).
+ * teardownFreshUbuntu).
  */
-function setupFreshUbuntuEnvironment ({ extraPackages = [], gitRemote } = {}) {
+function setupFreshUbuntuTerminal ({ gitRemote }) {
   const root = repoRoot()
   const name = containerName()
   const taskBinary = fs.realpathSync(runCommand('command -v task').trim())
@@ -63,57 +61,52 @@ function setupFreshUbuntuEnvironment ({ extraPackages = [], gitRemote } = {}) {
   // skip the `task copier` round-trip used by the legacy bootstrap suite.
   runCommand(`docker cp ${shellEscape(`${root}/.`)} ${shellEscape(`${name}:${CONTAINER_WORKDIR}`)}`)
 
-  const prepareCommands = ['set -eu']
-  if (extraPackages.length > 0) {
-    prepareCommands.push(
-      'apt-get update -qq',
-      `apt-get install -y -qq ${extraPackages.join(' ')}`
-    )
-  }
-  prepareCommands.push(
+  const prepareResult = execInContainer(name, [
+    'set -eu',
     `chown -R ${CONTAINER_USER}:${CONTAINER_USER} ${CONTAINER_WORKDIR}`,
     'chmod 0755 /usr/local/bin/task'
-  )
-
-  const prepareResult = execInContainer(name, prepareCommands.join('\n'), { user: 'root' })
+  ].join('\n'), { user: 'root' })
   if (prepareResult.exitCode !== 0) {
     removeContainer(name)
     throw new Error(`Failed to prepare fresh Ubuntu container:\n${prepareResult.output}`)
   }
 
-  if (gitRemote) {
-    const gitResult = execInContainer(name, [
-      'set -eu',
-      `cd ${CONTAINER_WORKDIR}`,
-      `git config --global --add safe.directory ${CONTAINER_WORKDIR}`,
-      'git config --global user.email "bootstrap@example.com"',
-      'git config --global user.name "Bootstrap"',
-      'rm -rf .git',
-      'git init -q',
-      'git add .',
-      'git commit -q -m "bootstrap init"',
-      `git remote add origin ${gitRemote}`
-    ].join('\n'), { user: CONTAINER_USER })
-
-    if (gitResult.exitCode !== 0) {
-      removeContainer(name)
-      throw new Error(`Failed to set up git remote:\n${gitResult.output}`)
-    }
+  const gitResult = execInContainer(name, [
+    'set -eu',
+    `cd ${CONTAINER_WORKDIR}`,
+    `git config --global --add safe.directory ${CONTAINER_WORKDIR}`,
+    'git config --global user.email "bootstrap@example.com"',
+    'git config --global user.name "Bootstrap"',
+    'rm -rf .git',
+    'git init -q',
+    'git add .',
+    'git commit -q -m "bootstrap init"',
+    `git remote add origin ${gitRemote}`
+  ].join('\n'), { user: CONTAINER_USER })
+  if (gitResult.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to set up git remote:\n${gitResult.output}`)
   }
+
+  // Same launch line as the journey containers (journeyContainer.js).
+  const ttydStart = execInContainerAsUser(name, CONTAINER_USER, [
+    `cd ${CONTAINER_WORKDIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
+    'sleep 1'
+  ].join('\n'))
+  if (ttydStart.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to start ttyd:\n${ttydStart.output}`)
+  }
+  waitForTtyd(name, TTYD_READY_TIMEOUT)
 
   return name
 }
 
 /**
- * Run a command inside the fresh Ubuntu environment as the bootstrap
- * user and capture its combined stdout+stderr. Returns { output, exitCode }.
- *
- * The shell wrapper exports PATH so that user-local binaries installed
- * by `task dev:setup-environment` (e.g. `~/.local/bin/glab`) are picked
- * up, mirroring the real user experience. The bootstrap helper's
- * `execInContainer` does not propagate timeouts, so we go through
- * `runCommandWithResult` directly here — `task devsecops:init` can take
- * several minutes on a fresh container.
+ * Run a command in the container as the bootstrap user, off camera and
+ * without a terminal, and capture its combined stdout+stderr. Returns
+ * { output, exitCode }. The wrapper exports PATH so the user-local binaries
+ * the story installed (`~/.local/bin/glab`) are found, as in the terminal.
  */
 function runInFreshUbuntu (name, command, { timeout = SETUP_TIMEOUT } = {}) {
   const wrapped = [
@@ -139,8 +132,7 @@ function teardownFreshUbuntu (name) {
 }
 
 module.exports = {
-  CONTAINER_WORKDIR,
-  setupFreshUbuntuEnvironment,
+  setupFreshUbuntuTerminal,
   runInFreshUbuntu,
   teardownFreshUbuntu
 }
