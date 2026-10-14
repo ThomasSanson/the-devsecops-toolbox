@@ -109,13 +109,6 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["project/tests/e2e/support/steps/generated-ci\\.js$"],
-      "matchStrings": [
-        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+const RUNNER_IMAGE = '[^:]+:(?<currentValue>[^']+)'"
-      ]
-    },
-    {
-      "customType": "regex",
       "fileMatch": [
         "^\\.config/megalinter/package\\.json$",
         "^\\.config/gitlab/ci/devsecops/code\\.yml(?:\\.jinja)?$"

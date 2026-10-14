@@ -97,7 +97,6 @@ exports.config = {
       './support/steps/version-pins.js',
       './support/steps/renovate-detection.js',
       './support/steps/renovate-runtime.js',
-      './support/steps/generated-ci.js',
       './support/steps/hybrid-ci.js',
       './support/steps/runner-cleanup.js',
       './support/steps/test-discipline.js',
