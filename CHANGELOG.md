@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.2.25 (2026-10-14)
+
+### Fix
+
+- **deps**: update dependency copier to v9.19.1
+
 ## 24.2.24 (2026-10-13)
 
 ### Fix
