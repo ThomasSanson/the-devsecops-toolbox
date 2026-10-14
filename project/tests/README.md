@@ -17,7 +17,7 @@ project/tests/e2e/
 │   └── 03-evolution/              # Copier rendering matrix, renovate, toolbox update
 ├── pages/                        # GitLab Page Objects (with masking for visual determinism)
 ├── support/
-│   ├── helpers/                  # docker.js, freshUbuntu.js, journeyContainer.js, gitlabApi.js, http.js, workspaceRepo.js
+│   ├── helpers/                  # gitlabCard.js (GitLab cards), gitlabProject.js, gitlabApi.js, journeyContainer.js, docker.js, …
 │   ├── steps/                    # journey.js, init-baseline.js, init-guidance.js, release-toggle.js, glab-auth-ensure.js
 │   └── terminal/                 # capture.js — live xterm/ttyd compact capture + visual assert
 ├── screenshots/base/             # Visual baselines (tolerance: 0)
@@ -27,7 +27,7 @@ project/tests/e2e/
 
 ### Three visual-proof styles
 
-1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm session is captured via `support/terminal/capture.js` (`assertTerminalVisualMatch`), optionally anchored from a marker row (`fromMarker`) or bounded (`maxRows`) to isolate deterministic blocks.
+1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm session is captured via `support/terminal/capture.js` (`terminalCard`, `captureTerminalFrame`), anchored from a marker row (`fromMarker`, which must still be on screen) or bounded (`maxRows`) to isolate deterministic blocks.
 2. **Filtered `<pre>` render** (init-effects/guidance/release scenarios): the captured command output is noise-filtered, rendered as a `<pre>` block in the browser and screenshotted.
 3. **Storyboard** (the 16 journeys): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
 
@@ -66,9 +66,18 @@ Rules — the panels ARE the proof:
 
 - Every pixel inside a panel is a REAL capture taken at its instant; only the storyboard chrome (cards, titles, badges, captions) is drawn around them. Never compose, fake or retouch panel content.
 - Tell the whole story, in the order a human doing the journey by hand would screenshot it: the state BEFORE (e.g. the fresh GitLab project), the acting (the terminal session, its live menus included), the state AFTER (the remote proof — e.g. the pushed files visible on GitLab main).
-- Keep every panel deterministic: mask GitLab pages (`GitLabRepositoryPage.maskVolatile`), pre-install the toolchain off-camera (`preinstallToolchain`) so its volatile output stays out of frame, and let `TERMINAL_NOISE_PATTERNS` drop what remains. Never a secret on screen (quiet pushes, token-free remote URL backed by a credential store).
+- Keep every panel deterministic: mask GitLab pages (`maskGitLabPage`, applied by every `gitlabFrame`), pre-install the toolchain off-camera (`preinstallToolchain`) so its volatile output stays out of frame, and let `TERMINAL_NOISE_PATTERNS` drop what remains. Never a secret on screen (quiet pushes, token-free remote URL backed by a credential store).
 - Pair the storyboard with programmatic asserts of the same facts (working tree, REST on the remote branch) so a regression fails loud even without eyes.
 - Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow; every regenerated frame must be inspected by a human like any other baseline, and the committed SVG is rebuilt from those reviewed baselines (never from unreviewed actuals).
+
+### Big cards — real GitLab pages and whole terminal runs
+
+The reference story (`@agent-mode-only`) shows the standard cards:
+
+- **GitLab card**: `gitlabFrame(I, frame, gitlabUrl.tree(project), { waitText, height, projectNames })` from `support/helpers/gitlabCard.js` captures the WHOLE page at 1440 px wide (900 px tall by default, 1100 at most: scroll to the evidence instead), masked by `maskGitLabPage`, and restores the window. Job logs go through `jobLogFrame`, the pipeline editor through `ciEditorFrame`, CI/CD variables through `ciVariablesFrame`. A frame wider than one card takes a full row of the storyboard.
+- **Terminal card**: `openTerminal(I, container, { height })` sizes the window BEFORE ttyd loads and keeps it; `terminalCard(I, frame, 'cmd-a && cmd-b   # label')` clears the screen, runs ONE line and captures everything since the clear, and returns the screen text for the twin. A marker that scrolled off the top throws: open the terminal taller.
+- **Both in one story**: take the GitLab card inside `inNewTab(I, () => gitlabFrame(...))`, so the bash session and its window size survive.
+- **A GitLab ending for a local tree**: `publishToGitLab(dir)` (`support/helpers/gitlabProject.js`) creates a lambda project and pushes the tree in seconds, no runner.
 
 ### Your first storyboard — 4 steps
 

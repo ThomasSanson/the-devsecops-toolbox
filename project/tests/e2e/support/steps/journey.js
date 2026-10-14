@@ -70,10 +70,13 @@ const {
   typeCommandAndWait,
   waitForTerminalText,
   waitForTerminalSettle,
-  assertTerminalVisualMatch,
+  waitForPromptReturn,
   captureTerminalFrame,
+  terminalScreenText,
+  openTerminal,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
+const { gitlabUrl, gitlabFrame, unfoldFileTree } = require('../helpers/gitlabCard')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
 const {
@@ -160,13 +163,15 @@ After(async () => {
 // `setupTerminal(projectName, lambdaToken)` decides what the container starts
 // from: the plain clone of the blank project (the installer journeys), or a
 // project already generated from an older release and pushed (manual update).
-async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTerminal) {
+// `projectExtra` adds create-project fields: { initialize_with_readme: true }
+// gives main a README commit, so the clone already has a main branch.
+async function createJourneyProject (setupTerminal = setupClonedProjectTerminal, projectExtra = {}) {
   const rootHeaders = await getRootHeaders()
   const projectName = `e2e-journey-${crypto.randomBytes(4).toString('hex')}`
   global.journeyProjectName = projectName
 
-  // Create a truly empty project (no README) under the lambda namespace so the
-  // cloned working tree is genuinely blank ("No commits yet").
+  // Empty by default (no README) under the lambda namespace, so the cloned
+  // working tree is genuinely blank ("No commits yet").
   const { token: lambdaToken, id: lambdaTokenId } = await createLambdaPersonalAccessToken(
     `journey-${projectName}`,
     ['api', 'write_repository'],
@@ -175,14 +180,18 @@ async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTermi
   global.journeyLambdaToken = lambdaToken
   global.journeyLambdaTokenId = lambdaTokenId
   const created = await createProject(
-    { name: projectName, visibility: 'public', initialize_with_readme: false },
+    { name: projectName, visibility: 'public', initialize_with_readme: false, ...projectExtra },
     { 'PRIVATE-TOKEN': lambdaToken }
   )
   if (created.status >= 400) {
-    throw new Error(`Failed to create blank project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
+    throw new Error(`Failed to create project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
   }
 
   global.journeyContainer = setupTerminal(projectName, lambdaToken)
+}
+
+async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTerminal, projectExtra = {}) {
+  await createJourneyProject(setupTerminal, projectExtra)
   I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
   I.waitForElement('.xterm-screen', 10)
   I.wait(3)
@@ -196,13 +205,6 @@ async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTermi
 // ============================================
 // WHEN — drive the live terminal
 // ============================================
-
-When('I display the project tree in the terminal', async () => {
-  // Full depth (the rendered .agent/ tree bottoms out at skills/<name>/SKILL.md)
-  // so every guardrail file is visible — rules/, workflows/ AND each skill's
-  // SKILL.md — not just the skill folder names. Excludes the .git plumbing.
-  await typeCommandAndWait(I, "clear; tree -a -I '.git'")
-})
 
 // ============================================
 // Toolbox-update storyboard — @toolbox-update (chapter 1).
@@ -443,12 +445,6 @@ storyboardStep(Then, 'the update branch stands next to a main nobody pushed to',
 // THEN — proofs
 // ============================================
 
-// Marker-anchored capture: keeps only the rows from `marker` downward, so the
-// non-deterministic install scrollback above an interactive prompt is excluded.
-Then('the terminal from {string} should visually match {string}', async (marker, baselineName) => {
-  await assertTerminalVisualMatch(I, baselineName, { fromMarker: marker })
-})
-
 // The milestone-block and install-log plain bindings (used only by the retired
 // flat installer/piped scenarios) were removed with the storyboard migration;
 // the storyboard steps below assert the install log through assertInstallLog()
@@ -480,40 +476,24 @@ const COPIER_PROMPTS = [
   'Language for Gherkin test specifications'
 ]
 
-async function openReadmeProjectTerminal () {
-  const rootHeaders = await getRootHeaders()
-  const projectName = `e2e-journey-${crypto.randomBytes(4).toString('hex')}`
-  global.journeyProjectName = projectName
-  const { token: lambdaToken, id: lambdaTokenId } = await createLambdaPersonalAccessToken(
-    `journey-${projectName}`, ['api', 'write_repository'], rootHeaders
-  )
-  global.journeyLambdaToken = lambdaToken
-  global.journeyLambdaTokenId = lambdaTokenId
-  // initialize_with_readme:true -> the project already has a main branch + commit.
-  const created = await createProject(
-    { name: projectName, visibility: 'public', initialize_with_readme: true },
-    { 'PRIVATE-TOKEN': lambdaToken }
-  )
-  if (created.status >= 400) {
-    throw new Error(`Failed to create project "${projectName}" (status ${created.status}): ${JSON.stringify(created.data)}`)
-  }
-  global.journeyContainer = setupClonedProjectTerminal(projectName, lambdaToken)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-}
-
-// openReadmeProjectTerminal and the spike-branch checkout are now driven from
-// the init-framework-MR storyboard Given steps (below); their former plain
-// bindings were removed with the storyboard migration.
+// The README project (openBlankProjectTerminal with initialize_with_readme) and
+// the spike-branch checkout are driven from the init-framework-MR storyboard
+// Given steps (below); their former plain bindings were removed with the
+// storyboard migration.
 
 // Re-open the live terminal (a GitLab-page capture may have navigated away),
 // type the installer command and stop at the FIRST decision (the gum/glow scope
 // prompt). Split out so a storyboard step can frame the launch before answering.
-async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT) {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(2)
+// `height` opens the terminal at that size through openTerminal (the big-card
+// stories); without it, the terminal keeps the default window.
+async function launchWorkingBranchInstaller (stopAt = SCOPE_PROMPT, { height = 0 } = {}) {
+  if (height) {
+    await openTerminal(I, global.journeyContainer, { height })
+  } else {
+    I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
+    I.waitForElement('.xterm-screen', 10)
+    I.wait(2)
+  }
   I.click('.xterm-screen')
   I.type(`bash ${WRAPPER_PATH}`)
   I.pressKey('Enter')
@@ -573,195 +553,130 @@ async function runWorkingBranchInstaller () {
 
 // ============================================
 // Agent-mode storyboard — ONE sentence = ONE card = ONE pixel baseline.
-// storyboardStep (shipped by .config/codeceptjs/storyboard.js) registers the
-// step AND opens a card whose title IS the step's own Gherkin text: the same
-// string declares the scenario line and captions the image, so the feature
-// and the storyboard can never drift apart. EVERY sentence of the scenario
-// goes through it — the Given closes the off-camera stage with its visual
-// proof, each Then pairs its card with a programmatic assert of the same
-// fact — and addStoryboardFrame asserts each frame against its own baseline
-// INSIDE the step, so a visual regression fails on the exact sentence whose
-// image drifted. The plugin renders the SVG when the test ends.
+// The normative reference story. GitLab opens and closes it on the SAME page
+// at the SAME size (the repository page of the main branch, before and after),
+// and the terminal in between is ONE tall session: each card shows the whole
+// run since the typed command, not a strip of its last lines. Every card is
+// twinned with a programmatic check of the same fact (the install log and the
+// working tree in the container, REST on the remote branch), so a regression
+// fails loud even without eyes.
 // ============================================
 
-// The fresh project on GitLab, README only. Public project -> stable anonymous
-// view; volatile content is masked. The shorter viewport keeps the panel
-// focused on the file tree (the masked header is hidden).
-// The WHOLE stage in one sentence, closed by its visual proof. Off-camera:
-// the lambda user, the public README project, the ttyd terminal with the
-// project cloned, the staged working-branch installer, the pre-installed
-// toolchain (its volatile output must never reach a frame). On camera: the
-// blank project page — a README and nothing else.
-storyboardStep(Given, 'a fresh GitLab project with only a README on its main branch', async () => {
-  await GitLabUserPage.ensureUserViaApi(
-    BASE_URL,
-    process.env.TASK_GITLAB_ROOT_USER,
-    process.env.TASK_GITLAB_ROOT_PASSWORD,
-    {
-      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
-      username: process.env.TASK_GITLAB_LAMBDA_USER,
-      name: 'Lambda User',
-      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
-    }
+const AGENT_COMMIT = 'chore: install the AI agent guardrails'
+// Tall enough for the Files panel with .agent, its rules and its skills unfolded.
+const AGENT_PAGE_HEIGHT = 1040
+
+// The repository page of main, the Files panel unfolded on `unfold` (folder
+// names, outermost first). Public project: the anonymous view, no login.
+async function agentRepositoryFrame (frameName, waitText, unfold = []) {
+  await gitlabFrame(I, frameName, gitlabUrl.tree(global.journeyProjectName), {
+    waitText,
+    height: AGENT_PAGE_HEIGHT,
+    projectNames: [global.journeyProjectName],
+    prepare: () => unfoldFileTree(I, unfold)
+  })
+}
+
+// Read in the container's clone, the local twin of a card.
+function inProject (script) {
+  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cd ${PROJECT_DIR} && ${script}`)
+  if (res.exitCode !== 0) throw new Error(`\`${script}\` failed in the project:\n${res.output}`)
+  return stripAnsiEscapeSequences(res.output || '')
+}
+
+function linesOf (text) {
+  return text.split('\n').map(line => line.trim()).filter(Boolean).sort()
+}
+
+function readInstallLog () {
+  return stripAnsiEscapeSequences(
+    execInContainerAsUser(global.journeyContainer, 'bootstrap', `cat ${INSTALL_LOG} 2>/dev/null || true`).output || ''
   )
-  await openReadmeProjectTerminal()
+}
+
+// The whole stage in one sentence, closed by its visual proof. Off camera: the
+// lambda user, the public README project (Auto DevOps off, so no pipeline ever
+// appears on these pages), its clone in the terminal container, the staged
+// working-branch installer and its pre-installed toolchain (whose volatile
+// output must never reach a frame). On camera: the repository page of main.
+storyboardStep(Given, 'a fresh GitLab project with only a README on its main branch', async () => {
+  await ensureLambdaUser()
+  await createJourneyProject(setupClonedProjectTerminal, { initialize_with_readme: true, auto_devops_enabled: false })
   prepareWorkingBranchInstaller(global.journeyContainer)
   preinstallToolchain(global.journeyContainer)
-  I.resizeWindow(1024, 640)
-  await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-  await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-before'))
-  I.resizeWindow(1024, 768)
+  await agentRepositoryFrame('agent-mode-gitlab-before', 'Initial commit')
+  await assertRootTreeExactly('main', ['README.md'])
+  // The clone is the same README and nothing else, with nothing to commit.
+  const local = linesOf(inProject('ls -A1'))
+  if (JSON.stringify(local) !== JSON.stringify(['.git', 'README.md'])) {
+    throw new Error(`Expected the clone to hold only .git and README.md, found ${JSON.stringify(local)}`)
+  }
+  const status = inProject('git status --porcelain').trim()
+  if (status) throw new Error(`Expected a clean clone, git status says:\n${status}`)
 })
 
-// Back to the live terminal — a NEW shell session (the GitLab capture navigated
-// away); the cloned repo state lives on disk, not in the session.
-storyboardStep(When, 'the developer opens the cloned project in the terminal', async () => {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'ls -A1')
-  await typeCommandAndWait(I, 'git status')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-1-clone'))
-})
-
-// The frame is anchored on the TYPED COMMAND (the story must show what was
-// executed), and ArrowRight moves the gum focus onto "Choose components"
-// BEFORE the capture, so the image shows the choice the developer actually
-// makes — not the default-highlighted "Install everything".
-storyboardStep(When, 'the developer starts the installer and chooses to pick what to install', async () => {
-  I.click('.xterm-screen')
-  I.type(`bash ${WRAPPER_PATH}`)
-  I.pressKey('Enter')
-  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
-  await waitForTerminalSettle(I)
+// The terminal opens tall, before ttyd loads, and keeps that size for the
+// whole session. ArrowRight moves the gum focus onto "Choose components" and
+// Enter answers it: the checklist only exists on that answer. The card is the
+// whole run since the typed command, caught while the checklist is on screen
+// (gum erases it the moment it is answered). Then Enter takes the ticked line.
+storyboardStep(When, 'the developer starts the installer and turns down the complete framework, a checklist opens with the AI agent line already ticked', async () => {
+  await launchWorkingBranchInstaller(SCOPE_PROMPT, { height: 1200 })
   I.pressKey('ArrowRight')
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-2-choice', { fromMarker: `bash ${WRAPPER_PATH}` }))
-})
-
-// Submit the focused "Choose components" -> the live checklist, captured while
-// it is on screen (it erases itself on answer), then take the highlighted
-// component with the natural Enter — the checklist opens with the AI agent line
-// already ticked, so Enter takes it and leaves the rest alone.
-storyboardStep(When, 'the developer picks the AI agent option from the checklist', async () => {
   I.pressKey('Enter')
   await waitForTerminalText(I, 'Select what to install', COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: 'Select what to install' }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-3-checklist', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  const screen = await terminalScreenText(I)
+  if (!screen.includes('✓ Agent mode') || screen.includes('✓ Source publication')) {
+    throw new Error(`Expected the checklist to open with only the AI agent line ticked:\n${screen}`)
+  }
   I.pressKey('Enter')
 })
 
-// The install runs to its end marker (or the "Nothing selected" trap on a buggy
-// build — the working-tree Then is the loud signal), then the local result:
-// full-depth tree (no -L) because the guardrails bottom out at
-// skills/<name>/SKILL.md and a shallower listing would hide those files.
-storyboardStep(When, 'the installer installs only the AI agent files', async () => {
-  const readLog = () => stripAnsiEscapeSequences(
-    execInContainerAsUser(
-      global.journeyContainer, 'bootstrap',
-      `cat ${INSTALL_LOG} 2>/dev/null || true`
-    ).output || ''
-  )
+// The installer's own words are the proof, from the typed command down to the
+// prompt that came back. The twin reads the install log and the working tree:
+// the AI agent files were added, the README kept, nothing else.
+storyboardStep(Then, 'the installer installs only the AI agent files', async () => {
   const deadline = Date.now() + 240000
-  let completed = false
+  let log = ''
   while (Date.now() < deadline) {
-    const log = readLog()
-    if (log.includes(AGENT_DONE_MARKER)) {
-      completed = true
-      break
-    }
-    if (log.includes(NOTHING_MARKER)) break
+    log = readInstallLog()
+    if (log.includes(AGENT_DONE_MARKER) || log.includes(NOTHING_MARKER)) break
     await I.wait(2)
   }
-  if (!completed) throw new Error(`The installer never reported "${AGENT_DONE_MARKER}"`)
-  await waitForTerminalSettle(I)
-  // Two frames: the installer's own delivery lines first (the ~50-row tree
-  // would scroll them out of the viewport before a single capture), then the
-  // resulting working tree.
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: 'Installing agent mode' }))
-})
-
-// The card shows the full-depth tree (the guardrails bottom out at
-// skills/<name>/SKILL.md); the programmatic twin asserts the same fact with
-// an ls in the container — the installer ADDED only the AI agent context
-// while leaving the repo's own README intact.
-storyboardStep(Then, 'the project folder now holds only the AI agent files', async () => {
-  await typeCommandAndWait(I, 'ls -A1')
-  await typeCommandAndWait(I, "tree -a -I '.git'")
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4b-delivered', { fromMarker: 'ls -A1' }))
-  const res = execInContainerAsUser(
-    global.journeyContainer, 'bootstrap',
-    `cd ${PROJECT_DIR} && ls -A1 | grep -v '^.git$' | sort`
-  )
-  const entries = stripAnsiEscapeSequences(res.output || '')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .sort()
-  const expected = ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'].sort()
-  const matches = entries.length === expected.length &&
-    expected.every((name, i) => entries[i] === name)
-  if (!matches) {
-    throw new Error(
-      `Expected the working tree to contain exactly ${JSON.stringify(expected)} (plus .git), ` +
-      `found ${JSON.stringify(entries)}`
-    )
+  if (!log.includes(AGENT_DONE_MARKER) || log.includes(NOTHING_MARKER)) {
+    throw new Error(`The installer never reported "${AGENT_DONE_MARKER}" (tail):\n${log.slice(-1500)}`)
+  }
+  await waitForPromptReturn(I, `bash ${WRAPPER_PATH}`, 60000)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  const local = linesOf(inProject('ls -A1'))
+  const expected = ['.agent', '.git', 'AGENTS.md', 'CLAUDE.md', 'README.md']
+  if (JSON.stringify(local) !== JSON.stringify(expected)) {
+    throw new Error(`Expected the working tree to hold exactly ${JSON.stringify(expected)}, found ${JSON.stringify(local)}`)
   }
 })
 
-// The GitLab hook: agent mode goes straight to main (no MR). Off-camera, point
-// origin at a token-free URL backed by a credential store so the push never
-// renders the PAT; on-camera, commit + push -q + list the REMOTE main.
-storyboardStep(When, 'the developer pushes the AI agent files to main', async () => {
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  execInContainerAsUser(global.journeyContainer, 'bootstrap', [
-    `cd ${PROJECT_DIR}`,
-    `git remote set-url origin http://gitlab/${lambdaUser}/${global.journeyProjectName}.git`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
-    'git config --global credential.helper store',
-    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(lambdaUser)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
-    'chmod 600 "$HOME/.git-credentials"'
-  ].join('\n'))
-  await typeCommandAndWait(I, 'git add -A && git commit -q -m "chore: install the AI agent guardrails"')
-  await typeCommandAndWait(I, 'git push -q origin main')
-  await typeCommandAndWait(I, 'git ls-tree origin/main --name-only   # now on the remote main')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-5-push', { fromMarker: 'git add -A' }))
-})
-
-// The same project page now carries the guardrails, then the .agent tree
-// itself (the repo root alone would hide what agent mode actually shipped).
-// The remote proof, visual AND programmatic: the project page carries the
-// guardrails on main, and the REST tree of the branch confirms each file.
-storyboardStep(Then, "the AI agent files are live on the project's main page", async () => {
-  I.resizeWindow(1024, 640)
-  await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-  await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-after'))
-  I.resizeWindow(1024, 768)
-  for (const file of ['.agent', 'AGENTS.md', 'CLAUDE.md']) {
-    await assertBranchContainsFile('main', file)
-  }
-})
-
-storyboardStep(Then, 'the .agent folder can now be opened on GitLab', async () => {
-  I.resizeWindow(1024, 640)
-  await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/tree/main/.agent`)
-  await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'agent-mode-gitlab-after-agent-tree'))
-  I.resizeWindow(1024, 768)
+// Agent mode goes straight to the main branch, with no merge request. The push
+// runs off camera (the clone's origin already carries the token, so nothing
+// secret is ever typed); its effect is the card: the same page as the Given,
+// the AI agent files on the push's commit, the README still on "Initial commit".
+storyboardStep(Then, 'after one push to the main branch, GitLab shows the AI agent files beside the README and nothing else', async () => {
+  inProject(`git add -A && git commit -q -m ${shellEscape(AGENT_COMMIT)} && git push -q origin main`)
+  await agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agent', 'rules', 'skills'])
+  await assertRootTreeExactly('main', ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
   const headers = await getRootHeaders()
-  const res = await listRepositoryTree(
-    global.journeyProjectName,
-    headers,
-    '?ref=main&path=.agent&per_page=100'
-  )
+  const res = await listRepositoryTree(global.journeyProjectName, headers, '?ref=main&path=.agent&per_page=100')
   const names = (res.data || []).map(entry => entry.name)
   for (const dir of ['rules', 'skills', 'workflows']) {
     if (!names.includes(dir)) {
       throw new Error(`Expected the remote .agent tree to contain "${dir}". Entries: ${JSON.stringify(names)}`)
     }
   }
+  const title = await branchCommitTitle('main')
+  if (title !== AGENT_COMMIT) throw new Error(`Expected main to point at "${AGENT_COMMIT}", found "${title}"`)
+  await assertNoOpenMr()
 })
 
 // ============================================
@@ -920,19 +835,18 @@ function assertCreatedFilesAtLeast (min) {
 Then('a project access token {string} must exist with Maintainer role for the journey project', assertTokenMaintainer)
 Then('the branch {string} must be protected with merge for maintainers and push for no one for the journey project', assertMainProtected)
 
-// assertBranchContainsFile is consumed by the agent-mode storyboard (the shipped
-// guardrails on the remote branch), so it stays even though the stage-5 plain
-// binding that also used it was removed with the storyboard migration.
-async function assertBranchContainsFile (branch, file) {
+// The root of a branch on GitLab holds EXACTLY these names: the agent-mode
+// storyboard's twin of its before and after repository pages.
+async function assertRootTreeExactly (branch, expected) {
   const headers = await getRootHeaders()
   const res = await listRepositoryTree(
     global.journeyProjectName,
     headers,
     `?ref=${encodeURIComponent(branch)}&per_page=100`
   )
-  const names = (res.data || []).map(entry => entry.name)
-  if (!names.includes(file)) {
-    throw new Error(`Expected branch "${branch}" tree to contain "${file}". Top-level entries: ${JSON.stringify(names)}`)
+  const names = (res.data || []).map(entry => entry.name).sort()
+  if (JSON.stringify(names) !== JSON.stringify([...expected].sort())) {
+    throw new Error(`Expected branch "${branch}" to hold exactly ${JSON.stringify(expected)} at its root, found ${JSON.stringify(names)}`)
   }
 }
 
@@ -1199,7 +1113,7 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
   }
   // The proof is GitLab's own file tree for main, now carrying the whole
   // framework (Taskfile.yml, .gitlab-ci.yml, .config, .agent) with a green
-  // commit pipeline — the same masked repository page agent mode uses.
+  // commit pipeline, on the masked project page.
   await pageFrame(async () => {
     await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
     await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
@@ -1210,7 +1124,7 @@ storyboardStep(Then, 'main now carries the whole framework, merged through revie
 
 storyboardStep(Given, 'a developer has cloned a project that already has a main branch', async () => {
   await ensureLambdaUser()
-  await openReadmeProjectTerminal()
+  await openBlankProjectTerminal(setupClonedProjectTerminal, { initialize_with_readme: true })
   prepareWorkingBranchInstaller(global.journeyContainer)
   // The toolchain comes from the installer's own installers, off camera: what
   // this story is about starts at the scope question, and a machine that has to
@@ -1246,7 +1160,7 @@ storyboardStep(Then, 'GitLab lists main next to the init-framework-devsecops bra
 
 storyboardStep(Given, 'a developer is working on an experiment branch instead of main', async () => {
   await ensureLambdaUser()
-  await openReadmeProjectTerminal()
+  await openBlankProjectTerminal(setupClonedProjectTerminal, { initialize_with_readme: true })
   checkoutFeatureBranch('spike/poc')
   prepareWorkingBranchInstaller(global.journeyContainer)
   // Off camera, like the story above it: this one is about where the framework
