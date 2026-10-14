@@ -16,9 +16,10 @@
 
 const fs = require('fs')
 const path = require('path')
-// Baseline assert + frame paths live in the shipped storyboard module
+// Frame paths and the frame assert live in the shipped storyboard module
 // (.config/codeceptjs/storyboard.js) so generated projects get them too.
-const { assertOrUpdateBaseline, frameOutputPath } = require('../../../../../.config/codeceptjs/storyboard')
+const { addStoryboardFrame, frameOutputPath } = require('../../../../../.config/codeceptjs/storyboard')
+const { ttydPort } = require('../helpers/docker')
 
 const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
 const TERMINAL_SETTLE_POLL_SECONDS = 0.25
@@ -29,6 +30,11 @@ const SHELL_PROMPT_RE = /bootstrap@workspace:[^\r\n]*\$\s*$/
 const PROMPT_STABILITY_MS = 2000
 const PROMPT_POLL_SECONDS = 1
 const COMMAND_TIMEOUT_MS = 900000
+// The terminal is 1024 px wide everywhere (the column count, and so every
+// wrapped line, never moves); its height is chosen when it opens. 1200 px is
+// about 80 rows, room for a command and its whole answer on one card.
+const TERMINAL_WIDTH = 1024
+const TERMINAL_HEIGHT = 1200
 
 const COMPACT_CAPTURE_ID = '__ttyd_compact_capture__'
 
@@ -328,6 +334,9 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     // row from the FIRST row containing the marker onward — minus `beforeRows`
     // rows of context above it, when the lines right before the anchor are
     // deterministic too (a scripted answer to the previous question).
+    // A marker that is not on screen any more (it scrolled off the top) is an
+    // error, never a silent "keep the whole screen": that fallback once turned a
+    // card about one command into a picture of whatever else was visible.
     if (fromMarker) {
       let startIndex = -1
       for (let i = 0; i < sortedRows.length; i++) {
@@ -336,6 +345,7 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
           break
         }
       }
+      if (startIndex === -1) return { kept: 0, error: 'marker-not-on-screen' }
       if (startIndex > 0) {
         sortedRows = sortedRows.slice(Math.max(0, startIndex - beforeRows))
       }
@@ -500,47 +510,6 @@ async function removeCompactTerminalCapture (I, captureId) {
   }, captureId)
 }
 
-/**
- * Settle the live terminal, rebuild the deterministic compact capture and
- * assert it visually matches the baseline (tolerance:0). The window is pinned
- * to 1920x1080 during capture then restored.
- */
-async function assertTerminalVisualMatch (I, baselineName, opts = {}) {
-  await I.wait(1)
-  I.resizeWindow(1920, 1080)
-  await I.wait(2)
-
-  await waitForTerminalSettle(I)
-  await scrollTerminalToBottom(I)
-  await I.wait(0.5)
-
-  const info = await buildCompactTerminalCapture(
-    I,
-    COMPACT_CAPTURE_ID,
-    TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source }),
-    opts.fromMarker || null,
-    opts.maxRows || 0
-  )
-  if (!info || !info.kept) {
-    await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
-    throw new Error(`Compact terminal capture produced no rows for "${baselineName}" (info=${JSON.stringify(info)})`)
-  }
-
-  await I.wait(0.2)
-  await I.captureScreenshot(baselineName, 'actual', '#' + COMPACT_CAPTURE_ID)
-
-  // The VisualHelper auto-creates a FULL-PAGE baseline on a missing one, which
-  // never matches the element crop, so in update mode missing baselines land
-  // in the failure path and get the correct crop.
-  try {
-    await assertOrUpdateBaseline(I, baselineName)
-  } finally {
-    await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
-    I.resizeWindow(1024, 768)
-    await I.wait(1)
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Storyboard frames — real per-moment PNG captures.
 // Two facts force the frame-by-frame approach: interactive gum menus erase
@@ -568,6 +537,12 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
     opts.beforeRows || 0,
     opts.mask || []
   )
+  if (info && info.error === 'marker-not-on-screen') {
+    throw new Error(
+      `Terminal frame "${frameName}": ${JSON.stringify(opts.fromMarker)} is not on screen any more — ` +
+      'the output above it scrolled away. Open the terminal taller (openTerminal height) or anchor lower.'
+    )
+  }
   if (!info || !info.kept) {
     throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)
   }
@@ -577,11 +552,75 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
   return frameOutputPath(frameName)
 }
 
+// Every rendered row, as text: the programmatic twin of a terminal card.
+async function terminalScreenText (I) {
+  const rows = await I.executeScript(function () {
+    return Array.from(document.querySelectorAll('.xterm-rows > div'))
+      .map(function (row) { return (row.textContent || '').replace(/\s+$/, '') })
+      .join('\n')
+  })
+  return String(rows || '')
+}
+
+/**
+ * Open the live terminal of a ttyd container (or URL) at TERMINAL_WIDTH x
+ * height. The window is sized BEFORE ttyd loads and never resized while the
+ * session lives: a resize mid-session redraws an interactive menu in the
+ * middle of its question. A GitLab card taken in between goes through
+ * gitlabCard.inNewTab, which leaves this tab and its size alone.
+ */
+async function openTerminal (I, target, { height = TERMINAL_HEIGHT } = {}) {
+  const url = /^https?:\/\//.test(target) ? target : `http://${target}:${ttydPort()}` // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
+  await I.resizeWindow(TERMINAL_WIDTH, height)
+  await I.amOnPage(url)
+  await I.waitForElement('.xterm-screen', 10)
+  await waitForPromptReturn(I, 'open the terminal', 30000)
+}
+
+// Wipe the screen AND the scrollback (`clear` sends ED3 under xterm-256color),
+// leaving the prompt alone on the first row. Cheaper than typeCommandAndWait:
+// an empty screen with a prompt needs no stability window.
+async function clearTerminal (I) {
+  await I.click('.xterm-screen')
+  await I.type('clear')
+  await I.pressKey('Enter')
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline) {
+    const rows = (await terminalScreenText(I)).split('\n').filter(Boolean)
+    if (rows.length === 1 && SHELL_PROMPT_RE.test(rows[0])) return
+    await I.wait(0.2)
+  }
+  throw new Error('The terminal did not come back to an empty screen after `clear`')
+}
+
+/**
+ * ONE terminal card: clear the screen, type ONE line (chain the sentence's
+ * commands with && and label them with trailing # comments), wait for the
+ * prompt, then capture everything since the clear — the command line, its
+ * whole output and the prompt that came back. Throws when the command line
+ * scrolled off the top (the terminal was too short for the answer). Returns the
+ * screen text for the programmatic twin. `height` resizes the window first,
+ * which is safe here: the shell is idle at its prompt.
+ */
+async function terminalCard (I, frameName, command, { mask = [], timeoutMs = COMMAND_TIMEOUT_MS, height = 0 } = {}) {
+  if (height) {
+    await I.resizeWindow(TERMINAL_WIDTH, height)
+    await waitForTerminalSettle(I)
+  }
+  await clearTerminal(I)
+  await typeCommandAndWait(I, command, timeoutMs)
+  // The command row: the start of the command is on it whatever the wrapping.
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: command.slice(0, 40), mask }))
+  return terminalScreenText(I)
+}
+
 module.exports = {
   TERMINAL_NOISE_PATTERNS,
   SHELL_PROMPT_RE,
   COMPACT_CAPTURE_ID,
   COMMAND_TIMEOUT_MS,
+  TERMINAL_WIDTH,
+  TERMINAL_HEIGHT,
   readTerminalState,
   waitForTerminalSettle,
   scrollTerminalToBottom,
@@ -591,6 +630,9 @@ module.exports = {
   waitForTerminalText,
   buildCompactTerminalCapture,
   removeCompactTerminalCapture,
-  assertTerminalVisualMatch,
-  captureTerminalFrame
+  captureTerminalFrame,
+  terminalScreenText,
+  openTerminal,
+  clearTerminal,
+  terminalCard
 }
