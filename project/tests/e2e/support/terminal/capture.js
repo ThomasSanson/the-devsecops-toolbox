@@ -30,11 +30,15 @@ const SHELL_PROMPT_RE = /bootstrap@workspace:[^\r\n]*\$\s*$/
 const PROMPT_STABILITY_MS = 2000
 const PROMPT_POLL_SECONDS = 1
 const COMMAND_TIMEOUT_MS = 900000
-// The terminal is 1024 px wide everywhere (the column count, and so every
-// wrapped line, never moves); its height is chosen when it opens. 1200 px is
-// about 80 rows, room for a command and its whole answer on one card.
+// The terminal is 1024 px wide everywhere, so a session's column count (and so
+// every wrapped line) never moves; its height is chosen when it opens. 1200 px is
+// about 65 rows of TERMINAL_FONT_SIZE, room for a command and its whole answer
+// on one card.
 const TERMINAL_WIDTH = 1024
 const TERMINAL_HEIGHT = 1200
+// ttyd's 13 px leaves a 70-column card at ~550 px; 15 px (9 px per column, 113
+// columns) fills a half-row card of the storyboard at 78 columns, at 100%.
+const TERMINAL_FONT_SIZE = 15
 
 const COMPACT_CAPTURE_ID = '__ttyd_compact_capture__'
 
@@ -277,7 +281,9 @@ async function buildCompactTerminalCapture (I, captureId, patternSources, fromMa
     const screen = document.querySelector('.xterm-screen')
     if (!screen) return { kept: 0, error: 'no-xterm-screen' }
 
-    const screenStyles = window.getComputedStyle(screen)
+    // xterm's DOM renderer puts the terminal's font on .xterm-rows; .xterm-screen
+    // only inherits the page's default serif.
+    const screenStyles = window.getComputedStyle(document.querySelector('.xterm-rows') || screen)
 
     function resolveOpaqueBackground () {
       const candidates = [
@@ -564,15 +570,17 @@ async function terminalScreenText (I) {
 
 /**
  * Open the live terminal of a ttyd container (or URL) at TERMINAL_WIDTH x
- * height. The window is sized BEFORE ttyd loads and never resized while the
- * session lives: a resize mid-session redraws an interactive menu in the
- * middle of its question. A GitLab card taken in between goes through
- * gitlabCard.inNewTab, which leaves this tab and its size alone.
+ * height, in TERMINAL_FONT_SIZE (ttyd reads its options from the URL). The
+ * window is sized BEFORE ttyd loads and never resized while the session lives:
+ * a resize mid-session redraws an interactive menu in the middle of its
+ * question. A GitLab card taken in between goes through gitlabCard.inNewTab,
+ * which leaves this tab and its size alone.
  */
 async function openTerminal (I, target, { height = TERMINAL_HEIGHT } = {}) {
-  const url = /^https?:\/\//.test(target) ? target : `http://${target}:${ttydPort()}` // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
+  const url = new URL(/^https?:\/\//.test(target) ? target : `http://${target}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
+  url.searchParams.set('fontSize', String(TERMINAL_FONT_SIZE))
   await I.resizeWindow(TERMINAL_WIDTH, height)
-  await I.amOnPage(url)
+  await I.amOnPage(url.href)
   await I.waitForElement('.xterm-screen', 10)
   await waitForPromptReturn(I, 'open the terminal', 30000)
 }
@@ -621,6 +629,7 @@ module.exports = {
   COMMAND_TIMEOUT_MS,
   TERMINAL_WIDTH,
   TERMINAL_HEIGHT,
+  TERMINAL_FONT_SIZE,
   readTerminalState,
   waitForTerminalSettle,
   scrollTerminalToBottom,
