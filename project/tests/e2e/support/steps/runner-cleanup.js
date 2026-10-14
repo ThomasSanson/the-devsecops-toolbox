@@ -1,4 +1,4 @@
-/* global inject Given When Then Before After NodeFilter */
+/* global inject Given When Then Before After */
 const { I, GitLabUserPage } = inject()
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
@@ -6,17 +6,27 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { execFileSync, spawnSync } = require('node:child_process')
-const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { composeService } = require('../helpers/docker')
 const {
   BASE_URL, getRootHeaders, createLambdaPersonalAccessToken, revokePersonalAccessToken,
-  createProject, deleteProject
+  createProject, deleteProject, getJobTrace, getJobArtifact, getRunnerCard
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost } = require('../helpers/http')
-const { registerScopedRunner, teardownScopedRunner, cancelRedundantPipelines, maskPipelinePage, RUNNER_NET } = require('../helpers/pipelineRunner')
+const { jobLogFrame } = require('../helpers/gitlabCard')
+const { runnersFrame } = require('../helpers/runnersCard')
+const { registerScopedRunner, teardownScopedRunner, cancelRedundantPipelines, RUNNER_NET } = require('../helpers/pipelineRunner')
 
 const FIXTURES = path.join(__dirname, '../../fixtures/runner-cleanup')
+// The two projects show as "first-project" and "second-project". Their random
+// suffix starts with x, not a hex digit, so the job log's SHA mask leaves it
+// whole for this mask to remove.
+const SUFFIX_MASK = [/-x[0-9a-f]{12}\b/g, '']
+const WAIT_LINE = '$ while [ ! -f /tmp/job-release ]; do sleep 1; done'
+// The runner's own setup sections are folded, the way a reader skips them.
+const SETUP_SECTIONS = ['Preparing the "docker" executor', 'Preparing environment', 'Getting source from Git repository']
+// The same height for both job cards: before and after read as a pair.
+const JOB_CARD_HEIGHT = 720
 let state
 
 Before(() => { state = { projects: [], runners: [], environment: {} } })
@@ -91,8 +101,8 @@ async function isolateRunner () {
   configureEnvironment('PATH', `${state.directory}:${process.env.PATH}`)
 }
 
-async function createFixtureProject () {
-  const name = `e2e-runner-cleanup-${crypto.randomBytes(6).toString('hex')}`
+async function createFixtureProject (label) {
+  const name = `${label}-x${crypto.randomBytes(6).toString('hex')}`
   const response = await createProject({
     name,
     visibility: 'public',
@@ -121,35 +131,31 @@ function jobContainers () {
   return ids ? JSON.parse(docker('inspect', ...ids.split('\n'))) : []
 }
 
-async function captureContainers (name) {
-  const format = '{{index .Config.Labels "com.gitlab.gitlab-runner.type"}} {{.State.Status}} exit={{.State.ExitCode}}'
-  const command = `docker inspect --format '${format}' <helper> <build>`
-  const output = docker('inspect', '--format', format, state.helper, state.build)
-  await renderPreFrame(I, name, `$ ${command}\n${output}`, { colour: true })
+// Docker's view of the first job, which no GitLab page shows: its checkout
+// helper has exited (exit 0) while its build container still runs.
+function assertHelperStoppedBuildRunning () {
+  const containers = jobContainers()
+  assert.ok(containers.some(container => container.Id === state.helper && container.State.Status === 'exited' && container.State.ExitCode === 0),
+    'The first job must keep its stopped checkout helper')
+  assert.ok(containers.some(container => container.Id === state.build && container.State.Running),
+    'The first job must keep its running build container')
 }
 
-storyboardStep(Given, 'two projects share a serial test runner and the first job must upload an artifact', async () => {
+storyboardStep(Given, 'the first project\'s job is running and still has to upload its artifact', async () => {
   state.root = await getRootHeaders()
   const pat = await createLambdaPersonalAccessToken('runner-cleanup', ['api'], state.root)
   state.tokenId = pat.id
   state.headers = { 'PRIVATE-TOKEN': pat.token }
   await isolateRunner()
-  state.first = await createFixtureProject()
-  state.second = await createFixtureProject()
-  const file = path.join(FIXTURES, 'gitlab-ci.yml')
-  state.pipeline = fs.readFileSync(file, 'utf8')
-  const output = execFileSync('cat', [file], { encoding: 'utf8' })
-  const config = docker('exec', state.service, 'cat', '/etc/gitlab-runner/config.toml')
-  assert.match(config, /^concurrent = 1$/m, 'Keep the single Docker job slot')
-  await renderPreFrame(I, 'serial-runner-and-artifact', `$ cat config.toml\n${config}\n$ cat .gitlab-ci.yml\n${output}`, { colour: true })
-})
-
-storyboardStep(When, 'the first job is running while its checkout helper is stopped', async () => {
+  assert.match(docker('exec', state.service, 'cat', '/etc/gitlab-runner/config.toml'), /^concurrent = 1$/m,
+    'Keep the single Docker job slot')
+  state.first = await createFixtureProject('first-project')
+  state.second = await createFixtureProject('second-project')
   state.runners.push(await registerScopedRunner(I, state.first.name, state.root))
   const committed = await freshPost(`${BASE_URL}/api/v4/projects/${state.first.id}/repository/commits`, {
     branch: 'main',
     commit_message: 'test: preserve the checkout helper',
-    actions: [{ action: 'create', file_path: '.gitlab-ci.yml', content: state.pipeline }]
+    actions: [{ action: 'create', file_path: '.gitlab-ci.yml', content: fs.readFileSync(path.join(FIXTURES, 'gitlab-ci.yml'), 'utf8') }]
   }, state.headers)
   assert.equal(committed.status, 201)
   await poll(async () => {
@@ -165,29 +171,37 @@ storyboardStep(When, 'the first job is running while its checkout helper is stop
     state.build = build.Id
     try { docker('exec', state.build, 'test', '-f', '/tmp/job-ready'); return true } catch (_) { return false }
   }, 'the real checkout helper and the running job barrier')
-  await captureContainers('live-job-stopped-helper')
+  assertHelperStoppedBuildRunning()
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await jobLogFrame(I, 'first-job-running', state.first.name, state.job.id, {
+    waitText: WAIT_LINE, height: JOB_CARD_HEIGHT, fold: SETUP_SECTIONS, masks: [SUFFIX_MASK], projectNames: []
+  })
+  // Twin: the job is still running, waiting in its script, with nothing uploaded yet.
+  const trace = await getJobTrace(state.first.name, state.job.id, state.headers)
+  assert.ok(trace.includes(WAIT_LINE), 'The job must be waiting inside its script')
+  assert.ok(!trace.includes('Uploading artifacts'), 'The job must not have uploaded its artifact yet')
+  const job = await freshGet(`${BASE_URL}/api/v4/projects/${state.first.id}/jobs/${state.job.id}`, state.headers)
+  assert.equal(job.data.status, 'running')
 })
 
-storyboardStep(When, 'the second project registers its own runner without restarting the first job', async () => {
-  state.runners.push(await registerScopedRunner(I, state.second.name, state.root))
+storyboardStep(When, 'the second project registers its own runner', async () => {
+  const runner = await registerScopedRunner(I, state.second.name, state.root)
+  state.runners.push(runner)
   const verified = spawnSync(state.docker, ['exec', state.service, 'gitlab-runner', 'verify'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
   assert.equal(verified.status, 0)
-  const raw = verified.stdout + verified.stderr
-  assert.equal((raw.match(/is valid/g) || []).length, 2, 'Both project runners must be valid')
-  const colour = String.fromCharCode(27) + '\\[[0-9;]*m'
-  const masked = ['pid', 'correlation_id', 'runner', 'runner_name'].reduce((text, field) =>
-    text.replace(new RegExp('(' + field + '(?:' + colour + ')*=)\\S+', 'g'), '$1<value>'), raw)
-  await renderPreFrame(I, 'two-project-runners', '$ gitlab-runner verify\n' + masked, { colour: true })
-})
-
-storyboardStep(Then, 'the first job still has its stopped checkout helper and its running build container', async () => {
-  const containers = jobContainers()
-  assert.ok(containers.some(container => container.Id === state.helper && container.State.Status === 'exited'),
-    'Registering the second runner must preserve the first job checkout helper')
-  assert.ok(containers.some(container => container.Id === state.build && container.State.Running),
-    'Registering the second runner must preserve the running build container')
-  await captureContainers('helper-survives-registration')
+  assert.equal(((verified.stdout + verified.stderr).match(/is valid/g) || []).length, 2, 'Both project runners must be valid')
+  // Registering a runner must leave the other project's job containers alone.
+  assertHelperStoppedBuildRunning()
+  const registered = await freshGet(`${BASE_URL}/api/v4/runners/${runner.runnerId}`, state.root)
+  assert.equal(registered.status, 200)
+  assert.deepEqual(registered.data.tag_list, ['saas-linux-medium-amd64'])
+  assert.deepEqual(registered.data.projects.map(project => project.id), [state.second.id], 'The runner belongs to the second project only')
+  // As the card shows it: Offline, with no job run yet.
+  assert.deepEqual(await getRunnerCard(runner.runnerId, state.root), { status: 'OFFLINE', jobCount: 0 })
+  await runnersFrame(I, 'two-project-runners', state.second.name, {
+    waitText: 'saas-linux-medium-amd64', height: 430, projectNames: [], textMasks: [SUFFIX_MASK]
+  })
 })
 
 storyboardStep(Then, 'GitLab accepts the first job artifact and marks the job as passed', async () => {
@@ -198,71 +212,12 @@ storyboardStep(Then, 'GitLab accepts the first job artifact and marks the job as
     if (['failed', 'canceled'].includes(response.data.status)) throw new Error(`The first job ${response.data.status}`)
     return response.data.status === 'success'
   }, 'successful native artifact upload')
-  let artifact
-  try {
-    artifact = execFileSync('curl', ['--fail', '--silent', '-H', `PRIVATE-TOKEN: ${state.headers['PRIVATE-TOKEN']}`,
-      `${BASE_URL}/api/v4/projects/${state.first.id}/jobs/${state.job.id}/artifacts/result.txt`],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch (_) {
-    // execFileSync includes its arguments in errors; the PAT must stay private.
-    throw new Error('Could not download the fixture job artifact')
-  }
-  assert.equal(artifact, 'The first job kept its helper.\n')
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  await I.amOnPage(`/${process.env.TASK_GITLAB_LAMBDA_USER}/${state.first.name}/-/jobs/${state.job.id}`)
-  await I.waitForText('Job succeeded', 60)
-  await maskPipelinePage(I, state.first.name)
-  await I.executeScript(() => {
-    // Keep the complete user script and artifact upload; fold only the native
-    // executor setup with GitLab's own controls, as in the hybrid CI story.
-    document.querySelectorAll('.job-log-line-header').forEach(header => {
-      if (!header.textContent.includes('step_script') && !header.textContent.includes('Uploading artifacts') &&
-          header.querySelector('[data-testid="chevron-lg-down-icon"]')) header.click()
-    })
-    document.querySelectorAll('.job-log-line-number, .job-log-time, .job-log-line-header .badge')
-      .forEach(element => { element.style.display = 'none' })
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const nodes = []
-    while (walker.nextNode()) nodes.push(walker.currentNode)
-    nodes.forEach(node => {
-      node.nodeValue = node.nodeValue.replace(/\b[0-9a-f]{8,}\b/g, '<sha>')
-        .replace(/\bid=\d+/g, 'id=<job>').replace(/\btoken=\S+/g, 'token=<masked>')
-        .replace(/\b\d+(?:\.\d+)?s\b/g, '<duration>')
-        .replace(/\brunner-[\w-]+-project-\d+-concurrent-[\w-]+/g, '<runner>')
-    })
-    // GitLab splits log fields across coloured spans. Match the actual line
-    // across those spans and replace only volatile values, keeping every node
-    // and its native colour in place.
-    function maskLine (line, pattern, replacement) {
-      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
-      const parts = []
-      let text = ''
-      while (walker.nextNode()) {
-        parts.push({ node: walker.currentNode, start: text.length })
-        text += walker.currentNode.nodeValue
-      }
-      for (const match of [...text.matchAll(pattern)].reverse()) {
-        const start = match.index
-        const end = start + match[0].length
-        const masked = match[0].replace(pattern, replacement)
-        for (const part of parts) {
-          const length = part.node.nodeValue.length
-          const left = Math.max(0, start - part.start)
-          const right = Math.min(length, end - part.start)
-          if (left >= right) continue
-          part.node.nodeValue = part.node.nodeValue.slice(0, left) +
-            (part.start <= start ? masked : '') + part.node.nodeValue.slice(right)
-        }
-      }
-    }
-    document.querySelectorAll('.js-log-line.job-log-line').forEach(line => {
-      maskLine(line, /(\bon )[^,\n]+(, system ID: )\S+/g, '$1<runner>$2<system>')
-      maskLine(line, /UUID: [\w<>-]+/g, 'UUID: <uuid>')
-      maskLine(line, /\bcorrelation_id=\S+/g, 'correlation_id=<id>')
-      maskLine(line, /\bid=\d+/g, 'id=<job>')
-      maskLine(line, /\btoken=\S+/g, 'token=<masked>')
-    })
-    window.scrollTo(0, 0)
+  assert.equal(await getJobArtifact(state.first.name, state.job.id, 'result.txt', state.headers), 'The first job kept its helper.\n')
+  await jobLogFrame(I, 'first-job-artifact-passed', state.first.name, state.job.id, {
+    waitText: 'Job succeeded',
+    height: JOB_CARD_HEIGHT,
+    fold: [...SETUP_SECTIONS, 'Cleaning up project directory'],
+    masks: [SUFFIX_MASK],
+    projectNames: []
   })
-  await addStoryboardFrame(I, await capturePageFrame(I, 'first-job-artifact-passed'))
 })

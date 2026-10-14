@@ -504,3 +504,32 @@ async function createMergeRequestWhenBranchExists (projectName, payload, headers
 }
 
 module.exports.createMergeRequestWhenBranchExists = createMergeRequestWhenBranchExists
+
+// One file of a job's artifacts, as text: the twin of the "Job artifacts" box
+// on a job page. Read through the fresh-connection client, so the token never
+// reaches a command line or an error message.
+async function getJobArtifact (projectName, jobId, artifactPath, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/jobs/${jobId}/artifacts/` +
+      artifactPath.split('/').map(encodeURIComponent).join('/'),
+    headers, { raw: true }
+  )
+  if (res.status >= 400) throw new Error(`Job ${jobId} artifact ${artifactPath}: HTTP ${res.status}`)
+  return res.data
+}
+
+module.exports.getJobArtifact = getJobArtifact
+
+// A runner's status and job count as the Runners settings page shows them.
+// The page reads GraphQL, whose status can differ from the REST one: a runner
+// that only answered `gitlab-runner verify` is "online" for REST and OFFLINE
+// on the page until it asks for a job.
+async function getRunnerCard (runnerId, headers) {
+  const res = await freshPost(`${BASE_URL}/api/graphql`, {
+    query: `{ runner(id: "gid://gitlab/Ci::Runner/${Number(runnerId)}") { status jobCount } }`
+  }, headers)
+  if (res.status >= 400 || !res.data?.data?.runner) throw new Error(`Runner ${runnerId}: HTTP ${res.status} ${JSON.stringify(res.data?.errors || '')}`)
+  return res.data.data.runner
+}
+
+module.exports.getRunnerCard = getRunnerCard
