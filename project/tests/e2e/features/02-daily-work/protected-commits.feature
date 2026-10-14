@@ -23,7 +23,9 @@ Feature: the framework guards what reaches the repository: clean commits and no 
   # log never prints the key. The demo project's pipeline keeps only its
   # code:betterleaks job, untouched; every other job is switched off in its
   # .gitlab-ci.yml before the first push, so each merge request runs exactly
-  # the scan the story is about. The terminal cards are the commands' real
+  # the scan the story is about, and its shared before_script starts with
+  # exec 2>&1, so the job log keeps the order its lines were written in (the
+  # runner reads stdout and stderr apart). The terminal cards are the commands' real
   # output: they run in the test runner, which has no live terminal.
   @protected-commits
   Scenario: the commit checks accept clean work and secrets never reach the main branch

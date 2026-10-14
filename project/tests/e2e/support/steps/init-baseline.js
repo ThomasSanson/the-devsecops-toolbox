@@ -143,14 +143,22 @@ async function sessionCard (frameName, steps) {
 
 // The demo project's pipeline keeps the generated files and its one secret
 // scan job, untouched: every other code check is switched off, so each merge
-// request runs exactly the job the story is about.
+// request runs exactly the job the story is about. Its shared before_script
+// starts with `exec 2>&1`: the runner reads a job's stdout and stderr apart,
+// so a line `task` logs on stderr could land before the line printed just
+// before it. One stream keeps the job log in the order it was written, the
+// way the laptop cards show it.
 function keepOnlyTheSecretScan (dir) {
   const file = path.join(dir, '.gitlab-ci.yml')
   const [before] = fs.readFileSync(file, 'utf8').split(/^include:/m)
-  const includes = ['before_script', 'cache', 'services', 'stages', 'tags', 'variables', 'workflow']
+  const includes = ['cache', 'services', 'stages', 'tags', 'variables', 'workflow']
     .map(name => `.config/gitlab/ci/${name}.yml`)
     .concat('.config/gitlab/ci/devsecops/code.yml')
-  fs.writeFileSync(file, `${before}include:\n${includes.map(f => `  - local: ${f}\n`).join('')}\n` +
+  const shared = fs.readFileSync(path.join(dir, '.config/gitlab/ci/before_script.yml'), 'utf8')
+    .replace(/^---\n/, '')
+    .replace(/^before_script:\n/m, 'before_script:\n  - exec 2>&1\n')
+  if (!shared.includes('  - exec 2>&1\n  #')) throw new Error(`Unexpected before_script.yml:\n${shared}`)
+  fs.writeFileSync(file, `${before}include:\n${includes.map(f => `  - local: ${f}\n`).join('')}\n${shared}\n` +
     OTHER_CODE_JOBS.map(job => `${job}:\n  rules:\n    - when: never\n`).join(''))
 }
 
