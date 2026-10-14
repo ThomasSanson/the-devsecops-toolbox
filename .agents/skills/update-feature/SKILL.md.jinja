@@ -1,10 +1,11 @@
----
-description: Add functionality to an existing template feature
+{% raw %}---
+name: update-feature
+description: Add functionality to an existing feature of the project
 ---
 
 # Update Feature Workflow
 
-This workflow guides you through adding new functionality to an **existing** template feature.
+This workflow guides you through adding new functionality to an **existing** feature of the project.
 
 ## Prerequisites
 
@@ -17,39 +18,34 @@ This workflow guides you through adding new functionality to an **existing** tem
 ### 1. Review Existing Feature
 
 Analyze the current implementation by reading files in:
-- **Feature file:** `project/tests/e2e/features/{domain}/{feature}.feature`
-- **Steps:** `project/tests/e2e/support/steps/*.js`
-- **Templates:** `.config/{domain}/`
-- **Config:** `copier.yml`
+- **Feature file:** `project/tests/application/features/{domain}/{feature}.feature`
+- **Steps:** `project/tests/application/steps/{domain}.js`
+- **Code:** the files under `project/` that the feature covers
 
 ### 2. Add or Update Tests (TDD)
 
 Update the existing feature file or add a new one in the same domain.
 
 **Instruction:**
-Follow the existing Gherkin style in the feature file. Tag new scenarios with
-`@e2e` plus a unique `@e2e-{feature}` tag. Ask before modifying existing
-scenarios or baselines.
+Follow the existing Gherkin style in the feature file. Use the `@new-functionality` tag for development if needed.
 
 ### 3. Run Tests (Should Fail)
 
 ```bash
-task test -- --grep "@e2e-{feature}"
+task test -- --grep "@{domain}"
 ```
 
 Then prove the failure is real:
 
 ```bash
-task devsecops:test:check:red-is-real -- @e2e-{feature}
+task devsecops:test:check:red-is-real -- @{domain}
 ```
 
 It must pass. A run that died while loading its files recorded no scenario: that is a crash, not a RED.
 
 ### 4. Implement Changes
 
-#### Updating Logic
-- Edit `copier.yml` for new questions.
-- Update templates in `.config/{domain}/`.
+Write the minimal code under `project/` that makes the test pass. `.config/` belongs to the toolbox: never edit it here.
 
 **Instruction:**
 Use the codebase as the source of truth for syntax and logic patterns.
@@ -57,7 +53,7 @@ Use the codebase as the source of truth for syntax and logic patterns.
 ### 5. Run Tests (Should Pass)
 
 ```bash
-task test -- --grep "@e2e-{feature}"
+task test -- --grep "@{domain}"
 ```
 
 ### 6. Global Verification
@@ -71,6 +67,6 @@ task devsecops:code:verify
 
 - [ ] New tests added for new functionality
 - [ ] Implementation follows existing patterns in the codebase
-- [ ] New visual baselines inspected by a human
 - [ ] All tests pass (`task devsecops:test:verify`)
 - [ ] All linters pass (`task devsecops:code:verify`)
+{% endraw %}

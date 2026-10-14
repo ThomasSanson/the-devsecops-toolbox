@@ -1,5 +1,5 @@
 ---
-name: TDD Refactor Phase
+name: tdd-step3-refactor
 description: Improve code quality without changing behavior. Test must still pass.
 ---
 
@@ -50,7 +50,7 @@ task test -- --grep "@your-tag"
 task devsecops:code:verify
 ```
 
-Fix every linter error following the [code skill](../skills/code/SKILL.md).
+Fix every linter error following the [code skill](../code/SKILL.md).
 
 ## Step 5: Full Test Suite
 

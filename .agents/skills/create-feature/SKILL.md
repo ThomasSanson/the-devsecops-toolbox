@@ -1,4 +1,5 @@
 ---
+name: create-feature
 description: Implement a new template feature using TDD with Gherkin tests
 ---
 

@@ -1,5 +1,5 @@
-{% raw %}---
-name: TDD Red Phase
+---
+name: tdd-step1-red
 description: Write a failing test specification. The test MUST fail before any implementation.
 ---
 
@@ -16,29 +16,19 @@ Ensure services are running.
 
 ## Step 1: Create Feature File
 
-**Choose the correct location:**
-
-| Type                        | Location                                                       |
-|-----------------------------|----------------------------------------------------------------|
-| Frontend/Backend (business) | `project/tests/application/features/{domain}/`                 |
-| Infrastructure tool         | `project/tests/{tool}/features/` (ex: `portainer`, `superset`) |
+Create it in `project/tests/e2e/features/{domain}/` (`01-install`, `02-daily-work` or `03-evolution`).
 
 **Requirements:**
-- **Language:** {% endraw %}{{ gherkin_language }}{% raw %} (`# language: {% endraw %}{{ gherkin_language }}{% raw %}`)
+- **Language:** English
 - **Tag:** Unique `@tag` for isolation
-- **Format:** See [Gherkin i18n](https://cucumber.io/docs/gherkin/reference/#spoken-languages) for keywords in your language
+- **Format:** Feature / Scenario / Given / When / Then
 
 ## Step 2: Create Step Definitions (if needed)
 
-**Choose the correct location:**
-
-| Type                        | Location                                               |
-|-----------------------------|--------------------------------------------------------|
-| Frontend/Backend (business) | `project/tests/application/step_definitions/{domain}/` |
-| Infrastructure tool         | `project/tests/{tool}/step_definitions/`               |
+Reuse or extend a steps file under `project/tests/e2e/support/steps/`. A new file goes in the `gherkin.steps` list of `project/tests/e2e/codecept.conf.js`.
 
 - Use Page Object pattern
-- Page Objects in `./pages/` of the same test folder
+- Page Objects in `project/tests/e2e/pages/`
 
 ## Step 3: Run Test — MUST FAIL
 
@@ -79,4 +69,3 @@ It must pass. It reads the report the run left behind and accepts only a scenari
 ## Next Step
 
 Once test fails correctly, proceed to implementation (GREEN phase).
-{% endraw %}

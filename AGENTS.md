@@ -102,20 +102,20 @@ If the command you need has no task, **create one** in `project/Taskfile.yml`, f
 
 ---
 
-## Workflows
+## Step-by-step skills
 
-**Follow workflow steps IN ORDER. Do NOT skip steps. Do NOT stop at a plan when asked to implement.**
+**Follow their steps IN ORDER. Do NOT skip steps. Do NOT stop at a plan when asked to implement.**
 
-| Workflow                 | File                                                                               | Description                                     |
-|--------------------------|------------------------------------------------------------------------------------|-------------------------------------------------|
-| **Development Cycle**    | [`.agent/workflows/development-cycle.md`](.agent/workflows/development-cycle.md)   | Mandatory TDD workflow for any code change      |
-| **TDD Step 1: Red**      | [`.agent/workflows/tdd-step1-red.md`](.agent/workflows/tdd-step1-red.md)           | Write a failing test specification              |
-| **TDD Step 2: Green**    | [`.agent/workflows/tdd-step2-green.md`](.agent/workflows/tdd-step2-green.md)       | Implement minimal code to make the test pass    |
-| **TDD Step 3: Refactor** | [`.agent/workflows/tdd-step3-refactor.md`](.agent/workflows/tdd-step3-refactor.md) | Improve code quality without changing behaviour |
-| **Create Feature**       | [`.agent/workflows/create-feature.md`](.agent/workflows/create-feature.md)         | Implement a new feature using TDD with Gherkin  |
-| **Read Feature**         | [`.agent/workflows/read-feature.md`](.agent/workflows/read-feature.md)             | List existing domains and features              |
-| **Update Feature**       | [`.agent/workflows/update-feature.md`](.agent/workflows/update-feature.md)         | Add functionality to an existing feature        |
-| **Delete Feature**       | [`.agent/workflows/delete-feature.md`](.agent/workflows/delete-feature.md)         | Safely remove a feature and its related files   |
+| Skill                    | File                                                                                       | Description                                     |
+|--------------------------|--------------------------------------------------------------------------------------------|-------------------------------------------------|
+| **Development Cycle**    | [`.agents/skills/development-cycle/SKILL.md`](.agents/skills/development-cycle/SKILL.md)   | Mandatory TDD workflow for any code change      |
+| **TDD Step 1: Red**      | [`.agents/skills/tdd-step1-red/SKILL.md`](.agents/skills/tdd-step1-red/SKILL.md)           | Write a failing test specification              |
+| **TDD Step 2: Green**    | [`.agents/skills/tdd-step2-green/SKILL.md`](.agents/skills/tdd-step2-green/SKILL.md)       | Implement minimal code to make the test pass    |
+| **TDD Step 3: Refactor** | [`.agents/skills/tdd-step3-refactor/SKILL.md`](.agents/skills/tdd-step3-refactor/SKILL.md) | Improve code quality without changing behaviour |
+| **Create Feature**       | [`.agents/skills/create-feature/SKILL.md`](.agents/skills/create-feature/SKILL.md)         | Implement a new feature using TDD with Gherkin  |
+| **Read Feature**         | [`.agents/skills/read-feature/SKILL.md`](.agents/skills/read-feature/SKILL.md)             | List existing domains and features              |
+| **Update Feature**       | [`.agents/skills/update-feature/SKILL.md`](.agents/skills/update-feature/SKILL.md)         | Add functionality to an existing feature        |
+| **Delete Feature**       | [`.agents/skills/delete-feature/SKILL.md`](.agents/skills/delete-feature/SKILL.md)         | Safely remove a feature and its related files   |
 
 ---
 

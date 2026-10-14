@@ -1,5 +1,5 @@
 ---
-name: Development Cycle
+name: development-cycle
 description: Mandatory TDD workflow for any code change. Follow steps IN ORDER. No shortcuts.
 ---
 
@@ -75,7 +75,7 @@ task test -- --grep "@your-tag"
 ```bash
 task devsecops:code:verify
 ```
-**CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](../skills/code/SKILL.md).
+**CHECKPOINT:** ✅ All linters pass. Fix any errors following the [code skill](../code/SKILL.md).
 
 ### STEP 9: FULL TEST SUITE
 ```bash

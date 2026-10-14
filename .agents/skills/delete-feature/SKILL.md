@@ -1,4 +1,5 @@
 ---
+name: delete-feature
 description: Delete a template feature and its related files
 ---
 

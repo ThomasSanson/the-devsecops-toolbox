@@ -1,4 +1,5 @@
 ---
+name: read-feature
 description: List existing e2e domains and features
 ---
 

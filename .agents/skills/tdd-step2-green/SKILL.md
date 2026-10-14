@@ -1,5 +1,5 @@
 ---
-name: TDD Green Phase
+name: tdd-step2-green
 description: Implement minimal code to make the failing test pass. Nothing more.
 ---
 
