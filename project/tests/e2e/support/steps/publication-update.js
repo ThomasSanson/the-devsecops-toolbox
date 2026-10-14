@@ -1,21 +1,23 @@
-/* global inject Before After Given When Then NodeFilter */
+/* global inject Before After Given When Then document */
 /**
- * A toolbox release reaching a component-only project — @publication-update.
+ * A toolbox release reaching a component-only project: @publication-update.
  *
  * The fixture is a REAL two-release template built from the working branch: tag
  * 1.0.0 is this branch as it stands, tag 1.0.1 adds a rule to the publication
- * floor, a line to the release phase, and a line to a tool the project never
+ * floor, a line to the update machinery, and a line to a tool the project never
  * installed. It is pushed to the test GitLab and installed from there by the
  * REAL installer function (scaffold_publication_only, sourced from
  * .config/devsecops/install.sh), so what the story updates is what a developer
  * really gets, from where a developer really gets it.
  *
- * Nothing here types the update. `task feedback` runs Renovate — the pinned one
- * in this image, against the real GitLab — Renovate opens the merge request and
- * applies the release inside it, and the story reads back what moved once that
- * merge request is in.
+ * Nothing here types the update. `task feedback` runs Renovate (the pinned one
+ * in this image, against the real GitLab), Renovate opens the merge request and
+ * applies the release inside it, and the story reads the main branch once that
+ * merge request is in. Five cards: the publication folder on GitLab, the dry run
+ * in the terminal, the merged merge request, the same folder page after it, and
+ * the same dry run after a pull. Every card has a programmatic twin.
  *
- * Two things the whole chapter depends on, both found the hard way:
+ * Two things the whole story depends on, both found the hard way:
  *   - `copier` must be on PATH when Renovate runs, or its own copier manager
  *     dies on a spawn error and the process never exits. The framework's CI job
  *     installs it for exactly this reason;
@@ -25,9 +27,8 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const { execSync } = require('child_process')
-const { I, GitLabUserPage, GitLabRepositoryPage } = inject()
+const { I, GitLabUserPage } = inject()
 const {
-  ttydPort,
   shellEscape,
   runCommand,
   containerName,
@@ -37,28 +38,24 @@ const {
   waitForTtyd,
   stripAnsiEscapeSequences
 } = require('../helpers/docker')
-const {
-  typeCommandAndWait,
-  captureTerminalFrame,
-  COMMAND_TIMEOUT_MS
-} = require('../terminal/capture')
-const {
-  storyboardStep,
-  addStoryboardFrame,
-  capturePageFrame
-} = require('../../../../../.config/codeceptjs/storyboard')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { openTerminal, terminalCard } = require('../terminal/capture')
+const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
+const { gitlabUrl, gitlabFrame, inNewTab } = require('../helpers/gitlabCard')
+const { copyFramework } = require('../helpers/frameworkCopy')
 const { freshGet } = require('../helpers/http')
 const {
   BASE_URL,
-  projectPath,
+  encodedProjectPath,
   getRootHeaders,
   createProject,
   deleteProject,
   createLambdaPersonalAccessToken,
   revokePersonalAccessToken,
   listProjectMergeRequests,
-  mergeMergeRequest
+  getMergeRequest,
+  mergeMergeRequest,
+  listProjectBranches,
+  listRepositoryTree
 } = require('../helpers/gitlabApi')
 
 const WORKSPACE = '/workspace'
@@ -69,7 +66,8 @@ const NEW_RELEASE = '1.0.1'
 const SETUP_TIMEOUT = 600000
 // Where the suite's own container keeps the checkout it runs `task feedback`
 // from. Renovate clones the repository itself; this is only the working copy the
-// command is typed in, the way a CI job has one.
+// command is typed in, the way a CI job has one. It also reads the merged main
+// branch back for the twins of the GitLab cards.
 const CHECKOUT_DIR = '/tmp/publication-update-checkout'
 
 // What the 1.0.1 release changes, one file per audience:
@@ -80,11 +78,49 @@ const NEW_FLOOR_RULE = '*.kubeconfig'
 const SPINE_FILE = '.config/copier/Taskfile.yml'
 const SPINE_MARKER = '# 1.0.1: the update machinery gained a note'
 const ABSENT_TOOL = '.config/glab/Taskfile.yml'
+// Exactly what the release must move in this project.
+const RELEASE_FILES = ['.config/devsecops/.copier-answers.yml', SPINE_FILE, '.config/publication/denylist.base'].sort()
 // The credential the project happens to track, published today and held back
 // once the release tightens the floor.
 const CREDENTIAL = 'src/cluster.kubeconfig'
 
+// The folder both repository cards show, the team's own files in it, and the
+// commit that installed it all.
+const PUBLICATION_DIR = '.config/publication'
+const TEAM_FILES = ['allowlist', 'denylist', 'manifest', 'owners']
+const INSTALL_COMMIT = 'chore: install source publication and our own rules'
+// Everything a publication-only install puts in .config: the component and the
+// spine that keeps it up to date. No linter, no container or forge tooling.
+const SPINE = ['copier', 'devsecops', 'publication', 'python', 'renovate', 'task']
+
+// Tall enough for the Files panel with .config and publication unfolded, down
+// to the project's last root file.
+const FOLDER_PAGE_HEIGHT = 940
+// The sidebar's open work items and merge requests counters: Renovate's
+// Dependency Dashboard issue moves the first one, GitLab refreshes them from a
+// cache on its own schedule, and no card is about them.
+const SIDEBAR_COUNTERS = '[data-testid="pill-badge"]'
+// The author's avatar in the last-commit box. The shared mask only blanks it,
+// and a blank avatar of "The team" (no GitLab account) leaves a gap the
+// account of the release commit does not: the before and after cards would
+// not line up.
+const LAST_COMMIT_AVATAR = '.project-last-commit .avatar, .project-last-commit .gl-avatar'
+// The template's per-run name, in the source branch Renovate names after it
+// and in the answers file the merge request changes.
+const TOOLBOX_MASK = [/e2e-toolbox-[0-9a-f]+/g, 'toolbox']
+// The number of framework files sitting outside the allowlist is real, and it
+// moves whenever the spine gains or loses a file. The card must not rot on it.
+const TERMINAL_MASKS = [
+  [/\b\d+ other tracked files\b/g, '<n> other tracked files'],
+  [/e2e-component-[0-9a-f]+/g, 'project']
+]
+// The last card's typed line: the team pulls the merged main branch, then asks
+// the same question as before the release.
+const PULL_AND_CHECK = 'git pull -q origin main && task publication:check'
+
 const ownsScenario = test => Boolean(test && test.tags && test.tags.includes('@publication-update'))
+const lambdaUser = () => process.env.TASK_GITLAB_LAMBDA_USER
+const tokenHeaders = () => ({ 'PRIVATE-TOKEN': global.pubUpdateToken })
 
 function repositoryUrl (project, token) {
   const url = new URL(`/${lambdaUser()}/${project}.git`, BASE_URL)
@@ -103,7 +139,6 @@ Before(test => {
   global.pubUpdateProject = null
   global.pubUpdateToken = null
   global.pubUpdateTokenId = null
-  global.pubUpdateMr = null
 })
 
 After(async test => {
@@ -122,17 +157,13 @@ After(async test => {
   global.pubUpdateTokenId = null
   global.pubUpdateToken = null
   removeContainer(resources.container)
-  if (resources.template && resources.template.startsWith('/tmp/')) {
+  for (const dir of [resources.template, CHECKOUT_DIR]) {
+    if (!dir || !dir.startsWith('/tmp/')) continue
     try {
-      execSync(`rm -rf ${shellEscape(resources.template)}`, { stdio: 'ignore' })
+      execSync(`rm -rf ${shellEscape(dir)}`, { stdio: 'ignore' })
     } catch (_) {
       // Best-effort cleanup.
     }
-  }
-  try {
-    execSync(`rm -rf ${CHECKOUT_DIR}`, { stdio: 'ignore' })
-  } catch (_) {
-    // Best-effort cleanup.
   }
 
   let rootHeaders = null
@@ -162,17 +193,20 @@ function sh (cmd, cwd) {
   return execSync(cmd, { cwd, stdio: ['ignore', 'pipe', 'pipe'], timeout: SETUP_TIMEOUT, encoding: 'utf8' })
 }
 
-const lambdaUser = () => process.env.TASK_GITLAB_LAMBDA_USER
-
 /**
  * The working branch, tagged as two consecutive toolbox releases. 1.0.1 carries
  * the three changes the story reads back, so "a new release arrived" is a real
- * template diff and not a fixture pretending to be one.
+ * template diff and not a fixture pretending to be one. copyFramework leaves out
+ * .git and the suite's own screenshots, which no render reads: the template that
+ * GitLab, the installer and Renovate each clone stays light.
  */
 function buildTwoReleaseTemplate () {
   const tpl = `/tmp/publication-release-${crypto.randomBytes(4).toString('hex')}`
-  sh(`mkdir -p ${tpl} && cp -a ${WORKSPACE}/. ${tpl} && chown -R "$(id -u):$(id -g)" ${tpl}`)
-  sh('rm -rf .git', tpl)
+  sh(`mkdir -p ${tpl}`)
+  copyFramework(tpl)
+  // The extracted tree keeps the host's uid, and git refuses a repository
+  // owned by another user.
+  sh(`chown -R "$(id -u):$(id -g)" ${tpl}`)
   sh('git init --quiet --initial-branch=main', tpl)
   sh('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
   sh('git add -A', tpl)
@@ -241,7 +275,7 @@ function setupUpdateTerminal (templateUrl, pushUrl, credential) {
     "printf '# Who approves what becomes public.\\nsecurity-lead\\n' > .config/publication/owners",
     'git init -q -b main .',
     'git add -A',
-    'git commit -q --no-verify -m "chore: install source publication and our own rules"',
+    `git commit -q --no-verify -m ${shellEscape(INSTALL_COMMIT)}`,
     `git remote add origin ${shellEscape(pushUrl)}`,
     'git push -q origin main',
     // CI runners exec under umask 000, so every directory created here comes out
@@ -283,39 +317,6 @@ function inProjectOrThrow (script) {
   return stripAnsiEscapeSequences(res.output || '')
 }
 
-// The number of framework files sitting outside the allowlist is real, and it
-// moves whenever the spine gains or loses a file. The card must not rot on it.
-const TERMINAL_MASKS = [
-  [/\b\d+ other tracked files\b/g, '<n> other tracked files'],
-  [/e2e-toolbox-[0-9a-f]+/g, 'toolbox'],
-  [/e2e-component-[0-9a-f]+/g, 'project']
-]
-
-/**
- * Type a command in the live shell and keep the moment as a storyboard frame.
- * The screen is cleared first: this story asks the SAME question twice, before
- * and after the release, and an anchor that appears twice in the scrollback
- * would frame the first one both times.
- */
-async function terminalCard (command, marker, frameName) {
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, command, COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask: TERMINAL_MASKS }))
-  const rows = await I.executeScript(function () {
-    return Array.from(document.querySelectorAll('.xterm-rows > div'))
-      .map(function (row) { return row.textContent || '' })
-      .join('\n')
-  })
-  return String(rows || '')
-}
-
-/** Re-open the live terminal after a card that navigated to a GitLab page. */
-async function backToTerminal () {
-  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
-  I.waitForElement('.xterm-screen', 10)
-  await I.wait(2)
-}
-
 function mustContain (haystack, needles, what) {
   for (const needle of [].concat(needles)) {
     if (!haystack.includes(needle)) {
@@ -332,11 +333,64 @@ function mustNotContain (haystack, needles, what) {
   }
 }
 
-// ===========================================================================
-
 /** Push the two-release template to GitLab: Renovate only tracks what it can fetch. */
 function pushTemplate (dir, url) {
   sh(`git push --quiet ${shellEscape(url)} main --tags`, dir)
+}
+
+/**
+ * The .config/publication folder of the main branch on GitLab, the card that
+ * opens and closes the update. GitLab unfolds the Files panel down to the
+ * folder by itself. Its Last commit column fills row by row, so the card waits
+ * until every row has one. The folder's README renders under the table: 460
+ * lines of documentation no card is about, and every edit of it would redden
+ * both cards, so it is hidden, like the sidebar counters and the commit
+ * author's avatar.
+ */
+async function publicationFolderFrame (frameName, waitText) {
+  await gitlabFrame(I, frameName, gitlabUrl.tree(global.pubUpdateProject, 'main', PUBLICATION_DIR), {
+    waitText,
+    height: FOLDER_PAGE_HEIGHT,
+    textMasks: [TOOLBOX_MASK],
+    hide: ['.readme-holder', LAST_COMMIT_AVATAR, SIDEBAR_COUNTERS],
+    prepare: () => I.waitForFunction(() => {
+      const rows = Array.from(document.querySelectorAll('table.tree-table tbody tr')).filter(row => row.querySelector('th'))
+      return rows.length > 0 && rows.every(row => {
+        const cell = row.querySelector('td')
+        return cell && cell.textContent.trim()
+      })
+    }, 60)
+  })
+}
+
+/** The remote .config holds the spine and the component, nothing else. */
+async function assertOnlyTheSpine (what) {
+  const res = await listRepositoryTree(global.pubUpdateProject, tokenHeaders(), '?ref=main&path=.config&per_page=100')
+  const names = (res.data || []).map(entry => entry.name).sort()
+  if (JSON.stringify(names) !== JSON.stringify(SPINE)) {
+    throw new Error(`${what}: .config on the main branch must hold exactly ${JSON.stringify(SPINE)}, it holds ${JSON.stringify(names)}`)
+  }
+}
+
+/**
+ * Wait for the merge request to be merged (by the API call or by Renovate's
+ * automerge, whichever came first) and, when it asked for it, for its source
+ * branch to be deleted: GitLab does that after the merge, and the card must not
+ * catch the header halfway.
+ */
+async function waitForMerged (iid) {
+  const deadline = Date.now() + 120000
+  let mr = null
+  while (Date.now() < deadline) {
+    mr = (await getMergeRequest(global.pubUpdateProject, iid, tokenHeaders())).data || {}
+    if (mr.state === 'merged') {
+      if (!mr.force_remove_source_branch && !mr.should_remove_source_branch) return mr
+      const branches = (await listProjectBranches(global.pubUpdateProject, tokenHeaders())).data || []
+      if (!branches.some(branch => branch.name === mr.source_branch)) return mr
+    }
+    await I.wait(2)
+  }
+  throw new Error(`The update merge request never settled as merged: ${JSON.stringify({ state: mr && mr.state, branch: mr && mr.source_branch })}`)
 }
 
 /**
@@ -372,36 +426,15 @@ function runFeedback (cloneUrl, token) {
   }
 }
 
-/** What the card must not carry: the run's own name, its clock, its version pins. */
-function maskFeedback (output) {
-  return stripAnsiEscapeSequences(output)
-    // npm's first download emits deprecation notices that a warm cache omits.
-    // Keep Renovate's own warnings and errors, which describe this update.
-    .replace(/^npm warn deprecated[^\n]*(?:\n|$)/gm, '')
-    .replace(/renovate@[0-9][0-9.]*/g, 'renovate@<version>')
-    .replace(/e2e-toolbox-[0-9a-f]+/g, 'toolbox')
-    .replace(/e2e-component-[0-9a-f]+/g, 'project')
-    .replace(/("renovateVersion":\s*)"[^"]+"/g, '$1"<version>"')
-    .replace(/("durationMs":\s*)\d+/g, '$1<ms>')
-    // The commit Renovate just made, and any other object name in the log: a new
-    // one every run, and the card is about what happened, not about which sha it
-    // happened at.
-    .replace(/\b[0-9a-f]{40}\b/g, '<sha>')
-    .replace(/[ \t]+$/gm, '')
-    .trim()
-}
 
-storyboardStep(Given, 'a project that installed source publication and nothing else', async () => {
+// Off camera: the lambda user (logged in, the project is private), its token,
+// the public two-release template and the private project, installed at 1.0.0
+// by the real installer in the terminal container and pushed. On camera: the
+// publication folder on GitLab. Then the terminal opens, for the next card.
+storyboardStep(Given, 'a project on GitLab that installed source publication and nothing else', async () => {
+  // loginAs creates the lambda user when it does not exist yet.
+  await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   const rootHeaders = await getRootHeaders()
-  await GitLabUserPage.ensureUserViaApi(
-    BASE_URL, process.env.TASK_GITLAB_ROOT_USER, process.env.TASK_GITLAB_ROOT_PASSWORD,
-    {
-      email: process.env.TASK_GITLAB_LAMBDA_EMAIL,
-      username: lambdaUser(),
-      name: 'Lambda User',
-      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
-    }
-  )
   const suffix = crypto.randomBytes(4).toString('hex')
   global.pubUpdateToolbox = `e2e-toolbox-${suffix}`
   global.pubUpdateProject = `e2e-component-${suffix}`
@@ -414,7 +447,6 @@ storyboardStep(Given, 'a project that installed source publication and nothing e
   }
   global.pubUpdateToken = created.token
   global.pubUpdateTokenId = created.id
-  const headers = { 'PRIVATE-TOKEN': global.pubUpdateToken }
 
   // The template is public, the way a template is: copier and Renovate both read
   // it without a credential. The project itself is private, and runs no CI: no
@@ -424,183 +456,134 @@ storyboardStep(Given, 'a project that installed source publication and nothing e
     [global.pubUpdateToolbox, { visibility: 'public' }],
     [global.pubUpdateProject, { visibility: 'private', jobs_enabled: false }]
   ]) {
-    const res = await createProject({ name, ...extra }, headers)
+    const res = await createProject({ name, ...extra }, tokenHeaders())
     if (res.status >= 400) {
       throw new Error(`Failed to create ${name}: ${res.status} ${JSON.stringify(res.data)}`)
     }
   }
 
-  const authed = (project) => repositoryUrl(project, global.pubUpdateToken)
-  const plain = (project) => repositoryUrl(project)
   const credentials = new URL(BASE_URL)
   credentials.username = lambdaUser()
   credentials.password = global.pubUpdateToken
 
   global.pubUpdateTemplate = buildTwoReleaseTemplate()
-  pushTemplate(global.pubUpdateTemplate, authed(global.pubUpdateToolbox))
+  pushTemplate(global.pubUpdateTemplate, repositoryUrl(global.pubUpdateToolbox, global.pubUpdateToken))
   global.pubUpdateContainer = setupUpdateTerminal(
-    plain(global.pubUpdateToolbox),
-    plain(global.pubUpdateProject),
+    repositoryUrl(global.pubUpdateToolbox),
+    repositoryUrl(global.pubUpdateProject),
     credentials.href
   )
 
-  I.amOnPage(`http://${global.pubUpdateContainer}:${ttydPort()}`) // DevSkim: ignore DS137138 -- Disposable ttyd service on the isolated test network.
-  I.waitForElement('.xterm-screen', 10)
-  await I.wait(3)
-  await typeCommandAndWait(I, 'clear')
-  const screen = await terminalCard(
-    'ls -A1 && ls .config && grep _commit .config/devsecops/.copier-answers.yml',
-    'ls -A1 && ls .config',
-    'update-before'
-  )
-  mustContain(screen, ['publication', `_commit: ${OLD_RELEASE}`],
-    'the project must carry the component and record the release it came from')
-  mustNotContain(screen, ['glab', 'megalinter'],
-    'a component-only install must not carry the framework tooling')
+  await publicationFolderFrame('update-before', INSTALL_COMMIT)
+  await assertOnlyTheSpine('a component-only install')
+  mustContain(inProjectOrThrow('grep _commit .config/devsecops/.copier-answers.yml'), `_commit: ${OLD_RELEASE}`,
+    'the project must record the release it came from')
+
+  await openTerminal(I, global.pubUpdateContainer)
 })
 
 storyboardStep(Given, 'what it would publish today, cluster credential included', async () => {
-  const screen = await terminalCard('task publication:check', 'task publication:check', 'update-check-before')
-  mustContain(screen, [CREDENTIAL, 'README.md'],
+  const screen = await terminalCard(I, 'update-check-before', 'task publication:check', { mask: TERMINAL_MASKS })
+  mustContain(screen, ['Publishing 3 files', CREDENTIAL, 'README.md'],
     'before the release, the credential is among the files that would be published')
 })
 
-storyboardStep(When, 'the feedback task runs and Renovate finds the new release', async () => {
+// task feedback runs Renovate, Renovate opens the merge request; the API merges
+// it unless Renovate's automerge (on by default) got there first. The card is
+// the merged merge request on its Changes tab, taken in a second tab so the
+// terminal keeps its session. The twins: the feedback output, the merge
+// request's own list of changed files, and its merged state.
+storyboardStep(When, 'the feedback task runs, Renovate opens a merge request that applies the new release, and that merge request goes into the main branch', async () => {
   const { output, exitCode } = runFeedback(
     repositoryUrl(global.pubUpdateProject, global.pubUpdateToken),
     global.pubUpdateToken
   )
+  const log = stripAnsiEscapeSequences(output)
   if (exitCode !== 0) {
-    throw new Error(`The feedback phase failed (exit ${exitCode}):\n${maskFeedback(output)}`)
+    throw new Error(`The feedback phase failed (exit ${exitCode}):\n${log.slice(-6000)}`)
   }
-  mustContain(output, ['Feedback', 'Renovate started'],
-    'the feedback phase must be what starts Renovate')
-  mustNotContain(output, ['artifactErrors'],
-    'Renovate must apply the release without an artifact error')
-  await renderPreFrame(I, 'update-feedback', `$ task feedback\n${maskFeedback(output)}`, { colour: true, height: 720 })
+  mustContain(log, ['Feedback', 'Renovate started'], 'the feedback phase must be what starts Renovate')
+  mustNotContain(log, ['artifactErrors'], 'Renovate must apply the release without an artifact error')
 
-  const mrs = await listProjectMergeRequests(
-    global.pubUpdateProject, { 'PRIVATE-TOKEN': global.pubUpdateToken }, '?state=opened'
-  )
-  const mr = (mrs.data || [])[0]
+  // Every state, not only the open ones: automerge may already have merged it.
+  const mrs = await listProjectMergeRequests(global.pubUpdateProject, tokenHeaders(), '?state=all')
+  const mr = (mrs.data || []).find(m => m.source_branch.startsWith('renovate/'))
   if (!mr) {
-    throw new Error(`Renovate opened no merge request. Its output was:\n${maskFeedback(output)}`)
+    throw new Error(`Renovate opened no merge request. Its output ended with:\n${log.slice(-6000)}`)
   }
-  global.pubUpdateMr = mr.iid
-})
 
-storyboardStep(When, 'the merge request it opened carries the release, applied', async () => {
-  const headers = { 'PRIVATE-TOKEN': global.pubUpdateToken }
   const changes = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodeURIComponent(`${lambdaUser()}/${global.pubUpdateProject}`)}` +
-    `/merge_requests/${global.pubUpdateMr}/changes`,
-    headers
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubUpdateProject)}/merge_requests/${mr.iid}/changes`,
+    tokenHeaders()
   )
   const paths = ((changes.data && changes.data.changes) || []).map(c => c.new_path).sort()
-  const expected = [
-    '.config/devsecops/.copier-answers.yml',
-    SPINE_FILE,
-    '.config/publication/denylist.base'
-  ].sort()
-  if (JSON.stringify(paths) !== JSON.stringify(expected)) {
-    throw new Error(`Renovate's merge request must carry exactly ${JSON.stringify(expected)}, it carried ${JSON.stringify(paths)}`)
+  if (JSON.stringify(paths) !== JSON.stringify(RELEASE_FILES)) {
+    throw new Error(`Renovate's merge request must carry exactly ${JSON.stringify(RELEASE_FILES)}, it carried ${JSON.stringify(paths)}`)
   }
 
-  await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  I.resizeWindow(1024, 700)
-  await I.amOnPage(`/${projectPath(global.pubUpdateProject)}/-/merge_requests/${global.pubUpdateMr}/diffs`)
-  await I.waitForText('denylist.base', 60)
-  await GitLabRepositoryPage.maskVolatile(global.pubUpdateProject)
-  await I.executeScript((names) => {
-    const re = new RegExp(names.join('|'), 'g')
-    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const nodes = []
-    while (walk.nextNode()) nodes.push(walk.currentNode)
-    nodes.forEach(n => {
-      if (re.test(n.nodeValue)) {
-        n.nodeValue = n.nodeValue
-          .replace(/e2e-toolbox-[0-9a-f]+/g, 'toolbox')
-          .replace(/e2e-component-[0-9a-f]+/g, 'project')
-      }
-    })
-    const style = document.createElement('style')
-    style.textContent = '[role="tooltip"], .tooltip, .gl-tooltip, [class*="popover"] { display: none !important }'
-    document.head.appendChild(style)
-  }, ['e2e-toolbox-[0-9a-f]+', 'e2e-component-[0-9a-f]+'])
-  await I.wait(1)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'update-merge-request'))
-  I.resizeWindow(1024, 768)
-
-  // Merged, then pulled: the next card reads the project as the team would find
-  // it the morning after.
-  const merged = await mergeMergeRequest(global.pubUpdateProject, global.pubUpdateMr, headers)
-  // 405 is what GitLab answers for a merge request that is already in — the
-  // framework turns automerge on, and this story does not depend on which of the
-  // two got there first.
+  const merged = await mergeMergeRequest(global.pubUpdateProject, mr.iid, tokenHeaders())
+  // 405 is what GitLab answers for a merge request that is already in.
   if (merged.status >= 400 && merged.status !== 405) {
     throw new Error(`The update merge request must go in: ${merged.status} ${JSON.stringify(merged.data)}`)
   }
-  inProjectOrThrow('git fetch --quiet origin main && git reset --hard --quiet origin/main')
-  const answers = inProjectOrThrow('grep _commit .config/devsecops/.copier-answers.yml')
-  mustContain(answers, NEW_RELEASE, 'the merged update must move the recorded release')
+  await waitForMerged(mr.iid)
+
+  await inNewTab(I, () => gitlabFrame(I, 'update-merge-request', gitlabUrl.mr(global.pubUpdateProject, mr.iid, 'diffs'), {
+    waitText: NEW_FLOOR_RULE,
+    textMasks: [TOOLBOX_MASK],
+    hide: [SIDEBAR_COUNTERS]
+  }))
 })
 
-storyboardStep(Then, 'the project tracks the new release, and git says exactly what moved', async () => {
-  // The last two cards were GitLab pages; the terminal is where the rest of the
-  // story happens.
-  await backToTerminal()
-  const screen = await terminalCard(
-    'grep _commit .config/devsecops/.copier-answers.yml && git diff --stat HEAD~1',
-    'grep _commit',
-    'update-diff'
-  )
-  mustContain(screen, [`_commit: ${NEW_RELEASE}`, '.config/publication/denylist.base', 'copier/Taskfile.yml'],
-    'the card must show the version and the framework files the release moved')
+// The same page as the Given, after the merge. The twins read the merged main
+// branch in the checkout task feedback ran in (git answers "last commit of this
+// path" the way GitLab's table does) and the remote .config.
+storyboardStep(Then, "on the main branch the team's rules keep their own commit, and nothing the project never installed arrives", async () => {
+  sh('git fetch --quiet origin main', CHECKOUT_DIR)
+  const git = (args) => sh(`git ${args}`, CHECKOUT_DIR).trim()
 
-  const changed = inProjectOrThrow('git diff --name-only HEAD~1').split('\n').map(l => l.trim()).filter(Boolean).sort()
-  const expected = [
-    '.config/devsecops/.copier-answers.yml',
-    SPINE_FILE,
-    '.config/publication/denylist.base'
-  ].sort()
-  if (JSON.stringify(changed) !== JSON.stringify(expected)) {
-    throw new Error(`The release must change exactly ${JSON.stringify(expected)}, changed ${JSON.stringify(changed)}`)
+  const moved = git('diff --name-only origin/main~1 origin/main').split('\n').filter(Boolean).sort()
+  if (JSON.stringify(moved) !== JSON.stringify(RELEASE_FILES)) {
+    throw new Error(`The release must change exactly ${JSON.stringify(RELEASE_FILES)} on the main branch, it changed ${JSON.stringify(moved)}`)
   }
-})
-
-storyboardStep(Then, 'the rules the team wrote came through untouched', async () => {
-  const screen = await terminalCard(
-    'git diff --stat HEAD~1 -- .config/publication/allowlist .config/publication/owners && cat .config/publication/owners',
-    'git diff --stat HEAD~1 --',
-    'update-our-rules'
-  )
-  mustContain(screen, 'security-lead', "the team's own owners file must be exactly what they wrote")
-
-  const dirty = inProjectOrThrow(
-    'git diff --name-only HEAD~1 -- .config/publication/allowlist .config/publication/denylist ' +
-    '.config/publication/owners .config/publication/manifest'
-  ).trim()
-  if (dirty) {
-    throw new Error(`The release must not touch the files the project owns, it changed: ${dirty}`)
+  const releaseCommit = git(`log -1 --format=%s origin/main -- ${PUBLICATION_DIR}/denylist.base`)
+  if (releaseCommit === INSTALL_COMMIT || !releaseCommit.includes(NEW_RELEASE)) {
+    throw new Error(`denylist.base must sit on the release's commit, it sits on "${releaseCommit}"`)
   }
+  for (const file of TEAM_FILES) {
+    const title = git(`log -1 --format=%s origin/main -- ${PUBLICATION_DIR}/${file}`)
+    if (title !== INSTALL_COMMIT) {
+      throw new Error(`The release must not touch ${file}, a file the team owns: its last commit is "${title}"`)
+    }
+  }
+  mustContain(git(`show origin/main:${PUBLICATION_DIR}/owners`), 'security-lead',
+    "the team's own owners file must be exactly what they wrote")
+  let arrived = true
+  try {
+    git(`cat-file -e origin/main:${ABSENT_TOOL}`)
+  } catch (_) {
+    arrived = false
+  }
+  if (arrived) throw new Error(`"${ABSENT_TOOL}" changed in the release and must NOT have arrived in this project`)
+  await assertOnlyTheSpine('an update')
+
+  await inNewTab(I, () => publicationFolderFrame('update-after', releaseCommit))
 })
 
-storyboardStep(Then, 'the tightened floor from that release is already in force', async () => {
-  const screen = await terminalCard('task publication:check', 'task publication:check', 'update-check-after')
-  mustContain(screen, [CREDENTIAL, 'framework floor'],
+// Back on the terminal tab, which kept its session: one typed line pulls the
+// merged main branch and runs the same dry run. The twins: the floor holds the
+// credential back, and the clone now records 1.0.1 and the new floor rule, and
+// still has no file of the tool it never installed.
+storyboardStep(Then, 'after a pull, the tightened floor from that release is already in force', async () => {
+  const screen = await terminalCard(I, 'update-check-after', PULL_AND_CHECK, { mask: TERMINAL_MASKS })
+  mustContain(screen, ['Publishing 2 files', 'Withholding 1 file', CREDENTIAL, 'framework floor'],
     'after the release, the credential must be held back by the framework floor')
 
-  const floor = inProjectOrThrow('cat .config/publication/denylist.base')
-  mustContain(floor, NEW_FLOOR_RULE, 'the release must have added its new rule to the floor')
-})
-
-storyboardStep(Then, 'nothing the project never installed arrived with it', async () => {
-  const screen = await terminalCard('ls -A1 && ls .config', 'ls -A1 && ls .config', 'update-after')
-  mustNotContain(screen, ['glab', 'megalinter', 'codeceptjs'],
-    'an update must not grow a component-only project back into the whole framework')
-
-  const absent = inProject(`test -e ${ABSENT_TOOL}`)
-  if (absent.exitCode === 0) {
+  mustContain(inProjectOrThrow('grep _commit .config/devsecops/.copier-answers.yml'), `_commit: ${NEW_RELEASE}`,
+    'the pulled update must move the recorded release')
+  mustContain(inProjectOrThrow(`cat ${PUBLICATION_DIR}/denylist.base`), NEW_FLOOR_RULE,
+    'the release must have added its new rule to the floor')
+  if (inProject(`test -e ${ABSENT_TOOL}`).exitCode === 0) {
     throw new Error(`"${ABSENT_TOOL}" changed in the release and must NOT have arrived in this project`)
   }
 })

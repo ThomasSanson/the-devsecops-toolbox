@@ -8,49 +8,36 @@ Feature: A toolbox release reaches a project that installed only source publicat
 
   # A component installed on its own would be a dead copy: no version, no way to
   # learn a new release exists, no way to apply it. So the install keeps the
-  # framework's OWN update machinery rather than inventing a second one. It is
-  # the copier answers file that records
-  # the template and the version, the handful of files `task copier:update` needs
-  # to run, the Renovate config that watches that answers file, and the component.
+  # framework's OWN update machinery rather than inventing a second one: the
+  # copier answers file that records the template and the version, the handful
+  # of files `task copier:update` needs to run, the Renovate config that watches
+  # that answers file, and the component.
   #
-  # This story runs a real toolbox release against a real GitLab. The new version
-  # tightens the publication floor, touches the update machinery itself, and
-  # changes a tool the project never installed. Nobody types the update: the
+  # This story runs a real toolbox release against a real GitLab. The new
+  # version tightens the publication floor, touches the update machinery itself,
+  # and changes a tool the project never installed. Nobody types the update: the
   # feedback phase runs Renovate, Renovate opens the merge request and applies
-  # the release inside it, and the story reads back what moved once it is merged
-  # — the version, the framework's files, and nothing else. The rules the team
-  # wrote themselves are still theirs.
+  # the release inside it, and the merge request goes into the main branch. The
+  # story then reads the main branch on GitLab, on the same page as before the
+  # update, and runs the same check in the same terminal.
   @publication-update
   Scenario: the release updates the component and its spine, spares the team's rules, and brings nothing else
-    # Note: A project that ticked source publication on the installer's checklist and nothing else. Its own README and src are there; the install added .config, .env.dist, .gitlab-ci.yml and Taskfile.yml. The last line is the release they came from.
-    # Note: What is NOT there is the point: no linter, no container runtime, no forge tooling, and not even the phase orchestrators a full project gets. Only what runs the publication and what keeps it up to date.
-    # Copy: ls -A1 && ls .config && grep _commit .config/devsecops/.copier-answers.yml
-    Given a project that installed source publication and nothing else
-    # Note: What the project would publish today. Three files, and among them src/cluster.kubeconfig, a cluster credential that nobody thought to deny.
-    # Note: Remember this list. The same command answers differently four cards from here, without anyone touching a single rule.
+    # Note: GitLab's page for the folder .config/publication on the main branch. The Files panel on the left shows the whole project: .config holds only copier, devsecops, publication, python, renovate and task. There is no linter, no container tooling and no forge tooling.
+    # Note: The table lists the nine publication files. All of them, the team's own allowlist and owners included, sit on the team's commit "chore: install source publication and our own rules". Remember this page: the story comes back to it after the update.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main/.config/publication
+    Given a project on GitLab that installed source publication and nothing else
+    # Note: The terminal, in the team's clone of that project. task publication:check lists what a release would publish today: "Publishing 3 files", and the third one is src/cluster.kubeconfig, a cluster credential that nobody thought to deny.
+    # Note: Remember this answer. The last card runs the same check again, and nobody touches a single rule in between.
     # Copy: task publication:check
     And what it would publish today, cluster credential included
-    # Note: The test runs task feedback directly. Renovate reads the release recorded in the answers file, checks the template, and finds 1.0.1. This proves the update task; execution by GitLab's nightly schedule needs a separate CI test.
-    # Note: This is the real thing, against the real GitLab in the picture below. The last lines are Renovate saying it opened a merge request.
+    # Note: The story runs task feedback, the phase GitLab's nightly schedule runs. Renovate reads the release recorded in the answers file, finds 1.0.1 on the template and opens this merge request by itself: "fix(devsecops): update devsecops toolbox to v1.0.1", from a renovate branch into the main branch. Its badge says Merged.
+    # Note: Renovate applied the release inside the merge request, so its Changes tab is the update itself. Three files, all three the framework's own: the update machinery in .config/copier/Taskfile.yml, the recorded release going from 1.0.0 to 1.0.1, and the publication floor in denylist.base, which gains the line *.kubeconfig.
     # Copy: task feedback
-    When the feedback task runs and Renovate finds the new release
-    # Note: The merge request Renovate opened, on the project, by itself. It is not a note saying a release exists: the release is applied inside it, so the diff is the update, ready to read and to merge.
-    # Note: Three files, and all three are the framework's: the release the project tracks, the publication floor, and the update machinery itself. That is what makes an update reviewable — a human reads a diff of what actually changes, not a version number and a promise.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    And the merge request it opened carries the release, applied
-    # Note: The merge request went in, and the project pulled it. The version line moved to the new release, and under it git says exactly what came with it: the publication floor the framework owns, and nothing besides.
-    # Note: That is the whole update for this project, and it is the shape the story is here to guarantee.
-    # Copy: grep _commit .config/devsecops/.copier-answers.yml && git diff --stat HEAD~1
-    Then the project tracks the new release, and git says exactly what moved
-    # Note: The two files that carry the team's own decisions, before and after: git reports no change at all on them, and their contents are what the team wrote.
-    # Note: That is copier's three-way merge doing the work. A release edits the files the framework owns and leaves the ones the project owns alone, which for a manifest that decides what becomes public is the whole point.
-    # Copy: git diff --stat HEAD~1 -- .config/publication/allowlist .config/publication/owners && cat .config/publication/owners
-    And the rules the team wrote came through untouched
-    # Note: The same command as four cards ago, and a different answer: src/cluster.kubeconfig is now held back, by the framework floor, because the new release added that rule to it.
-    # Note: Nobody edited a list. The project got a tightened safety floor from the release itself, which is exactly why a component that cannot be updated is worse than no component.
-    # Copy: task publication:check
-    And the tightened floor from that release is already in force
-    # Note: The same two listings as the opening card, unchanged. The release also changed a tool this project never installed, and that change did not arrive.
-    # Note: An update applies to what you have. It does not quietly grow your project back into the whole framework, which is what makes taking one component a real choice rather than a first step.
-    # Copy: ls -A1 && ls .config
-    And nothing the project never installed arrived with it
+    When the feedback task runs, Renovate opens a merge request that applies the new release, and that merge request goes into the main branch
+    # Note: The same page as the first card, after the merge. One row moved: denylist.base now sits on Renovate's commit "fix(devsecops): update devsecops toolbox to v1.0.1", the commit named in the box above the table.
+    # Note: allowlist and owners, the rules the team wrote, still sit on the team's commit. Copier's three-way merge changed the framework's files and left the team's files alone. The Files panel still shows the same six folders in .config: the release also changed a tool this project never installed, and that change did not arrive.
+    Then on the main branch the team's rules keep their own commit, and nothing the project never installed arrives
+    # Note: Back in the same terminal, one line pulls the main branch and runs the same check as the second card. src/cluster.kubeconfig has moved under "Withholding 1 file", held back by the "framework floor", because the release added *.kubeconfig to that floor.
+    # Note: Nobody edited a list. The project got a tighter safety floor from the release itself, which is why a component that cannot be updated is worse than no component.
+    # Copy: git pull -q origin main && task publication:check
+    And after a pull, the tightened floor from that release is already in force
