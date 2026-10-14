@@ -417,3 +417,17 @@ async function putRepositoryFile (projectName, filePath, content, headers, { bra
 }
 
 module.exports.putRepositoryFile = putRepositoryFile
+
+// The REST twin of a compare page: what GitLab shows between two refs, merged
+// as the page merges them (diffs carry new_file, deleted_file, renamed_file).
+async function compareRefs (projectName, from, to, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/compare` +
+      `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    headers
+  )
+  if (res.status >= 400) throw new Error(`Compare ${from}...${to}: HTTP ${res.status}`)
+  return res.data
+}
+
+module.exports.compareRefs = compareRefs

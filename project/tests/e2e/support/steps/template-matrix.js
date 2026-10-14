@@ -1,18 +1,15 @@
-/* global inject Given When Then Before After */
+/* global inject Given When Then Before After document */
 /**
- * Template-matrix + copier-update steps.
- *
- * Renders the WORKING-BRANCH template inside the codeceptjs container with
- * non-default Copier answers and asserts the generated files — the coverage
- * layer the visual journey (all-default answers) cannot provide. The
- * "configuration layout" pixel baselines show the real rendered tree
- * (`ls -1A` of the project root and .config) so a structural regression is
- * visible at a glance, in the same visual-first spirit as the journey.
+ * Steps of three 03-evolution stories that render the WORKING-BRANCH template
+ * inside the codeceptjs container: @render-matrix (every Copier answer, shown
+ * on GitLab), @renovate-flow (chapter 1, the rendered Renovate config) and
+ * @toolbox-update (chapter 2, copier update with a flipped answer).
  */
 const { I } = inject()
 const fs = require('fs')
 const path = require('path')
-const { execSync } = require('child_process')
+const crypto = require('crypto')
+const { execSync, execFileSync } = require('child_process')
 const { pathToFileURL } = require('url')
 const {
   renderProject,
@@ -26,6 +23,15 @@ const {
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
+const { publishToGitLab } = require('../helpers/gitlabProject')
+const { gitlabFrame, gitlabUrl, settlePage } = require('../helpers/gitlabCard')
+const {
+  compareRefs,
+  getRepositoryFile,
+  lintProjectCi,
+  listProjectPipelines,
+  listRepositoryTree
+} = require('../helpers/gitlabApi')
 const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
@@ -430,177 +436,322 @@ storyboardStep(Then, "the framework repo's own renovate detects that same stale 
 })
 
 // ============================================
-// Render-matrix storyboard — @render-matrix (chapters 1 + 2).
-// Absorbs the 8 former flat
-// @e2e-template-matrix-* scenarios: the anchor tells the default render as
-// one journey (its full tree, then the manifests every FS assert below used
-// to prove in isolation); the second tells what EACH non-default Copier
-// answer changes, one card per answer, each still paired with its original
-// FS assert. Every listing/grep shown is the REAL command run against the
-// real render — no composed output.
+// Render-matrix storyboard — @render-matrix (chapters 1 + 2), told on GitLab.
+// Chapter 1 renders the template with every default answer into ONE git work
+// tree, pushes it as the main branch of a throwaway project and shows it on
+// GitLab. Chapter 2 renders the SAME tree again once per non-default answer,
+// pushes each render as its own branch, and shows GitLab's compare page of
+// that branch against the main branch. The tree keeps one basename, so the
+// project slug (written into project/docker-compose.yml) never differs between
+// two branches. Every card is twinned with the same fact checked by code: the
+// render on disk, GitLab's REST compare (the exact list of changed files) and
+// GitLab's CI lint.
 // ============================================
 
-// Run `cmd` inside `dir` and return its REAL combined stdout+stderr, trimmed —
-// including a failing `ls`'s own "No such file or directory", which is exactly
-// the telling half of a render diff (what disappeared).
-function runCaptured (cmd, dir) {
-  try {
-    return execSync(`${cmd} 2>&1`, { cwd: dir, encoding: 'utf8' }).trimEnd()
-  } catch (e) {
-    return `${e.stdout || ''}${e.stderr || ''}`.trimEnd()
-  }
+const MATRIX_ANSWERS = '.config/devsecops/.copier-answers.yml'
+const MATRIX_MANUAL = '.config/codeceptjs/README.md'
+const MATRIX_MAIN_COMMIT = 'render: every default Copier answer'
+// Directories the framework keeps out of a default render: the opt-in tooling
+// (Ansible, podman) and the publication kit.
+const MATRIX_OPT_IN_CONFIG = ['ansible', 'ansible-lint', 'podman', 'publication']
+let matrix = null
+
+Before(() => { matrix = null })
+
+After(async () => {
+  if (matrix && matrix.pub) await matrix.pub.teardown()
+  matrix = null
+})
+
+function matrixGit (args) {
+  return execFileSync('git', ['-C', matrix.dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
-async function captureRenderedTree (frameName) {
-  const listing = execSync('echo "$ ls -1A"; ls -1A; echo; echo "$ ls -1A .config"; ls -1A .config', {
-    cwd: rendered,
-    encoding: 'utf8'
+function matrixFile (relative) {
+  return fs.readFileSync(path.join(matrix.dir, relative), 'utf8')
+}
+
+// What GitLab's compare lists, one line per file: A(dded), D(eleted),
+// R(enamed) or M(odified), as `git diff --name-status` would print it.
+function changeSet (compare) {
+  return compare.diffs.map(d => {
+    if (d.new_file) return `A ${d.new_path}`
+    if (d.deleted_file) return `D ${d.old_path}`
+    if (d.renamed_file) return `R ${d.old_path} -> ${d.new_path}`
+    return `M ${d.new_path}`
+  }).sort()
+}
+
+// The same work tree, rendered again from scratch with `answers` on a branch
+// cut from the main branch, committed and pushed. Returns GitLab's compare of
+// that branch against the main branch, checked against the exact change set.
+async function renderAnswerBranch (branch, answers, expected) {
+  matrixGit(['checkout', '--quiet', '-B', branch, 'main'])
+  for (const entry of fs.readdirSync(matrix.dir)) {
+    if (entry !== '.git') fs.rmSync(path.join(matrix.dir, entry), { recursive: true, force: true })
+  }
+  renderProject(answers, { dst: matrix.dir })
+  matrixGit(['add', '-A'])
+  matrixGit(['commit', '--quiet', '-m', `render: ${Object.entries(answers).map(([k, v]) => `${k}=${v}`).join(' ')}`])
+  matrix.pub.push(branch)
+  const compare = await compareRefs(matrix.pub.projectName, 'main', branch, matrix.pub.headers)
+  const got = changeSet(compare)
+  const want = [...expected].sort()
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    throw new Error(`The ${branch} render changes other files than its answer promises.\nExpected:\n${want.join('\n')}\nGitLab compare:\n${got.join('\n')}`)
+  }
+  return compare
+}
+
+/**
+ * GitLab's compare page of `branch` against the main branch (Rapid Diffs on
+ * GitLab 19.4): every changed file listed in its Files panel, the files in
+ * `expand` unfolded and every other one folded with GitLab's own toggle, the
+ * page scrolled to the diff toolbar so the reader lands on the changes.
+ * `height` is the page's height from that toolbar down, measured once: a
+ * taller card shows a sliver of the commit list above the toolbar, a shorter
+ * one cuts the last file.
+ */
+async function compareFrame (frameName, branch, compare, { expand, height }) {
+  const count = compare.diffs.length
+  await gitlabFrame(I, frameName, gitlabUrl.compare(matrix.pub.projectName, 'main', branch), {
+    height,
+    prepare: async () => {
+      // GitLab streams the diffs in after the page: wait for all of them.
+      try {
+        // waitForFunction hands its argument array over as ONE argument.
+        await I.waitForFunction(([n]) => document.querySelectorAll('diff-file').length === n, [count], 60)
+      } catch (err) {
+        const shown = await I.executeScript(() => document.querySelectorAll('diff-file').length)
+        throw new Error(`compareFrame ${branch}: GitLab shows ${shown} diff files, the REST compare has ${count}`)
+      }
+      await I.executeScript((keep) => {
+        document.querySelectorAll('diff-file').forEach(file => {
+          const data = JSON.parse(file.getAttribute('data-file-data') || '{}')
+          const wantOpen = keep.includes(data.new_path) || keep.includes(data.old_path)
+          const toggle = Array.from(file.querySelectorAll('button[data-click="toggleFile"]')).find(b => b.offsetParent !== null)
+          if (!toggle) throw new Error(`compareFrame: no file toggle for ${data.new_path}`)
+          if (toggle.hasAttribute('data-opened') !== wantOpen) toggle.click()
+        })
+      }, expand)
+      await I.waitForFunction(([keep]) => Array.from(document.querySelectorAll('diff-file')).every(file => {
+        const data = JSON.parse(file.getAttribute('data-file-data') || '{}')
+        const wantOpen = keep.includes(data.new_path) || keep.includes(data.old_path)
+        const toggle = Array.from(file.querySelectorAll('button[data-click="toggleFile"]')).find(b => b.offsetParent !== null)
+        return toggle && toggle.hasAttribute('data-opened') === wantOpen
+      }), [expand], 30)
+    },
+    scrollTo: async () => {
+      await I.executeScript(() => document.querySelector('.rd-app-header').scrollIntoView({ block: 'start' }))
+      await settlePage(I, { quietMs: 300 })
+    }
   })
-  await renderTextInBrowser(I, listing.trimEnd(), { columns: 2 })
-  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
 }
 
-storyboardStep(Given, 'a project is rendered from the working-branch template with every default Copier answer', async () => {
-  rendered = renderProject()
-  cleanupDirs.push(rendered)
-  await renderPreFrame(I, 'defaults-answers', `$ cat .config/devsecops/.copier-answers.yml\n${readRendered('.config/devsecops/.copier-answers.yml').trimEnd()}`)
-})
+storyboardStep(Given, 'GitLab holds a project rendered with every default Copier answer on its main branch', async () => {
+  const root = fs.mkdtempSync('/tmp/e2e-render-matrix-')
+  cleanupDirs.push(root)
+  // A fixed basename: the project slug every branch renders.
+  matrix = { dir: path.join(root, 'acme') }
+  fs.mkdirSync(matrix.dir)
+  matrixGit(['init', '--quiet', '--initial-branch=main'])
+  matrixGit(['config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'])
+  matrixGit(['config', 'user.name', 'Lambda User'])
+  // A fixture commit: the hooks a rendered project installs are another story's subject.
+  matrixGit(['config', 'core.hooksPath', '/dev/null'])
+  renderProject({}, { dst: matrix.dir })
+  matrixGit(['add', '-A'])
+  matrixGit(['commit', '--quiet', '-m', MATRIX_MAIN_COMMIT])
+  // ci.skip: a skipped pipeline, never a running one that repaints the cards.
+  matrix.pub = await publishToGitLab(matrix.dir, {
+    name: `e2e-render-matrix-${crypto.randomBytes(4).toString('hex')}`,
+    pushOptions: ['ci.skip']
+  })
+  const { projectName, headers } = matrix.pub
 
-storyboardStep(Then, 'the rendered tree delivers the canonical docker, compose and project layout', async () => {
-  await captureRenderedTree('defaults-tree')
-  if (!fs.existsSync(renderedPath('project/Taskfile.yml'))) throw new Error('Expected project/Taskfile.yml to exist')
-  if (!fs.existsSync(renderedPath('.config/docker-ce/Taskfile.yml'))) throw new Error('Expected .config/docker-ce/Taskfile.yml to exist')
-  if (fs.existsSync(renderedPath('.config/podman'))) throw new Error('Expected .config/podman to NOT exist')
-  if (fs.existsSync(renderedPath('.config/ansible'))) throw new Error('Expected .config/ansible to NOT exist')
-  if (!fs.existsSync(renderedPath('project/docker-compose.yml'))) throw new Error('Expected project/docker-compose.yml to exist')
-  if (!readRendered('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to contain "networks:"')
-})
-
-storyboardStep(Then, 'the storyboard manual is installed while the toolbox root README stays out', async () => {
-  const manual = '.config/codeceptjs/README.md'
-  if (!fs.existsSync(renderedPath(manual))) throw new Error(`Expected the generated project to include ${manual}`)
-  if (fs.existsSync(renderedPath('README.md'))) throw new Error('The toolbox root README must stay out of the generated project')
-  if (readRendered(manual) !== fs.readFileSync(`/workspace/${manual}`, 'utf8')) {
-    throw new Error('The generated storyboard manual must match the framework manual')
+  // Twins of the default layout, each one the minus side of a compare below.
+  const has = (p) => fs.existsSync(path.join(matrix.dir, p))
+  for (const p of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml', 'project/docker-compose.yml']) {
+    if (!has(p)) throw new Error(`Expected the default render to deliver ${p}`)
   }
-  const command = `ls ${manual} README.md`
-  await renderPreFrame(I, 'defaults-storyboard-manual', `$ ${command}\n${runCaptured(command, rendered)}`)
-})
-
-storyboardStep(Then, 'the root Taskfile wires in the default docker-ce and compose toolchain', async () => {
-  const content = readRendered('Taskfile.yml')
-  const grepped = runCaptured('grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml', rendered)
-  await renderPreFrame(I, 'defaults-taskfile', `$ grep -E "docker-ce|project/Taskfile|podman" Taskfile.yml\n${grepped}`)
-  if (!content.includes('.config/docker-ce/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to reference ".config/docker-ce/Taskfile.yml"')
-  if (!content.includes('project/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to reference "project/Taskfile.yml"')
-  if (content.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference ".config/podman/Taskfile.yml"')
-})
-
-storyboardStep(Then, 'the CI pipeline ships the default docker-in-docker variables and release gate', async () => {
-  const ciVars = readRendered('.config/gitlab/ci/variables.yml')
-  const release = readRendered('.config/gitlab/ci/devsecops/release.yml')
-  const ciOut = runCaptured('grep DOCKER_HOST .config/gitlab/ci/variables.yml', rendered)
-  const releaseOut = runCaptured('grep after_script: .config/gitlab/ci/devsecops/release.yml', rendered)
-  await renderPreFrame(I, 'defaults-ci', `$ grep DOCKER_HOST .config/gitlab/ci/variables.yml\n${ciOut}\n\n$ grep after_script: .config/gitlab/ci/devsecops/release.yml\n${releaseOut}`)
-  if (!ciVars.includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected rendered CI variables to contain "DOCKER_HOST: tcp://docker:2376"')
-  if (!release.includes('after_script:')) throw new Error('Expected .config/gitlab/ci/devsecops/release.yml to contain "after_script:"')
-})
-
-storyboardStep(Then, "the project's own governance and language config are delivered", async () => {
-  const testsStructure = readRendered('.agent/rules/tests-structure.md')
-  const gherkinOut = runCaptured('grep "Gherkin in" .agent/rules/tests-structure.md', rendered)
+  for (const p of ['.config/podman', '.config/ansible']) {
+    if (has(p)) throw new Error(`Expected the default render to leave ${p} out`)
+  }
+  if (!matrixFile('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to declare its networks')
+  const taskfile = matrixFile('Taskfile.yml')
+  for (const include of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml']) {
+    if (!taskfile.includes(include)) throw new Error(`Expected the root Taskfile to include ${include}`)
+  }
+  if (taskfile.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the default root Taskfile to leave the podman include out')
+  if (!matrixFile('.config/gitlab/ci/variables.yml').includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected the CI variables to target tcp://docker:2376')
+  if (!matrixFile('.config/gitlab/ci/devsecops/release.yml').includes('after_script:')) throw new Error('Expected the release job to keep its after_script')
+  if (!matrixFile('.agent/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
+  rendered = matrix.dir
   const rule = toolboxPackageRule()
-  await renderPreFrame(I, 'defaults-governance', `$ grep "Gherkin in" .agent/rules/tests-structure.md\n${gherkinOut}\n\n$ automerge rule (.config/renovate/config.json)\n${JSON.stringify({ automerge: rule.automerge, automergeStrategy: rule.automergeStrategy }, null, 2)}`)
-  if (!fs.existsSync(renderedPath('.config/devsecops/.copier-answers.yml'))) throw new Error('Expected .config/devsecops/.copier-answers.yml to exist')
-  if (!testsStructure.includes('Gherkin in **en**')) throw new Error('Expected .agent/rules/tests-structure.md to contain "Gherkin in **en**"')
-  JSON.parse(readRendered('.config/renovate/config.json'))
-  if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward') throw new Error(`Expected toolbox package rule to enable fast-forward automerge, got: ${JSON.stringify(rule)}`)
-})
+  if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward') {
+    throw new Error(`Expected the toolbox package rule to automerge by fast-forward, got: ${JSON.stringify(rule)}`)
+  }
+  // GitLab's own CI lint: the default pipeline holds together.
+  const lint = await lintProjectCi(projectName, headers, 'main')
+  if (!lint.data || lint.data.valid !== true) throw new Error(`Expected GitLab to find the main branch CI valid: ${JSON.stringify(lint.data)}`)
+  // The skipped pipeline is recorded a moment after the push: wait for it, so
+  // its status icon is on every card or on none.
+  for (let i = 0; i < 30; i++) {
+    const pipelines = await listProjectPipelines(projectName, headers, '?ref=main')
+    if (Array.isArray(pipelines.data) && pipelines.data.length) break
+    await new Promise(resolve => setTimeout(resolve, 2000))
+  }
 
-storyboardStep(Given, 'the default answers render docker-ce, compose and English as the baseline', async () => {
-  rendered = renderProject()
-  cleanupDirs.push(rendered)
-  const lsOut = runCaptured('ls .config/docker-ce/Taskfile.yml project/docker-compose.yml', rendered)
-  const grepOut = runCaptured('grep "Gherkin in" .agent/rules/tests-structure.md', rendered)
-  await renderPreFrame(I, 'answers-baseline', `$ ls .config/docker-ce/Taskfile.yml project/docker-compose.yml\n${lsOut}\n\n$ grep "Gherkin in" .agent/rules/tests-structure.md\n${grepOut}`)
-  if (!fs.existsSync(renderedPath('.config/docker-ce/Taskfile.yml'))) throw new Error('Expected the baseline render to deliver .config/docker-ce/Taskfile.yml')
-  if (!fs.existsSync(renderedPath('project/docker-compose.yml'))) throw new Error('Expected the baseline render to deliver project/docker-compose.yml')
-})
-
-storyboardStep(Then, 'choosing podman as the runtime replaces docker-ce and compose with podman config', async () => {
-  rendered = renderProject(parseAnswers('container_runtime=podman'))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('ls .config/podman/Taskfile.yml .config/docker-ce project/docker-compose.yml', rendered)
-  await renderPreFrame(I, 'answers-podman', `$ ls .config/podman/Taskfile.yml .config/docker-ce project/docker-compose.yml\n${diff}`)
-  if (!fs.existsSync(renderedPath('.config/podman/Taskfile.yml'))) throw new Error('Expected .config/podman/Taskfile.yml to exist')
-  if (fs.existsSync(renderedPath('.config/docker-ce'))) throw new Error('Expected .config/docker-ce to NOT exist')
-  if (fs.existsSync(renderedPath('project/docker-compose.yml'))) throw new Error('Expected project/docker-compose.yml to NOT exist')
-  const content = readRendered('Taskfile.yml')
-  if (!content.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to reference ".config/podman/Taskfile.yml"')
-  if (content.includes('.config/docker-ce/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference ".config/docker-ce/Taskfile.yml"')
-})
-
-storyboardStep(Then, 'turning off docker compose drops the compose file but keeps docker-ce', async () => {
-  rendered = renderProject(parseAnswers('use_docker_compose=false'))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('ls project/docker-compose.yml .config/docker-ce/Taskfile.yml', rendered)
-  await renderPreFrame(I, 'answers-no-compose', `$ ls project/docker-compose.yml .config/docker-ce/Taskfile.yml\n${diff}`)
-  if (fs.existsSync(renderedPath('project/docker-compose.yml'))) throw new Error('Expected project/docker-compose.yml to NOT exist')
-  if (!fs.existsSync(renderedPath('.config/docker-ce/Taskfile.yml'))) throw new Error('Expected .config/docker-ce/Taskfile.yml to exist')
-})
-
-storyboardStep(Then, 'turning on Ansible delivers its config and lint tooling', async () => {
-  rendered = renderProject(parseAnswers('ansible_enabled=true'))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('ls .config/ansible/Taskfile.yml .config/ansible-lint', rendered)
-  await renderPreFrame(I, 'answers-ansible', `$ ls .config/ansible/Taskfile.yml .config/ansible-lint\n${diff}`)
-  if (!fs.existsSync(renderedPath('.config/ansible/Taskfile.yml'))) throw new Error('Expected .config/ansible/Taskfile.yml to exist')
-  if (!fs.existsSync(renderedPath('.config/ansible-lint'))) throw new Error('Expected .config/ansible-lint to exist')
-  if (!readRendered('Taskfile.yml').includes('.config/ansible/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to reference ".config/ansible/Taskfile.yml"')
-})
-
-storyboardStep(Then, 'choosing a self-hosted CI platform changes the docker-in-docker variables', async () => {
-  rendered = renderProject(parseAnswers('ci_platform=gitlab_self_hosted gitlab_docker_host= gitlab_docker_tls_certdir='))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('grep -E "DOCKER_HOST|DOCKER_TLS_CERTDIR" .config/gitlab/ci/variables.yml', rendered)
-  await renderPreFrame(I, 'answers-self-hosted', `$ grep -E "DOCKER_HOST|DOCKER_TLS_CERTDIR" .config/gitlab/ci/variables.yml\n${diff}`)
-  const content = readRendered('.config/gitlab/ci/variables.yml')
-  if (content.includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected rendered CI variables to NOT contain "DOCKER_HOST: tcp://docker:2376"')
-  if (!content.includes('DOCKER_TLS_CERTDIR: ""')) throw new Error('Expected rendered CI variables to set DOCKER_TLS_CERTDIR to an empty value')
-})
-
-storyboardStep(Then, 'turning off project mode removes the project directory entirely', async () => {
-  rendered = renderProject(parseAnswers('project_enabled=false'))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('ls project', rendered)
-  await renderPreFrame(I, 'answers-no-project', `$ ls project\n${diff}`)
-  if (fs.existsSync(renderedPath('project'))) throw new Error('Expected "project" to NOT exist')
-  if (readRendered('Taskfile.yml').includes('project/Taskfile.yml')) throw new Error('Expected the rendered root Taskfile to NOT reference "project/Taskfile.yml"')
-})
-
-storyboardStep(Then, 'turning off automerge removes the fast-forward rule from the renovate config', async () => {
-  rendered = renderProject(parseAnswers('devsecops_automerge=false'))
-  cleanupDirs.push(rendered)
-  const rule = toolboxPackageRule()
-  // Show only what the sentence is about: the match is kept, every automerge
-  // key is gone. Dumping the whole rule buries that under a wall of
-  // postUpgradeTasks commands.
-  const automergeKeys = ['automerge', 'automergeStrategy', 'automergeType', 'platformAutomerge'].filter(k => k in rule)
-  await renderPreFrame(I, 'answers-automerge-off',
-    '$ toolbox package rule (.config/renovate/config.json)\n' +
-    `matchManagers  : ${JSON.stringify(rule.matchManagers)}\n` +
-    `matchFileNames : ${JSON.stringify(rule.matchFileNames)}\n` +
-    `automerge keys : ${automergeKeys.length ? automergeKeys.join(', ') : '(none — the fast-forward rule is gone)'}`)
-  JSON.parse(readRendered('.config/renovate/config.json'))
-  if ('automerge' in rule || 'automergeStrategy' in rule || 'automergeType' in rule || 'platformAutomerge' in rule) {
-    throw new Error(`Expected toolbox package rule to NOT carry automerge properties, got: ${JSON.stringify(rule)}`)
+  await gitlabFrame(I, 'defaults-answers', gitlabUrl.file(projectName, 'main', MATRIX_ANSWERS), {
+    waitText: 'container_runtime: docker',
+    height: 900
+  })
+  if (await getRepositoryFile(projectName, MATRIX_ANSWERS, 'main', headers) !== matrixFile(MATRIX_ANSWERS)) {
+    throw new Error('Expected GitLab to hold the answers file of the render, byte for byte')
   }
 })
 
-storyboardStep(Then, 'choosing French Gherkin changes the language rule for generated tests', async () => {
-  rendered = renderProject(parseAnswers('gherkin_language=fr'))
-  cleanupDirs.push(rendered)
-  const diff = runCaptured('grep "Gherkin in" .agent/rules/tests-structure.md', rendered)
-  await renderPreFrame(I, 'answers-gherkin-fr', `$ grep "Gherkin in" .agent/rules/tests-structure.md\n${diff}`)
-  if (!readRendered('.agent/rules/tests-structure.md').includes('Gherkin in **fr**')) throw new Error('Expected .agent/rules/tests-structure.md to contain "Gherkin in **fr**"')
+storyboardStep(Then, 'the main branch carries the project workspace and leaves the toolbox README out', async () => {
+  const { projectName, headers } = matrix.pub
+  await gitlabFrame(I, 'defaults-tree', gitlabUrl.tree(projectName), { waitText: MATRIX_MAIN_COMMIT, height: 1100 })
+  // Twin: the root GitLab lists is the render's root, with project/ and no README.
+  const tree = await listRepositoryTree(projectName, headers, '?ref=main&per_page=100')
+  const remote = tree.data.map(e => e.name).sort()
+  const local = fs.readdirSync(matrix.dir).filter(e => e !== '.git').sort()
+  if (JSON.stringify(remote) !== JSON.stringify(local)) {
+    throw new Error(`Expected GitLab's root to be the render's root.\nGitLab: ${remote.join(' ')}\nRender: ${local.join(' ')}`)
+  }
+  if (!remote.includes('project')) throw new Error('Expected the project workspace on the main branch')
+  if (remote.includes('README.md')) throw new Error('The toolbox root README must stay out of the generated project')
+  // Twin: .config is the framework's, minus the opt-in tooling a default render leaves out.
+  const config = fs.readdirSync(path.join(matrix.dir, '.config')).sort()
+  const expected = fs.readdirSync('/workspace/.config').filter(d => !MATRIX_OPT_IN_CONFIG.includes(d)).sort()
+  if (JSON.stringify(config) !== JSON.stringify(expected)) {
+    throw new Error(`Expected .config to be the framework's minus ${MATRIX_OPT_IN_CONFIG.join(', ')}.\nRender: ${config.join(' ')}\nExpected: ${expected.join(' ')}`)
+  }
+})
+
+storyboardStep(Then, 'the storyboard engine folder on the main branch ships its own manual', async () => {
+  const { projectName, headers } = matrix.pub
+  await gitlabFrame(I, 'defaults-storyboard-manual', gitlabUrl.tree(projectName, 'main', '.config/codeceptjs'), {
+    waitText: 'Storyboard engine',
+    // The manual's heading and first paragraph, cut before its next section.
+    height: 1020
+  })
+  // Twin: the manual GitLab renders is the framework's, byte for byte.
+  if (await getRepositoryFile(projectName, MATRIX_MANUAL, 'main', headers) !== fs.readFileSync(`/workspace/${MATRIX_MANUAL}`, 'utf8')) {
+    throw new Error(`Expected ${MATRIX_MANUAL} on the main branch to be the framework's manual`)
+  }
+})
+
+storyboardStep(Then, 'choosing podman swaps docker-ce and compose for podman and changes nothing else', async () => {
+  const compare = await renderAnswerBranch('podman', { container_runtime: 'podman' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'D .config/docker-ce/Taskfile.yml',
+    'D .config/docker-ce/playbook.yml',
+    'D .config/docker-ce/requirements.yml',
+    'R .config/docker-ce/.gitignore -> .config/podman/.gitignore',
+    'A .config/podman/Taskfile.yml',
+    'A .config/podman/playbook.yml',
+    'A .config/podman/requirements.yml',
+    'M Taskfile.yml',
+    'D project/docker-compose.yml'
+  ])
+  const taskfile = matrixFile('Taskfile.yml')
+  if (!taskfile.includes('.config/podman/Taskfile.yml') || taskfile.includes('.config/docker-ce/Taskfile.yml')) {
+    throw new Error('Expected the root Taskfile to include podman instead of docker-ce')
+  }
+  await compareFrame('answers-podman', 'podman', compare, { expand: [MATRIX_ANSWERS], height: 963 })
+})
+
+storyboardStep(Then, 'turning off Docker Compose only deletes the compose file', async () => {
+  const compare = await renderAnswerBranch('no-compose', { use_docker_compose: 'false' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'D project/docker-compose.yml'
+  ])
+  await compareFrame('answers-no-compose', 'no-compose', compare, { expand: [MATRIX_ANSWERS, 'project/docker-compose.yml'], height: 520 })
+})
+
+storyboardStep(Then, 'turning on Ansible only adds its config, its lint tooling and their Taskfile include', async () => {
+  const compare = await renderAnswerBranch('ansible', { ansible_enabled: 'true' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'A .config/ansible-lint/config.yaml',
+    'A .config/ansible/Taskfile.yml',
+    'A .config/ansible/ansible.cfg',
+    'A .config/ansible/requirements.txt',
+    'M Taskfile.yml'
+  ])
+  if (!matrixFile('Taskfile.yml').includes('.config/ansible/Taskfile.yml')) throw new Error('Expected the root Taskfile to include .config/ansible/Taskfile.yml')
+  await compareFrame('answers-ansible', 'ansible', compare, { expand: [MATRIX_ANSWERS, 'Taskfile.yml'], height: 872 })
+})
+
+storyboardStep(Then, 'a self-hosted CI platform only changes the docker-in-docker variables and the runner tags', async () => {
+  const compare = await renderAnswerBranch('self-hosted', { ci_platform: 'gitlab_self_hosted', gitlab_docker_host: '', gitlab_docker_tls_certdir: '' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'M .config/gitlab/ci/tags.yml',
+    'M .config/gitlab/ci/variables.yml'
+  ])
+  const variables = matrixFile('.config/gitlab/ci/variables.yml')
+  if (variables.includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected the self-hosted CI variables to drop DOCKER_HOST: tcp://docker:2376')
+  if (!variables.includes('DOCKER_TLS_CERTDIR: ""')) throw new Error('Expected the self-hosted CI variables to set DOCKER_TLS_CERTDIR to an empty value')
+  if (!/^\s*tags: \[\]$/m.test(matrixFile('.config/gitlab/ci/tags.yml'))) throw new Error('Expected the self-hosted runner tags to be empty')
+  // The only branch whose CI files differ from the main branch: GitLab lints it too.
+  const lint = await lintProjectCi(matrix.pub.projectName, matrix.pub.headers, 'self-hosted')
+  if (!lint.data || lint.data.valid !== true) throw new Error(`Expected GitLab to find the self-hosted CI valid: ${JSON.stringify(lint.data)}`)
+  // The two CI files fill the card: the answers file stays folded, listed with its +5 -2.
+  await compareFrame('answers-self-hosted', 'self-hosted', compare, {
+    expand: ['.config/gitlab/ci/tags.yml', '.config/gitlab/ci/variables.yml'],
+    height: 938
+  })
+})
+
+storyboardStep(Then, 'turning off project mode deletes the project directory and every task that called into it', async () => {
+  const phases = ['build', 'code', 'deploy', 'feedback', 'monitor', 'operate', 'plan', 'release', 'test']
+  const compare = await renderAnswerBranch('no-project', { project_enabled: 'false' }, [
+    `M ${MATRIX_ANSWERS}`,
+    ...phases.map(p => `M .config/devsecops/Taskfile.${p}.yml`),
+    'M .config/megalinter/config.base.yml',
+    'M Taskfile.yml',
+    'D project/Taskfile.yml',
+    'D project/docker-compose.yml'
+  ])
+  if (matrixFile('Taskfile.yml').includes('project/Taskfile.yml')) throw new Error('Expected the root Taskfile to drop its project include')
+  await compareFrame('answers-no-project', 'no-project', compare, { expand: [MATRIX_ANSWERS], height: 1095 })
+})
+
+storyboardStep(Then, 'turning off automerge only removes the fast-forward rule from the Renovate config', async () => {
+  const compare = await renderAnswerBranch('automerge-off', { devsecops_automerge: 'false' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'M .config/renovate/config.json'
+  ])
+  const rule = toolboxPackageRule()
+  const left = ['automerge', 'automergeStrategy', 'automergeType', 'platformAutomerge'].filter(k => k in rule)
+  if (left.length) throw new Error(`Expected the toolbox package rule to drop every automerge property, still has: ${left.join(', ')}`)
+  await compareFrame('answers-automerge-off', 'automerge-off', compare, { expand: [MATRIX_ANSWERS, '.config/renovate/config.json'], height: 700 })
+})
+
+storyboardStep(Then, 'choosing French Gherkin switches every test-writing rule and skill to French', async () => {
+  const compare = await renderAnswerBranch('gherkin-fr', { gherkin_language: 'fr' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'M .agent/rules/interaction.md',
+    'M .agent/rules/tests-structure.md',
+    'M .agent/skills/tdd/SKILL.md',
+    'M .agent/skills/test/SKILL.md',
+    'M .agent/workflows/development-cycle.md',
+    'M .agent/workflows/tdd-step1-red.md'
+  ])
+  if (!matrixFile('.agent/rules/tests-structure.md').includes('Gherkin in **fr**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **fr**')
+  // Twin: every changed line is the same line with en swapped for fr.
+  for (const d of compare.diffs) {
+    const lines = d.diff.split('\n')
+    const removed = lines.filter(l => l.startsWith('-')).map(l => l.slice(1))
+    const added = lines.filter(l => l.startsWith('+')).map(l => l.slice(1))
+    if (removed.length !== added.length || removed.some((l, i) => l.replace(/\ben\b/g, 'fr') !== added[i])) {
+      throw new Error(`Expected ${d.new_path} to only swap en for fr:\n${d.diff}`)
+    }
+  }
+  await compareFrame('answers-gherkin-fr', 'gherkin-fr', compare, {
+    expand: [MATRIX_ANSWERS, '.agent/rules/tests-structure.md'],
+    height: 910
+  })
 })

@@ -56,10 +56,10 @@ function dataArgs (data = {}) {
 
 /**
  * Render the working-branch template with the given answers into a fresh
- * directory. Returns the destination path (caller removes it in After).
+ * directory, or into `dst` (its basename becomes the project slug). Returns the
+ * destination path (caller removes it in After).
  */
-function renderProject (data = {}) {
-  const dst = tmpDir('e2e-render')
+function renderProject (data = {}, { dst = tmpDir('e2e-render') } = {}) {
   run(`${COPIER} copy --defaults --skip-tasks --overwrite ${dataArgs(data)} ${TEMPLATE_SRC} ${dst}`)
   return dst
 }
