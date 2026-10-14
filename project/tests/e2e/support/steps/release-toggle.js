@@ -32,8 +32,9 @@
  * state.
  *
  * ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0); every
- * card is a real GitLab page, masked for its volatile chrome, and each is
- * twinned with a REST/log check of the same fact.
+ * card is a real 1440 px GitLab page (gitlabFrame / jobLogFrame), and each is
+ * twinned with a REST/log check of the same fact. Both release jobs are shot
+ * the same way, from the same log line, so the two failures read side by side.
  *
  * Runs on a project-scoped runner registered in the shared gitlab-runner compose
  * service, exactly like @daily-contribution (its neighbour on this shard); the
@@ -41,12 +42,11 @@
  * See support/helpers/pipelineRunner.js.
  */
 const fs = require('fs')
-const { I, GitLabProjectPage, GitLabUserPage, GitLabSettingsPage } = inject()
+const { I, GitLabProjectPage, GitLabUserPage } = inject()
 const {
   BASE_URL,
   projectPath,
   encodedProjectPath,
-  curlAuthFlags,
   getRootHeaders,
   createProject,
   deleteProject,
@@ -63,45 +63,34 @@ const {
   getPipeline,
   cancelPipeline,
   deletePipeline,
-  triggerProjectPipeline
+  triggerProjectPipeline,
+  getJobTrace
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshDelete } = require('../helpers/http')
 const {
   registerScopedRunner,
   teardownScopedRunner,
   dumpFailedTraces,
-  maskPipelinePage,
   PIPELINE_TIMEOUT_MS
 } = require('../helpers/pipelineRunner')
 const { runTaskInRepo } = require('../helpers/workspaceRepo')
-const { runCommandWithResult } = require('../helpers/docker')
 const { renderProject } = require('../helpers/copierRender')
 const { stripAnsi } = require('../helpers/capturedOutput')
-const { storyboardStep, addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
+const { gitlabUrl, gitlabFrame, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
+const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const PROJECT_NAME = 'e2e-release-crash'
-// Fixed stand-in for every semver in the job log: the toolbox version and its
-// pinned tool versions drift on every bump, so leaving them bare rots the
-// baseline. It is display only, so a concrete 1.0.0 reads better than x.y.z.
-const DISPLAY_VERSION = '1.0.0'
-// Per-run numbers every job log carries, whatever the card shows.
+// "exit code N" / "exit status N": N is whatever the runner and go-task
+// happened to report. It moved from 1 to 201 on a routine gitlab-runner bump,
+// and the crashed push has been seen dying on 128 and on 22 with identical
+// code. The cards prove what the release did, never which number it died on.
 const EXIT_CODE_MASKS = [
-  ['exit code \\d+', 'exit code <n>'],
-  ['exit status \\d+', 'exit status <n>']
+  [/exit code \d+/, 'exit code <n>'],
+  [/exit status \d+/, 'exit status <n>']
 ]
-// Every semver at once, for a card where none of them carries meaning.
-const ALL_SEMVER_MASKS = [['\\d+\\.\\d+\\.\\d+', DISPLAY_VERSION], ...EXIT_CODE_MASKS]
-// Same drift, but keeping the release's own 0.1.0 -> 0.2.0 readable on a card
-// that is about that very version: only the tool versions the release prints
-// (they move with every Renovate bump) are pinned.
-const TOOL_SEMVER_MASKS = [
-  ['commitizen==\\d+\\.\\d+\\.\\d+', `commitizen==${DISPLAY_VERSION}`],
-  ['--python \\d+\\.\\d+', '--python 3.x'],
-  // The bump commit's own SHA, and how long uv took to unpack Commitizen.
-  ['\\[detached HEAD [0-9a-f]+\\]', '[detached HEAD <sha>]'],
-  ['Installed \\d+ packages in [0-9.]+m?s', 'Installed <n> packages in <t>'],
-  ...EXIT_CODE_MASKS
-]
+// Both release-job cards open on this line: the version exists, and the log
+// below it shows what the release did with it.
+const RELEASE_CUT = 'Release version cut locally'
 // How long lockMainToNoOne keeps racing GitLab's own default-branch
 // protection worker. Seconds in practice; the ceiling is only there so a
 // genuinely broken API fails loud instead of spinning.
@@ -167,6 +156,9 @@ async function wireReleaseAutomation (projectName, rootHeaders) {
   if (v.status >= 400) throw new Error(`Failed to store TASK_COMMITIZEN_TOKEN (status ${v.status}): ${JSON.stringify(v.data)}`)
   const h = await createProjectVariable(projectName, { key: 'TASK_DEVSECOPS_RELEASE_GIT_SERVER_HOST', value: CRASH_HOST }, rootHeaders)
   if (h.status >= 400) throw new Error(`Failed to store the crash host variable (status ${h.status}): ${JSON.stringify(h.data)}`)
+  // The variable is stored unmasked, so nothing but git itself keeps it out of
+  // the job log: the caller checks the log never prints it.
+  return tok.data.token
 }
 
 // A generated project's `project:release` is an empty placeholder: two echoes.
@@ -179,18 +171,20 @@ async function wireReleaseAutomation (projectName, rootHeaders) {
 // the question is whether the tag reached the main branch anyway.
 const PUBLISH_FAILS_VAR = 'E2E_PUBLISH_FAILS'
 const RELEASE_PHASE_DONE = '      - cmd: echo "✅ Project Release phase completed successfully"'
-// Every line goes to STDERR on purpose. GitLab merges a job's stdout and
-// stderr in arrival order, and the two streams race: go-task prints its own
-// "task: Failed to run task" on stderr, so with the publish lines on stdout
-// their position in the log flipped between runs (a 0.5% pixel diff on the
-// card, twice in a row). One stream keeps them in write order.
+// GitLab merges a job's stdout and stderr in arrival order, and two writes on
+// different streams a few microseconds apart can land in either order (a 0.5%
+// pixel diff on the card, seen twice). So every pair of neighbouring log lines
+// either shares a stream or is a process start apart: the progress lines go to
+// stdout like the project:release echoes around them, and the failure, written
+// by its own process the way a failed docker push would, goes to stderr like
+// go-task's "task: Failed to run task" right after it.
 const PUBLISH_STEP = `      - cmd: |
-          echo "Publishing the image for version $(cat VERSION)..." >&2
+          echo "Publishing the image for version $(cat VERSION)..."
           if [ "\${${PUBLISH_FAILS_VAR}:-false}" = "true" ]; then
-            echo "ERROR: the image could not be published" >&2
+            sh -c 'echo "ERROR: the image could not be published" >&2'
             exit 1
           fi
-          echo "Image published." >&2
+          echo "Image published."
         silent: true
 `
 function wirePublishStep (repoDir) {
@@ -320,10 +314,10 @@ async function waitReleaseJobTerminal (I, projectName, pid, rootHeaders, runner)
   throw new Error('Release job never reached a terminal state within the pipeline timeout')
 }
 
-// Settle the pipeline to a terminal state so the crashed-pipeline card is
-// deterministic: the release job has already failed, but sibling jobs (feedback)
-// may still be mid-run — cancelling them turns their transient state into a
-// stable "canceled", and the whole pipeline stops on a fixed frame.
+// Settle the pipeline to a terminal state, because the job card shows its
+// status beside the log: the release job has already failed, but sibling jobs
+// (feedback) may still be mid-run — cancelling them turns their transient state
+// into a stable "canceled", and the pipeline stops on a fixed "Failed".
 async function waitPipelineTerminal (I, projectName, pid, headers) {
   const deadline = Date.now() + 120000
   let last = ''
@@ -337,70 +331,43 @@ async function waitPipelineTerminal (I, projectName, pid, headers) {
   return 'timeout'
 }
 
-// Volatile lines that carry a per-run value (install timing, a bump SHA, a
-// changelog diff summary) — dropped so the log card is byte-stable at tolerance:0.
-const TRACE_NOISE = [
-  /^Installed \d+ packages/,
-  /^\[detached HEAD [0-9a-f]/,
-  /^\s*\d+ files? changed/,
-  /^uvx /
-]
-
-// Fetch the release job's real CI trace and keep the lines that tell the safety
-// net story: the door opening, the failed push, and the restore that ran anyway.
-// CI trace lines open with a volatile "<iso-timestamp>Z 01O " prefix — strip it —
-// every semver is pinned to a fixed display version so the baseline survives a
-// bump, and the per-run noise lines above are dropped.
-function releaseTraceStory (projectName, jobId, rootHeaders) {
-  const encoded = encodedProjectPath(projectName)
-  const raw = runCommandWithResult(
-    `curl -s ${curlAuthFlags(rootHeaders)} '${BASE_URL}/api/v4/projects/${encoded}/jobs/${jobId}/trace'`
-  )
-  return stripAnsi(raw.stdout || raw.output || '')
+// The release job's CI trace as plain text: no colours, no carriage returns,
+// no "<iso-timestamp>Z 01O " prefix the runner puts on every line.
+async function releaseTrace (jobId, headers) {
+  return stripAnsi(await getJobTrace(PROJECT_NAME, jobId, headers))
     .replace(/\r/g, '')
     .split('\n')
     .map(l => l.replace(/^\S+Z \d+[OE]\+? ?/, '').trimEnd())
-    .map(l => l.replace(/\d+\.\d+\.\d+/g, DISPLAY_VERSION))
-    .filter(l => !TRACE_NOISE.some(re => re.test(l.trim())))
+    .join('\n')
 }
 
-// Open a release job page and turn its log into a card: keep only the part the
-// sentence is about (everything above `anchor`, minus `lead` lines of context,
-// is hidden) and strip the volatile chrome.
-//
-// `masks` is the list of [pattern, replacement] pairs applied to every log line.
-//
-// Volatile, and why each one has to go:
-//   - line numbers and timestamps: per-run values in the gutter;
-//   - the runner's own cleanup line, which names a container built from a
-//     token minted per run: "Possibly zombie container runner-<token>-…-docker-0
-//     is disconnected from network …" up to gitlab-runner 19.2, "Container
-//     runner-<token>-…-docker-0 disconnected from network …" from 19.3.3 on.
-//     Matched on what both wordings share, so the next rewording is caught too;
-//   - every semver: the toolbox version and its pinned tools drift on every bump;
-//   - "exit code N" / "exit status N": N is whatever the runner and go-task
-//     happened to report. It moved from 1 to 201 on a routine gitlab-runner
-//     bump, and the crashed push has been seen dying on 128 and on 22 with
-//     identical code. What the cards prove is what the release did, never which
-//     number it died on.
-async function showJobLog (jobId, { anchor, lead, masks }) {
-  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/jobs/${jobId}`)
-  await I.waitForElement('[data-testid="job-log-content"]', 30)
-  await I.wait(4)
-  await I.executeScript((args) => {
-    const lineEls = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-    const idx = lineEls.findIndex(l => new RegExp(args.anchor, 'i').test(l.textContent))
-    if (idx > args.lead) lineEls.slice(0, idx - args.lead).forEach(l => { l.style.display = 'none' })
-    document.querySelectorAll('.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(e => { e.style.display = 'none' })
-    const RUNNER_CLEANUP = /runner-\S+.*disconnected from network/i
-    lineEls.forEach(l => {
-      if (RUNNER_CLEANUP.test(l.textContent)) l.style.display = 'none'
-    })
-    document.querySelectorAll('.job-log-line-content').forEach(e => {
-      e.textContent = args.masks.reduce((text, [pattern, to]) => text.replace(new RegExp(pattern, 'g'), to), e.textContent)
-    })
-  }, { anchor, lead, masks })
-  await maskPipelinePage(I, PROJECT_NAME)
+// Run one release pipeline on the main branch to its end. The release job must
+// fail (`why` says how, for the error), then the pipeline is settled: the job
+// card shows the pipeline's own status beside the log, so its still-running
+// siblings are cancelled and it stops on a fixed "Failed". Returns the release
+// job id and its trace (printed when the job did not fail: the runner truncates
+// a long error, and the whole log is what says where the release stopped).
+async function runFailingRelease (rootHeaders, why) {
+  const trigger = await triggerProjectPipeline(PROJECT_NAME, 'main', lambdaHeaders)
+  if (trigger.status >= 400) throw new Error(`Failed to trigger a release pipeline on main (status ${trigger.status}): ${JSON.stringify(trigger.data)}`)
+  const pid = trigger.data.id
+  const release = await waitReleaseJobTerminal(I, PROJECT_NAME, pid, rootHeaders, runner)
+  const trace = await releaseTrace(release.id, rootHeaders)
+  if (release.status !== 'failed') {
+    console.log(`release-crash: release job log:\n${trace}`)
+    throw new Error(`Expected the release job to fail ${why}, got ${release.status}`)
+  }
+  await cancelPipeline(PROJECT_NAME, pid, lambdaHeaders)
+  await waitPipelineTerminal(I, PROJECT_NAME, pid, rootHeaders)
+  // Twin of the side panel's "for main": the release ran on the main branch.
+  const ref = (await getPipeline(PROJECT_NAME, pid, rootHeaders)).data.ref
+  if (ref !== 'main') throw new Error(`Expected the release pipeline to run on main, got ${ref}`)
+  return { jobId: release.id, trace }
+}
+
+// The release job's page, its log from RELEASE_CUT down to the end of the job.
+function releaseJobCard (frameName, jobId) {
+  return jobLogFrame(I, frameName, PROJECT_NAME, jobId, { from: RELEASE_CUT, masks: EXIT_CODE_MASKS })
 }
 
 let project = null
@@ -408,8 +375,6 @@ let renderDir = null
 let tokenId = null
 let lambdaHeaders = null
 let runner = null
-let pipelineId = null
-let releaseJobId = null
 
 const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@release-window'))
 
@@ -420,10 +385,7 @@ Before((test) => {
   tokenId = null
   lambdaHeaders = null
   runner = null
-  pipelineId = null
-  releaseJobId = null
 })
-
 After(async (test) => {
   if (!ownsScenario(test)) return
   // Surgical, best-effort: this story's runner token only (never --all-runners),
@@ -447,10 +409,10 @@ After(async (test) => {
 })
 
 // ============================================
-// Given — a real release crashes with the door open
+// Chapter 1 — a real release crashes mid-push, and the push window closes
 // ============================================
 
-storyboardStep(Given, 'a release job crashes on the main branch while it still holds push access', async () => {
+storyboardStep(Given, 'a release job on the main branch crashes mid-push while it still holds push access, then locks the main branch again on its way out', async () => {
   const rootHeaders = await getRootHeaders()
   project = PROJECT_NAME
   await GitLabProjectPage.deleteProjectIfExists(
@@ -479,7 +441,7 @@ storyboardStep(Given, 'a release job crashes on the main branch while it still h
   pushFeatToMain(renderDir, token)
   // Wire the release automation AND sabotage its push host, so the release opens
   // the door then crashes on the push — deterministically, no timing race.
-  await wireReleaseAutomation(PROJECT_NAME, rootHeaders)
+  const pushToken = await wireReleaseAutomation(PROJECT_NAME, rootHeaders)
   await updateProjectSettings(PROJECT_NAME, { merge_method: 'ff', remove_source_branch_after_merge: true }, rootHeaders)
   // Start from the toolbox's resting state: main locked to No one, so the
   // release's temporary open (0 -> 40) is a real transition and the final
@@ -492,59 +454,28 @@ storyboardStep(Given, 'a release job crashes on the main branch while it still h
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
 
   runner = await registerScopedRunner(I, PROJECT_NAME, rootHeaders)
-  const trigger = await triggerProjectPipeline(PROJECT_NAME, 'main', lambdaHeaders)
-  if (trigger.status >= 400) throw new Error(`Failed to trigger main's pipeline (status ${trigger.status}): ${JSON.stringify(trigger.data)}`)
-  pipelineId = trigger.data.id
-  const release = await waitReleaseJobTerminal(I, PROJECT_NAME, pipelineId, rootHeaders, runner)
-  releaseJobId = release.id
+  const { jobId, trace } = await runFailingRelease(rootHeaders, 'on its refused push')
 
-  // Twin: the release job really ran and failed (opened the door, then crashed
-  // on the refused push), and its log proves it reached the push window.
-  if (release.status !== 'failed') {
-    throw new Error(`Expected the release job to fail on its refused push, got ${release.status}`)
+  // Twins, in the order the card reads: the release opened the push window,
+  // died on the push itself...
+  for (const line of ['Temporarily opening push access for Maintainers', 'Pushing tags and the version commit to main', 'Could not resolve host']) {
+    if (!trace.includes(line)) throw new Error(`Expected "${line}" in the crashed release's log, trace:\n${trace}`)
   }
-  const trace = releaseTraceStory(PROJECT_NAME, releaseJobId, rootHeaders).join('\n')
-  if (!trace.includes('Temporarily opening push access for Maintainers')) {
-    throw new Error(`Expected the release to have opened the push window before crashing, trace:\n${trace}`)
+  // ...then re-locked the main branch twice: its own EXIT trap first, then
+  // GitLab's after_script. A bare includes() would be satisfied by the trap
+  // alone and never prove the after_script ran.
+  const afterScript = trace.search(/Running after_script/)
+  const RESTORED = 'Default branch protection restored'
+  if (afterScript === -1 || trace.indexOf(RESTORED) === -1 || trace.indexOf(RESTORED) > afterScript ||
+      trace.indexOf(RESTORED, afterScript) === -1) {
+    throw new Error(`Expected the protection restored once by the release itself, then again by the after_script, trace:\n${trace}`)
   }
+  // The push token sits in an unmasked variable and in the remote URL the push
+  // failed on: the log must not print it.
+  if (trace.includes(pushToken)) throw new Error('The crashed release printed its push token in the job log')
 
-  // Settle the run before the card: cancel the still-running siblings so the
-  // pipeline stops on a fixed frame (release failed, feedback canceled), instead
-  // of a per-run mix of in-progress jobs.
-  await cancelPipeline(PROJECT_NAME, pipelineId, lambdaHeaders)
-  await waitPipelineTerminal(I, PROJECT_NAME, pipelineId, rootHeaders)
-
-  I.resizeWindow(1024, 768)
-  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/pipelines/${pipelineId}`)
-  await maskPipelinePage(I, PROJECT_NAME)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'release-crashed'))
+  await releaseJobCard('after-script-relock', jobId)
 })
-
-// ============================================
-// When — the safety net runs on the way out
-// ============================================
-
-storyboardStep(When, "GitLab's after_script re-locks the main branch even though the release job failed", async () => {
-  const rootHeaders = await getRootHeaders()
-  const trace = releaseTraceStory(PROJECT_NAME, releaseJobId, rootHeaders).join('\n')
-  // Twin: the after_script really ran the lock TASK and restored protection —
-  // this is the mechanism (after_script runs on success OR failure).
-  if (!trace.includes('Default branch protection restored')) {
-    throw new Error(`Expected the after_script lock task to restore protection, trace:\n${trace}`)
-  }
-
-  I.resizeWindow(1024, 900)
-  // Collapse GitLab's long job log to just its after_script section, so the card
-  // is exactly "the job FAILED, and GitLab still ran
-  // `task glab:release:lock-default-branch` from after_script".
-  await showJobLog(releaseJobId, { anchor: 'Running after[ _]script', lead: 3, masks: ALL_SEMVER_MASKS })
-  await addStoryboardFrame(I, await capturePageFrame(I, 'after-script-relock'))
-  I.resizeWindow(1024, 768)
-})
-
-// ============================================
-// Then — main is locked again anyway
-// ============================================
 
 storyboardStep(Then, 'the main branch is locked again even though the release crashed', async () => {
   // The safety net (the EXIT trap and the after_script re-lock) shut the door on
@@ -562,14 +493,36 @@ storyboardStep(Then, 'the main branch is locked again even though the release cr
   }
   await assertMainProtected(PROJECT_NAME)
 
-  I.resizeWindow(1024, 640)
-  await GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(PROJECT_NAME), PROJECT_NAME)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'door-locked-after'))
-  I.resizeWindow(1024, 768)
+  // The repository settings, their "Protected branches" section opened the way
+  // a reader clicks it, and brought to the top of the card.
+  await gitlabFrame(I, 'door-locked-after', gitlabUrl.repoSettings(PROJECT_NAME), {
+    waitText: 'Protected branches',
+    prepare: async () => {
+      await I.executeScript(() => {
+        const heading = Array.from(document.querySelectorAll('h2, h3, h4, span')).find(el => el.textContent.trim() === 'Protected branches')
+        const section = document.querySelector('#js-protected-branches-settings') ||
+          (heading && (heading.closest('section') || heading.closest('div[id*="protected-branches"]')))
+        if (!section) throw new Error('No "Protected branches" section on the repository settings page')
+        section.setAttribute('data-e2e-protected', '')
+        if (section.classList.contains('expanded')) return
+        const toggle = section.querySelector('.js-settings-toggle')
+        if (toggle) toggle.click()
+        else section.classList.add('expanded')
+      })
+      // The push dropdown of the main branch, drawn and showing its value (a
+      // hidden "No one" option of the merge dropdown comes first in the page).
+      await I.waitForFunction(() => Array.from(document.querySelectorAll('[data-e2e-protected] button'))
+        .some(b => b.offsetParent && b.textContent.trim() === 'No one'), 30)
+    },
+    scrollTo: async () => {
+      await I.executeScript(() => document.querySelector('[data-e2e-protected]').scrollIntoView({ block: 'start' }))
+      await settlePage(I, { quietMs: 300 })
+    }
+  })
 })
 
 // ============================================
-// Chapter 2 — a release that cannot build its image pushes nothing
+// Chapter 2 — a release that cannot publish its image pushes nothing
 // ============================================
 
 storyboardStep(When, 'the image of a second release cannot be published, so the release job stops before its push', async () => {
@@ -582,18 +535,7 @@ storyboardStep(When, 'the image of a second release cannot be published, so the 
   const fails = await createProjectVariable(PROJECT_NAME, { key: PUBLISH_FAILS_VAR, value: 'true' }, rootHeaders)
   if (fails.status >= 400) throw new Error(`Failed to break the publish step (status ${fails.status}): ${JSON.stringify(fails.data)}`)
 
-  const trigger = await triggerProjectPipeline(PROJECT_NAME, 'main', lambdaHeaders)
-  if (trigger.status >= 400) throw new Error(`Failed to trigger the second release pipeline (status ${trigger.status}): ${JSON.stringify(trigger.data)}`)
-  pipelineId = trigger.data.id
-  const release = await waitReleaseJobTerminal(I, PROJECT_NAME, pipelineId, rootHeaders, runner)
-  releaseJobId = release.id
-  const trace = releaseTraceStory(PROJECT_NAME, releaseJobId, rootHeaders).join('\n')
-  if (release.status !== 'failed') {
-    // Printed, not thrown: the runner truncates a long error message, and the
-    // whole log is what says WHERE this release stopped.
-    console.log(`release-crash: second release job log:\n${trace}`)
-    throw new Error(`Expected the second release job to fail on its publish step, got ${release.status}`)
-  }
+  const { jobId, trace } = await runFailingRelease(rootHeaders, 'on its publish step')
   // Twin: the release really died on its publish step...
   if (!trace.includes('the image could not be published')) {
     console.log(`release-crash: second release job log:\n${trace}`)
@@ -606,20 +548,7 @@ storyboardStep(When, 'the image of a second release cannot be published, so the 
     throw new Error(`The release pushed to the main branch before publishing its image, trace:\n${trace}`)
   }
 
-  await cancelPipeline(PROJECT_NAME, pipelineId, lambdaHeaders)
-  await waitPipelineTerminal(I, PROJECT_NAME, pipelineId, rootHeaders)
-
-  // From the version bump down to the end of the job: the card has to hold the
-  // version being cut, the publish failing, and the absence of any push line
-  // between them and the after_script.
-  I.resizeWindow(1024, 950)
-  await showJobLog(releaseJobId, {
-    anchor: 'Running Commitizen version bump',
-    lead: 1,
-    masks: TOOL_SEMVER_MASKS
-  })
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publish-failed'))
-  I.resizeWindow(1024, 768)
+  await releaseJobCard('publish-failed', jobId)
 })
 
 storyboardStep(Then, 'the project has no tag at all, so the main branch never points at a missing image', async () => {
@@ -638,9 +567,8 @@ storyboardStep(Then, 'the project has no tag at all, so the main branch never po
     throw new Error(`Expected the main branch to still be on its "feat:" commit, got: ${tip}`)
   }
 
-  I.resizeWindow(1024, 600)
-  await I.amOnPage(`/${projectPath(PROJECT_NAME)}/-/tags`)
-  await maskPipelinePage(I, PROJECT_NAME)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'no-tag-without-its-image'))
-  I.resizeWindow(1024, 768)
+  await gitlabFrame(I, 'no-tag-without-its-image', gitlabUrl.tags(PROJECT_NAME), {
+    waitText: 'Repository has no tags yet',
+    height: 640
+  })
 })
