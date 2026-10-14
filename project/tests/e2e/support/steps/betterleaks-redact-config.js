@@ -1,6 +1,6 @@
 /* global inject Before After Given When Then window document */
 /**
- * @betterleaks-redact-config — how much of a detected secret Betterleaks hides,
+ * @betterleaks-redact-config: how much of a detected secret Betterleaks hides,
  * told where a team meets it: the setting in the generated project on GitLab, a
  * branch carrying a made-up password, the generated code:betterleaks job of its
  * merge request printing REDACTED, then the developer's own terminal showing
@@ -15,7 +15,7 @@ const path = require('path')
 const { spawnSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { publishToGitLab } = require('../helpers/gitlabProject')
-const { gitlabFrame, gitlabUrl, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
+const { JOB_LOG_MASKS, gitlabFrame, gitlabUrl, settlePage } = require('../helpers/gitlabCard')
 const {
   BASE_URL, encodedProjectPath, getRootHeaders, getRepositoryFile, getJobTrace, listCommits,
   createMergeRequest, getPipeline, listPipelineJobs, listProjectPipelines
@@ -37,6 +37,8 @@ const COMMIT = 'feat: connect the service to its database'
 const SETTING = '.config/betterleaks/Taskfile.yml'
 const CI_FIXTURE = path.join(__dirname, '../../fixtures/betterleaks-redact/gitlab-ci.yml')
 const VERDICT = 'Betterleaks detected secrets in your branch commits!'
+// The generated job's command, as GitLab prints it in the job log.
+const JOB_COMMAND = '$ task betterleaks:scan-branch'
 // The two ways a developer overrides the setting: the environment, and a task
 // variable after the command. Each is a card's # Copy.
 const OVERRIDE_ENVIRONMENT = 'TASK_BETTERLEAKS_REDACT=25 task betterleaks:scan-branch'
@@ -98,6 +100,10 @@ function inClone (script) {
   return stripAnsiEscapeSequences(res.output || '').trim()
 }
 
+// The size GitLab prints after a file's name moves by a fraction of a pixel
+// from one load to the next, and says nothing the card is about.
+const FILE_SIZE = ['.file-header-content small']
+
 // GitLab scrolls a #L anchor towards the top of the window, past the file's
 // own header, and its left menu towards the current page on a short window:
 // everything back to the top, the highlighted line still in view.
@@ -124,6 +130,59 @@ async function openMergeRequest () {
   }
 }
 
+// The job page, its log from the job's own command down, without the lines the
+// job wrote to its error stream. GitLab Runner reads a job's two output streams
+// apart and interleaves them as they arrive: task's command echoes and
+// Betterleaks' INF/WRN lines land somewhere else on every run (the developer's
+// terminal, one stream, shows them in order on the next cards). The trace says
+// which lines those are ("E" after the timestamp); every other line stays as
+// GitLab drew it. jobLogFrame cannot hide chosen lines, hence this local card.
+async function scanJobFrame (jobId, trace) {
+  const errorLines = trace.split('\n')
+    .map(line => line.replace(/\r/g, '').match(/^\S+Z [0-9a-f]{2}E[ +](.*)$/))
+    .filter(Boolean)
+    .map(match => match[1].trim())
+    .filter(Boolean)
+  const log = '[data-testid="job-log-content"]'
+  await gitlabFrame(I, 'redaction-ci-job-log', gitlabUrl.job(s.pub.projectName, jobId), {
+    height: 860,
+    textMasks: [...JOB_LOG_MASKS, ...SCAN_MASKS],
+    scrollTo: pageTop,
+    prepare: async () => {
+      await I.waitForText(JOB_COMMAND, 60, log)
+      const hidden = await I.executeScript(([from, errors]) => {
+        const TIME = '.job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]'
+        const GUTTER = `.job-log-line-number, ${TIME}`
+        const content = (row) => {
+          const copy = row.cloneNode(true)
+          copy.querySelectorAll(GUTTER).forEach(el => el.remove())
+          return copy.textContent.trim()
+        }
+        const rows = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+        const start = rows.findIndex(row => content(row) === from)
+        if (start === -1) return null
+        const dropped = []
+        rows.forEach((row, index) => {
+          const text = content(row)
+          if (index >= start && text && !errors.includes(text)) return
+          row.setAttribute('data-e2e-mask', '')
+          if (index > start && text) dropped.push(text)
+        })
+        // Blanked, not removed: a section's chevron sits in their column.
+        document.querySelectorAll('.job-log-line-number, .job-log-line-header .badge').forEach(el => el.setAttribute('data-e2e-blank', ''))
+        document.querySelectorAll(TIME).forEach(el => el.setAttribute('data-e2e-mask', ''))
+        // Fractional line heights round differently from one run to the next.
+        const box = document.querySelector('.job-log')
+        if (box) box.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(box).lineHeight))}px`
+        return dropped
+      }, [JOB_COMMAND, errorLines])
+      assert.ok(hidden, `The job log must show ${JOB_COMMAND}`)
+      assert.ok(hidden.some(text => text.endsWith('WRN leaks found: 1')),
+        `The card must leave out the error-stream lines, it left out:\n${hidden.join('\n')}`)
+    }
+  })
+}
+
 // Off camera: the generated project, its pipeline cut down to the secret scan
 // (fixtures/betterleaks-redact/gitlab-ci.yml plus the generated image line),
 // pushed to a public project of the lambda user. Locked-down runners answer, so
@@ -141,7 +200,7 @@ storyboardStep(Given, 'GitLab shows that the generated project hides 100 percent
     project: { shared_runners_enabled: false }
   })
   await gitlabFrame(I, 'redaction-setting', gitlabUrl.file(s.pub.projectName, 'main', SETTING, [8]), {
-    waitText: 'TASK_BETTERLEAKS_REDACT', height: 1100, scrollTo: pageTop
+    waitText: 'TASK_BETTERLEAKS_REDACT', height: 1100, scrollTo: pageTop, hide: FILE_SIZE
   })
   const setting = await getRepositoryFile(s.pub.projectName, SETTING, 'main', s.pub.headers)
   assert.equal(setting.split('\n')[7], '  TASK_BETTERLEAKS_REDACT: \'{{.TASK_BETTERLEAKS_REDACT | default "100"}}\'',
@@ -172,7 +231,7 @@ storyboardStep(When, 'a developer pushes a branch with a synthetic password in i
   ].join('\n'))
   s.head = inClone('git rev-parse HEAD')
   await gitlabFrame(I, 'redaction-pushed-branch', gitlabUrl.file(s.pub.projectName, BRANCH, 'src/service.js'), {
-    waitText: COMMIT, height: 700, scrollTo: pageTop
+    waitText: COMMIT, height: 700, scrollTo: pageTop, hide: FILE_SIZE
   })
   const commits = await listCommits(s.pub.projectName, BRANCH, s.pub.headers)
   assert.equal(commits[0].id, s.head, 'GitLab must hold the commit the developer pushed')
@@ -185,9 +244,9 @@ storyboardStep(When, 'a developer pushes a branch with a synthetic password in i
 })
 
 // The merge request starts the generated pipeline, with no CI/CD variable set,
-// on a project-scoped runner. The card is the real job page, its log from the
-// job's own command down. The twins read the trace: the rule, the file, the
-// REDACTED line and the verdict, and never the value.
+// on a project-scoped runner. The card is the real job page (scanJobFrame). The
+// twins read the whole trace: the rule, the file, the REDACTED line, the
+// verdicts (the card's and the ones it leaves out), and never the value.
 storyboardStep(Then, 'the Betterleaks job fails on GitLab and its log prints REDACTED instead of the password', async () => {
   const root = await getRootHeaders()
   s.runner = await registerScopedRunner(I, s.pub.projectName, root)
@@ -206,13 +265,12 @@ storyboardStep(Then, 'the Betterleaks job fails on GitLab and its log prints RED
   assert.equal(pipeline.sha, s.head, 'The pipeline must scan the pushed commit')
   const variables = await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(s.pub.projectName)}/variables`, s.pub.headers)
   assert.deepEqual(variables.data, [], 'No CI/CD variable may change the default')
-  for (const said of ['generic-password', 'src/service.js', 'const password = "REDACTED";', VERDICT]) {
+  for (const said of ['generic-password', 'src/service.js', 'const password = "REDACTED";', VERDICT, 'WRN leaks found: 1',
+    'task: Failed to run task "betterleaks:scan-branch"']) {
     assert.ok(trace.includes(said), `The job log must say ${said}`)
   }
   assert.ok(!trace.includes(SECRET.slice(0, 4)), 'The job log must not print any part of the password')
-  await jobLogFrame(I, 'redaction-ci-job-log', s.pub.projectName, jobs[0].id, {
-    from: '$ task betterleaks:scan-branch', height: 1100, masks: SCAN_MASKS
-  })
+  await scanJobFrame(jobs[0].id, trace)
 })
 
 // Off camera, once: the pinned binary in the clone. On camera, ONE typed line
