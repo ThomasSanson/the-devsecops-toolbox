@@ -5,7 +5,7 @@
  * A card is the WHOLE page at 1440 px (the width where GitLab unfolds its left
  * sidebar, so the reader sees where they are), as tall as the evidence needs
  * (900 by default, 1100 at most: beyond that, scroll to the evidence instead).
- * The storyboard engine gives such a frame a full row, so it reads at ~99%.
+ * The storyboard engine gives such a frame a full 1440 px row: it reads at 100%.
  *
  *   await gitlabFrame(I, 'after-push', gitlabUrl.tree(project), {
  *     waitText: 'chore: install', projectNames: [project]
@@ -21,11 +21,12 @@ const { addStoryboardFrame, capturePageFrame } = require('../../../../../.config
 const CARD_WIDTH = 1440
 const CARD_HEIGHT = 900
 const CARD_MAX_HEIGHT = 1100
-// The window every other step of the suite expects (codecept.conf.js).
-const DEFAULT_WINDOW = [1024, 768]
 
 // A bare project name is the lambda user's project; a path with a slash is used as is.
-const base = (p) => '/' + (String(p).includes('/') ? p : projectPath(p))
+const isFullPath = (p) => String(p).includes('/')
+const base = (p) => '/' + (isFullPath(p) ? p : projectPath(p))
+// The per-run name a card must not show: a bare project name is one.
+const namesOf = (project, projectNames) => projectNames || (isFullPath(project) ? [] : [project])
 const encodePath = (file) => String(file).split('/').map(encodeURIComponent).join('/')
 
 // Pure URL formatters: every card is one gitlabFrame call on one of these.
@@ -85,17 +86,18 @@ async function settlePage (I, { quietMs = 800, timeoutMs = 15000 } = {}) {
  *     so the reader knows where they are, and without it the breadcrumb goes too;
  *   - avatars (their colour derives from a per-run id), never content images;
  *   - tooltips, popovers and "new feature" callouts, the focus ring, the pointer;
- *   - dates, relative times, SHAs, #ids, durations, the runner "#id (token)";
+ *   - dates, relative times, SHAs, #ids, durations, the runner "#id (token)":
+ *     blanked to nothing, never replaced by a sign GitLab could have printed;
  *   - the per-run project names, replaced by "project" everywhere;
  *   - the reader's own to-do and notification buttons on a merge request.
  * `hide` adds page-specific selectors (display: none), `textMasks` adds
  * [RegExp, replacement] pairs applied to every text node. Page CONTENT (a file,
- * a diff, a job log, rendered markdown) keeps its words: only the per-run
- * project names and the caller's textMasks reach inside it.
+ * a diff, a job log, rendered markdown, the pipeline editor) keeps its words:
+ * only the per-run project names and the caller's textMasks reach inside it.
  */
 async function maskGitLabPage (I, { projectNames = [], keepContext = true, textMasks = [], hide = [] } = {}) {
   await I.executeScript((args) => {
-    const PLACEHOLDER = '—'
+    const PLACEHOLDER = ''
     const LEAF_RE = [
       /^[A-Za-z]{3,9} \d{1,2}, \d{4}$/, //               "Jul 20, 2026"
       /^\d{4}-\d{2}-\d{2}$/, //                           "2026-07-20"
@@ -116,10 +118,12 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
       /\b\d{2}:\d{2}:\d{2}\b/g,
       /#\d+ \([^)]*\)(\s+null)?/g
     ]
-    const CONTENT = '.file-content, .blob-viewer, .diff-file, .diff-content, [data-testid="job-log-content"], .md, .description, pre'
+    const CONTENT = '.file-content, .blob-viewer, .diff-file, .diff-content, [data-testid="job-log-content"], .md, .description, pre, ' +
+      '.monaco-editor, [data-testid="source-editor-container"]'
     // GitLab 19.4: the session row is header.super-topbar; the breadcrumb lives
-    // in the page panel, outside any header. Other <header>s are page content
-    // (the commit list's filter bar, the job's name and status).
+    // in the page panel, outside any header, so the row goes away whole and
+    // leaves no empty band. Other <header>s are page content (the commit list's
+    // filter bar, the job's name and status).
     const SESSION = '.super-topbar, [data-testid="top-bar"]'
     const CRUMB = '[data-testid="breadcrumb-links"], nav[aria-label="Breadcrumb"], .gl-breadcrumbs'
     const READER_CHROME_RE = /to-?do|mark as done|notification|subscribe/i
@@ -137,15 +141,20 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
     style.textContent = [
       '*, *::before, *::after { transition: none !important; animation: none !important }',
       '.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"] { visibility: hidden !important }',
+      // The white tile behind the sidebar's project avatar, the author's avatar
+      // before the last commit (a gap otherwise), and the SHA button with its
+      // copy button (an empty box once its SHA is blanked).
+      '.gl-nav-item-slot:has(.gl-avatar), .js-commit-sha-group, .js-commit-sha-group * { visibility: hidden !important }',
+      '.project-last-commit .user-avatar-link { display: none !important }',
       '.gl-spinner, [class*="spinner"] { visibility: hidden !important }',
-      '[role="tooltip"], .tooltip, .gl-tooltip, .popover, .gl-popover, [class*="popover"], .user-callout, [data-testid*="callout"] { display: none !important }',
+      // Popovers by their own classes only: "js-user-popover" is the author's
+      // name on a commit, the trigger of a popover, not one.
+      '[role="tooltip"], .tooltip, .gl-tooltip, .popover, .gl-popover, .user-callout, [data-testid*="callout"] { display: none !important }',
       // display, not visibility: a child carrying its own visibility:visible
       // (status icons do) would override an inherited hidden.
       '[data-e2e-mask] { display: none !important }',
       '[data-e2e-blank] { visibility: hidden !important }',
-      args.keepContext
-        ? `${SESSION} { visibility: hidden !important }`
-        : `${SESSION}, ${CRUMB} { display: none !important }`,
+      `${args.keepContext ? SESSION : `${SESSION}, ${CRUMB}`} { display: none !important }`,
       ...args.hide.map(sel => `${sel} { display: none !important }`)
     ].join('\n')
     document.head.appendChild(style)
@@ -192,7 +201,7 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
   await I.usePlaywrightTo('park the pointer outside the content', async ({ page }) => {
     await page.mouse.move(1, 1)
   })
-  await I.wait(0.5)
+  await settlePage(I, { quietMs: 300 })
 }
 
 // GitLab 19 scrolls inside its panels, not only the window: reset them all.
@@ -210,7 +219,7 @@ async function scrollPage (I, target) {
     document.querySelectorAll('main, .content-wrapper, .layout-page, .js-static-panel-inner, .job-log, [data-testid="job-log-content"]')
       .forEach(el => { el.scrollTop = 0 })
   }, target || null)
-  await I.wait(0.3)
+  await settlePage(I, { quietMs: 300 })
 }
 
 /**
@@ -218,7 +227,9 @@ async function scrollPage (I, target) {
  * `waitText`, `prepare()` (open a tab, unfold a section), settle, mask, scroll
  * (top by default; `scrollTo` = a selector to centre, 'keep', or a function;
  * a URL with a #L anchor keeps GitLab's own scroll), capture, assert, and give
- * the window back at the suite's default size.
+ * the window back at the size it had, even when a step above throws (a
+ * terminal tab keeps its own height). `projectNames` is never guessed from the
+ * URL: pass the per-run name, or the page keeps it.
  */
 async function gitlabFrame (I, frameName, url, {
   waitText = null,
@@ -233,18 +244,22 @@ async function gitlabFrame (I, frameName, url, {
   if (height > CARD_MAX_HEIGHT) {
     throw new Error(`gitlabFrame "${frameName}": ${height} px is taller than ${CARD_MAX_HEIGHT}; scroll to the evidence instead`)
   }
+  const before = await I.usePlaywrightTo('read the window size', async ({ page }) => page.viewportSize())
   await I.resizeWindow(CARD_WIDTH, height)
-  await I.amOnPage(url)
-  if (waitText) await I.waitForText(waitText, 60)
-  await settlePage(I)
-  if (prepare) {
-    await prepare()
+  try {
+    await I.amOnPage(url)
+    if (waitText) await I.waitForText(waitText, 60)
     await settlePage(I)
+    if (prepare) {
+      await prepare()
+      await settlePage(I)
+    }
+    await maskGitLabPage(I, { projectNames, keepContext, textMasks, hide })
+    await scrollPage(I, scrollTo || (url.includes('#') ? 'keep' : null))
+    await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+  } finally {
+    if (before) await I.resizeWindow(before.width, before.height)
   }
-  await maskGitLabPage(I, { projectNames, keepContext, textMasks, hide })
-  await scrollPage(I, scrollTo || (url.includes('#') ? 'keep' : null))
-  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
-  await I.resizeWindow(...DEFAULT_WINDOW)
 }
 
 // Volatile values a job log prints, whatever the job: commit SHAs, the runner's
@@ -268,11 +283,13 @@ const JOB_LOG_MASKS = [
  *   - fold / unfold: GitLab's own collapsible sections, by header text;
  *   - masks: extra [RegExp, replacement] pairs on top of JOB_LOG_MASKS, applied
  *     ACROSS the coloured spans of a line, so every span keeps its colour;
- *   - sortLines: re-order the lines concurrent scanners print in any order;
+ *   - sortScannerLines: re-order the lines concurrent scanners print in any
+ *     order (OSV's "Scanned … packages" lines, MegaLinter's reporter lines);
  *   - focus: a log text to bring into view instead of the top of the page.
  * The gutter (line numbers, timestamps, section durations) and the runner's
  * cleanup line ("…runner-<token>… disconnected from network") always go, and
- * projectNames are replaced inside the log before the SHA mask runs.
+ * projectNames (default: [project]) are replaced inside the log before the SHA
+ * mask runs.
  */
 async function jobLogFrame (I, frameName, project, jobId, {
   from = null,
@@ -281,11 +298,12 @@ async function jobLogFrame (I, frameName, project, jobId, {
   unfold = [],
   masks = [],
   focus = null,
-  sortLines = false,
+  sortScannerLines = false,
   height = CARD_HEIGHT,
-  projectNames = [],
+  projectNames = null,
   waitText = null
 } = {}) {
+  projectNames = namesOf(project, projectNames)
   const log = '[data-testid="job-log-content"]'
   await gitlabFrame(I, frameName, gitlabUrl.job(project, jobId), {
     height,
@@ -303,8 +321,9 @@ async function jobLogFrame (I, frameName, project, jobId, {
         toggle(args.unfold, true)
         toggle(args.fold, false)
       }, { fold, unfold })
-      await I.wait(1)
-      if (sortLines) {
+      // The masks below are written once, so the sections must be done redrawing.
+      await settlePage(I)
+      if (sortScannerLines) {
         const { stableJobLog } = require('./stableJobLog')
         await I.executeScript(stableJobLog)
       }
@@ -374,37 +393,39 @@ async function jobLogFrame (I, frameName, project, jobId, {
           if (!line) throw new Error(`jobLogFrame: no log line contains ${text}`)
           line.scrollIntoView({ block: 'center' })
         }, focus)
-        await I.wait(0.3)
+        await settlePage(I, { quietMs: 300 })
       }
       : null
   })
 }
 
 /** The pipeline editor of a branch: GitLab's own "Pipeline syntax is correct" verdict over the chosen tab (Edit, Visualize, Validate or Full configuration on 19.4). Needs a logged-in member. */
-async function ciEditorFrame (I, frameName, project, { ref = 'main', tab = 'Visualize', height = CARD_HEIGHT, projectNames = [] } = {}) {
+async function ciEditorFrame (I, frameName, project, { ref = 'main', tab = 'Visualize', height = CARD_HEIGHT, projectNames = null } = {}) {
   await gitlabFrame(I, frameName, gitlabUrl.ciEditor(project, ref), {
     height,
-    projectNames,
+    projectNames: namesOf(project, projectNames),
     waitText: 'Pipeline syntax is correct',
+    // gitlabFrame settles the page once the chosen tab is the selected one.
     prepare: async () => {
-      if (tab && tab !== 'Edit') {
-        await I.executeScript((name) => {
-          const el = Array.from(document.querySelectorAll('[role="tab"]')).find(t => t.textContent.trim() === name)
-          if (!el) throw new Error(`ciEditorFrame: no "${name}" tab`)
-          el.click()
-        }, tab)
-      }
-      await I.wait(1)
+      if (!tab || tab === 'Edit') return
+      await I.executeScript((name) => {
+        const el = Array.from(document.querySelectorAll('[role="tab"]')).find(t => t.textContent.trim() === name)
+        if (!el) throw new Error(`ciEditorFrame: no "${name}" tab`)
+        el.click()
+      }, tab)
+      // waitForFunction hands its argument array over as ONE argument.
+      await I.waitForFunction(([name]) => Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"]'))
+        .some(t => t.textContent.trim() === name), [tab], 30)
     }
   })
 }
 
 /** CI/CD settings, its Variables section open and its table in view: keys and their masked/protected flags. Needs a logged-in maintainer. */
-async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, projectNames = [] } = {}) {
+async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, projectNames = null } = {}) {
   const table = '[data-testid="ci-variable-table"]'
   await gitlabFrame(I, frameName, gitlabUrl.ciSettings(project), {
     height,
-    projectNames,
+    projectNames: namesOf(project, projectNames),
     prepare: async () => {
       // A folded section still lays its table out, so ask the section itself.
       const open = '#js-cicd-variables-settings.expanded'
@@ -423,13 +444,14 @@ async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, 
  * Use as a gitlabFrame `prepare`.
  */
 async function unfoldFileTree (I, folders) {
+  const items = 'nav.repository-tree-list [role="treeitem"]'
   for (const name of folders) {
     const toggle = `nav.repository-tree-list button[aria-label="Expand ${name} directory"]`
     await I.waitForElement(toggle, 30)
-    const before = await I.grabNumberOfVisibleElements('nav.repository-tree-list [role="treeitem"]')
+    const before = await I.executeScript((selector) => document.querySelectorAll(selector).length, items)
     await I.click(toggle)
-    await I.waitForFunction((count) =>
-      document.querySelectorAll('nav.repository-tree-list [role="treeitem"]').length > count, [before], 30)
+    // waitForFunction hands its argument array over as ONE argument.
+    await I.waitForFunction(([selector, count]) => document.querySelectorAll(selector).length > count, [items, before], 30)
   }
 }
 
