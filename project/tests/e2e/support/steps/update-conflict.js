@@ -101,24 +101,13 @@ function expectLines (text, lines, what) {
   if (missing.length) throw new Error(`${what}: missing ${JSON.stringify(missing)} in\n${text}`)
 }
 
-// GitLab fills the merge request's Pipelines counter on its own time. No runner
-// serves this project, so once created the list does not move: wait for it,
-// then report it, so the card is shot on a settled page.
-async function settledMrPipelines () {
-  let previous = null
-  return until('The merge request pipelines never settled', async () => {
-    const list = (await api(`/merge_requests/${state.iid}/pipelines`)).map(p => `${p.source}:${p.status}`)
-    const settled = previous !== null && JSON.stringify(previous) === JSON.stringify(list) && list.length > 0 &&
-      !list.some(p => p.endsWith(':created'))
-    previous = list
-    return settled ? list : null
-  }, Boolean)
-}
-
-async function changesCard (frameName, waitText) {
-  const pipelines = await settledMrPipelines()
-  console.log(`[update-conflict] ${frameName}: merge request pipelines ${JSON.stringify(pipelines)}`)
-  await gitlabFrame(I, frameName, gitlabUrl.mr(state.project, state.iid, 'diffs'), { waitText, height: 1100 })
+// The Changes tab, once GitLab's own counters on it are final. The Pipelines
+// counter fills in on GitLab's own time, so wait for the expected pipelines
+// first (the twin): `ok` receives them as "source:status", oldest first.
+async function changesCard (frameName, waitText, ok) {
+  await until('The merge request pipelines are not the expected ones',
+    async () => (await api(`/merge_requests/${state.iid}/pipelines`)).map(p => `${p.source}:${p.status}`).reverse(), ok)
+  await gitlabFrame(I, frameName, gitlabUrl.mr(state.project, state.iid, 'diffs'), { waitText })
 }
 
 // Off camera: the test user, a public project (no shared runner: its pipelines
@@ -164,7 +153,8 @@ storyboardStep(Given, "the developer swapped the toolbox's CI image for their ow
 // The twins: the screen names the clashing file and the opened merge request,
 // GitLab holds that merge request, and the main branch did not move.
 storyboardStep(When, 'the developer runs the toolbox update and it warns that the release changes the same line', async () => {
-  await openTerminal(I, state.container, { width: 1440 })
+  // 1430 px: 156 columns, the widest line on one row and the card within 1440.
+  await openTerminal(I, state.container, { width: 1430 })
   const screen = await terminalCard(I, 'update-run', 'task devsecops:update', {
     timeoutMs: 300000,
     mask: [COPIER_PIN_MASK, [new RegExp(state.project, 'g'), 'project']]
@@ -193,7 +183,9 @@ storyboardStep(Then, 'GitLab now holds an update merge request showing both imag
   ], 'The conflict diff')
   const lint = await lintProjectCi(state.project, await getRootHeaders(), UPDATE_BRANCH)
   if (!lint.data || lint.data.valid !== false) throw new Error(`Expected GitLab to refuse the conflicted ${CI_FILE}: ${JSON.stringify(lint.data)}`)
-  await changesCard('conflict-in-mr', '<<<<<<< before updating')
+  // Both pipelines GitLab started for the branch and the merge request fail at once on that file.
+  await changesCard('conflict-in-mr', '<<<<<<< before updating',
+    list => JSON.stringify(list) === JSON.stringify(['push:failed', 'merge_request_event:failed']))
 })
 
 // The developer's fix, the card's # Copy run as is on the update branch. The
@@ -211,5 +203,7 @@ storyboardStep(Then, 'once the developer fixes that line on the update branch, t
   const lint = await lintProjectCi(state.project, await getRootHeaders(), UPDATE_BRANCH)
   if (!lint.data || lint.data.valid !== true) throw new Error(`Expected GitLab to accept the fixed ${CI_FILE}: ${JSON.stringify(lint.data)}`)
   if (await mainTitle() !== PIN_COMMIT) throw new Error('The fix moved the main branch')
-  await changesCard('resolved-in-mr', '1.0.1-hardened')
+  // The fixed file is valid again: one more merge-request pipeline.
+  await changesCard('resolved-in-mr', '1.0.1-hardened',
+    list => list.length === 3 && list[2].startsWith('merge_request_event:') && !list[2].endsWith(':failed'))
 })
