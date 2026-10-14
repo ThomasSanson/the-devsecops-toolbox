@@ -1,20 +1,38 @@
 /* global inject Given When Then Before After */
+// @retired-linters: a framework update cleans the retired MegaLinter linters
+// out of a project's own settings, on a real GitLab project, through the
+// developer's real command (`task devsecops:update`). GitLab opens the story
+// (the settings on the main branch) and holds its proof (the merge request's
+// Changes tab); the terminal in between shows the update stopped by a settings
+// file linked outside the project, then accepted once the link is gone, then
+// asked again for nothing. Every card is twinned with a check of the same fact:
+// MegaLinter's own configuration loader, the files in the container, REST.
 const { I } = inject()
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const path = require('node:path')
 const crypto = require('node:crypto')
-const { prepareVersionedTemplate, renderProjectFromTemplate, removeRendered } = require('../helpers/copierRender')
-const { renderPreFrame } = require('../helpers/capturedOutput')
-const { runTask } = require('../helpers/taskProcess')
+const path = require('node:path')
+const { runCommand, shellEscape, execInContainerAsUser, removeContainer } = require('../helpers/docker')
+const { freshGet } = require('../helpers/http')
+const {
+  BASE_URL,
+  encodedProjectPath,
+  getRootHeaders,
+  createProject,
+  deleteProject,
+  createLambdaPersonalAccessToken,
+  revokePersonalAccessToken,
+  listProjectBranches,
+  listProjectMergeRequests,
+  getRepositoryFile
+} = require('../helpers/gitlabApi')
+const { PROJECT_DIR, setupManualUpdateTerminal, teardownJourneyTerminal } = require('../helpers/journeyContainer')
+const { openTerminal, terminalCard } = require('../terminal/capture')
+const { gitlabUrl, gitlabFrame, inNewTab } = require('../helpers/gitlabCard')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
-const IMAGE = 'ghcr.io/oxsecurity/megalinter:v10.1.0@sha256:b09486c423063200d6f203b63121e0967719eee03c234844f6f1dd658f00a31b'
 const RETIRED = ['REPOSITORY_GITLEAKS', 'REPOSITORY_KICS', 'SQL_TSQLLINT']
-const UPDATE = [
-  '--silent', 'copier:update', 'TASK_COPIER_PYTHON_VERSION=3.14',
-  'TASK_COPIER_CLI_OPTS=--defaults --skip-answered --skip-tasks --quiet --vcs-ref 1.0.1'
-]
+const CONFIG = '.config/megalinter/config.yml'
+const FLOW_CONFIG = '.config/megalinter/config.flow.yml'
 const CUSTOM = [
   '---',
   '# Keep the project settings and this explanation.',
@@ -32,7 +50,6 @@ const CUSTOM = [
   'ERROR_ON_MISSING_EXEC_BIT: true',
   ''
 ].join('\n')
-const FLOW_CONFIG = '.config/megalinter/config.flow.yml'
 const FLOW = [
   '---',
   '# Keep the settings in flow notation.',
@@ -44,162 +61,234 @@ const FLOW = [
   ']',
   ''
 ].join('\n')
+const COMMENTS = [
+  '# Keep the project settings and this explanation.', '# Keep the supported exclusions.',
+  '# Keep the reason for this project exclusion.', '# Keep this project explanation.',
+  '# Keep the configuration rationale.', '# Keep the legacy path explanation.'
+]
+const SETTINGS_COMMIT = "chore: keep the project's own MegaLinter settings"
+// The link sorts after both regular files, so a migration that wrote as it
+// went would already have changed them when it reached the link.
+const LINK = '.config/megalinter/shared.yml'
+const OUTSIDE = '/workspace/shared/megalinter.yml'
+const UPDATE_BRANCH = 'update-framework-devsecops'
+const RELEASE = '1.0.1'
+// What the test release itself changes, next to the clean-up: the version in
+// the answers file, and the one file release 1.0.1 of the fixture template adds.
+const RELEASE_FILES = ['.config/devsecops/.copier-answers.yml', '.config/jq/Taskfile.yml']
+const REFUSAL = 'Refusing to migrate linked or external MegaLinter configuration: ' + LINK
+const ANNOUNCEMENT = '[megalinter migration] removed retired references from '
+// The line the developer types in each terminal card (also its # Copy).
+const REFUSED_RUN = `readlink ${LINK} && task devsecops:update; git status --short`
+const ACCEPTED_RUN = 'git reset -q --hard origin/main && git clean -fdq && task devsecops:update'
+const REPEATED_RUN = 'task devsecops:update'
+// go-task echoes the uvx line behind the update, pinned Copier included: the
+// line stays, the version that Renovate moves every month freezes.
+const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 
-let template
-let project
-let before
-let linked
+let story = {}
+Before(() => { story = {} })
+After(async () => {
+  // Clear the state before any await: an overlapping next scenario owns its own.
+  const { container, project, tokenId } = story
+  story = {}
+  teardownJourneyTerminal(container)
+  if (!project && !tokenId) return
+  const root = await getRootHeaders()
+  if (project) await deleteProject(project, root).catch(() => {})
+  if (tokenId) await revokePersonalAccessToken(tokenId, root).catch(() => {})
+})
 
-Before(() => { template = null; project = null; before = null; linked = null })
-After(() => { if (project) removeRendered(project); if (template) removeRendered(template) })
-
-async function task (commands, cleanup) {
-  const file = path.join(project, 'tmp/retired-linters/task.json')
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  const cmds = cleanup ? [{ defer: cleanup }, ...commands] : commands
-  fs.writeFileSync(file, JSON.stringify({ version: '3', tasks: { probe: { dir: project, cmds } } }))
-  const result = await runTask(project, ['--silent', '--taskfile', file, 'probe'])
-  assert.equal(result.exitCode, 0, result.raw)
-  return result.raw
+function inProject (script) {
+  const res = execInContainerAsUser(story.container, 'bootstrap', `export PATH="$HOME/.local/bin:$PATH"\ncd ${PROJECT_DIR}\n${script}`, { timeout: 300000 })
+  assert.equal(res.exitCode, 0, `\`${script}\` failed in the project:\n${res.output}`)
+  return res.stdout
 }
 
-async function settings (config = '.config/megalinter/config.yml') {
-  fs.copyFileSync(path.join(__dirname, '../helpers/megalinterConfigProbe.py'), path.join(project, 'tmp/retired-linters/probe.py'))
-  const container = 'ml-retired-' + crypto.randomBytes(8).toString('hex')
-  const raw = await task([
-    'docker create --name ' + container + ' --network none --workdir /tmp/lint ' +
-    '--env MEGALINTER_CONFIG=' + config + ' --entrypoint python ' + IMAGE +
-    ' /tmp/lint/tmp/retired-linters/probe.py >/dev/null',
-    'docker cp "' + project + '/." ' + container + ':/tmp/lint',
-    'docker start --attach ' + container
-  ], 'docker rm --force ' + container + ' >/dev/null')
-  const start = raw.indexOf('{\n')
-  assert.ok(start >= 0, raw)
-  return { raw, value: JSON.parse(raw.slice(start)) }
+// Every settings file, and the file outside the project the link points to.
+const megalinterFiles = () => inProject(`sha256sum .config/megalinter/*.yml ${OUTSIDE}`)
+
+// MegaLinter's own configuration loader, in the image of the version the
+// project pins, reads the project as it stands in the terminal's container.
+function megalinterSettings (config) {
+  const version = JSON.parse(inProject('cat .config/megalinter/package.json')).dependencies['mega-linter-runner']
+  const name = 'ml-retired-' + crypto.randomBytes(6).toString('hex')
+  try {
+    runCommand(`docker create --name ${name} --network none --workdir /tmp/my-project --env MEGALINTER_CONFIG=${shellEscape(config)} ` +
+      `--entrypoint python ghcr.io/oxsecurity/megalinter:v${version} /tmp/probe.py`, { timeout: 900000 })
+    runCommand(`docker cp ${shellEscape(path.join(__dirname, '../helpers/megalinterConfigProbe.py'))} ${name}:/tmp/probe.py`)
+    runCommand(`docker cp ${story.container}:${PROJECT_DIR} - | docker cp - ${name}:/tmp`)
+    const out = runCommand(`docker start --attach ${name}`, { timeout: 300000 })
+    return JSON.parse(out.slice(out.indexOf('{')))
+  } finally {
+    removeContainer(name)
+  }
 }
 
-storyboardStep(Given, 'a generated project keeps its own settings and references three retired linters', async () => {
-  template = prepareVersionedTemplate()
-  project = renderProjectFromTemplate(template, '1.0.0')
-  fs.writeFileSync(path.join(project, '.config/megalinter/config.yml'), CUSTOM)
-  await task(['git add -- .config/megalinter/config.yml', 'git commit --quiet -m "test: project linter settings"'])
-  await renderPreFrame(I, 'project-linter-settings', await task(['cat .config/megalinter/config.yml']), { colour: true })
-})
+async function remoteState () {
+  const root = await getRootHeaders()
+  const branches = (await listProjectBranches(story.project, root)).data || []
+  const requests = (await listProjectMergeRequests(story.project, root, '?state=opened')).data || []
+  return { branches: Object.fromEntries(branches.map(b => [b.name, b.commit.id])), requests }
+}
 
-storyboardStep(When, 'MegaLinter reads the project settings before the framework update', async () => {
-  before = await settings()
-  assert.deepEqual(before.value.removed_references, RETIRED)
-  assert.deepEqual(before.value.supported_disabled_linters, ['JSON_V8R', 'YAML_V8R'])
-  assert.equal(before.value.formatters_disable_errors, 'false')
-  assert.equal(before.value.error_on_missing_exec_bit, 'true')
-  await renderPreFrame(I, 'retired-references-before', before.raw, { colour: true })
-})
-
-storyboardStep(Given, 'the project also keeps an explanation inside a compact YAML linter list', async () => {
-  fs.writeFileSync(path.join(project, FLOW_CONFIG), FLOW)
-  await task(['git add -- ' + FLOW_CONFIG, 'git commit --quiet -m "test: compact linter settings"'])
-  await renderPreFrame(I, 'compact-project-settings', await task(['cat ' + FLOW_CONFIG]), { colour: true })
-})
-
-storyboardStep(When, 'the developer updates the framework through the real Copier task', async () => {
-  // Warm the existing Copier environment before recording the update itself.
-  await task(['uv run --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python -c pass'])
-  const result = await runTask(project, UPDATE)
-  assert.equal(result.exitCode, 0, result.raw)
-  for (const file of ['.config/megalinter/config.yml', FLOW_CONFIG]) {
-    const announcement = '[megalinter migration] removed retired references from ' + file
-    assert.equal(result.raw.split(announcement).length - 1, 1,
-      'The migration must run once per configuration, after Copier has merged the project files')
+// GitLab computes a merge request's diff after the push: wait for it, so the
+// Changes tab is never photographed half-empty. Returns the changed paths.
+async function mergeRequestPaths (iid, root) {
+  const url = `${BASE_URL}/api/v4/projects/${encodedProjectPath(story.project)}/merge_requests/${iid}/diffs`
+  const deadline = Date.now() + 120000
+  let paths = []
+  while (Date.now() < deadline) {
+    paths = ((await freshGet(url, root)).data || []).map(d => d.new_path).sort()
+    if (paths.length >= 4) return paths
+    await I.wait(2)
   }
-  const raw = result.raw.split(template).join('<template>').split(project).join('<project>')
-  await renderPreFrame(I, 'copier-linter-update', raw, { colour: true })
+  return paths
+}
+
+// Fold files on a merge request's Changes tab with GitLab's own "Hide file
+// contents" button, the way a reviewer folds what they are not reading.
+async function foldDiffs (paths) {
+  await I.executeScript((wanted) => Array.from(document.querySelectorAll('[data-testid="rd-diff-file"]'))
+    .filter(file => wanted.includes(file.querySelector('.rd-diff-file-title').textContent.trim()))
+    .forEach(file => file.querySelector('button[aria-label="Hide file contents"]').click()), paths)
+  // waitForFunction hands its argument array over as ONE argument.
+  await I.waitForFunction(([wanted]) => {
+    const files = Array.from(document.querySelectorAll('[data-testid="rd-diff-file"]'))
+      .filter(file => wanted.includes(file.querySelector('.rd-diff-file-title').textContent.trim()))
+    return files.length === wanted.length &&
+      files.every(file => !file.querySelector('[data-testid="rd-diff-file-body"]').checkVisibility())
+  }, [paths], 30)
+}
+
+// Off camera: the lambda user's public project (no CI, so no pipeline ever
+// repaints a card), a project generated at release 1.0.0 of a two-release
+// template and pushed to it, glab logged in, then the project's own MegaLinter
+// settings pushed as a second commit. The Copier and clean-up environments are
+// warmed up too, so no download line ever reaches a card.
+storyboardStep(Given, "the main branch on GitLab still names three retired linters in the project's MegaLinter settings", async () => {
+  const root = await getRootHeaders()
+  const name = 'e2e-retired-linters-' + crypto.randomBytes(4).toString('hex')
+  const { token, id } = await createLambdaPersonalAccessToken('retired-linters-' + name, ['api', 'write_repository'], root)
+  story.tokenId = id
+  const created = await createProject(
+    { name, visibility: 'public', initialize_with_readme: false, auto_devops_enabled: false, jobs_enabled: false },
+    { 'PRIVATE-TOKEN': token }
+  )
+  assert.ok(created.status < 400, `Creating ${name}: ${created.status} ${JSON.stringify(created.data)}`)
+  story.project = created.data.path
+  story.container = setupManualUpdateTerminal(story.project, token)
+  inProject([
+    `printf '%s' ${shellEscape(CUSTOM)} > ${CONFIG}`,
+    `printf '%s' ${shellEscape(FLOW)} > ${FLOW_CONFIG}`,
+    `git add -A && git commit -q --no-verify -m ${shellEscape(SETTINGS_COMMIT)} && git push -q`,
+    'uvx --python "$(cat .config/python/.python-version)" --from "$(cat .config/copier/requirements.txt)" copier --version',
+    'uv run --quiet --no-project --with-requirements .config/copier/requirements.txt python -c pass'
+  ].join('\n'))
+
+  await gitlabFrame(I, 'gitlab-settings-before', gitlabUrl.file(story.project, 'main', CONFIG), {
+    waitText: 'REPOSITORY_KICS_CONFIG_FILE',
+    // Tall enough for the whole left sidebar: shorter, GitLab scrolls it.
+    height: 760
+  })
+
+  assert.equal(await getRepositoryFile(story.project, CONFIG, 'main', root), CUSTOM)
+  assert.equal(await getRepositoryFile(story.project, FLOW_CONFIG, 'main', root), FLOW)
+  story.before = megalinterSettings(CONFIG)
+  assert.deepEqual(story.before.removed_references, RETIRED, 'MegaLinter must see the three retired linters before the update')
+  assert.deepEqual(story.before.supported_disabled_linters, ['JSON_V8R', 'YAML_V8R'])
+  assert.equal(story.before.formatters_disable_errors, 'false')
+  assert.equal(story.before.error_on_missing_exec_bit, 'true')
 })
 
-storyboardStep(Then, 'MegaLinter reports no retired references and keeps the same supported controls', async () => {
-  const after = await settings()
-  assert.deepEqual(after.value.removed_references, [], 'Copier must remove the retired references')
-  assert.deepEqual({ ...after.value, removed_references: [] }, { ...before.value, removed_references: [] })
-  await renderPreFrame(I, 'supported-controls-after', after.raw, { colour: true })
+// Off camera, the developer has committed (not pushed) one more settings file,
+// a link to a file outside the project. On camera: where it points, the update
+// that refuses it, and what the stopped update left in the working tree. The
+// twins: the refusal, no MegaLinter file and not the outside one changed, and
+// nothing reached GitLab.
+storyboardStep(Then, 'the framework update stops at a settings file linked outside the project, before it changes any MegaLinter setting', async () => {
+  inProject([
+    `mkdir -p ${path.dirname(OUTSIDE)} && cp ${CONFIG} ${OUTSIDE}`,
+    `ln -s ${OUTSIDE} ${LINK}`,
+    `git add -A && git commit -q --no-verify -m ${shellEscape("chore: use the team's shared MegaLinter settings")}`
+  ].join('\n'))
+  const before = megalinterFiles()
+  const remoteBefore = await remoteState()
+
+  await openTerminal(I, story.container, { width: 1440 })
+  const screen = await terminalCard(I, 'update-refused-by-link', REFUSED_RUN, { mask: COPIER_PIN_MASK })
+
+  assert.ok(screen.includes(OUTSIDE), screen)
+  assert.ok(screen.includes(REFUSAL), screen)
+  assert.ok(screen.includes('task: Failed to run task "devsecops:update"'), screen)
+  assert.ok(!screen.includes(ANNOUNCEMENT), screen)
+  assert.equal(megalinterFiles(), before, 'A refused migration must change neither a MegaLinter file nor the linked one')
+  const remoteAfter = await remoteState()
+  assert.deepEqual(remoteAfter.branches, remoteBefore.branches, 'A refused update must push nothing')
+  assert.deepEqual(remoteAfter.requests, [], 'A refused update must open no merge request')
 })
 
-storyboardStep(Then, 'the project settings and their explanations survive the migration', async () => {
-  const raw = await task(['cat .config/megalinter/config.yml'])
-  assert.ok(raw.includes('# Keep the project settings and this explanation.'))
-  assert.ok(raw.includes('# Keep the supported exclusions.'))
-  for (const comment of ['# Keep the reason for this project exclusion.',
-    '# Keep this project explanation.', '# Keep the configuration rationale.',
-    '# Keep the legacy path explanation.']) {
-    assert.ok(raw.includes(comment), 'Copier must preserve inline project comments: ' + comment)
+// The reset goes back to what GitLab holds (the link commit and the files the
+// stopped update wrote go away), then the same update runs. The twins: one
+// clean-up announcement per settings file, and the merge request on GitLab.
+storyboardStep(When, 'the developer drops the link and asks for the framework update again', async () => {
+  const screen = await terminalCard(I, 'update-merge-request', ACCEPTED_RUN, {
+    mask: [...COPIER_PIN_MASK, [new RegExp(story.project, 'g'), 'project']]
+  })
+  for (const file of [FLOW_CONFIG, CONFIG]) {
+    assert.equal(screen.split(ANNOUNCEMENT + file + '\n').length - 1, 1,
+      'The migration must run once per settings file, after Copier has merged the project files:\n' + screen)
   }
-  assert.ok(raw.includes('FORMATTERS_DISABLE_ERRORS: false'))
-  assert.ok(raw.includes('ERROR_ON_MISSING_EXEC_BIT: true'))
-  RETIRED.forEach(name => assert.ok(!raw.includes(name), name))
-  await renderPreFrame(I, 'project-settings-preserved', raw, { colour: true })
+  assert.ok(screen.includes(`Opened merge request ${UPDATE_BRANCH} → main.`), screen)
+  const { requests } = await remoteState()
+  assert.equal(requests.length, 1, JSON.stringify(requests))
+  assert.equal(requests[0].source_branch, UPDATE_BRANCH)
+  assert.equal(requests[0].target_branch, 'main')
+  assert.ok(requests[0].title.includes(RELEASE), requests[0].title)
+  story.mergeRequest = requests[0].iid
 })
 
-storyboardStep(Then, 'the compact YAML list keeps its explanation and supported exclusions', async () => {
-  const raw = await task(['cat ' + FLOW_CONFIG])
-  assert.ok(raw.includes('# Keep this project explanation.'), 'Copier must preserve comments inside compact YAML lists')
-  assert.ok(!raw.includes('REPOSITORY_GITLEAKS'))
-  const after = await settings(FLOW_CONFIG)
-  assert.deepEqual(after.value.removed_references, [])
-  assert.deepEqual(after.value.supported_disabled_linters, ['JSON_V8R', 'YAML_V8R'])
-  await renderPreFrame(I, 'compact-project-settings-preserved', raw, { colour: true })
-})
+// The merge request's Changes tab, in a second tab so the terminal keeps its
+// session. The twins: the four files the merge request changes, the settings
+// on the update branch, and MegaLinter's loader, which now finds no retired
+// linter and every other setting exactly as before.
+storyboardStep(Then, 'the merge request removes only the retired linters and keeps every explanation and control', async () => {
+  const root = await getRootHeaders()
+  assert.deepEqual(await mergeRequestPaths(story.mergeRequest, root), [...RELEASE_FILES, FLOW_CONFIG, CONFIG].sort())
 
-storyboardStep(Then, 'repeating the Copier update leaves the migrated configuration unchanged', async () => {
-  const directory = path.join(project, '.config/megalinter')
-  const files = fs.readdirSync(directory).filter(file => file.endsWith('.yml'))
-  const saved = files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))
-  await task(['git add -A', 'git commit --quiet -m "test: migrated framework"'])
-  const result = await runTask(project, UPDATE)
-  assert.equal(result.exitCode, 0, result.raw)
-  assert.ok(!result.raw.includes('[megalinter migration]'), result.raw)
-  assert.deepEqual(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8')), saved)
-  await renderPreFrame(I, 'repeated-copier-update', result.raw, { colour: true })
-})
-
-storyboardStep(Given, 'a generated project links a MegaLinter configuration to a file outside the project', async () => {
-  template = prepareVersionedTemplate()
-  project = renderProjectFromTemplate(template, '1.0.0')
-  const outside = path.join(template, 'outside-megalinter.yml')
-  const regular = path.join(project, '.config/megalinter/a-regular.yml')
-  fs.writeFileSync(outside, CUSTOM)
-  fs.writeFileSync(regular, CUSTOM)
-  fs.symlinkSync(outside, path.join(project, '.config/megalinter/z-linked.yml'))
-  linked = { outside, regular, savedOutside: fs.readFileSync(outside), savedRegular: fs.readFileSync(regular) }
-  const raw = await task([
-    'cat .config/megalinter/a-regular.yml',
-    'readlink .config/megalinter/z-linked.yml',
-    'cat .config/megalinter/z-linked.yml'
-  ])
-  assert.equal(fs.readlinkSync(path.join(project, '.config/megalinter/z-linked.yml')), outside)
-  assert.ok(!outside.startsWith(project + path.sep))
-  await renderPreFrame(I, 'linked-configuration-inputs', raw.replaceAll(project, '<project>').replaceAll(template, '<template>'), { colour: true })
-})
-
-storyboardStep(Then, 'migrating inherited configurations refuses a linked file before changing any configuration', async () => {
-  const { outside, regular, savedOutside, savedRegular } = linked
-  await task(['uv run --quiet --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python -c pass'])
-  const file = path.join(project, 'tmp/retired-linters/task.json')
-  const hashes = 'sha256sum .config/megalinter/a-regular.yml "' + outside + '"'
-  fs.writeFileSync(file, JSON.stringify({
-    version: '3',
-    tasks: {
-      probe: {
-        dir: project,
-        cmds: [
-          { defer: hashes },
-          hashes,
-          'uv run --quiet --no-project --python 3.14 --with-requirements .config/copier/requirements.txt python .config/megalinter/cleanup-removed-linters.py'
-        ]
-      }
-    }
+  await inNewTab(I, () => gitlabFrame(I, 'gitlab-merge-request-changes', gitlabUrl.mr(story.project, story.mergeRequest, 'diffs'), {
+    waitText: 'Keep the legacy path explanation.',
+    height: 960,
+    prepare: () => foldDiffs(RELEASE_FILES)
   }))
-  const result = await runTask(project, ['--silent', '--taskfile', file, 'probe'])
-  assert.deepEqual(fs.readFileSync(outside), savedOutside, 'The migration must leave a file outside the project untouched')
-  assert.deepEqual(fs.readFileSync(regular), savedRegular, 'Refusal must happen before writing any configuration')
-  assert.notEqual(result.exitCode, 0, 'A linked configuration must refuse the migration')
-  assert.ok(result.raw.includes('Refusing to migrate linked or external MegaLinter configuration: .config/megalinter/z-linked.yml'), result.raw)
-  await renderPreFrame(I, 'linked-configuration-refused', result.raw.replaceAll(project, '<project>').replaceAll(template, '<template>'), { colour: true })
+
+  const config = await getRepositoryFile(story.project, CONFIG, UPDATE_BRANCH, root)
+  COMMENTS.forEach(comment => assert.ok(config.includes(comment), 'The update must keep the comment: ' + comment))
+  assert.ok(config.includes('FORMATTERS_DISABLE_ERRORS: false'))
+  assert.ok(config.includes('ERROR_ON_MISSING_EXEC_BIT: true'))
+  RETIRED.forEach(name => assert.ok(!config.includes(name), name))
+  const flow = await getRepositoryFile(story.project, FLOW_CONFIG, UPDATE_BRANCH, root)
+  assert.ok(flow.includes('JSON_V8R, # Keep this project explanation.'), 'The update must keep comments inside a compact YAML list')
+  assert.ok(!flow.includes('REPOSITORY_GITLEAKS'), flow)
+
+  const after = megalinterSettings(CONFIG)
+  assert.deepEqual(after.removed_references, [], 'The update must remove the retired references')
+  assert.deepEqual({ ...after, removed_references: [] }, { ...story.before, removed_references: [] })
+  const flowAfter = megalinterSettings(FLOW_CONFIG)
+  assert.deepEqual(flowAfter.removed_references, [])
+  assert.deepEqual(flowAfter.supported_disabled_linters, ['JSON_V8R', 'YAML_V8R'])
+})
+
+// The same command once more, from the update branch. The twins: no clean-up
+// announcement, the settings files byte for byte, and the update branch on
+// GitLab where it was.
+storyboardStep(Then, 'asking for the update a second time leaves nothing to change', async () => {
+  const before = megalinterFiles()
+  const remoteBefore = await remoteState()
+  const screen = await terminalCard(I, 'update-repeated', REPEATED_RUN, { mask: COPIER_PIN_MASK })
+  assert.ok(screen.includes(`Keeping template version ${RELEASE}`), screen)
+  assert.ok(!screen.includes(ANNOUNCEMENT), screen)
+  assert.ok(screen.includes(`Nothing to commit on ${UPDATE_BRANCH}.`), screen)
+  assert.equal(megalinterFiles(), before)
+  assert.deepEqual((await remoteState()).branches, remoteBefore.branches, 'A second update must push nothing')
 })

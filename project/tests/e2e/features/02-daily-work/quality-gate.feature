@@ -66,33 +66,26 @@ Feature: a freshly generated project passes its own quality gate
 
   @retired-linters
   Scenario: a framework update removes retired linters and preserves project controls
-    # Note: The generated project's configuration contains three retired linters alongside supported exclusions, strict formatter checks and executable permission checks.
-    # Copy: cat .config/megalinter/config.yml
-    Given a generated project keeps its own settings and references three retired linters
-    # Note: A second project configuration uses a compact YAML list with an explanation next to JSON_V8R. The retired Gitleaks reference shares that list with two supported exclusions.
-    # Copy: cat .config/megalinter/config.flow.yml
-    And the project also keeps an explanation inside a compact YAML linter list
-    # Note: The actual MegaLinter configuration loader reports the three retired references. The same output shows the supported controls before the update.
-    When MegaLinter reads the project settings before the framework update
-    # Note: The developer runs the project's real Copier update task. The framework owns this migration, so the developer does not edit inherited files by hand.
-    # Copy: task copier:update
-    When the developer updates the framework through the real Copier task
-    # Note: The same MegaLinter loader now reports an empty list of retired references. Supported exclusions and strict checks retain their previous values.
-    Then MegaLinter reports no retired references and keeps the same supported controls
-    # Note: The actual compact configuration still contains its explanation and both supported exclusions. MegaLinter reads the cleaned list without any retired reference.
-    # Copy: cat .config/megalinter/config.flow.yml
-    And the compact YAML list keeps its explanation and supported exclusions
-    # Note: The actual configuration still contains the project's comments and strict checks. Only references to the retired linters have disappeared.
-    # Copy: cat .config/megalinter/config.yml
-    Then the project settings and their explanations survive the migration
-    # Note: The developer runs the same Copier update again. Copier succeeds without another cleanup announcement, and every MegaLinter configuration file keeps exactly the same bytes.
-    # Copy: task copier:update
-    Then repeating the Copier update leaves the migrated configuration unchanged
-
-  @retired-linters-paths
-  Scenario: a configuration migration refuses a link to another project's file
-    # Note: The real configuration contains retired references. The link points to a second configuration outside the generated project; both files must survive a refused migration unchanged.
-    # Copy: cat .config/megalinter/a-regular.yml ; readlink .config/megalinter/z-linked.yml ; cat .config/megalinter/z-linked.yml
-    Given a generated project links a MegaLinter configuration to a file outside the project
-    # Note: The real Task command refuses z-linked.yml, which points outside the generated project. The same file hashes appear before and after the refusal: the target and an earlier regular configuration have not changed.
-    Then migrating inherited configurations refuses a linked file before changing any configuration
+    # Note: GitLab shows the project's MegaLinter settings, .config/megalinter/config.yml, on the main branch. They still name three linters MegaLinter has retired: REPOSITORY_GITLEAKS, SQL_TSQLLINT and REPOSITORY_KICS, two of them with options of their own.
+    # Note: Around them sit the project's own choices: comments that explain its settings, two supported exclusions (JSON_V8R and YAML_V8R) and two strict checks. A second settings file, config.flow.yml, writes its list on one bracketed block and names REPOSITORY_GITLEAKS too.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/megalinter/config.yml
+    Given the main branch on GitLab still names three retired linters in the project's MegaLinter settings
+    # Chapter: A settings file linked outside the project stops the update
+    # Note: On their own machine, the developer has added a third settings file, shared.yml, and committed it without pushing. It is a link: readlink shows it points to /workspace/shared/megalinter.yml, a file outside the project.
+    # Note: The developer asks for the framework update. Copier brings the new release in, then runs the MegaLinter clean-up, which stops with "Refusing to migrate linked or external MegaLinter configuration". The task fails, so nothing is pushed and no merge request opens.
+    # Note: git status lists the two files Copier had already written. No MegaLinter settings file is among them: the clean-up checks every file before it changes any.
+    # Copy: readlink .config/megalinter/shared.yml && task devsecops:update; git status --short
+    Then the framework update stops at a settings file linked outside the project, before it changes any MegaLinter setting
+    # Chapter: Without the link, the update arrives as a clean merge request
+    # Note: The developer goes back to what GitLab holds: the reset drops the commit with the link, and git clean removes the file the stopped update had added. Then they ask for the update again.
+    # Note: This time the clean-up prints "removed retired references" for config.flow.yml and for config.yml, and the update ends with "Opened merge request update-framework-devsecops → main."
+    # Copy: git reset -q --hard origin/main && git clean -fdq && task devsecops:update
+    When the developer drops the link and asks for the framework update again
+    # Note: The Changes tab of that merge request on GitLab, four files. The first two are the release itself, folded here: the version number in the answers file, and the one file this test release adds.
+    # Note: In both MegaLinter files, only the lines that name a retired linter go. A comment written at the end of such a line stays, on a line of its own. JSON_V8R, YAML_V8R, FORMATTERS_DISABLE_ERRORS and ERROR_ON_MISSING_EXEC_BIT stay as they were.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
+    Then the merge request removes only the retired linters and keeps every explanation and control
+    # Note: The developer, now on the update branch, asks for the update once more. Copier says "Keeping template version 1.0.1", and the clean-up runs without removing anything.
+    # Note: The update ends with "Nothing to commit on update-framework-devsecops.": nothing is pushed, and the merge request stays as it was.
+    # Copy: task devsecops:update
+    And asking for the update a second time leaves nothing to change
