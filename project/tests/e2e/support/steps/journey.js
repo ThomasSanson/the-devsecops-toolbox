@@ -44,7 +44,8 @@ const {
   readProjectVariable,
   listPipelineJobs,
   getMergeRequest,
-  mergeMergeRequest
+  mergeMergeRequest,
+  putRepositoryFile
 } = require('../helpers/gitlabApi')
 const {
   registerScopedRunner,
@@ -55,10 +56,12 @@ const {
 } = require('../helpers/pipelineRunner')
 const { freshGet } = require('../helpers/http')
 const {
+  CONTAINER_WORKDIR,
   PROJECT_DIR,
   INSTALL_LOG,
   WRAPPER_PATH,
   setupClonedProjectTerminal,
+  setupBareMachineTerminal,
   setupCspellUpdateTerminal,
   setupManualUpdateTerminal,
   prepareWorkingBranchInstaller,
@@ -75,6 +78,12 @@ const {
   terminalScreenText,
   openTerminal,
   terminalCard,
+  clearTerminal,
+  scrollTerminalToBottom,
+  buildCompactTerminalCapture,
+  removeCompactTerminalCapture,
+  TERMINAL_NOISE_PATTERNS,
+  COMPACT_CAPTURE_ID,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
 const { gitlabUrl, gitlabFrame, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
@@ -83,7 +92,8 @@ const { gitlabUrl, gitlabFrame, unfoldFileTree, inNewTab } = require('../helpers
 const {
   storyboardStep,
   addStoryboardFrame,
-  capturePageFrame
+  capturePageFrame,
+  frameOutputPath
 } = require('../../../../../.config/codeceptjs/storyboard')
 
 const E2E_OUTPUT = path.resolve(__dirname, '..', '..', '_output')
@@ -1426,51 +1436,226 @@ storyboardStep(Then, 'the project folder now holds the full DevSecOps framework'
 })
 
 // ============================================
-// Piped-install storyboard — @fresh-machine (chapter 2).
-// The documented `curl … | bash` transport: inside the pty the installer's
-// stdin is a PIPE, so the Copier questions only stay interactive through its
-// /dev/tty fallback. Three cards prove it end to end — the blank clone, the
-// scope prompt rendered THROUGH the pipe, and the same completion screen +
-// framework MR the typed install produces (REST- and log-twinned). Per-scenario
-// baselines, so parallel workers never share actual paths.
+// Fresh-machine storyboard — @fresh-machine.
+// ONE bare machine, ONE terminal session, ONE arc: the installer refuses
+// without curl; once curl is installed as it said, the README one-liner
+// (curl from GitLab, piped into bash) asks before each tool it adds, the setup
+// adds unzip with sudo by itself, and the run stops on the missing GitLab
+// remote; following that advice opens the framework merge request on GitLab.
+// Each stop's advice is proven by the next card. The terminal is 1440 px wide
+// (159 columns, so the typed lines never wrap) and 900 px tall: about 52 rows,
+// which keeps the first of the two "Configuring GitLab project..." lines (one
+// per init attempt, some 70 rows apart) off the final card. Every card is
+// twinned with the session log, the machine itself or the GitLab API.
 // ============================================
 
-storyboardStep(Given, 'a developer follows the README and pipes the installer into bash', async () => {
-  await ensureLambdaUser()
-  await openBlankProjectTerminal()
-  prepareWorkingBranchInstaller(global.journeyContainer, { piped: true })
-  // task and uv only: gum and glow are left out so the installer has to ask for
-  // them, which is what the next card is about.
-  preinstallToolchain(global.journeyContainer, { ui: false })
-  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'git status')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
+// The installer served by the test GitLab the way gitlab.com serves it to the
+// README one-liner: a public project of the lambda user, kept between runs.
+const TOOLBOX_PROJECT = 'the-devsecops-toolbox'
+const INSTALLER_FILE = '.config/devsecops/install.sh'
+const NO_CURL = 'type curl git unzip; bash /tmp/install.sh; echo "exit code: $?"'
+const INSTALL_CURL = 'sudo apt-get update -qq && sudo apt-get install -y -qq curl >/dev/null'
+const NO_REMOTE_MARKER = "No 'origin' remote configured. Add a GitLab remote, then re-run."
+const GIT_PROMPT = 'Install Git now? [Y/n]:'
+const ON_PATH = 'export PATH="$HOME/.local/bin:$PATH"; '
+// Known once the installer is on GitLab: the URL the one-liner fetches.
+let installerUrl = null
+
+// Put the working-branch installer where the one-liner fetches it. Create the
+// project on the first run ever; "has already been taken" means it is there.
+async function serveInstallerFromGitLab () {
+  const headers = { 'PRIVATE-TOKEN': global.journeyLambdaToken }
+  const created = await createProject(
+    { name: TOOLBOX_PROJECT, visibility: 'public', initialize_with_readme: false, auto_devops_enabled: false },
+    headers
+  )
+  if (created.status >= 400 && !JSON.stringify(created.data).includes('has already been taken')) {
+    throw new Error(`Failed to create ${TOOLBOX_PROJECT} (status ${created.status}): ${JSON.stringify(created.data)}`)
+  }
+  const installer = fs.readFileSync(path.join(CONTAINER_WORKDIR, INSTALLER_FILE), 'utf8')
+  await putRepositoryFile(TOOLBOX_PROJECT, INSTALLER_FILE, installer, headers, { message: 'chore: publish the installer' })
+  return `http://gitlab/${projectPath(TOOLBOX_PROJECT)}/-/raw/main/${INSTALLER_FILE}` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
+}
+
+function onMachine (script) {
+  return execInContainerAsUser(global.journeyContainer, 'bootstrap', ON_PATH + script)
+}
+
+function assertLogSays (log, lines) {
+  for (const line of lines) {
+    if (!log.includes(line)) throw new Error(`Expected the session to show "${line}" (tail):\n${log.slice(-2000)}`)
+  }
+}
+
+// A card from the scrollback: page the terminal up until `from` is rendered,
+// bring it `before` rows below the top, and keep the rows down to `to`. The
+// block is the run's own output that scrolled away while it kept going.
+// ponytail: local copy of the end of captureTerminalFrame (which always
+// scrolls to the bottom first); belongs in capture.js as a scrollback option.
+async function scrollbackFrame (frameName, { from, before = 0, to, mask = [], noise = TERMINAL_NOISE_PATTERNS }) {
+  await waitForTerminalSettle(I)
+  const placed = await I.executeScript(async ([from, to, before]) => {
+    const viewport = document.querySelector('.xterm-viewport')
+    const rows = () => Array.from(document.querySelectorAll('.xterm-rows > div')).map(row => row.textContent || '')
+    const redraw = () => new Promise(resolve => setTimeout(() => requestAnimationFrame(() => resolve()), 150))
+    const nodes = document.querySelectorAll('.xterm-rows > div')
+    const rowPx = nodes[1].getBoundingClientRect().top - nodes[0].getBoundingClientRect().top
+    for (let top = viewport.scrollHeight - viewport.clientHeight; top > -viewport.clientHeight; top -= viewport.clientHeight / 2) {
+      viewport.scrollTop = Math.max(0, top)
+      await redraw()
+      const at = rows().findIndex(text => text.includes(from))
+      if (at === -1) continue
+      viewport.scrollTop += (at - before) * rowPx
+      await redraw()
+      const shown = rows()
+      const start = shown.findIndex(text => text.includes(from))
+      return { start, end: shown.findIndex((text, i) => i > start && text.includes(to)) }
+    }
+    return { start: -1, end: -1 }
+  }, [from, to, before])
+  if (placed.start < before || placed.end === -1) {
+    throw new Error(`Scrollback card "${frameName}": "${from}" and "${to}" are not on one screen (${JSON.stringify(placed)})`)
+  }
+  const info = await buildCompactTerminalCapture(
+    I, COMPACT_CAPTURE_ID, noise.map(re => re.source),
+    from, placed.end - placed.start + before + 1, before, mask
+  )
+  if (!info || !info.kept) throw new Error(`Scrollback card "${frameName}" produced no rows`)
+  fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
+  await I.captureScreenshot(`storyboard-frames/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
+  await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
+  await scrollTerminalToBottom(I)
+  await addStoryboardFrame(I, frameOutputPath(frameName))
+}
+
+// Off camera: the per-run GitLab project (empty, for the last chapter), the
+// installer published on GitLab, and the bare machine with its terminal. On
+// camera: one typed line that shows curl, git and unzip missing, runs the
+// installer and prints its exit code.
+storyboardStep(When, 'the developer runs the installer on a fresh machine without curl, it stops at its first check and says to install curl first', async () => {
+  await createJourneyProject(setupBareMachineTerminal)
+  installerUrl = await serveInstallerFromGitLab()
+  await openTerminal(I, global.journeyContainer, { height: 900, width: 1440 })
+  const screen = await terminalCard(I, 'refusal', NO_CURL)
+  assertLogSays(screen, [
+    'curl: not found', 'git: not found', 'unzip: not found',
+    'curl is required but not installed.',
+    'Install curl with your package manager, then rerun this installer.',
+    'exit code: 1'
+  ])
+  if (screen.includes('Installing toolchain')) throw new Error(`Expected the installer to stop before its toolchain step:\n${screen}`)
 })
 
-storyboardStep(When, 'the installer says what it is about to install, and asks first', async () => {
-  await launchWorkingBranchInstaller(TOOLCHAIN_PROMPT)
-  // Anchored on the question itself, not on the command above it: the lines in
-  // between name the versions of task and uv, which Renovate bumps, and a card
-  // that carries a version number changes every time one of them moves.
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-toolchain-consent', {
-    fromMarker: 'Installing toolchain'
-  }))
-  // Enter keeps the default, which is yes: the prompt is plain shell because the
-  // tool that would make it pretty is the one being asked about.
+// The advice followed on camera, then the README one-liner. The card stops on
+// the first question, asked through the terminal while bash reads the pipe.
+storyboardStep(When, 'the developer installs curl and pipes the installer from GitLab into bash, the installer asks before installing Git', async () => {
+  await clearTerminal(I)
+  await typeCommandAndWait(I, INSTALL_CURL)
+  I.type(`curl -fsSL ${installerUrl} | bash`)
   I.pressKey('Enter')
+  await waitForTerminalText(I, GIT_PROMPT, COMMAND_TIMEOUT_MS)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'one-liner', { fromMarker: INSTALL_CURL }))
+  const screen = await terminalScreenText(I)
+  assertLogSays(screen, ['DevSecOps Toolbox Installer', 'Git is required to scaffold this project with Copier.'])
+  if (onMachine('command -v curl').exitCode !== 0) throw new Error('Expected curl to be installed on the machine')
+  if (onMachine('command -v git').exitCode === 0) throw new Error('Expected git to be still missing while the installer asks for it')
 })
 
-storyboardStep(When, 'the installer still asks what to install, even when piped into bash', async () => {
+// Enter accepts each default, which is yes. The card starts at the last
+// plain-shell question (the task and uv installs above it print temp paths and
+// GitHub lookups that change every run) and catches the scope menu live:
+// gum erases it once answered.
+storyboardStep(When, 'the installer asks before adding gum and glow, then asks what to install, all through the pipe', async () => {
+  I.pressKey('Enter')
+  for (const question of ['Install task?', 'Install uv?', TOOLCHAIN_PROMPT]) {
+    await waitForTerminalText(I, question, COMMAND_TIMEOUT_MS)
+    I.pressKey('Enter')
+  }
   await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
   await waitForTerminalSettle(I)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-scope', { fromMarker: SCOPE_PROMPT }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'gum-and-glow', {
+    fromMarker: TOOLCHAIN_PROMPT,
+    // gum and glow are pinned in install.sh and bumped by Renovate.
+    mask: [[/v\d+\.\d+\.\d+/g, 'v<version>']]
+  }))
+  const screen = await terminalScreenText(I)
+  if (!screen.includes('• Complete framework') || screen.includes('**')) {
+    throw new Error(`Expected the scope card rendered by glow, not its markdown source:\n${screen}`)
+  }
+  assertLogSays(readInstallLog(), ['Install task? the task runner', 'Install uv? it installs copier'])
+  const tools = onMachine('command -v git task uv gum glow')
+  if (tools.exitCode !== 0) throw new Error(`Expected git, task, uv, gum and glow on the machine:\n${tools.output}`)
 })
 
-storyboardStep(Then, 'the piped install finishes and opens the framework merge request', async () => {
-  await answerAndCompleteInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
-  assertInstallLog('Installation complete!')
-  await assertBranchExists('init-framework-devsecops')
-  await findOpenMr('init-framework-devsecops', 'main')
+// 'y' keeps the complete framework, Enter keeps every Copier default, and the
+// run goes on alone until the installer gives the prompt back. The unzip
+// install scrolled by long before that, so the card pages back to it.
+storyboardStep(Then, 'the setup finds unzip missing and installs it with sudo by itself', async () => {
+  I.pressKey('y')
+  for (const prompt of COPIER_PROMPTS) {
+    await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+    I.pressKey('Enter')
+  }
+  await waitForPromptReturn(I, 'the piped installer', COMMAND_TIMEOUT_MS)
+  await scrollbackFrame('unzip-installed', {
+    // Printed once; the "unzip is required" advice above it is also echoed by
+    // go-task in its script dump, so it cannot be the anchor.
+    from: 'task: Failed to run task "unzip:check:installed"',
+    before: 8,
+    to: 'unzip installed successfully!',
+    // apt's "The following NEW packages will be installed:" is the header of
+    // the "unzip" line under it: dropped as noise, it left unzip reading as
+    // one of the "Suggested packages".
+    noise: TERMINAL_NOISE_PATTERNS.filter(re => re.source !== '^The following NEW packages')
+  })
+  assertLogSays(readInstallLog(), ['❌ unzip is required before task devsecops:init.', 'Installing unzip with sudo...', 'unzip installed successfully!'])
+  if (onMachine('command -v unzip').exitCode !== 0) throw new Error('Expected unzip to be installed on the machine')
+})
+
+// The last screen, from the step that stopped. The twins: the stop is in the
+// log, the run never claimed success, and the Copier answers sent through the
+// pipe did build the project.
+storyboardStep(Then, 'the installer stops and says the project needs a GitLab remote', async () => {
+  const screen = await terminalScreenText(I)
+  if (screen.split('Configuring GitLab project...').length !== 2) {
+    throw new Error(`Expected exactly one "Configuring GitLab project..." on the last screen:\n${screen}`)
+  }
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'no-remote', { fromMarker: 'Configuring GitLab project...' }))
+  const log = readInstallLog()
+  assertLogSays(log, [NO_REMOTE_MARKER, 'task devsecops:init failed. Attempting to install missing prerequisites...'])
+  // install.sh's own last line (glab's installer prints its own "Installation complete!").
+  if (log.includes("Run 'task' to see available commands")) throw new Error('Expected the installer to stop short of its final lines')
+  const files = linesOf(inProject('ls -A1'))
+  for (const file of ['.config', '.gitlab-ci.yml', 'Taskfile.yml']) {
+    if (!files.includes(file)) throw new Error(`Expected the project folder to hold "${file}": ${JSON.stringify(files)}`)
+  }
+  if (files.includes('.git')) throw new Error('Expected the folder not to be a git repository yet')
+})
+
+// Off camera: the git identity, a credential store for the push and the glab
+// sign-in. The developer then types the advice in the same terminal (its long
+// setup output is not a card) and the proof is GitLab's own merge request page.
+storyboardStep(Then, 'once the developer links the folder to a GitLab project and runs the setup again, GitLab shows the framework merge request into the main branch', async () => {
+  const user = process.env.TASK_GITLAB_LAMBDA_USER
+  const identity = onMachine([
+    'git config --global user.email "lambda@test.local"',
+    'git config --global user.name "Lambda"',
+    'git config --global init.defaultBranch main',
+    'git config --global credential.helper store',
+    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(user)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`,
+    'chmod 600 "$HOME/.git-credentials"'
+  ].join(' && '))
+  if (identity.exitCode !== 0) throw new Error(`Failed to set the git identity:\n${identity.output}`)
+  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
+  await typeCommandAndWait(I, `git init -q && git remote add origin http://gitlab/${projectPath(global.journeyProjectName)}.git && task devsecops:init`) // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
+  assertLogSays(readInstallLog(), ['Opened merge request'])
+  const mr = await findOpenMr('init-framework-devsecops', 'main')
+  await assertBranchExists('main')
+  await assertMrChangedFiles()
+  await inNewTab(I, () => gitlabFrame(I, 'framework-merge-request', gitlabUrl.mr(global.journeyProjectName, mr.iid), {
+    waitText: 'init-framework-devsecops',
+    // The merge box and the tab counters follow the pipelines GitLab starts
+    // on its own.
+    hide: ['.mr-state-widget', '.merge-request-tabs-container .gl-badge']
+  }))
 })

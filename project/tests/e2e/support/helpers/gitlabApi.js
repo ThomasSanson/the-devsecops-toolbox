@@ -402,3 +402,18 @@ module.exports = {
   getRepositoryFile,
   listCommits
 }
+
+// Write one file on a branch of a project, the way a commit through the web
+// editor would: created when missing, replaced when it differs, left alone when
+// GitLab already holds those exact bytes (so a re-run adds no commit).
+async function putRepositoryFile (projectName, filePath, content, headers, { branch = 'main', message = `chore: update ${filePath}` } = {}) {
+  const url = `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/files/${encodeURIComponent(filePath)}`
+  const current = await freshGet(`${url}/raw?ref=${encodeURIComponent(branch)}`, headers, { raw: true })
+  if (current.status === 200 && current.data === content) return current
+  const body = { branch, content, commit_message: message }
+  const res = current.status === 404 ? await freshPost(url, body, headers) : await freshPut(url, body, headers)
+  if (res.status >= 400) throw new Error(`${filePath}@${branch}: HTTP ${res.status} ${JSON.stringify(res.data)}`)
+  return res
+}
+
+module.exports.putRepositoryFile = putRepositoryFile

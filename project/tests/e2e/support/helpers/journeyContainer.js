@@ -99,7 +99,7 @@ function setupClonedProjectTerminal (projectName, cloneToken) {
  * renders. This is what makes the journey test the CURRENT branch rather than
  * curl-from-main.
  */
-function prepareWorkingBranchInstaller (name, { piped = false } = {}) {
+function prepareWorkingBranchInstaller (name) {
   runCommand(
     `docker cp ${shellEscape(`${CONTAINER_WORKDIR}/.config/devsecops/install.sh`)} ${shellEscape(`${name}:${INSTALLER_PATH}`)}`
   )
@@ -131,12 +131,7 @@ function prepareWorkingBranchInstaller (name, { piped = false } = {}) {
   // typed command stays clean (`bash /tmp/devsecops-install.sh`), and a
   // variable typed in front of it (TASK_DEVSECOPS_INIT_DIRECT=true) reaches
   // the installer through `script`.
-  // piped=true exercises the DOCUMENTED `curl … | bash` path: inside the pty
-  // session the installer's stdin is a PIPE, so its /dev/tty fallback is what
-  // keeps the Copier questions interactive.
-  const runCommand_ = piped
-    ? `cat ${INSTALLER_PATH} | DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash`
-    : `DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash ${INSTALLER_PATH}`
+  const runCommand_ = `DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} bash ${INSTALLER_PATH}`
   const wrapper = execInContainerAsUser(name, 'bootstrap', [
     `cat > ${WRAPPER_PATH} <<'EOF'`,
     '#!/bin/sh',
@@ -287,21 +282,54 @@ function setupManualUpdateTerminal (projectName, pushToken) {
  * duplicated download logic and no version drift. Requires the installer to be
  * staged first (prepareWorkingBranchInstaller).
  */
-function preinstallToolchain (name, { ui = true } = {}) {
-  // `ui: false` leaves gum and glow out on purpose: the installer then has to
-  // ask for them, in plain shell, which is the one story that photographs that
-  // question.
-  const tools = ui ? 'install_task; install_uv; install_ui_tools' : 'install_task; install_uv'
+function preinstallToolchain (name) {
   const result = execInContainerAsUser(name, 'bootstrap', [
     'export PATH="$HOME/.local/bin:$PATH"',
     'mkdir -p "$HOME/.local/bin"',
     `grep -v '^main "' ${INSTALLER_PATH} > /tmp/toolchain-lib.sh`,
-    `sh -c ". /tmp/toolchain-lib.sh; ${tools}"`
+    'sh -c ". /tmp/toolchain-lib.sh; install_task; install_uv; install_ui_tools"'
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (result.exitCode !== 0) {
     removeContainer(name)
     throw new Error(`Failed to pre-install the toolchain in journey container:\n${result.output}`)
   }
+}
+
+/**
+ * A brand-new machine for the @fresh-machine story: the compose `ubuntu`
+ * image with curl, git and unzip taken off again, an empty project folder,
+ * the working-branch installer at INSTALLER_PATH (and its template), and a
+ * live terminal in that folder. The whole session is recorded to INSTALL_LOG
+ * (the programmatic twin of what scrolled by), and DEVSECOPS_TEMPLATE_URL
+ * points the installer at the working-branch template without showing on
+ * screen. Returns the container name (caller tears it down).
+ */
+function setupBareMachineTerminal () {
+  const name = containerName()
+  runCommand(
+    `cd ${CONTAINER_WORKDIR}/project && docker compose run -d --name ${shellEscape(name)} ubuntu`,
+    { timeout: SETUP_TIMEOUT }
+  )
+  const bare = execInContainer(
+    name,
+    `apt-get purge -y -qq curl git unzip >/dev/null 2>&1 && install -d -o bootstrap -g bootstrap ${PROJECT_DIR}`,
+    { user: 'root' }
+  )
+  if (bare.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to strip the fresh machine:\n${bare.output}`)
+  }
+  prepareWorkingBranchInstaller(name)
+  const ttydStart = execInContainerAsUser(name, 'bootstrap', [
+    `cd ${PROJECT_DIR} && DEVSECOPS_TEMPLATE_URL=${TEMPLATE_DIR} nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom script -qfc bash ${INSTALL_LOG} >/tmp/ttyd.log 2>&1 &`,
+    'sleep 1'
+  ].join('\n'))
+  if (ttydStart.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to start ttyd on the fresh machine:\n${ttydStart.output}`)
+  }
+  waitForTtyd(name, TTYD_READY_TIMEOUT)
+  return name
 }
 
 function teardownJourneyTerminal (name) {
@@ -317,6 +345,7 @@ module.exports = {
   INSTALL_LOG,
   WRAPPER_PATH,
   setupClonedProjectTerminal,
+  setupBareMachineTerminal,
   setupCspellUpdateTerminal,
   setupManualUpdateTerminal,
   prepareWorkingBranchInstaller,

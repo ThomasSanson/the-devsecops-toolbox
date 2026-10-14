@@ -93,8 +93,6 @@ exports.config = {
       './support/steps/betterleaks.js',
       './support/steps/scanner-log-redaction.js',
       './support/steps/betterleaks-redact-config.js',
-      './support/steps/installer-prereqs.js',
-      './support/steps/installer-refusals.js',
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
       './support/steps/renovate-detection.js',
