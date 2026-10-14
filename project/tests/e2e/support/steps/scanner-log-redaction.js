@@ -1,4 +1,11 @@
 /* global inject Before After Given When Then */
+/**
+ * @scanner-log-redaction — the three scans a developer runs (scan-full,
+ * protect, scan-branch), in a Docker project and a binary project generated
+ * with different install answers. Each card shows both projects side by side,
+ * answering the same command. The binary scans run with no reachable Docker
+ * daemon, so one that tried to start a container would fail.
+ */
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -6,12 +13,14 @@ const crypto = require('crypto')
 const { spawnSync, execFileSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
-const { renderPreFrame } = require('../helpers/capturedOutput')
+const { screenText, maskText, terminalOutputFrame } = require('../helpers/terminalRender')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I } = inject()
 
 const SECRET = ['Zt7k', 'Q2mV', '9pL4', 'xR8w'].join('')
 const TASKS = { full: 'scan-full', staged: 'protect', branch: 'scan-branch' }
+const TITLES = { docker: 'Docker project', binary: 'Binary project' }
+const NO_DOCKER = 'unix:///nonexistent/docker.sock'
 let projects = []
 let binDir
 let blocked
@@ -41,13 +50,19 @@ function runTask (project, task) {
     env: {
       ...process.env,
       TASK_BETTERLEAKS_BIN_DIR: binDir,
-      TASK_BETTERLEAKS_CONTAINER_NAME: `betterleaks-redaction-${crypto.randomBytes(6).toString('hex')}`
+      TASK_BETTERLEAKS_CONTAINER_NAME: `betterleaks-redaction-${crypto.randomBytes(6).toString('hex')}`,
+      // The binary mode must never need a container: give it no daemon to reach.
+      ...(project.mode === 'binary' ? { DOCKER_HOST: NO_DOCKER } : {})
     }
   })
   if (result.error || result.signal || result.status === null) {
     throw new Error(`Scanner did not finish: ${project.mode}/${task}`)
   }
-  return { project, exit: result.status, stdout: result.stdout, stderr: result.stderr, raw: result.stdout + result.stderr }
+  const raw = result.stdout + result.stderr
+  if (project.mode === 'binary' && (raw.includes(NO_DOCKER) || /\bdocker (run|exec|rm)\b/.test(raw))) {
+    throw new Error(`The binary scan reached for Docker: ${project.mode}/${task}\n${raw}`)
+  }
+  return { project, exit: result.status, stdout: result.stdout, stderr: result.stderr, raw }
 }
 
 function saveOutput (scope, state, result) {
@@ -58,47 +73,49 @@ function saveOutput (scope, state, result) {
   fs.writeFileSync(path.join(dir, `${result.project.mode}-${scope}-${state}.stderr.log`), result.stderr)
 }
 
-// Preserve every native line and its colours, stdout followed by stderr.
-// Betterleaks writes its findings and final timing on different streams; their
+// Every native line and its colours, stdout followed by stderr: betterleaks
+// writes its findings and its final timing on different streams, and their
 // relative arrival order varies. Each complete stream is kept as an artifact.
-// Only identities, paths, dates and timings are normalized for the image.
+// Only identities, paths, dates, timings and the scanner version (Docker
+// pulls the latest image, Renovate bumps the pinned binary) are masked.
 function display (result) {
-  const sgr = new RegExp('(' + String.fromCharCode(27) + '\\[[0-9;]*m)', 'g')
-  return result.raw.split(sgr).map((text, index) => {
-    if (index % 2) return text
-    return text.split(result.project.dir).join('<project>')
-      .split(binDir).join('<bin-dir>')
-      .replace(/betterleaks-redaction-[0-9a-f]+/g, '<scan-container>')
-      .replace(/\b[0-9a-f]{7,64}\b/g, '<sha>')
-      .replace(/\d{4}-\d{2}-\d{2}T[^\s]+/g, '<date>')
-      .replace(/\b\d{1,2}:\d{2}(?::\d{2})?(?:AM|PM)?\b/g, '<time>')
-      .replace(/\b(?:\d+(?:\.\d+)?(?:µs|μs|ns|ms|s|m|h))+\b/g, '<duration>')
-      .replace(/scanned ~\d+ bytes/g, 'scanned <bytes> bytes')
-      .replace(/\((?:\d+(?:\.\d+)? (?:bytes|B|KB|MB))\)/g, '(<size>)')
-  }).join('').trimEnd()
+  const literal = (text) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+  return maskText(screenText(result.raw), [
+    [literal(result.project.dir), '<project>'],
+    [literal(binDir), '<bin-dir>'],
+    [/betterleaks-redaction-[0-9a-f]+/g, '<scan-container>'],
+    [/betterleaks \d+(?:\.\d+)+/g, 'betterleaks <version>'],
+    [/\b[0-9a-f]{7,64}\b/g, '<sha>'],
+    [/\d{4}-\d{2}-\d{2}T[^\s]+/g, '<date>'],
+    [/\b\d{1,2}:\d{2}(?::\d{2})?(?:AM|PM)?\b/g, '<time>'],
+    [/\b(?:\d+(?:\.\d+)?(?:µs|μs|ns|ms|s|m|h))+\b/g, '<duration>'],
+    [/scanned ~\d+ bytes/g, 'scanned <bytes> bytes'],
+    [/\((?:\d+(?:\.\d+)? (?:bytes|B|KB|MB))\)/g, '(<size>)']
+  ])
 }
 
-async function frame (name, results) {
-  await renderPreFrame(I, name, results.map(result => `${result.project.mode}: task betterleaks:${TASKS[name.split('-')[0]]}\n${display(result)}`).join('\n\n'), { colour: true, height: 2400 })
+// One column per project: each command line, then its output.
+async function frame (name, scopes, results) {
+  await terminalOutputFrame(I, name, projects.map(project => ({
+    title: TITLES[project.mode],
+    text: scopes.map(scope => {
+      const result = results[scope].find(r => r.project === project)
+      return `$ task betterleaks:${TASKS[scope]}\n${display(result)}`
+    }).join('\n\n')
+  })))
 }
 
-async function cleanScan (scope) {
-  const results = projects.map(project => runTask(project, `betterleaks:${TASKS[scope]}`))
-  results.forEach(result => {
-    saveOutput(scope, 'clean', result)
-    if (result.exit !== 0 || !result.raw.includes('No secrets detected')) {
-      throw new Error(`Clean scan must pass: ${result.project.mode}/${scope}`)
-    }
-  })
-  await frame(`${scope}-clean`, results)
+function scanAll (scopes, state) {
+  const results = {}
+  for (const scope of scopes) {
+    results[scope] = projects.map(project => runTask(project, `betterleaks:${TASKS[scope]}`))
+    results[scope].forEach(result => saveOutput(scope, state, result))
+  }
+  return results
 }
 
 function scanAllBlocked () {
-  blocked = {}
-  for (const scope of Object.keys(TASKS)) {
-    blocked[scope] = projects.map(project => runTask(project, `betterleaks:${TASKS[scope]}`))
-    blocked[scope].forEach(result => saveOutput(scope, 'blocked', result))
-  }
+  blocked = scanAll(Object.keys(TASKS), 'blocked')
   const failures = []
   for (const [scope, results] of Object.entries(blocked)) {
     results.forEach(result => {
@@ -125,7 +142,7 @@ function scanAllBlocked () {
 
 storyboardStep(Given, 'clean framework projects use Docker and binary scanners from their install answers', async () => {
   binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redaction-bin-'))
-  const settings = []
+  const columns = []
   for (const mode of ['docker', 'binary']) {
     const project = { mode, dir: renderProject({ privileged_ci_runners: mode === 'docker' }) }
     projects.push(project)
@@ -147,34 +164,50 @@ storyboardStep(Given, 'clean framework projects use Docker and binary scanners f
     fs.appendFileSync(path.join(project.dir, 'src/service.js'), 'const colour = "blue";\n')
     git(project, 'add', 'src/service.js')
     const modeFile = mode === 'binary' ? '.env.dist' : '.config/betterleaks/Taskfile.yml'
-    settings.push(`${mode}: ${modeFile}\n` + execFileSync('grep', ['TASK_BETTERLEAKS_MODE', modeFile], { cwd: project.dir, encoding: 'utf8' }) + git(project, 'diff', '--cached', '--', 'src/service.js'))
+    columns.push({
+      title: TITLES[mode],
+      text: `$ grep TASK_BETTERLEAKS_MODE ${modeFile}\n` +
+        execFileSync('grep', ['TASK_BETTERLEAKS_MODE', modeFile], { cwd: project.dir, encoding: 'utf8' }) +
+        '$ git diff --cached -- src/service.js\n' + git(project, '-c', 'color.ui=always', 'diff', '--cached', '--', 'src/service.js')
+    })
   }
   const install = runTask(projects[1], 'betterleaks:install')
   if (install.exit !== 0 || !install.raw.includes('Checksum verified')) throw new Error('Real binary install must verify the checksum')
   saveOutput('install', 'clean', install)
-  await renderPreFrame(I, 'install-answers', settings.join('\n'), { colour: true })
+  await terminalOutputFrame(I, 'install-answers', columns.map(c => ({ ...c, text: c.text.trimEnd() })))
 })
 
-storyboardStep(Then, 'full scans pass on ordinary files in both modes', () => cleanScan('full'))
-storyboardStep(Then, 'staged scans pass on ordinary changes in both modes', () => cleanScan('staged'))
-storyboardStep(Then, 'branch scans pass on ordinary commits in both modes', () => cleanScan('branch'))
+storyboardStep(Then, 'full, staged and branch scans pass on ordinary work in both modes', async () => {
+  const results = scanAll(Object.keys(TASKS), 'clean')
+  for (const [scope, list] of Object.entries(results)) {
+    list.forEach(result => {
+      if (result.exit !== 0 || !result.raw.includes('No secrets detected')) {
+        throw new Error(`Clean scan must pass: ${result.project.mode}/${scope}`)
+      }
+    })
+  }
+  await frame('clean-scans', Object.keys(TASKS), results)
+})
 
 storyboardStep(When, 'a synthetic password is committed and staged in both projects', async () => {
-  const diffs = []
-  projects.forEach(project => {
+  const columns = projects.map(project => {
     fs.writeFileSync(path.join(project.dir, 'src/service.js'), `const password = "${SECRET}";\n`)
     git(project, 'add', 'src/service.js')
     git(project, 'commit', '--quiet', '--no-verify', '-m', 'test: commit synthetic password')
     fs.appendFileSync(path.join(project.dir, 'src/service.js'), `const secondPassword = "${SECRET}";\n`)
     git(project, 'add', 'src/service.js')
-    diffs.push(`${project.mode}:\n` + git(project, 'diff', 'origin/main', '--', 'src/service.js'))
+    return {
+      title: TITLES[project.mode],
+      text: '$ git diff origin/main -- src/service.js\n' +
+        git(project, '-c', 'color.ui=always', 'diff', 'origin/main', '--', 'src/service.js').trimEnd()
+    }
   })
-  await renderPreFrame(I, 'synthetic-password', diffs.join('\n'), { colour: true })
+  await terminalOutputFrame(I, 'synthetic-password', columns)
 })
 
 storyboardStep(Then, 'full scans block the secret and redact its value in both modes', async () => {
   scanAllBlocked()
-  await frame('full-blocked', blocked.full)
+  await frame('full-blocked', ['full'], blocked)
 })
-storyboardStep(Then, 'staged scans block the secret and redact its value in both modes', () => frame('staged-blocked', blocked.staged))
-storyboardStep(Then, 'branch scans block the secret and redact its value in both modes', () => frame('branch-blocked', blocked.branch))
+storyboardStep(Then, 'staged scans block the secret and redact its value in both modes', () => frame('staged-blocked', ['staged'], blocked))
+storyboardStep(Then, 'branch scans block the secret and redact its value in both modes', () => frame('branch-blocked', ['branch'], blocked))

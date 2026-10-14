@@ -1,120 +1,113 @@
 @e2e
-Feature: the framework guards what reaches the repository — clean commits and no secrets
+Feature: the framework guards what reaches the repository: clean commits and no secrets
   As a developer using the toolbox
-  I want the checks `task devsecops:init` installs to accept clean commits, turn
+  I want the checks a generated project ships to accept clean commits, turn
   back sloppy ones, and stop committed secrets from ever entering the history
   So that the project's own commit rules and secret scanning actually apply.
 
-  # ONE story in four chapters. ONE Gherkin sentence = ONE card = ONE pixel
-  # baseline, asserted inside the step (tolerance: 0); each verdict card twins
-  # its terminal frame with a programmatic check (exit code / scan output) of
-  # the same fact, so a regression fails loud even without eyes.
+  # ONE story, from a teammate's laptop to GitLab. ONE Gherkin sentence = ONE
+  # card = ONE pixel baseline, asserted inside the step (tolerance: 0), and
+  # every card is twinned with a programmatic check of the same fact (exit
+  # code, working tree, REST on the GitLab project), so a regression fails loud
+  # even without eyes.
   #
-  # Chapter 1 — the commit message: a freshly initialized project carries the
-  # installed commit-msg hook; a conventional commit sails through, a sloppy one
-  # is turned back with commitlint's own explanation. Chapter 2 — secrets: each
-  # situation starts its OWN fresh project on its OWN feature branch (the scan
-  # reads the whole branch history since main, so a later commit must never
-  # bleed into an earlier verdict). An ordinary branch stays green, a committed
-  # private key is blocked and named, and a secret kept out of git's view via
-  # .gitignore never reaches the scanner at all. Chapter 3 — getting unstuck:
-  # deleting the file is not enough, rewriting the history is. Chapter 4 — the
-  # same scan from the pinned binary (issue #225): a project generated for
-  # runners that refuse privileged containers scans with the checksum-verified
-  # release binary instead of an image, on the strength of its install answer
-  # alone, and the verdict does not change.
+  # The project is ONE real render, published on the test GitLab. It answered
+  # that its runners cannot start privileged containers, so every secret scan
+  # runs the pinned betterleaks binary (issue #225), on the laptop as in the
+  # pipeline. The teammate clones it, turns the hooks on, and every later card
+  # runs in that clone: a sloppy message refused then fixed, a key refused by
+  # the pre-commit scan, forced in, caught by the branch scan, deleted in vain,
+  # then removed from the history. GitLab closes the story with two merge
+  # requests and one page shot for both: the cleaned branch is ready to merge,
+  # a key hidden in secrets.yaml (issue #182) is blocked by the pipeline, whose
+  # log never prints the key. The demo project's pipeline keeps only its
+  # code:betterleaks job, untouched; every other job is switched off in its
+  # .gitlab-ci.yml before the first push, so each merge request runs exactly
+  # the scan the story is about. The terminal cards are the commands' real
+  # output: they run in the test runner, which has no live terminal.
   @protected-commits
-  Scenario: the commit checks accept clean work and secrets never reach the repository
-    # Chapter: The commit message is checked
-    # Note: A freshly initialized project already has commit checks turned on: init installed a commit-msg hook, a script that runs before every commit message is accepted. The card proves the hook is there, not what it says.
-    # Copy: test -f .git/hooks/commit-msg && echo "commit-msg hook installed"
-    Given a framework project has the commit hooks installed
-    # Note: A teammate clones the very same project from the folder next door — the framework rides along, Taskfile and all. Yet git NEVER copies hooks on a clone, from any remote or path: .git/hooks holds no commit-msg, so at this instant nothing guards their commits.
-    # Copy: git clone e2e-commit-hooks-repo e2e-commit-hooks-clone
-    When a teammate clones the same project bare, with no commit hooks yet
-    # Note: task dev:setup-environment is the one-time setup every clone runs (the dev container even runs it for you when it builds): it checks the toolchain and finishes by installing the git hooks. From here the teammate's clone is guarded exactly like the original — the next cards commit from THIS clone.
-    # Copy: task dev:setup-environment
-    Then task dev:setup-environment turns the hooks on, exactly as the dev container does on build
-    # Note: A conventional commit message follows a fixed pattern: a short type word, a colon, then a plain instruction — like "feat: add login page".
-    # Copy: feat: dogfood the commitlint hook
-    When a developer writes a conventional commit message
-    # Note: The commit-msg hook calls commitlint, which accepts the message because it matches the pattern.
-    # Copy: git commit --allow-empty -m "feat: dogfood the commitlint hook"
-    Then the hooks accept it and let the commit through
-    # Note: "sloppy" is not one of the allowed type words, so commitlint is about to reject it.
-    # Copy: sloppy: skip the conventions
-    When a developer writes a sloppy commit message
-    # Note: commitlint blocks the commit and lists exactly which rules it broke.
-    # Copy: git commit --allow-empty -m "update stuff"
-    Then the hooks reject it with their own explanation
-    # Chapter: Secrets never reach the repository
-    # Note: A freshly rendered project, committed once and checked out on its own feature branch: nothing to report yet.
-    # Copy: git status
-    Given a project protected by the framework's secret scanner starts on a clean feature branch
-    # Note: Ordinary work: one file gets committed, another sits in the project without being committed, and a third is listed in .gitignore so git skips it. The scanner must leave all three alone.
-    # Copy: git status --short --ignored
-    When the developer commits ordinary tracked, untracked and ignored files
-    # Note: scan-branch runs clean and prints "No secrets detected in branch commits."
-    # Copy: task betterleaks:scan-branch
-    Then the scan finds nothing to report
-    # Note: A fresh project (its own branch history): a fake RSA private key lands in a tracked file and gets committed like any other change.
-    # Copy: cat tracked-secret.pem
-    When the developer accidentally commits a private key to the branch
-    # Note: scan-branch fails and prints "Betterleaks detected secrets in your branch commits!"
-    # Copy: task betterleaks:scan-branch
-    Then the scan blocks it and names the leak
-    # Note: A different trap the scanner used to fall into: its allowlist told it to skip every .env file AND secrets.yaml, exactly the files where a real key or token is most likely to sit. Here a private key is force-committed inside a file literally named secrets.yaml.
-    When the developer commits a secret inside a secrets.yaml the scanner used to ignore
-    # Note: The scan blocks the branch and names the leak, just as it did for the .pem. The allowlist no longer looks away from secrets.yaml or .env files (issue #182), so a secret parked in one can no longer slip in unseen.
-    Then the scan blocks it too, now the allowlist no longer skips secrets files
-    # Note: A fresh project again: the secret file is listed in .gitignore before it is ever committed, so the scanner never even looks at it.
-    # Copy: git diff -- .gitignore
-    When the developer keeps a second secret out of the scan by gitignoring the file it lives in
-    # Note: scan-branch runs clean again and prints the same "No secrets detected in branch commits." line — the gitignored key was never part of what it scanned.
-    # Copy: task betterleaks:scan-branch
-    Then the scan passes silently, the ignored secret stays out of sight
+  Scenario: the commit checks accept clean work and secrets never reach the main branch
+    # Chapter: The hooks come with the setup, not with the clone
+    # Note: GitLab's page for lefthook.yml on the main branch of a project generated from the toolbox. It declares the commit hooks.
+    # Note: Before each commit, pre-commit runs task betterleaks:protect, a secret scan of the staged files. On each commit message, commit-msg runs task commitlint:lint-message and task commitizen:check-message.
+    # Copy: http://gitlab/lambda/e2e-commit-hooks/-/blob/main/lefthook.yml
+    Given a project generated from the toolbox sits on GitLab, its commit hooks declared in lefthook.yml on the main branch
+    # Note: A teammate clones the project. Git never copies hooks, so ls finds no commit-msg and no pre-commit file in .git/hooks.
+    # Note: task dev:setup-environment is the one-time setup every clone runs, and the dev container runs it on build. The ⋮ stands for its toolchain checks. Its last phase installs the hooks: lefthook says "sync hooks: ✔️ (commit-msg, pre-commit)", and ls now finds both files.
+    # Copy: git clone http://gitlab/lambda/e2e-commit-hooks.git && cd e2e-commit-hooks && task dev:setup-environment
+    When a teammate clones it, task dev:setup-environment turns on the commit hooks git never copies
+    # Chapter: Every commit message is checked
+    # Note: The teammate writes deploy notes on a new branch. deploy/.gitignore ignores *.pem, so git status marks the deploy key "!!", ignored, and git add stages only the two notes files.
+    # Note: The message has no type. The pre-commit scan passes with "No secrets detected in staged files.", then commitizen and commitlint both refuse the message. Commitlint says why: "subject may not be empty" and "type may not be empty". No commit is made.
+    # Copy: git commit -m "add the deploy notes"
+    Then the hooks refuse the teammate's first commit, the deploy notes under a sloppy message, with their own explanation
+    # Note: The same staged files, with a message that starts with the type "feat:". The scan, commitizen and commitlint all pass, and git records the commit with its 2 files. The key is not one of them.
+    # Copy: git commit -m "feat: add the deploy notes"
+    And the same commit goes through once its message follows the convention, with the gitignored deploy key left out
+    # Chapter: A key is stopped on the laptop
+    # Note: The teammate copies the key to the root of the project, out of the folder that ignores it, and stages it. cat shows the fake key in clear.
+    # Note: The pre-commit scan finds a private-key in deploy-key.pem and prints "REDACTED" where the key would be. The commit is refused: "❌ Betterleaks detected secrets in your staged files!".
+    # Copy: cp deploy/deploy-key.pem . && git add deploy-key.pem && git commit -m "chore: add the deploy key"
+    When the teammate stages the deploy key outside its ignored folder, the pre-commit scan refuses the commit
+    # Note: git commit --no-verify skips the hooks, as the refusal itself pointed out, and the key is committed.
+    # Note: The branch scan reads every commit since the main branch. It names the file and the commit, "chore: add the deploy key", still prints "REDACTED" instead of the key, and blocks the branch.
+    # Copy: git commit --no-verify -m "chore: add the deploy key" && task betterleaks:scan-branch
+    When the teammate forces the key past the hook, the branch scan blocks the branch and names the commit
     # Chapter: Getting out of a secret block
-    # Note: A fresh project on its own branch with a private key already committed: the scan already refuses the branch. This is where a stuck developer starts.
-    # Copy: task betterleaks:scan-branch
-    Given a committed private key is blocking a fresh branch
-    # Note: The obvious first reflex: delete the file and commit the deletion. It removes the key from the latest version, but the earlier commit that added it is still in the branch history.
-    # Copy: git rm tracked-secret.pem && git commit -m "chore: remove the secret file"
-    When the developer deletes the secret file and commits the removal
-    # Note: The scan reads the whole branch history since main, not just the latest files. It still finds the key in the commit that added it, so deleting the file did not help. This is the trap.
-    # Copy: task betterleaks:scan-branch
-    Then the scan still refuses the branch because the secret stays in its history
-    # Note: task git:clean-secrets removes the file from every commit in the branch history, not just the latest one, and rewrites the branch. The destructive-operation prompt is answered with yes.
-    # Copy: task git:clean-secrets -- tracked-secret.pem
-    When the developer rewrites the history with the framework's clean-secrets task
-    # Note: With the key gone from every commit, the scan passes: "No secrets detected in branch commits." The branch the scan was blocking is safe to push now.
-    # Copy: task betterleaks:scan-branch
-    Then the scan comes back clean and the branch is safe to push
-    # Chapter: The same scan, from the pinned binary
-    # Note: This project answered at install time that its runners may not start containers, and nothing else was set by hand. The scanner it installs is the official binary pinned in .config/betterleaks/version, downloaded once and checked against the checksum published with that release. No container, no root, no sudo.
-    # Copy: task betterleaks:install
-    When a project generated for runners that refuse containers installs its scanner
-    # Note: The same private key, committed on a fresh branch, scanned by the very same command a developer types. The scan says which scanner it used, then gives the verdict word for word as the container gives it: "Betterleaks detected secrets in your branch commits!" No container was started at any point.
-    # Copy: task betterleaks:scan-branch
-    Then the scan runs from that binary and blocks the same committed key
+    # Note: The first reflex: delete the key in a new commit. The pre-commit scan reads only what is staged, and a deletion leaves nothing to read ("scanned ~0 bytes"), so the hooks let the commit through.
+    # Copy: git rm deploy-key.pem && git commit -m "chore: remove the deploy key"
+    When the teammate only deletes the key file, the hooks let the deletion through
+    # Note: The branch has three commits now, and its last version holds no key. The scan still finds it, in the commit "chore: add the deploy key": deleting a file does not take it out of the history.
+    # Copy: git log --oneline main.. && task betterleaks:scan-branch
+    Then the branch scan still finds the key in the commit that added it
+    # Note: task git:clean-secrets removes the file from every commit of the history, not only from the last one. It warns that the operation is destructive and asks to continue, and the teammate answers yes.
+    # Note: The branch is rewritten: "Ref 'refs/heads/feature/deploy' was rewritten". The key never left this laptop, so nothing on GitLab needs a force push.
+    # Copy: task git:clean-secrets -- deploy-key.pem
+    When the teammate rewrites the history with the framework's clean-secrets task
+    # Note: One commit is left on the branch, the deploy notes. The same scan as two cards before now passes: "No secrets detected in branch commits."
+    # Copy: git log --oneline main.. && task betterleaks:scan-branch
+    Then the branch scan comes back clean with the deploy notes still on the branch
+    # Chapter: GitLab is the gate nobody can skip
+    # Note: The teammate pushes the branch, which opens merge request !1. Its pipeline runs the same branch scan, from the same pinned binary. GitLab shows "Merge request pipeline passed" and "Ready to merge!".
+    # Copy: git push -o merge_request.create -o merge_request.target=main origin feature/deploy
+    Then the cleaned branch, pushed as a merge request, passes the same scan on GitLab and is ready to merge
+    # Note: Another branch, started from the main branch, puts the same fake key in secrets.yaml. The scanner used to skip any file with that name (issue #182). The commit skips the hooks with --no-verify, and the push opens merge request !2.
+    # Note: Its Changes tab shows the key in clear: this is what the pipeline has to catch. The test project is deleted when the story ends.
+    # Copy: git commit --no-verify -m "chore: keep the production deploy key in secrets.yaml" && git push -o merge_request.create -o merge_request.target=main origin feature/secrets-yaml
+    When another branch skips every local check and pushes the key inside a secrets.yaml, a file the scanner used to skip
+    # Note: The code:betterleaks job of merge request !2, from "$ task betterleaks:scan-branch" on. The job downloads the pinned binary, checks it ("✅ Checksum verified against the published checksums.txt") and runs it with no container.
+    # Note: It finds the private-key in secrets.yaml and prints "REDACTED" where the key would be. Every member of the project can read this log, and the key is not in it.
+    # Copy: http://gitlab/lambda/e2e-commit-hooks/-/merge_requests/2/pipelines
+    Then the pipeline of that merge request blocks the key from the pinned binary and never prints it
+    # Note: The same page as for merge request !1. The pipeline failed, and GitLab says "Merge blocked": this project merges a merge request only when its pipeline passed. The key cannot reach the main branch.
+    # Copy: http://gitlab/lambda/e2e-commit-hooks/-/merge_requests/2
+    And GitLab refuses to merge it, so the key never reaches the main branch
 
+  # Both scan modes side by side, on the three entry points a developer runs:
+  # scan-full (every file), protect (the staged files) and scan-branch (the
+  # commits since the main branch). Each card shows the Docker project on the
+  # left and the binary project on the right, answering the same command. The
+  # binary scans run with no reachable Docker daemon, so a scan that tried to
+  # start a container would fail. The complete native output is checked before
+  # any display normalization.
   @scanner-log-redaction
   Scenario: a secret is blocked without copying its value into the scan log
     # Chapter: Ordinary work passes in both modes
-    # Note: The install answer chooses Docker or the checksum-verified binary. Both projects have a clean commit and a clean staged change; no scan is empty.
+    # Note: Two projects generated with different install answers. The Docker one keeps the Taskfile default, "docker". The binary one answered that its runners refuse privileged containers, and its .env.dist says TASK_BETTERLEAKS_MODE=binary.
+    # Note: Each has a clean commit and a clean staged change, so no scan reads an empty input.
     Given clean framework projects use Docker and binary scanners from their install answers
-    # Copy: task betterleaks:scan-full
-    Then full scans pass on ordinary files in both modes
-    # Copy: task betterleaks:protect
-    And staged scans pass on ordinary changes in both modes
-    # Copy: task betterleaks:scan-branch
-    And branch scans pass on ordinary commits in both modes
+    # Note: The three scans, in each project. All six end with their own "No secrets detected" line.
+    # Copy: task betterleaks:scan-full && task betterleaks:protect && task betterleaks:scan-branch
+    Then full, staged and branch scans pass on ordinary work in both modes
     # Chapter: A detected value stays out of the log
-    # Note: Only a synthetic password is used. One line is committed and a second is staged, so all three scan paths have a real finding to block.
+    # Note: Only a synthetic password is used. One line is committed and a second one is staged, so every scan has a real finding to block.
     When a synthetic password is committed and staged in both projects
-    # Note: The complete native output is checked before any display normalization. All six scans must fail, name the file and line, identify generic-password, and hide the value.
+    # Note: The full scan finds both lines. Each finding names the rule generic-password, the file and the line, and shows "REDACTED" where the value was.
     # Copy: task betterleaks:scan-full
     Then full scans block the secret and redact its value in both modes
+    # Note: The staged scan finds the staged line, line 2, and hides its value the same way.
     # Copy: task betterleaks:protect
     And staged scans block the secret and redact its value in both modes
+    # Note: The branch scan finds the committed line, line 1, in the commit that added it, and hides its value the same way.
     # Copy: task betterleaks:scan-branch
     And branch scans block the secret and redact its value in both modes

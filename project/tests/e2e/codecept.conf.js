@@ -89,7 +89,6 @@ exports.config = {
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/update-conflict.js',
-      './support/steps/betterleaks.js',
       './support/steps/scanner-log-redaction.js',
       './support/steps/betterleaks-redact-config.js',
       './support/steps/init-token-lifecycle.js',
