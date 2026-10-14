@@ -51,7 +51,8 @@ Mechanism — the whole step-side API ships with the template in `.config/codece
 `capturePageFrame(I, name)` (any page) and `captureTerminalFrame` (`support/terminal/capture.js`, xterm-specific) write each real moment to `_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame(I, png)` asserts each frame against its OWN baseline at `tolerance: 0` (`assertOrUpdateBaseline`) INSIDE the step — a visual regression fails on the exact sentence whose image drifted.
 The same module, registered as a CodeceptJS plugin, fills the header automatically from the Gherkin metadata (feature title, scenario title, feature file, the scenario's LAST tag as the re-run command, the baseline directory `<act>/<last-tag>`) and renders the SVG when the test ends.
 The board reads cards in reading order, two per row (fully uniform: one shared image slot as tall as the row's tallest frame, one shared text zone), with a full-width band before each `# Chapter:`.
-A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page captured 1440 px wide, a terminal window 1024 px wide) takes a full 1440 px row of its own, so it is read at its real size instead of at half of it. A narrower strip stays in its 708 px half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
+A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page captured 1440 px wide, a terminal window 1024 px wide) takes a full 1440 px row of its own, so it is read at its real size instead of at half of it.
+A narrower strip stays in its 708 px half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
 Each card carries its number badge, its Gherkin sentence (verbatim keyword coloured: Given green, When blue, Then purple), and — read straight from the feature's `# Note:` / `# Copy:` comments — an optional note and the one-click-copyable reproduce command/URL.
 A failing run still gets its partial board in `_output/` (it shows how far the journey got); the committed copy under `storyboards/` is rebuilt only on a PASSED baseline-update run, from the reviewed baselines.
 
@@ -72,16 +73,21 @@ Rules — the panels ARE the proof:
 
 ### Big cards — real GitLab pages and whole terminal runs
 
-The reference story (`@agent-mode-only`) shows the standard cards:
+The reference story (`@agent-mode-only`) uses the standard cards: a GitLab card before and after, interactive menus caught live, a typed line as a terminal card, and the after card in a
+second tab.
 
-- **GitLab card**: `gitlabFrame(I, frame, gitlabUrl.tree(project), { waitText, height, projectNames })` from `support/helpers/gitlabCard.js` captures the WHOLE page at 1440 px wide (900 px tall by
-  default, 1100 at most: scroll to the evidence instead), masked by `maskGitLabPage`, and restores the window. Job logs go through `jobLogFrame`, the pipeline editor through `ciEditorFrame`, CI/CD
-  variables through `ciVariablesFrame`. Such a page takes a full row of the storyboard.
-- **Terminal card**: `openTerminal(I, container, { height })` sizes the window BEFORE ttyd loads, in 15 px type (113 columns, a 78-column card fills its half row), and keeps it; `terminalCard(I,
-  frame, 'cmd-a && cmd-b   # label')` clears the screen, runs ONE line and captures everything since the clear, and returns the screen text for the twin. An interactive menu is caught live, before its
-  answer, with `captureTerminalFrame` anchored on the typed command, as the reference story does. A marker that scrolled off the top throws: open the terminal taller.
+- **GitLab card**: `gitlabFrame(I, frame, gitlabUrl.tree(project), { waitText, height })` from `support/helpers/gitlabCard.js` captures the WHOLE page at 1440 px wide (900 px tall by default, 1100
+  at most: scroll to the evidence instead), masked by `maskGitLabPage`, and restores the window. The project named in the URL shows as "project"; pass `projectNames` when its display name differs
+  from its path. Such a page takes a full row of the storyboard.
+- **Terminal card**: `openTerminal(I, container, { height, width })` sizes the window BEFORE ttyd loads, in 15 px type, and keeps it: 1024 px wide by default (113 columns, a 78-column card fills its
+  half row), 1440 px when a typed line would wrap in the middle of a word (159 columns). `terminalCard(I, frame, 'cmd-a && cmd-b   # label')` clears the screen, runs ONE line and captures everything
+  since the clear, and returns the screen text for the twin. An interactive menu is caught live, before its answer, with `captureTerminalFrame` anchored on the typed command. A marker that is not on
+  screen throws: this is a code change (open the terminal taller, or anchor lower), never a regeneration.
 - **Both in one story**: take the GitLab card inside `inNewTab(I, () => gitlabFrame(...))`, so the bash session and its window size survive.
-- **A GitLab ending for a local tree**: `publishToGitLab(dir)` (`support/helpers/gitlabProject.js`) creates a lambda project and pushes the tree in seconds, no runner.
+- **Not in the reference story yet**: job logs go through `jobLogFrame` (checked once on a real finished job, a folded section unfolded, before the first story used it), the pipeline editor through
+  `ciEditorFrame`, CI/CD variables through `ciVariablesFrame`, and `publishToGitLab(dir)` (`support/helpers/gitlabProject.js`) gives a local tree a GitLab ending in seconds, no runner. The first
+  story that calls one of them is its committed check: inspect its card with extra care.
+- **After the last `# Note:` edit, run the story once more in update mode**: a strict run writes its board under `_output/` only, so the committed board keeps the old notes otherwise.
 
 ### Your first storyboard — 4 steps
 
