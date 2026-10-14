@@ -130,55 +130,65 @@ async function openMergeRequest () {
   }
 }
 
-// The job page, its log from the job's own command down, without the lines the
-// job wrote to its error stream. GitLab Runner reads a job's two output streams
-// apart and interleaves them as they arrive: task's command echoes and
-// Betterleaks' INF/WRN lines land somewhere else on every run (the developer's
-// terminal, one stream, shows them in order on the next cards). The trace says
-// which lines those are ("E" after the timestamp); every other line stays as
-// GitLab drew it. jobLogFrame cannot hide chosen lines, hence this local card.
+// The trace lines the job wrote between its command and the end of its script,
+// each as [line, stream, text]: GitLab Runner prefixes a line with
+// "<timestamp> 01O" for the job's output and "01E" for its error stream.
+function scriptLines (trace) {
+  const lines = trace.split('\n').map(line => line.replace(/\r/g, ''))
+  const start = lines.findIndex(line => line.includes(JOB_COMMAND))
+  const end = lines.findIndex((line, index) => index > start && line.includes('section_end:') && line.includes(':step_script'))
+  assert.ok(start !== -1 && end !== -1, `The trace must hold the job's command and the end of its script:\n${trace}`)
+  return lines.slice(start + 1, end).map(line => line.match(/^\S+Z [0-9a-f]{2}([OE])[ +](.*)$/)).filter(Boolean)
+}
+
+// The job page, its log reduced to what stays put from one run to the next:
+// the job's command, the finding box, the verdict and GitLab's closing lines.
+// GitLab Runner reads a job's stdout and stderr apart and interleaves them as
+// they arrive, so task's command echoes and Betterleaks' INF/WRN lines land in
+// a different place on every run, and the lines between the command and the
+// finding borrow the colour of task's echo until its reset arrives. Those go:
+// the error-stream lines (the trace says which), the lines before the box and
+// the blank lines. The terminal cards show the whole run in order.
+// jobLogFrame cannot hide chosen lines, hence this local card.
 async function scanJobFrame (jobId, trace) {
-  const errorLines = trace.split('\n')
-    .map(line => line.replace(/\r/g, '').match(/^\S+Z [0-9a-f]{2}E[ +](.*)$/))
-    .filter(Boolean)
-    .map(match => match[1].trim())
-    .filter(Boolean)
+  const errors = scriptLines(trace).filter(([, stream]) => stream === 'E').map(([, , text]) => text.trim()).filter(Boolean)
   const log = '[data-testid="job-log-content"]'
   await gitlabFrame(I, 'redaction-ci-job-log', gitlabUrl.job(s.pub.projectName, jobId), {
-    height: 860,
+    height: 760,
     textMasks: [...JOB_LOG_MASKS, ...SCAN_MASKS],
     scrollTo: pageTop,
     prepare: async () => {
       await I.waitForText(JOB_COMMAND, 60, log)
-      const hidden = await I.executeScript(([from, errors]) => {
+      const kept = await I.executeScript(([command, errorLines]) => {
         const TIME = '.job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]'
-        const GUTTER = `.job-log-line-number, ${TIME}`
         const content = (row) => {
           const copy = row.cloneNode(true)
-          copy.querySelectorAll(GUTTER).forEach(el => el.remove())
+          copy.querySelectorAll(`.job-log-line-number, ${TIME}`).forEach(el => el.remove())
           return copy.textContent.trim()
         }
         const rows = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-        const start = rows.findIndex(row => content(row) === from)
-        if (start === -1) return null
-        const dropped = []
+        const start = rows.findIndex(row => content(row) === command)
+        const box = rows.findIndex((row, index) => index > start && content(row).startsWith('┌─'))
+        if (start === -1 || box === -1) return null
+        const shown = []
         rows.forEach((row, index) => {
           const text = content(row)
-          if (index >= start && text && !errors.includes(text)) return
-          row.setAttribute('data-e2e-mask', '')
-          if (index > start && text) dropped.push(text)
+          if (index === start || (index >= box && text && !errorLines.includes(text))) shown.push(text)
+          else row.setAttribute('data-e2e-mask', '')
         })
         // Blanked, not removed: a section's chevron sits in their column.
         document.querySelectorAll('.job-log-line-number, .job-log-line-header .badge').forEach(el => el.setAttribute('data-e2e-blank', ''))
         document.querySelectorAll(TIME).forEach(el => el.setAttribute('data-e2e-mask', ''))
         // Fractional line heights round differently from one run to the next.
-        const box = document.querySelector('.job-log')
-        if (box) box.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(box).lineHeight))}px`
-        return dropped
-      }, [JOB_COMMAND, errorLines])
-      assert.ok(hidden, `The job log must show ${JOB_COMMAND}`)
-      assert.ok(hidden.some(text => text.endsWith('WRN leaks found: 1')),
-        `The card must leave out the error-stream lines, it left out:\n${hidden.join('\n')}`)
+        const frame = document.querySelector('.job-log')
+        if (frame) frame.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(frame).lineHeight))}px`
+        return shown
+      }, [JOB_COMMAND, errors])
+      assert.ok(kept, `The job log must show ${JOB_COMMAND} and a finding box`)
+      for (const said of ['const password = "REDACTED";', VERDICT, 'ERROR: Job failed']) {
+        assert.ok(kept.some(text => text.includes(said)), `The card must keep ${said}:\n${kept.join('\n')}`)
+      }
+      assert.ok(!kept.some(text => /\b(INF|WRN)\b|^task: /.test(text)), `The card must leave the error stream out:\n${kept.join('\n')}`)
     }
   })
 }
@@ -244,9 +254,10 @@ storyboardStep(When, 'a developer pushes a branch with a synthetic password in i
 })
 
 // The merge request starts the generated pipeline, with no CI/CD variable set,
-// on a project-scoped runner. The card is the real job page (scanJobFrame). The
-// twins read the whole trace: the rule, the file, the REDACTED line, the
-// verdicts (the card's and the ones it leaves out), and never the value.
+// on a project-scoped runner. The card is the real job page, its log from the
+// job's own command down (scanJobFrame). The twins read the whole trace: the
+// rule, the file, the REDACTED line, the verdict, the lines the card leaves
+// out, and never the value.
 storyboardStep(Then, 'the Betterleaks job fails on GitLab and its log prints REDACTED instead of the password', async () => {
   const root = await getRootHeaders()
   s.runner = await registerScopedRunner(I, s.pub.projectName, root)
@@ -265,11 +276,13 @@ storyboardStep(Then, 'the Betterleaks job fails on GitLab and its log prints RED
   assert.equal(pipeline.sha, s.head, 'The pipeline must scan the pushed commit')
   const variables = await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(s.pub.projectName)}/variables`, s.pub.headers)
   assert.deepEqual(variables.data, [], 'No CI/CD variable may change the default')
-  for (const said of ['generic-password', 'src/service.js', 'const password = "REDACTED";', VERDICT, 'WRN leaks found: 1',
-    'task: Failed to run task "betterleaks:scan-branch"']) {
+  for (const said of ['generic-password', 'src/service.js', 'const password = "REDACTED";', VERDICT]) {
     assert.ok(trace.includes(said), `The job log must say ${said}`)
   }
   assert.ok(!trace.includes(SECRET.slice(0, 4)), 'The job log must not print any part of the password')
+  for (const said of ['🔧 Running betterleaks from the pinned binary, no container', 'WRN leaks found: 1']) {
+    assert.ok(trace.includes(said), `The job log must say ${said}, even where the card leaves it out`)
+  }
   await scanJobFrame(jobs[0].id, trace)
 })
 
