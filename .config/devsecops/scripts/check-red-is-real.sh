@@ -109,9 +109,10 @@ records() {
 }
 
 # The reporter escapes the scenario name and the failure message for XML; print
-# them back the way the developer wrote them.
+# them back the way the developer wrote them, on one line: a line break, a
+# carriage return or a tab becomes a space.
 unescape() {
-  sed -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&#10;/ /g' -e 's/&amp;/\&/g'
+  sed -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&#10;/ /g' -e 's/&#13;/ /g' -e 's/&#9;/ /g' -e 's/&amp;/\&/g'
 }
 
 shopt -s nullglob
