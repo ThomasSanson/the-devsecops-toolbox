@@ -16,10 +16,12 @@
   "ignoreScripts": false. allowedCommands is self-hosted too, so it lives in
   `task renovate`, never here, where Renovate would silently ignore it.
 
-  A component update uses only its root-level task. The native Copier manager
-  runs inside the answers directory and caches stray generated files even after
-  the post-upgrade cleanup removes them. skipArtifactsUpdate avoids that first
-  run; the post-upgrade task still applies the release and its recorded scope.
+  Every update uses only its root-level task. The native Copier manager runs
+  inside the answers directory: it caches stray generated files (a nested
+  VERSION) even after the post-upgrade cleanup removes them, and its migrations
+  fail there, which marks the merge request red. skipArtifactsUpdate avoids that
+  first run; the post-upgrade task still applies the release and its recorded
+  scope, from the project root.
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -41,9 +43,7 @@
       "matchManagers": ["copier"],
       "matchFileNames": [".config/devsecops/.copier-answers.yml"],
       "ignoreScripts": false,
-{%- if install_scope == 'publication' %}
       "skipArtifactsUpdate": true,
-{%- endif %}
       "semanticCommitType": "feat",
       "semanticCommitScope": "devsecops",
       "commitMessageTopic": "DevSecOps Toolbox",
