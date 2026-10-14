@@ -25,8 +25,17 @@ const CARD_MAX_HEIGHT = 1100
 // A bare project name is the lambda user's project; a path with a slash is used as is.
 const isFullPath = (p) => String(p).includes('/')
 const base = (p) => '/' + (isFullPath(p) ? p : projectPath(p))
-// The per-run name a card must not show: a bare project name is one.
-const namesOf = (project, projectNames) => projectNames || (isFullPath(project) ? [] : [project])
+// The per-run name a card must not show: the project's own path segment.
+const namesOf = (project, projectNames) => projectNames || [String(project).split('/').pop()]
+// The project a GitLab URL points at: the segment before "/-/", or the second
+// of a bare "/namespace/project" (never one of GitLab's own top-level pages).
+const GITLAB_ROUTES = ['users', 'groups', 'admin', 'dashboard', 'explore', 'help', 'search']
+function projectOfUrl (url) {
+  const pathname = new URL(url, 'http://gitlab').pathname // DevSkim: ignore DS137138 -- base for relative test URLs only.
+  const parts = pathname.split('/-/')[0].split('/').filter(Boolean)
+  if (pathname.includes('/-/')) return parts.slice(-1)
+  return parts.length === 2 && !GITLAB_ROUTES.includes(parts[0]) ? [parts[1]] : []
+}
 const encodePath = (file) => String(file).split('/').map(encodeURIComponent).join('/')
 
 // Pure URL formatters: every card is one gitlabFrame call on one of these.
@@ -141,6 +150,10 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
     style.textContent = [
       '*, *::before, *::after { transition: none !important; animation: none !important }',
       '.gl-avatar, .avatar, [data-testid*="avatar"], [class*="avatar"] { visibility: hidden !important }',
+      // A labelled avatar ("Started by Lambda User" on a job) keeps its name:
+      // visibility, unlike display, can be given back to a child.
+      '.gl-avatar-labeled-labels, .gl-avatar-labeled-labels * { visibility: visible !important }',
+      '.gl-avatar-labeled > .gl-avatar { display: none !important }',
       // The white tile behind the sidebar's project avatar, the author's avatar
       // before the last commit (a gap otherwise), and the SHA button with its
       // copy button (an empty box once its SHA is blanked).
@@ -228,13 +241,14 @@ async function scrollPage (I, target) {
  * (top by default; `scrollTo` = a selector to centre, 'keep', or a function;
  * a URL with a #L anchor keeps GitLab's own scroll), capture, assert, and give
  * the window back at the size it had, even when a step above throws (a
- * terminal tab keeps its own height). `projectNames` is never guessed from the
- * URL: pass the per-run name, or the page keeps it.
+ * terminal tab keeps its own height). `projectNames` defaults to the project the
+ * URL points at (its path segment), so a per-run name never reaches a baseline;
+ * pass the display name too when it differs from the path, or [] to keep it.
  */
 async function gitlabFrame (I, frameName, url, {
   waitText = null,
   height = CARD_HEIGHT,
-  projectNames = [],
+  projectNames = null,
   keepContext = true,
   textMasks = [],
   hide = [],
@@ -244,6 +258,7 @@ async function gitlabFrame (I, frameName, url, {
   if (height > CARD_MAX_HEIGHT) {
     throw new Error(`gitlabFrame "${frameName}": ${height} px is taller than ${CARD_MAX_HEIGHT}; scroll to the evidence instead`)
   }
+  if (!projectNames) projectNames = projectOfUrl(url)
   const before = await I.usePlaywrightTo('read the window size', async ({ page }) => page.viewportSize())
   await I.resizeWindow(CARD_WIDTH, height)
   try {
@@ -288,8 +303,10 @@ const JOB_LOG_MASKS = [
  *   - focus: a log text to bring into view instead of the top of the page.
  * The gutter (line numbers, timestamps, section durations) and the runner's
  * cleanup line ("…runner-<token>… disconnected from network") always go, and
- * projectNames (default: [project]) are replaced inside the log before the SHA
- * mask runs.
+ * projectNames (default: the project's path segment) are replaced inside the
+ * log before the SHA mask runs. The masks are applied across spans once, then
+ * kept by maskGitLabPage's observer, text node by text node, should GitLab
+ * redraw a line afterwards.
  */
 async function jobLogFrame (I, frameName, project, jobId, {
   from = null,
@@ -309,9 +326,10 @@ async function jobLogFrame (I, frameName, project, jobId, {
     height,
     projectNames,
     waitText,
+    textMasks: [...JOB_LOG_MASKS, ...masks],
     prepare: async () => {
       await I.waitForElement(log, 60)
-      if (typeof from === 'string') await I.waitForText(from, 60, log)
+      // Sections first: a line inside a folded section is not drawn until it opens.
       await I.executeScript((args) => {
         const toggle = (texts, wantOpen) => document.querySelectorAll('.job-log-line-header').forEach(header => {
           if (!texts.some(t => header.textContent.includes(t))) return
@@ -323,6 +341,7 @@ async function jobLogFrame (I, frameName, project, jobId, {
       }, { fold, unfold })
       // The masks below are written once, so the sections must be done redrawing.
       await settlePage(I)
+      if (typeof from === 'string') await I.waitForText(from, 60, log)
       if (sortScannerLines) {
         const { stableJobLog } = require('./stableJobLog')
         await I.executeScript(stableJobLog)
@@ -403,7 +422,7 @@ async function jobLogFrame (I, frameName, project, jobId, {
 async function ciEditorFrame (I, frameName, project, { ref = 'main', tab = 'Visualize', height = CARD_HEIGHT, projectNames = null } = {}) {
   await gitlabFrame(I, frameName, gitlabUrl.ciEditor(project, ref), {
     height,
-    projectNames: namesOf(project, projectNames),
+    projectNames,
     waitText: 'Pipeline syntax is correct',
     // gitlabFrame settles the page once the chosen tab is the selected one.
     prepare: async () => {
@@ -425,7 +444,7 @@ async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, 
   const table = '[data-testid="ci-variable-table"]'
   await gitlabFrame(I, frameName, gitlabUrl.ciSettings(project), {
     height,
-    projectNames: namesOf(project, projectNames),
+    projectNames,
     prepare: async () => {
       // A folded section still lays its table out, so ask the section itself.
       const open = '#js-cicd-variables-settings.expanded'
