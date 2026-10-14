@@ -533,3 +533,15 @@ async function getRunnerCard (runnerId, headers) {
 }
 
 module.exports.getRunnerCard = getRunnerCard
+
+// Somebody tags a project by hand: the publication contracts' public tag
+// collision. Same project argument as gitlabUrl.
+async function createRepositoryTag (projectName, tagName, ref, headers) {
+  return freshPost(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/tags`,
+    { tag_name: tagName, ref },
+    headers
+  )
+}
+
+module.exports.createRepositoryTag = createRepositoryTag
