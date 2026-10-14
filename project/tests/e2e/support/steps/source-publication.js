@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then NodeFilter */
+/* global inject Before After Given When Then */
 /**
  * Source publication — @source-publication.
  *
@@ -9,24 +9,22 @@
  *   - the private project is a REAL copier render of the working-branch
  *     template (source_publication=true), pushed to a REAL private project;
  *   - the destination is a REAL second project on the same GitLab, public;
- *   - every terminal card runs the REAL entry point (`task release`,
- *     `task publication:check`) in a live ttyd shell;
+ *   - a project-scoped runner runs the REAL pipeline the component ships, and
+ *     every card is a GitLab page or job log a reviewer can open;
  *   - the approval merge request is the one the toolbox itself opens, and its
  *     thread is answered through the API by two DIFFERENT real users, so the
  *     "who signed off" check is exercised both ways.
  *
- * A project-scoped runner executes the publication pipelines. The isolated
- * installation journey also exercises the local task entry points.
- *
- * Every card is twinned with a check of the same fact — the terminal's own
- * words for what the toolbox said, the REST API for what actually reached the
- * public project — so a regression fails loud even without eyes.
+ * Every card is twinned with a REST check of the same fact (the job's trace,
+ * the files and commits GitLab holds), so a regression fails loud even without
+ * eyes. @publication-only, the component installed on its own, lives at the
+ * end of this file.
  */
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
-const { I, GitLabRepositoryPage, GitLabMergeRequestPage, GitLabUserPage } = inject()
+const { I, GitLabRepositoryPage, GitLabUserPage } = inject()
 const {
   shellEscape,
   execInContainerAsUser,
@@ -37,7 +35,6 @@ const {
   projectPath,
   encodedProjectPath,
   getRootHeaders,
-  curlAuthFlags,
   createProject,
   deleteProject,
   listRepositoryTree,
@@ -51,14 +48,17 @@ const {
   createProjectVariable,
   listPipelineJobs,
   getPipeline,
-  triggerProjectPipeline
+  triggerProjectPipeline,
+  getJobTrace,
+  getRepositoryFile,
+  listCommits
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshPut } = require('../helpers/http')
+const { gitlabUrl, gitlabFrame, jobLogFrame, unfoldFileTree } = require('../helpers/gitlabCard')
 const {
   registerScopedRunner,
   teardownScopedRunner,
   cancelRedundantPipelines,
-  maskPipelinePage,
   PIPELINE_TIMEOUT_MS
 } = require('../helpers/pipelineRunner')
 const { COPIER, renderProject, removeRendered } = require('../helpers/copierRender')
@@ -340,6 +340,23 @@ async function waitMrChanges (iid, headers, mustInclude) {
   throw new Error(`!${iid} never showed a change to "${mustInclude}" (saw ${JSON.stringify(seen)})`)
 }
 
+/**
+ * GitLab writes some of a merge request's activity in the background (the
+ * "mentioned in commit" a merge leaves, for one). A card of that activity waits
+ * on the API until the line it must show exists, `count` times.
+ */
+async function waitSystemNotes (iid, headers, body, count = 1) {
+  const url = `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}/merge_requests/${iid}/notes?per_page=100`
+  let found = 0
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const res = await freshGet(url, headers)
+    found = (res.data || []).filter(n => n.system && n.body.startsWith(body)).length
+    if (found >= count) return
+    await I.wait(2)
+  }
+  throw new Error(`!${iid} shows ${found} "${body}" note(s), expected ${count}`)
+}
+
 async function publicTreePaths () {
   const headers = await getRootHeaders()
   const res = await listRepositoryTree(global.pubPublic, headers, '?ref=main&recursive=true&per_page=100')
@@ -435,22 +452,24 @@ function inProjectOrThrow (script) {
 }
 
 /**
- * The merge-request page object keeps the project name on purpose (a story whose
- * project name is fixed wants its breadcrumb). This one's name carries a fresh
- * random suffix every run, so it is neutralised here, after the page object has
- * done the rest.
+ * What the live terminal currently SAYS — the same rows the card photographs,
+ * read back as text. The twin of every terminal card: the picture proves it to a
+ * human, this proves it to the suite.
  */
-async function maskProjectName () {
-  await I.executeScript((name) => {
-    const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const nodes = []
-    while (walk.nextNode()) nodes.push(walk.currentNode)
-    nodes.forEach(n => {
-      if (re.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(re, 'project')
-    })
-  }, global.pubPrivate)
-  await I.wait(0.3)
+async function terminalText () {
+  const rows = await I.executeScript(function () {
+    return Array.from(document.querySelectorAll('.xterm-rows > div'))
+      .map(function (row) { return row.textContent || '' })
+      .join('\n')
+  })
+  return String(rows || '')
+}
+
+/** Type a command in the live shell and keep the moment as a storyboard frame. */
+async function terminalCard (command, marker, frameName) {
+  await typeCommandAndWait(I, command, COMMAND_TIMEOUT_MS)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask: TERMINAL_MASKS }))
+  return terminalText()
 }
 
 /**
@@ -538,18 +557,6 @@ function pushSource (token) {
 }
 
 /**
- * A job log is plain text, not JSON: it goes out through curl, like every other
- * trace read in this suite.
- */
-function jobTrace (jobId, headers) {
-  return sh(
-    `curl -s ${curlAuthFlags(headers)} ` +
-    `'${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}/jobs/${jobId}/trace'`,
-    '/tmp'
-  )
-}
-
-/**
  * The named job of the newest pipeline on main, whatever its verdict. `after` is
  * the pipeline this story already read: every chapter here starts one, so the
  * wait has to be for a NEW pipeline rather than for a terminal state the
@@ -593,55 +600,70 @@ async function publicationJob (headers, after = 0, jobName = 'publish-source') {
   }
   if (!['success', 'failed'].includes(job.status)) {
     for (const other of (jobs.data || []).filter(j => j.name !== jobName)) {
-      console.log(`── ${other.name}: ${other.status}\n${jobTrace(other.id, headers)}`)
+      console.log(`── ${other.name}: ${other.status}\n${await getJobTrace(global.pubPrivate, other.id, headers)}`)
     }
     throw new Error(`${jobName} is "${job.status}" — it never ran; the traces above say why.`)
   }
-  return { pid, status, job }
+  return { pid, status, job, jobs: jobs.data }
 }
 
+// What this story's GitLab pages show that moves between two runs and is not
+// what a card is about, on top of what every GitLab card masks: the sidebar
+// counters and the pipeline icon of the last commit (the story's own pipelines
+// open and merge requests and fail while the cards are taken), the statistics
+// and the language bar GitLab recomputes after a push, and the pipeline a merge
+// starts under the merged widget.
+const PAGE_HIDE = [
+  '#super-sidebar [data-testid="pill-badge"]',
+  '[data-testid="ci-icon"]',
+  '.project-page-sidebar-block:has(> .project-stats)',
+  '[data-testid="repository-language-bar"]',
+  '[class*="repository-language"]',
+  '[data-testid="merged-pipeline-container"]'
+]
+
 /**
- * A job page, collapsed to the publication's own output: the runner's
- * boilerplate (image pull, clone, cache) is folded away exactly as a reader
- * scrolls past it, and the log gutter and timestamps go with it — they move on
- * every run.
+ * A page of the private project, or of the public one: both are masked on the
+ * private project's random name, so they read "project" and "project-public".
  */
-async function publicationJobCard (jobId, frameName, height = 760, marker = 'publication:publish') {
-  I.resizeWindow(1400, height)
-  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/jobs/${jobId}`)
-  await I.waitForElement('[data-testid="job-log-content"]', 60)
-  await I.waitForText('Source publication', 60)
-  await maskPipelinePage(I, global.pubPrivate, { keepContext: true })
-  await I.executeScript((marker) => {
-    const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-    const start = lines.findIndex(l => l.textContent.includes(marker))
-    if (start > 0) lines.slice(0, start).forEach(l => { l.style.display = 'none' })
-    document.querySelectorAll(
-      '.job-log-line-number, [class*="log-line-timestamp"], [class*="line-timestamp"]'
-    ).forEach(el => { el.style.display = 'none' })
-    lines.forEach(l => {
-      if (l.textContent.includes('Possibly zombie container')) l.style.display = 'none'
-    })
-    // The scanner stamps its own clock and duration inside the text, and the
-    // publication prints the commit its ref resolves to: three things that are
-    // never the same twice.
-    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const nodes = []
-    while (walk.nextNode()) nodes.push(walk.currentNode)
-    nodes.forEach(n => {
-      if (/\d{1,2}:\d{2}(AM|PM)|scanned ~|in \d+(\.\d+)?m?s|\([0-9a-f]{7,40}\)/.test(n.nodeValue)) {
-        n.nodeValue = n.nodeValue
-          .replace(/\d{1,2}:\d{2}(AM|PM)/g, '<time>')
-          .replace(/in \d+(\.\d+)?m?s/g, 'in <ms>')
-          .replace(/\(([0-9a-f]{7,40})\)/g, '(<sha>)')
-      }
-    })
-  }, marker)
-  await maskProjectName()
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
-  I.resizeWindow(1024, 768)
+async function storyFrame (frameName, url, opts = {}) {
+  await gitlabFrame(I, frameName, url, { projectNames: [global.pubPrivate], hide: PAGE_HIDE, ...opts })
 }
+
+// The page-side twin of waitSystemNotes: the merge request page shows `count`
+// activity lines carrying `text`.
+function activityShows (text, count = 1) {
+  // waitForFunction hands its argument array over as ONE argument.
+  return I.waitForFunction(([t, n]) => Array.from(document.querySelectorAll('.system-note'))
+    .filter(note => note.textContent.includes(t)).length >= n, [text, count], 30)
+}
+
+// Every merge request card is the same page at the same size, so the two cards
+// of chapter 3 read as before and after: only the name on the thread changes.
+const MR_HEIGHT = 1100
+
+// What a job log prints that is never the same twice, on top of the shared job
+// masks: the short commit the publication reads (seven characters, below the
+// shared SHA mask), the scanner's own clock and duration, and the scanner's
+// version, since its image is :latest.
+const JOB_MASKS = [
+  [/\(([0-9a-f]{7,40})\)/g, '(<sha>)'],
+  [/\d{1,2}:\d{2}(AM|PM)/g, '<time>'],
+  [/in [\d.]+(ns|µs|us|ms|s)\b/g, 'in <ms>'],
+  [/betterleaks \d+\.\d+\.\d+/g, 'betterleaks <version>']
+]
+
+/** A job page, its log from the task the job runs down: the runner's setup is scrolled past. */
+async function publicationJobFrame (frameName, jobId, task, height = 600) {
+  await jobLogFrame(I, frameName, global.pubPrivate, jobId, {
+    from: `$ task ${task}`,
+    waitText: 'Source publication',
+    masks: JOB_MASKS,
+    height
+  })
+}
+
+const lambdaHeaders = () => ({ 'PRIVATE-TOKEN': global.pubLambdaToken })
 
 // ===========================================================================
 // Chapter 1 — What would leave the private project
@@ -674,14 +696,13 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
 
   global.pubLambdaToken = await personalAccessTokenFor(lambdaUser(), `publication-${suffix}`, rootHeaders)
   global.pubOwnerToken = await personalAccessTokenFor(OWNER_USERNAME, `publication-owner-${suffix}`, rootHeaders)
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
 
   for (const [name, visibility] of [[global.pubPrivate, 'private'], [global.pubPublic, 'public']]) {
     const created = await createProject(
       { name, visibility, initialize_with_readme: false },
-      lambdaHeaders
+      lambdaHeaders()
     )
-    if (created.status >= 400) {
+    if (created.status >= 400 || created.data.visibility !== visibility) {
       throw new Error(`Failed to create the ${visibility} project "${name}": ${created.status} ${JSON.stringify(created.data)}`)
     }
   }
@@ -694,7 +715,7 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
   await updateProjectSettings(
     global.pubPrivate,
     { only_allow_merge_if_all_discussions_are_resolved: true },
-    lambdaHeaders
+    lambdaHeaders()
   )
 
   // What a laptop keeps in .env, CI keeps in its own variables. Not masked here
@@ -706,7 +727,7 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
     ['TASK_PUBLICATION_TOKEN_USERNAME', lambdaUser()]
   ]) {
     const res = await createProjectVariable(
-      global.pubPrivate, { key, value, masked: false, protected: false }, lambdaHeaders
+      global.pubPrivate, { key, value, masked: false, protected: false }, lambdaHeaders()
     )
     if (res.status >= 400) {
       throw new Error(`Failed to create ${key}: ${res.status} ${JSON.stringify(res.data)}`)
@@ -733,30 +754,37 @@ storyboardStep(Given, 'a private project whose source has to be published somewh
   // the product. Sign in once, as the developer whose project this is.
   await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
 
-  // Tall: the whole root listing has to be readable, deploy/ and src/ included.
-  await gitlabCard(`/${projectPath(global.pubPrivate)}`, 'publication-private-before', 1300)
+  // The overview: the padlock beside the name, and the root listing where src/
+  // sits next to deploy/ and the framework's own files.
+  await storyFrame('publication-private-before', gitlabUrl.project(global.pubPrivate), {
+    waitText: 'Field Reporting', height: 1100
+  })
 
-  const tracked = inSource('git ls-files')
-  mustContain(tracked, [...PUBLISHED, WITHHELD_BY_FLOOR, WITHHELD_BY_DENYLIST, NEVER_ALLOWED],
-    'The private project must really track the files the story reasons about')
+  // The private project really holds the files the story reasons about: a read
+  // of a missing one throws.
+  for (const file of [...PUBLISHED, WITHHELD_BY_FLOOR, WITHHELD_BY_DENYLIST, NEVER_ALLOWED]) {
+    await getRepositoryFile(global.pubPrivate, file, 'main', lambdaHeaders())
+  }
 })
 
+const LIST_HEIGHT = 760
+
 storyboardStep(When, 'a reviewer opens the file that says what may be published', async () => {
-  await gitlabCard(
-    `/${projectPath(global.pubPrivate)}/-/blob/main/.config/publication/allowlist`,
-    'publication-allowlist', 620
-  )
-  const allowlist = inSource('git show main:.config/publication/allowlist')
-  mustContain(allowlist, ['/README.md', '/src/**'], 'the allowlist must name the README and src/')
+  const file = '.config/publication/allowlist'
+  await storyFrame('publication-allowlist', gitlabUrl.file(global.pubPrivate, 'main', file), {
+    waitText: '/src/**', height: LIST_HEIGHT
+  })
+  mustContain(await getRepositoryFile(global.pubPrivate, file, 'main', lambdaHeaders()),
+    ['/README.md', '/src/**'], 'the allowlist must name the README and src/')
 })
 
 storyboardStep(When, 'the file that takes files back out of it, which always wins', async () => {
-  await gitlabCard(
-    `/${projectPath(global.pubPrivate)}/-/blob/main/.config/publication/denylist`,
-    'publication-denylist', 560
-  )
-  const denylist = inSource('git show main:.config/publication/denylist')
-  mustContain(denylist, 'src/internal/', 'the denylist must take the internal folder back out')
+  const file = '.config/publication/denylist'
+  await storyFrame('publication-denylist', gitlabUrl.file(global.pubPrivate, 'main', file), {
+    waitText: 'src/internal/', height: LIST_HEIGHT
+  })
+  mustContain(await getRepositoryFile(global.pubPrivate, file, 'main', lambdaHeaders()),
+    'src/internal/', 'the denylist must take the internal folder back out')
 })
 
 // ===========================================================================
@@ -764,20 +792,21 @@ storyboardStep(When, 'the file that takes files back out of it, which always win
 // ===========================================================================
 
 storyboardStep(Then, 'the pipeline refuses to publish a list nobody approved', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const { pid, status, job } = await publicationJob(lambdaHeaders)
+  const { pid, status, job } = await publicationJob(lambdaHeaders())
   global.pubCiPid = pid
   if (status !== 'failed') {
     throw new Error(`The pipeline must refuse a list nobody approved, it was "${status}"`)
   }
-  mustContain(jobTrace(job.id, lambdaHeaders),
+  mustContain(await getJobTrace(global.pubPrivate, job.id, lambdaHeaders()),
     [...PUBLISHED, 'would become public for the first time', 'Nobody has approved that list'],
     'the job must name every path it refuses to publish')
-  await publicationJobCard(job.id, 'publication-ci-unapproved', 820)
+  await publicationJobFrame('publication-ci-unapproved', job.id, 'publication:publish')
 })
 
 storyboardStep(Then, 'the public project is still empty', async () => {
-  await gitlabCard(`/${projectPath(global.pubPublic)}`, 'publication-public-empty', 430)
+  await storyFrame('publication-public-empty', gitlabUrl.project(global.pubPublic), {
+    waitText: 'The repository for this project is empty', height: 700
+  })
   const paths = await publicTreePaths()
   if (paths.length !== 0) {
     throw new Error(`The public project must still be empty, it holds ${JSON.stringify(paths)}`)
@@ -785,42 +814,31 @@ storyboardStep(Then, 'the public project is still empty', async () => {
 })
 
 storyboardStep(Then, 'the job opens a merge request asking the owners to approve the list', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const mr = await openApprovalMergeRequest(lambdaHeaders)
+  const mr = await openApprovalMergeRequest(lambdaHeaders())
   global.pubMrIid = mr.iid
-  const thread = await approvalThread(mr.iid, lambdaHeaders)
+  const thread = await approvalThread(mr.iid, lambdaHeaders())
   const asked = (thread.notes || []).find(n => !n.system)
   mustContain(asked.body, 'Resolve this thread', 'the toolbox must leave a question, not a note')
   mustContain(mr.description, OWNER_USERNAME, 'the merge request must name the owners it is asking')
 
-  I.resizeWindow(1024, 690)
-  await GitLabMergeRequestPage.gotoAndMask(
-    projectPath(global.pubPrivate), mr.iid, global.pubPrivate,
-    { hideMergeWidget: false, keepContext: true, waitText: 'Merge blocked' }
-  )
-  await maskProjectName()
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-approval-mr'))
-  I.resizeWindow(1024, 768)
+  await storyFrame('publication-approval-mr', gitlabUrl.mr(global.pubPrivate, mr.iid), {
+    waitText: 'Merge blocked',
+    height: MR_HEIGHT,
+    prepare: () => I.waitForText('Publication-manifest', 30)
+  })
 })
 
 storyboardStep(Then, 'that merge request shows the exact list of paths that would become public', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const changes = await waitMrChanges(global.pubMrIid, lambdaHeaders, MANIFEST_PATH)
+  const changes = await waitMrChanges(global.pubMrIid, lambdaHeaders(), MANIFEST_PATH)
   const manifest = changes.find(c => c.new_path === MANIFEST_PATH)
   for (const path of PUBLISHED) {
     if (!manifest.diff.includes(`+${path}`)) {
       throw new Error(`The manifest diff must add "${path}":\n${manifest.diff}`)
     }
   }
-  I.resizeWindow(1440, 470)
-  await GitLabMergeRequestPage.gotoChangesAndMask(
-    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate, MANIFEST_PATH
-  )
-  await maskProjectName()
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-approval-diff'))
-  I.resizeWindow(1024, 768)
+  await storyFrame('publication-approval-diff', gitlabUrl.mr(global.pubPrivate, global.pubMrIid, 'diffs'), {
+    waitText: 'src/server/http.js', height: 480
+  })
 })
 
 // ===========================================================================
@@ -828,21 +846,26 @@ storyboardStep(Then, 'that merge request shows the exact list of paths that woul
 // ===========================================================================
 
 storyboardStep(When, 'the developer answers the question themselves and merges it', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const blocked = await mergeMergeRequest(global.pubPrivate, global.pubMrIid, lambdaHeaders)
+  const blocked = await mergeMergeRequest(global.pubPrivate, global.pubMrIid, lambdaHeaders())
   if (blocked.status < 400) {
     throw new Error('GitLab must refuse the merge while the thread is open')
   }
 
-  const thread = await approvalThread(global.pubMrIid, lambdaHeaders)
-  await setThreadResolved(global.pubMrIid, thread.id, true, lambdaHeaders)
-  const merged = await mergeMergeRequest(global.pubPrivate, global.pubMrIid, lambdaHeaders)
+  const thread = await approvalThread(global.pubMrIid, lambdaHeaders())
+  await setThreadResolved(global.pubMrIid, thread.id, true, lambdaHeaders())
+  const merged = await mergeMergeRequest(global.pubPrivate, global.pubMrIid, lambdaHeaders())
   if (merged.status >= 400) {
     throw new Error(`The merge must go through once the thread is answered: ${merged.status} ${JSON.stringify(merged.data)}`)
   }
+  const answered = await approvalThread(global.pubMrIid, lambdaHeaders())
+  const signer = (answered.notes || []).find(n => n.resolved_by)
+  if (!signer || signer.resolved_by.username !== lambdaUser()) {
+    throw new Error(`The thread must be resolved by ${lambdaUser()}, got ${JSON.stringify(signer && signer.resolved_by)}`)
+  }
 
   // GitLab marks the MR merged before its background worker deletes the source
-  // branch. Wait for that observable result before loading the merged-page card.
+  // branch, and writes "mentioned in commit" after it. Wait for both before the
+  // card, which shows the merge widget and the activity under it.
   const sourceBranch = merged.data && merged.data.source_branch
   if (typeof sourceBranch !== 'string' || !sourceBranch) {
     throw new Error('The merged response must identify the source branch to verify its deletion')
@@ -851,7 +874,7 @@ storyboardStep(When, 'the developer answers the question themselves and merges i
     `/repository/branches/${encodeURIComponent(sourceBranch)}`
   let deleted = false
   for (let attempt = 0; attempt < 30; attempt++) {
-    const branch = await freshGet(branchUrl, lambdaHeaders)
+    const branch = await freshGet(branchUrl, lambdaHeaders())
     if (branch.status === 404) {
       deleted = true
       break
@@ -862,27 +885,22 @@ storyboardStep(When, 'the developer answers the question themselves and merges i
     if (attempt < 29) await I.wait(2)
   }
   if (!deleted) throw new Error(`Source branch "${sourceBranch}" was not deleted after 30 checks`)
+  await waitSystemNotes(global.pubMrIid, lambdaHeaders(), 'mentioned in commit')
 
-  I.resizeWindow(1024, 680)
-  await GitLabMergeRequestPage.gotoAndMaskMerged(
-    projectPath(global.pubPrivate), global.pubMrIid, global.pubPrivate
-  )
-  await maskProjectName()
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-mr-merged'))
-  I.resizeWindow(1024, 768)
+  await storyFrame('publication-mr-merged', gitlabUrl.mr(global.pubPrivate, global.pubMrIid), {
+    waitText: 'Merged by', height: MR_HEIGHT, prepare: () => activityShows('mentioned in commit')
+  })
 })
 
 storyboardStep(Then, 'the pipeline still refuses, and names the person who answered', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
+  const { pid, status, job } = await publicationJob(lambdaHeaders(), global.pubCiPid)
   global.pubCiPid = pid
   if (status !== 'failed') {
     throw new Error(`The pipeline must refuse a list no owner signed, it was "${status}"`)
   }
-  mustContain(jobTrace(job.id, lambdaHeaders), [lambdaUser(), 'not an owner', OWNER_USERNAME],
+  mustContain(await getJobTrace(global.pubPrivate, job.id, lambdaHeaders()), [lambdaUser(), 'not an owner', OWNER_USERNAME],
     'the job must name who answered and who should have')
-  await publicationJobCard(job.id, 'publication-ci-wrong-signer', 780)
+  await publicationJobFrame('publication-ci-wrong-signer', job.id, 'publication:publish')
 })
 
 storyboardStep(When, 'an owner reopens the question and answers it instead', async () => {
@@ -896,52 +914,37 @@ storyboardStep(When, 'an owner reopens the question and answers it instead', asy
   if (!signer || signer.resolved_by.username !== OWNER_USERNAME) {
     throw new Error(`The thread must now be resolved by ${OWNER_USERNAME}, got ${JSON.stringify(signer && signer.resolved_by)}`)
   }
-  I.resizeWindow(1024, 680)
-  const note = `#note_${signer.id}`
-  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/merge_requests/${global.pubMrIid}${note}`)
-  await I.waitForElement(note, 30)
-  await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
-  await I.executeScript(({ selector, owner }) => {
-    let discussion = document.querySelector(selector)
-    while (discussion && !discussion.innerText.includes(owner)) discussion = discussion.parentElement
-    if (!discussion || discussion === document.body) {
-      throw new Error(`The approval discussion does not show ${owner}`)
-    }
-    discussion.setAttribute('data-publication-approval', '')
-    discussion.scrollIntoView({ block: 'center' })
-  }, { selector: note, owner: OWNER_NAME })
-  await I.see(OWNER_NAME, '[data-publication-approval]')
-  await I.see('Resolved', '[data-publication-approval]')
-  await settlePageChrome()
-  await addStoryboardFrame(I, await captureElementFrame(I, 'publication-owner-answered', '[data-publication-approval]'))
-  I.resizeWindow(1024, 768)
+  // The owner's answer leaves its own "resolved all threads" under the first one.
+  await waitSystemNotes(global.pubMrIid, lambdaHeaders(), 'resolved all threads', 2)
+  await storyFrame('publication-owner-answered', gitlabUrl.mr(global.pubPrivate, global.pubMrIid), {
+    waitText: 'Merged by', height: MR_HEIGHT, prepare: () => activityShows('resolved all threads', 2)
+  })
 })
 
 storyboardStep(Then, 'the pipeline publishes the approved files, and only them', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
   // The approval changed on a merge request that is already in, so nothing
   // pushed: the pipeline is asked to run again on the same commit.
-  const started = await triggerProjectPipeline(global.pubPrivate, 'main', lambdaHeaders)
+  const started = await triggerProjectPipeline(global.pubPrivate, 'main', lambdaHeaders())
   if (started.status >= 400) {
     throw new Error(`Failed to run the pipeline again: ${started.status} ${JSON.stringify(started.data)}`)
   }
-  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
+  const { pid, status, job } = await publicationJob(lambdaHeaders(), global.pubCiPid)
   global.pubCiPid = pid
   if (status !== 'success') {
     throw new Error(`The pipeline must publish once an owner approved, it was "${status}"`)
   }
-  mustContain(jobTrace(job.id, lambdaHeaders), [OWNER_USERNAME, 'Publishing 3 files', 'Pushed'],
+  mustContain(await getJobTrace(global.pubPrivate, job.id, lambdaHeaders()), [OWNER_USERNAME, 'Publishing 3 files', 'Pushed'],
     'the job must say what it published and who approved it')
-  await publicationJobCard(job.id, 'publication-ci-published', 780)
+  await publicationJobFrame('publication-ci-published', job.id, 'publication:publish')
 })
 
-storyboardStep(Then, 'the public project now carries the source, without the files that never leave', async () => {
-  await gitlabCard(`/${projectPath(global.pubPublic)}`, 'publication-public-after')
+storyboardStep(Then, 'the public project now carries README.md and src/, without the folders that never leave', async () => {
+  // The Files panel unfolded down to the last published file: the whole public
+  // tree in one picture, and nothing of what stayed behind.
+  await storyFrame('publication-public-after', gitlabUrl.tree(global.pubPublic), {
+    waitText: 'publish 1.4.0', height: 640, prepare: () => unfoldFileTree(I, ['src', 'server'])
+  })
   await assertPublicProjectHolds(PUBLISHED, 'The public project must carry exactly the approved files')
-})
-
-storyboardStep(Then, 'the folders that were held back are not inside it either', async () => {
-  await gitlabCard(`/${projectPath(global.pubPublic)}/-/tree/main/src`, 'publication-public-src', 560)
   const paths = await publicTreePaths()
   for (const withheld of [WITHHELD_BY_FLOOR, WITHHELD_BY_DENYLIST, NEVER_ALLOWED]) {
     if (paths.includes(withheld)) {
@@ -951,13 +954,10 @@ storyboardStep(Then, 'the folders that were held back are not inside it either',
 })
 
 storyboardStep(Then, 'the published history is one commit for that release', async () => {
-  await gitlabCard(`/${projectPath(global.pubPublic)}/-/commits/main`, 'publication-public-history', 400)
-  const headers = await getRootHeaders()
-  const res = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPublic)}/repository/commits?ref_name=main`,
-    headers
-  )
-  const commits = res.data || []
+  await storyFrame('publication-public-history', gitlabUrl.commits(global.pubPublic), {
+    waitText: 'publish 1.4.0', height: 400
+  })
+  const commits = await listCommits(global.pubPublic, 'main', await getRootHeaders())
   if (commits.length !== 1) {
     throw new Error(`The public history must hold exactly one commit, found ${commits.length}`)
   }
@@ -966,40 +966,7 @@ storyboardStep(Then, 'the published history is one commit for that release', asy
 })
 
 // ===========================================================================
-// Chapter 4 — A file nobody approved does not slip through
-// ===========================================================================
-
-storyboardStep(When, 'a developer pushes a new file inside a folder that is already published', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  syncSource(global.pubLambdaToken)
-  writeFixtureFile(global.pubRendered, LATE_ARRIVAL, 'exports.store = new Map()\n')
-  inSource(`git add ${LATE_ARRIVAL}`)
-  inSource('git commit --quiet --no-verify -m "feat: remember the tokens between requests"')
-  pushSource(global.pubLambdaToken)
-
-  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid)
-  global.pubCiPid = pid
-  if (status !== 'failed') {
-    throw new Error(`The pipeline must refuse a file nobody approved, it was "${status}"`)
-  }
-  mustContain(jobTrace(job.id, lambdaHeaders), [LATE_ARRIVAL, 'would become public for the first time'],
-    'the job must name the file that landed in an already-published folder')
-  await publicationJobCard(job.id, 'publication-ci-late-arrival', 800)
-})
-
-storyboardStep(Then, 'the public project has not moved', async () => {
-  // The SAME page as the card that opened the proof, so the reader compares two
-  // panels instead of two subjects: the new file would have landed right here.
-  await gitlabCard(`/${projectPath(global.pubPublic)}/-/tree/main/src`, 'publication-public-unchanged', 560)
-  await assertPublicProjectHolds(PUBLISHED, 'The public project must be untouched')
-  const paths = await publicTreePaths()
-  if (paths.includes(LATE_ARRIVAL)) {
-    throw new Error(`"${LATE_ARRIVAL}" must never have reached the public project`)
-  }
-})
-
-// ===========================================================================
-// Chapter 5 — A secret in a published file stops everything
+// Chapter 4 — Later changes do not slip through
 //
 // The approval answers "may this file be public". It cannot answer "is there a
 // secret in it", because the file was approved long before the line was written.
@@ -1007,53 +974,59 @@ storyboardStep(Then, 'the public project has not moved', async () => {
 // publication waits on that answer.
 // ===========================================================================
 
-storyboardStep(When, 'a secret is committed into a file that is already published', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
+storyboardStep(When, 'a developer pushes a new file into a published folder, and the pipeline asks the owners again', async () => {
+  syncSource(global.pubLambdaToken)
+  writeFixtureFile(global.pubRendered, LATE_ARRIVAL, 'exports.store = new Map()\n')
+  inSource(`git add ${LATE_ARRIVAL}`)
+  inSource('git commit --quiet --no-verify -m "feat: remember the tokens between requests"')
+  pushSource(global.pubLambdaToken)
+
+  const { pid, status, job } = await publicationJob(lambdaHeaders(), global.pubCiPid)
+  global.pubCiPid = pid
+  if (status !== 'failed') {
+    throw new Error(`The pipeline must refuse a file nobody approved, it was "${status}"`)
+  }
+  mustContain(await getJobTrace(global.pubPrivate, job.id, lambdaHeaders()),
+    [LATE_ARRIVAL, 'would become public for the first time', 'Merge request !2'],
+    'the job must name the file that landed in an already-published folder')
+  await publicationJobFrame('publication-ci-late-arrival', job.id, 'publication:publish')
+})
+
+storyboardStep(When, 'a secret committed into a published file is stopped by the scan before the publication starts', async () => {
   syncSource(global.pubLambdaToken)
   writeFixtureFile(global.pubRendered, LEAKED_FILE, LEAKED_SECRET)
   inSource(`git add ${LEAKED_FILE}`)
   inSource('git commit --quiet --no-verify -m "feat: send the daily report by mail"')
   pushSource(global.pubLambdaToken)
 
-  const { pid, status, job } = await publicationJob(lambdaHeaders, global.pubCiPid, 'publication:scan')
+  const { pid, status, job, jobs } = await publicationJob(lambdaHeaders(), global.pubCiPid, 'publication:scan')
   global.pubCiPid = pid
+  const trace = await getJobTrace(global.pubPrivate, job.id, lambdaHeaders())
   if (status !== 'failed') {
-    console.log(`── publication:scan (${job.status})\n${jobTrace(job.id, lambdaHeaders)}`)
+    console.log(`── publication:scan (${job.status})\n${trace}`)
     throw new Error(`The pipeline must stop on the secret, it was "${status}"`)
   }
-  mustContain(jobTrace(job.id, lambdaHeaders), [LEAKED_FILE, 'generic-password'],
-    'the scan must name the file it found the secret in')
-  await publicationJobCard(job.id, 'publication-ci-secret', 820, 'publication:scan')
+  mustContain(trace, [LEAKED_FILE, 'generic-password'], 'the scan must name the file it found the secret in')
+  const publish = (jobs || []).find(j => j.name === 'publish-source')
+  if (!publish || publish.status === 'success') {
+    throw new Error(`The publication must not run after a failed scan, publish-source: ${JSON.stringify(publish && publish.status)}`)
+  }
+  // Taller: the scanner's finding, the file and the line, and the related jobs
+  // where publish-source never started.
+  await publicationJobFrame('publication-ci-secret', job.id, 'publication:scan', 900)
 })
 
-storyboardStep(Then, 'the publication never ran, and the public project still holds what it held', async () => {
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  const jobs = await listPipelineJobs(global.pubPrivate, global.pubCiPid, lambdaHeaders)
-  const publish = (jobs.data || []).find(j => j.name === 'publish-source')
-  if (!publish) {
-    throw new Error(`Pipeline ${global.pubCiPid} carried no publish-source job`)
-  }
-  if (publish.status === 'success') {
-    throw new Error('The publication must not have run after a failed scan')
-  }
-
-  I.resizeWindow(1280, 620)
-  await I.amOnPage(`/${projectPath(global.pubPrivate)}/-/pipelines/${global.pubCiPid}`)
-  await I.waitForText('publish-source', 60)
-  await maskPipelinePage(I, global.pubPrivate, { keepContext: true })
-  await maskProjectName()
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, 'publication-ci-blocked'))
-  I.resizeWindow(1024, 768)
-
-  const published = sh(
-    `curl -s ${curlAuthFlags(await getRootHeaders())} ` +
-    `'${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPublic)}` +
-    `/repository/files/${encodeURIComponent(LEAKED_FILE)}/raw?ref=main'`,
-    '/tmp'
-  )
-  if (published.includes('Zt7')) {
-    throw new Error('The secret reached the public project')
+storyboardStep(Then, 'the public project still holds the first release, without the new file or the password', async () => {
+  await storyFrame('publication-public-unchanged', gitlabUrl.file(global.pubPublic, 'main', LEAKED_FILE), {
+    waitText: 'serve(process.env.PORT', height: 520, prepare: () => unfoldFileTree(I, ['server'])
+  })
+  await assertPublicProjectHolds(PUBLISHED, 'The public project must be untouched')
+  const rootHeaders = await getRootHeaders()
+  const published = await getRepositoryFile(global.pubPublic, LEAKED_FILE, 'main', rootHeaders)
+  mustNotContain(published, ['Zt7', 'password'], 'The secret must never reach the public project')
+  const commits = await listCommits(global.pubPublic, 'main', rootHeaders)
+  if (commits.length !== 1) {
+    throw new Error(`The public history must still hold the one release commit, found ${commits.length}`)
   }
 })
 
