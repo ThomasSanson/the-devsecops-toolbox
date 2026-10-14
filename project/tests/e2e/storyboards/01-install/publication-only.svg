@@ -122,8 +122,8 @@
 <text x="50" y="5231" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">may push to the public repository. TASK_RENOVATE_TOKEN and TASK_PUBLICATION_SOURCE_TOKEN hold the project token the</text>
 <text x="50" y="5249" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">install created, under the two names that use it: Renovate, and the check that reads who approved.</text>
 <text x="50" y="5267" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3"></text>
-<text x="50" y="5285" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">All three carry the labels Protected and Masked: GitLab hides their values in job logs and hands them only to protected</text>
-<text x="50" y="5303" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">branches and tags. The developer's own token, the first one typed, is not among them.</text>
+<text x="50" y="5285" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">The list holds these three and no more. Each carries the labels Protected and Masked: GitLab hides their values in job</text>
+<text x="50" y="5303" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">logs and hands them only to protected branches and tags.</text>
 <text x="50" y="5327" font-family="ui-monospace, 'JetBrains Mono', 'Fira Code', monospace" font-size="12.5" fill="#7aa2f7" class="copy" xml:space="preserve"><tspan x="50" dy="0">http://gitlab/&lt;lambda-user&gt;/&lt;project&gt;/-/settings/ci_cd</tspan></text>
 </g>
 <circle cx="36" cy="4237" r="16" fill="#3b82f6"/>

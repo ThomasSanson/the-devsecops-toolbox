@@ -55,7 +55,7 @@ Feature: Installing only the source publication component
     # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/devsecops/.copier-answers.yml
     When the developer pushes the install to the main branch, GitLab shows the component, its update spine and the release it came from
     # Note: The project's CI/CD variables, in GitLab's settings. TASK_PUBLICATION_TOKEN is the token that was typed, the one that may push to the public repository. TASK_RENOVATE_TOKEN and TASK_PUBLICATION_SOURCE_TOKEN hold the project token the install created, under the two names that use it: Renovate, and the check that reads who approved.
-    # Note: All three carry the labels Protected and Masked: GitLab hides their values in job logs and hands them only to protected branches and tags. The developer's own token, the first one typed, is not among them.
+    # Note: The list holds these three and no more. Each carries the labels Protected and Masked: GitLab hides their values in job logs and hands them only to protected branches and tags.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     Then GitLab holds the tokens, masked and protected
     # Note: The project's pipeline schedules. The one the install created runs on the main branch at "0 4 * * * UTC", every night at four. It has not run yet: its last pipeline is "None".
@@ -69,7 +69,7 @@ Feature: Installing only the source publication component
     # Note: The developer's copy also holds a tool and a private file of its own. Before the installer runs, the test records every file of the project, its content and its permissions.
     # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/.config/devsecops/.copier-answers.yml
     Given a project whose main branch already carries the complete framework and its own Copier choices
-    # Note: The same installer and the same checklist as when source publication is installed on its own. The developer ticks "Source publication" alone.
+    # Note: The developer runs the installer anyway and answers "Choose components". A checklist opens, and the developer ticks "Source publication" alone. The picture is taken before Enter, because the checklist erases itself once it is answered.
     # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && bash /tmp/devsecops-install.sh
     When the developer ticks source publication on the checklist
     # Note: The installer stops before copying anything. It says the answers file "already describes a complete framework installation", and gives the command that turns publication on through the project's own update: task copier:update with --data source_publication=true.

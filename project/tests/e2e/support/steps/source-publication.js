@@ -1057,7 +1057,6 @@ storyboardStep(Then, 'the publication never ran, and the public project still ho
   }
 })
 
-
 // ===========================================================================
 // @publication-only and @publication-existing-framework: the component
 // installed on its own, and refused where a complete framework already lives.
@@ -1335,7 +1334,7 @@ storyboardStep(Then, "the project's own files are untouched, and the component s
     `${OWN_FILES_COMMAND} && task publication:check`, { mask: TERMINAL_MASKS })
   assertExistingPublicationFiles()
   mustContain(screen, [`750 ${OWN_TOOL}`, `600 ${PRIVATE_FILE}`, 'own tool works',
-    'Source publication', 'README.md', 'no approved list yet'],
+    'Source publication', `${global.pubPublic}.git`, 'README.md', 'no approved list yet'],
   'the project files must be untouched and the component must answer on its own')
 })
 
@@ -1353,8 +1352,8 @@ storyboardStep(When, 'the developer pushes the install to the main branch, GitLa
     throw new Error(`The main branch must hold exactly ${JSON.stringify(expected)}, found ${JSON.stringify(root)}`)
   }
   const config = await treeNames('.config')
-  mustContain(config.join('\n'), ['copier', 'devsecops', 'publication', 'python', 'renovate', 'task'],
-    'the update spine must travel with the component')
+  mustContain(config.join('\n'), ['copier', 'devsecops', 'publication', 'python', 'renovate', 'task', 'own-tool.sh'],
+    'the update spine must travel with the component, beside the project\'s own tool')
   mustNotContain(config.join('\n'), ['megalinter', 'docker', 'glab', 'codeceptjs', 'private.txt'],
     'a component-only install must bring no tooling, and the private file must stay local')
   mustContain((await treeNames('.config/publication')).join('\n'),
@@ -1371,7 +1370,12 @@ storyboardStep(Then, 'GitLab holds the tokens, masked and protected', async () =
   await GitLabUserPage.loginAs(lambdaUser(), process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   await gitlabCards.ciVariablesFrame(I, 'publication-only-variables', global.pubPrivate)
   const headers = { 'PRIVATE-TOKEN': global.pubLambdaToken }
-  for (const name of ['TASK_PUBLICATION_TOKEN', 'TASK_RENOVATE_TOKEN', 'TASK_PUBLICATION_SOURCE_TOKEN']) {
+  const all = await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}/variables`, headers)
+  const keys = (all.data || []).map(v => v.key).sort()
+  if (JSON.stringify(keys) !== JSON.stringify(['TASK_PUBLICATION_SOURCE_TOKEN', 'TASK_PUBLICATION_TOKEN', 'TASK_RENOVATE_TOKEN'])) {
+    throw new Error(`The install must create exactly three CI/CD variables, found ${JSON.stringify(keys)}`)
+  }
+  for (const name of keys) {
     const variable = await readProjectVariable(global.pubPrivate, name, headers)
     if (variable.status >= 400) {
       throw new Error(`${name} must exist as a CI/CD variable, got ${variable.status}`)
