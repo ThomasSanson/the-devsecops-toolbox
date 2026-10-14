@@ -1,71 +1,92 @@
-/* global inject Given When Then After */
+/* global inject Then After */
+/**
+ * Storyboard for @renovate-runtime (features/03-evolution/renovate.feature).
+ *
+ * One terminal session in a freshly generated project, on a runner with no
+ * Renovate installed: the real commands run in order, and their real output,
+ * colours kept, is the card. The pinned validator refuses an unknown option,
+ * then accepts the generated configuration once git puts it back.
+ */
 const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
-const { renderPreFrame } = require('../helpers/capturedOutput')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
-const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
+const { ansiToHtml } = require('../helpers/textRender')
+const { storyboardStep, addStoryboardFrame, captureElementFrame } = require('../../../../../.config/codeceptjs/storyboard')
+
 const { I } = inject()
-let project
-let version
-let environment
+const rendered = []
 
 After(() => {
-  if (project) removeRendered(project)
-  project = null
+  for (const dir of rendered.splice(0)) removeRendered(dir)
 })
 
-function task (args, env = environment) {
+const ENV = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error' }
+
+function sh (dir, command) {
   try {
-    return { status: 0, output: execFileSync('sh', ['-c', 'task "$@" 2>&1', 'task', ...args], { cwd: project, env, encoding: 'utf8', stdio: 'pipe', timeout: 120000 }) }
+    return { status: 0, output: execFileSync('sh', ['-c', `${command} 2>&1`], { cwd: dir, env: ENV, encoding: 'utf8', timeout: 300000 }) }
   } catch (error) {
     return { status: error.status, output: `${error.stdout || ''}${error.stderr || ''}` }
   }
 }
 
-function stable (output) {
-  // Keep captures stable across upgrades; assertions below check the real pin.
-  return output.replaceAll(project, '<project>').replaceAll(version, 'x.x.x')
+function render (data) {
+  const dir = renderProject(data)
+  rendered.push(dir)
+  return dir
 }
 
-storyboardStep(Given, 'a project has an invalid configuration and no installed Renovate', async () => {
-  project = renderProject()
-  environment = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error' }
-  version = fs.readFileSync(path.join(project, '.config/renovate/version'), 'utf8').trim()
-  const installed = execFileSync('sh', ['-c', 'command -v renovate || command -v renovate-config-validator || true'], { encoding: 'utf8' }).trim()
-  assert.equal(installed, '', 'The CodeceptJS runner must not include a global Renovate installation')
-  fs.writeFileSync(path.join(project, '.config/renovate/config.json'), '{ "unknownOptionForTest": true }\n')
-  const output = execFileSync('sh', ['-c', 'cat .config/renovate/config.json .config/renovate/version; command -v npx'],
-    { cwd: project, encoding: 'utf8', env: environment })
-  await renderPreFrame(I, 'runtime-setup', `$ cat .config/renovate/config.json .config/renovate/version; command -v npx\n${stable(output)}`)
-  await I.see('x.x.x', 'pre')
-})
+// The session as one wide card, read at its real size: a full storyboard row.
+async function sessionFrame (frameName, text) {
+  I.resizeWindow(1440, 900)
+  await I.usePlaywrightTo('render the terminal session', async ({ page }) => {
+    await page.setContent(
+      '<!DOCTYPE html><html><body style="background:#1e1e1e;margin:0">' +
+      '<div id="session" style="display:inline-block;min-width:1040px;box-sizing:border-box;background:#1e1e1e;padding:16px 22px 16px 16px">' +
+      '<pre style="margin:0;color:#d4d4d4;font-family:monospace;font-size:14px;line-height:1.4;white-space:pre">' +
+      ansiToHtml(text) +
+      '</pre></div></body></html>'
+    )
+  })
+  await addStoryboardFrame(I, await captureElementFrame(I, frameName, '#session'))
+  I.resizeWindow(1024, 768)
+}
 
-storyboardStep(When, 'the pinned Renovate download rejects the invalid option', async () => {
-  const result = task(['renovate:validate'])
-  const output = stripAnsiEscapeSequences(result.output)
-  assert.notEqual(result.status, 0, 'The actual validator must reject invalid configuration')
-  assert.ok(output.includes('Invalid configuration option: unknownOptionForTest'), result.output)
-  assert.ok(output.includes(`renovate@${version}`), result.output)
-  await renderPreFrame(I, 'runtime-invalid', `$ task renovate:validate\n${stable(result.output)}`, { colour: true })
-})
+storyboardStep(Then, 'a project without Renovate installed gets the pinned validator, which refuses an unknown option and accepts the generated configuration', async () => {
+  const project = render()
+  const version = fs.readFileSync(path.join(project, '.config/renovate/version'), 'utf8').trim()
+  // Off camera: the render becomes a repository, so git can put the generated
+  // configuration back on camera.
+  execFileSync('sh', ['-c', 'git init -q && git add -A && git -c user.email=e2e@test.local -c user.name=e2e commit -qm render'], { cwd: project })
 
-storyboardStep(Then, 'correcting the configuration passes the same Renovate task', async () => {
-  fs.writeFileSync(path.join(project, '.config/renovate/config.json'), '{}\n')
-  const result = task(['renovate:validate'])
-  assert.equal(result.status, 0, result.output)
-  assert.ok(result.output.includes('Config validated successfully'), result.output)
-  assert.ok(result.output.includes(`renovate@${version}`), result.output)
-  await renderPreFrame(I, 'runtime-valid', `$ cat .config/renovate/config.json\n{}\n$ task renovate:validate\n${stable(result.output)}`, { colour: true })
-})
+  const session = [
+    'command -v renovate renovate-config-validator || echo "Renovate is not installed"',
+    'echo \'{ "unknownOptionForTest": true }\' > .config/renovate/config.json',
+    'task renovate:validate',
+    'git checkout -- .config/renovate/config.json',
+    'task renovate:validate'
+  ].map(command => ({ command, ...sh(project, command) }))
+  const [installed, , refused, , accepted] = session
+  // The pin moves with every Renovate release, the render path with every run.
+  const text = session.map(({ command, output }) => `$ ${command}\n${output}`).join('').trimEnd()
+    .replaceAll(project, '<project>').replaceAll(version, 'x.x.x')
+  await sessionFrame('runtime-validate', text)
 
-storyboardStep(Then, 'the Renovate download fallback uses the framework version for running and validating', async () => {
-  const run = task(['renovate:dry-run', '--dry'])
-  const validate = task(['renovate:validate', '--dry'])
-  assert.equal(run.status, 0, run.output)
-  assert.equal(validate.status, 0, validate.output)
-  for (const result of [run, validate]) assert.ok(result.output.includes(`renovate@${version}`), result.output)
-  await renderPreFrame(I, 'runtime-fallback', `$ task renovate:dry-run --dry\n${stable(run.output)}\n$ task renovate:validate --dry\n${stable(validate.output)}`, { colour: true })
+  // Twins: no Renovate on the runner, the pinned release through npx, the
+  // refusal named, then the generated configuration accepted.
+  assert.equal(installed.output.trim(), 'Renovate is not installed', 'The CodeceptJS runner must not include a global Renovate installation')
+  assert.notEqual(refused.status, 0, 'The validator must reject the unknown option')
+  assert.ok(stripAnsiEscapeSequences(refused.output).includes('Invalid configuration option: unknownOptionForTest'), refused.output)
+  assert.equal(accepted.status, 0, accepted.output)
+  assert.ok(accepted.output.includes('Config validated successfully'), accepted.output)
+  for (const result of [refused, accepted]) assert.ok(result.output.includes(`npx --yes -p renovate@${version}`), result.output)
+  // Twins: Renovate's run resolves the same pinned download, and the
+  // configuration with automerge off is valid too.
+  const run = sh(project, 'task renovate:dry-run --dry')
+  assert.ok(run.status === 0 && run.output.includes(`renovate@${version}`), run.output)
+  const automergeOff = sh(render({ devsecops_automerge: 'false' }), 'task renovate:validate')
+  assert.ok(automergeOff.status === 0 && automergeOff.output.includes('Config validated successfully'), automergeOff.output)
 })
