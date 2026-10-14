@@ -3,7 +3,8 @@ const http = require('http')
 // HTTP request with a fresh TCP connection (no keep-alive pool).
 // Avoids EPIPE / socket-hang-up after a long execSync that lets
 // idle connections die while axios still holds them in its pool.
-function freshRequest (method, url, { body, headers = {}, retries = 5, delay = 3000 } = {}) {
+// `raw: true` returns the body as text (job traces, raw files are not JSON).
+function freshRequest (method, url, { body, headers = {}, retries = 5, delay = 3000, raw = false } = {}) {
   const parsed = new URL(url)
   const data = body ? JSON.stringify(body) : null
   const reqHeaders = data
@@ -22,6 +23,10 @@ function freshRequest (method, url, { body, headers = {}, retries = 5, delay = 3
       let respBody = ''
       res.on('data', chunk => { respBody += chunk })
       res.on('end', () => {
+        if (raw) {
+          resolve({ data: respBody, status: res.statusCode })
+          return
+        }
         if (!respBody.trim()) {
           resolve({ data: null, status: res.statusCode })
           return
