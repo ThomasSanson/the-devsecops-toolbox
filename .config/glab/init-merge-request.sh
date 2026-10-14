@@ -35,6 +35,18 @@ git config --global --add safe.directory "${PWD}" 2>/dev/null || true
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 
+# A release that changes lines the project edited too leaves the file with
+# copier's conflict markers, marked unmerged: git then refuses to switch
+# branches, and the update died here without a word. Stage it as it is, so both
+# versions reach the review, and name the file.
+conflicted="$(git diff --name-only --diff-filter=U)"
+if [ -n "${conflicted}" ]; then
+  printf '%s\n' "${conflicted}" | while IFS= read -r file; do
+    printf '  ⚠️  %s: this release changed lines you had edited too. Both versions are kept between conflict markers: settle them before merging.\n' "${file}"
+  done
+  git add -A
+fi
+
 # Asked to stay, and standing somewhere else than the default branch: commit
 # here. Branching off the default branch would carry the change away from the
 # work it belongs to, and open a review nobody asked for.
