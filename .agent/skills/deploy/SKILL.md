@@ -38,6 +38,8 @@ Check `project/docker-compose.yml` for the list of services.
 3. Check disk space
 4. Check service logs after start
 
+If a deploy fails, read the logs and fix the cause. Never run anything that deletes containers, volumes or data without the person's explicit go-ahead.
+
 ## Access URLs
 
 After deploy, read `.env.dev` for service URLs and ports.

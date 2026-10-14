@@ -74,7 +74,7 @@ task project:test:e2e -- --grep "@tag"           # E2E suite filtered by tag
 task project:test:e2e -- --grep "@tag" --steps   # Filtered + verbose
 TASK_E2E_WORKERS=5 task project:test:e2e         # Bump parallelism
 task project:operate:down                        # Stop the containers, keep the volumes
-task project:operate:destroy                     # Stop the containers and delete the volumes
+task project:operate:destroy                     # Also deletes the volumes: only with the person's go-ahead
 ```
 
 After any change under `.config/codeceptjs/`, run `task project:build:tests` (the image is baked) before the next E2E run.

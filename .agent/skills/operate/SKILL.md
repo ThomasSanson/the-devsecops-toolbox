@@ -7,7 +7,7 @@ description: Manage infrastructure operations like stopping services, accessing 
 
 ## When to use this skill
 
-- Stopping or destroying services
+- Stopping services
 - Accessing container shells
 - Database backups
 - Database operations
@@ -27,6 +27,8 @@ Operate tasks belong to the project: stopping services, shell access, backups an
 **Need fresh start?**
 1. Stop the services with the project's own operate task
 2. `task deploy` — Restart clean
+
+If a deploy fails, read the logs and fix the cause. Never run anything that deletes containers, volumes or data without the person's explicit go-ahead.
 
 **Database issues?**
 1. Back up first
