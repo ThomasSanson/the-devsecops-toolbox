@@ -142,6 +142,7 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
       // display, not visibility: a child carrying its own visibility:visible
       // (status icons do) would override an inherited hidden.
       '[data-e2e-mask] { display: none !important }',
+      '[data-e2e-blank] { visibility: hidden !important }',
       args.keepContext
         ? `${SESSION} { visibility: hidden !important }`
         : `${SESSION}, ${CRUMB} { display: none !important }`,
@@ -253,6 +254,7 @@ const JOB_LOG_MASKS = [
   [/(\bon )[^,\n]+(, system ID: )\S+/g, '$1<runner>$2<system>'],
   [/UUID: [\w<>-]+/g, 'UUID: <uuid>'],
   [/\bcorrelation_id=\S+/g, 'correlation_id=<id>'],
+  [/(correlation ID: )\S+/g, '$1<id>'],
   [/\bid=\d+/g, 'id=<job>'],
   [/\btoken=\S+/g, 'token=<masked>'],
   [/\brunner-[\w-]+-project-\d+-concurrent-[\w-]+/g, '<runner>']
@@ -269,7 +271,8 @@ const JOB_LOG_MASKS = [
  *   - sortLines: re-order the lines concurrent scanners print in any order;
  *   - focus: a log text to bring into view instead of the top of the page.
  * The gutter (line numbers, timestamps, section durations) and the runner's
- * cleanup line ("…runner-<token>… disconnected from network") always go.
+ * cleanup line ("…runner-<token>… disconnected from network") always go, and
+ * projectNames are replaced inside the log before the SHA mask runs.
  */
 async function jobLogFrame (I, frameName, project, jobId, {
   from = null,
@@ -315,9 +318,12 @@ async function jobLogFrame (I, frameName, project, jobId, {
         }
         const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container/i
         lines.forEach(l => { if (CLEANUP.test(l.textContent)) l.setAttribute('data-e2e-mask', '') })
-        document.querySelectorAll(
-          '.job-log-line-number, .job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"], .job-log-line-header .badge'
-        ).forEach(el => el.setAttribute('data-e2e-mask', ''))
+        // Line numbers are blanked, not removed: a section's chevron sits in
+        // their column and would cover the section's first letter.
+        document.querySelectorAll('.job-log-line-number, .job-log-line-header .badge')
+          .forEach(el => el.setAttribute('data-e2e-blank', ''))
+        document.querySelectorAll('.job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]')
+          .forEach(el => el.setAttribute('data-e2e-mask', ''))
         // Fractional line heights round differently from one run to the next.
         const box = document.querySelector('.job-log')
         if (box) box.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(box).lineHeight))}px`
@@ -350,7 +356,12 @@ async function jobLogFrame (I, frameName, project, jobId, {
       }, {
         from: from === null ? null : from instanceof RegExp ? { regex: true, source: from.source, flags: from.flags } : { text: from },
         lead,
-        masks: [...JOB_LOG_MASKS, ...masks].map(([re, to]) => ({ source: re.source, flags: re.flags.includes('g') ? re.flags : re.flags + 'g', to }))
+        // Project names first: the SHA mask would otherwise eat their hex suffix.
+        masks: [
+          ...projectNames.map(n => [new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 'project']),
+          ...JOB_LOG_MASKS,
+          ...masks
+        ].map(([re, to]) => ({ source: re.source, flags: re.flags.includes('g') ? re.flags : re.flags + 'g', to }))
       })
     },
     // GitLab scrolls a finished log to its bottom on its own: back to the top
