@@ -545,3 +545,16 @@ async function createRepositoryTag (projectName, tagName, ref, headers) {
 }
 
 module.exports.createRepositoryTag = createRepositoryTag
+
+// The files one commit changed, as its GitLab page lists them: the twin of a
+// commit card. Each entry carries new_path, new_file and deleted_file.
+async function getCommitDiff (projectName, sha, headers) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/commits/${sha}/diff?per_page=100`,
+    headers
+  )
+  if (res.status >= 400) throw new Error(`Diff of ${sha}: HTTP ${res.status}`)
+  return res.data
+}
+
+module.exports.getCommitDiff = getCommitDiff

@@ -1,4 +1,4 @@
-/* global NodeFilter */
+/* global document window */
 const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
@@ -6,13 +6,29 @@ const { execFileSync } = require('child_process')
 const {
   BASE_URL, projectPath, encodedProjectPath, getRootHeaders, createProject,
   deleteProject, createLambdaPersonalAccessToken, revokePersonalAccessToken,
-  triggerProjectPipeline, listPipelineJobs, getPipeline
+  triggerProjectPipeline, listPipelineJobs, getPipeline, getCommitDiff
 } = require('./gitlabApi')
-const { registerScopedRunner, teardownScopedRunner, maskPipelinePage, PIPELINE_TIMEOUT_MS } = require('./pipelineRunner')
+const { registerScopedRunner, teardownScopedRunner, PIPELINE_TIMEOUT_MS } = require('./pipelineRunner')
 const { freshDelete } = require('./http')
 const { stableJobLog } = require('./stableJobLog')
 const { stripAnsiEscapeSequences } = require('./docker')
-const { addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
+const { JOB_LOG_MASKS, gitlabUrl, gitlabFrame, jobLogFrame, settlePage } = require('./gitlabCard')
+
+const REPORTS = path.join(__dirname, '../../_output/osv-reports')
+const LOG = '[data-testid="job-log-content"]'
+// GitLab keeps the navigation folded for a reader who folded it once.
+const NAV_FOLDED = 'super_sidebar_collapsed'
+// What moves between two otherwise identical OSV runs: its filesystem counters
+// and every timing. The Elapsed time column keeps its width, so the summary
+// table's last border does not move either.
+const OSV_MASKS = [
+  [/\d+ (dirs visited|inodes visited)/, '<count> $1'],
+  [/\d+(?:\.\d+)?(?:ms|µs|s) (elapsed|wall time)/, '<duration> $1'],
+  [/\b\d+(?:\.\d+)?s +(?=\|)/, '<duration>   '],
+  [/\b\d+(?:\.\d+)?s\b/, '<duration>']
+]
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Repeat the existing local scan in a real CI job. The local regression checks
 // stay independent; a failed runner setup cannot masquerade as an OSV finding.
@@ -155,11 +171,12 @@ class OsvCiEvidence {
   }
 
   saveTrace (job) {
-    const reports = path.join(__dirname, '../../_output/osv-reports')
-    fs.mkdirSync(reports, { recursive: true })
-    fs.writeFileSync(path.join(reports, `ci-${job.id}-trace.log`), this.redact(this.jobText(job.id, 'trace')))
+    fs.mkdirSync(REPORTS, { recursive: true })
+    fs.writeFileSync(path.join(REPORTS, `ci-${job.id}-trace.log`), this.redact(this.jobText(job.id, 'trace')))
   }
 
+  // Plain timers, not I.wait: a caller may start the pipeline and run the local
+  // scan while this one polls.
   async run (jobName = 'code:megalinter') {
     if (this.job && this.job.commit.id === this.sha) return this.job
     const triggered = await triggerProjectPipeline(this.name, 'main', this.headers)
@@ -170,10 +187,9 @@ class OsvCiEvidence {
     while (Date.now() < deadline) {
       status = (await getPipeline(this.name, pid, this.headers)).data.status
       if (['success', 'failed', 'canceled', 'skipped'].includes(status)) break
-      console.log(`OSV CI pipeline: ${status}`)
-      await this.I.wait(5)
+      await sleep(5000)
     }
-    assert.ok(['success', 'failed'].includes(status), 'The actual CI job must finish')
+    assert.ok(['success', 'failed'].includes(status), `The actual CI job must finish, the pipeline is ${status}`)
     const jobs = (await listPipelineJobs(this.name, pid, this.headers)).data
     const job = jobs.find(job => job.name === jobName)
     assert.ok(job, `CI must run the actual ${jobName} job`)
@@ -183,7 +199,6 @@ class OsvCiEvidence {
     assert.equal(job.status, status)
     assert.equal(job.commit.id, this.sha, 'CI must run the published dependency snapshot')
     this.jobId = job.id
-    this.pipelineId = pid
     this.job = job
     return job
   }
@@ -193,7 +208,7 @@ class OsvCiEvidence {
     // Read the original CI artifact, rather than trusting a red or green icon.
     // Keep it before assertions too, alongside the trace saved by run().
     const report = this.artifact(job.id, result.file)
-    fs.writeFileSync(path.join(__dirname, '../../_output/osv-reports', `ci-${job.id}.log`), this.redact(report))
+    fs.writeFileSync(path.join(REPORTS, `ci-${job.id}.log`), this.redact(report))
     assert.equal(job.status, result.exitCode === 0 ? 'success' : 'failed', 'CI must preserve the native scanner verdict')
     const localScans = result.report.split('\n').filter(line => line.startsWith('Scanned ')).sort()
     const remoteScans = report.split('\n').filter(line => line.startsWith('Scanned ')).sort()
@@ -203,108 +218,98 @@ class OsvCiEvidence {
     }
   }
 
-  async repositoryFrame (name, file, text, { height = 900, focus = null } = {}) {
-    this.I.resizeWindow(1440, height)
-    await this.I.amOnPage(`/${projectPath(this.name)}/-/blob/main/${file}`)
-    await this.I.waitForText(text, 60, '.file-content')
-    await maskPipelinePage(this.I, this.name, { keepContext: true })
-    await this.I.executeScript(() => {
-      const walker = document.createTreeWalker(document.querySelector('.file-content'), NodeFilter.SHOW_TEXT)
-      const nodes = []
-      while (walker.nextNode()) nodes.push(walker.currentNode)
-      for (const node of nodes) node.nodeValue = node.nodeValue.replace(/\/tmp\/e2e-template-[0-9a-f]+/g, '<template>')
+  // One file of the main branch, as GitLab shows it.
+  async fileFrame (frameName, file, text) {
+    await gitlabFrame(this.I, frameName, gitlabUrl.file(this.name, 'main', file), { waitText: text })
+  }
+
+  // The page of the last published commit: its title and every file it
+  // changed. Taken before any pipeline runs on it, so no status badge sits on
+  // the page. The twin reads the same commit through REST: exactly these
+  // files, each added or deleted as the card shows it.
+  async commitFrame (frameName, files, { change = null, height = 1100 } = {}) {
+    const diff = await getCommitDiff(this.name, this.sha, this.headers)
+    assert.deepEqual(diff.map(entry => entry.new_path).sort(), [...files].sort(), `The commit must change exactly ${files.join(', ')}`)
+    if (change) for (const entry of diff) assert.equal(entry[`${change}_file`], true, `${entry.new_path} must be ${change}`)
+    const paths = [...files]
+    await gitlabFrame(this.I, frameName, gitlabUrl.commit(this.name, this.sha), {
+      height,
+      // A per-run template directory in the Copier answers' context lines.
+      textMasks: [[/\/tmp\/e2e-template-[0-9a-f]+/, '<template>']],
+      // GitLab draws the diffs after the page: every file named in them.
+      prepare: () => this.I.waitForFunction(([wanted]) => wanted.every(file => document.body.innerText.includes(file)), [paths], 60)
     })
-    await this.capture(name, focus)
   }
 
-  async pipelineFrame (name) {
-    this.I.resizeWindow(1440, 900)
-    await this.I.amOnPage(`/${projectPath(this.name)}/-/pipelines/${this.pipelineId}`)
-    await this.I.waitForText(this.job.status === 'success' ? 'Passed' : 'Failed', 60)
-    await this.I.waitForText(this.job.name, 60)
-    await maskPipelinePage(this.I, this.name, { keepContext: true })
-    await this.capture(name)
+  // The worker's job, its log from the typed command down: the runner's own
+  // preamble (its version, name, token and the checked-out SHA) stays above.
+  async taskLogFrame (frameName) {
+    await jobLogFrame(this.I, frameName, this.name, this.jobId, {
+      from: '$ task --taskfile ci-evidence.yml worker',
+      fold: ['Uploading artifacts', 'Cleaning up'],
+      waitText: 'Worker task exit code',
+      // The whole job page, its details panel included, without the empty page below.
+      height: 720
+    })
   }
 
-  async reportFrame (name, result) {
-    this.I.resizeWindow(2100, 1100)
-    await this.I.amOnPage(`/${projectPath(this.name)}/-/jobs/${this.jobId}`)
-    await this.I.waitForElement('[data-testid="job-log-content"]', 60)
-    await this.I.waitForText('[osv-scanner]', 60, '[data-testid="job-log-content"]')
-    // Open GitLab's own folded scanner section to show its original output.
-    await this.I.executeScript(() => {
-      const section = Array.from(document.querySelectorAll('.job-log-line-header'))
-        .find(element => element.textContent.includes('[osv-scanner]'))
-      if (section && !section.querySelector('[data-testid="chevron-lg-down-icon"]')) section.click()
-      document.querySelectorAll('.job-log-line-header').forEach(header => {
-        if (/Uploading artifacts|Cleaning up/.test(header.textContent) &&
-            header.querySelector('[data-testid="chevron-lg-down-icon"]')) header.click()
+  // The OSV job's page, its log from the scanner's command line down.
+  // OSV prints its findings as a table about 145 characters wide, and GitLab
+  // wraps a job log at the width of its panel: at 1440 px, between the
+  // navigation and the job details, every row would break in the middle of a
+  // path. Both side panels fold away the way GitLab folds them itself (the
+  // navigation by the reader's saved choice, the job details by GitLab's own
+  // toggle), so the log runs the whole card and every row stays on one line;
+  // the job's name and status stay on top.
+  // ponytail: jobLogFrame without its side panels; one `prepare` option on
+  // jobLogFrame would let this call it instead.
+  async osvLogFrame (frameName, { verdict, from = 'Command: [osv-scanner', masks = [] }) {
+    const I = this.I
+    await I.usePlaywrightTo('fold the navigation', async ({ page }) =>
+      page.context().addCookies([{ name: NAV_FOLDED, value: 'true', url: BASE_URL }]))
+    try {
+      await gitlabFrame(I, frameName, gitlabUrl.job(this.name, this.jobId), {
+        height: 1100,
+        waitText: 'osv-scanner',
+        textMasks: [...JOB_LOG_MASKS, ...OSV_MASKS, ...masks],
+        prepare: async () => {
+          await I.waitForElement(LOG, 60)
+          await this.foldJobDetails()
+          await I.executeScript(() => document.querySelectorAll('.job-log-line-header').forEach(header => {
+            const open = Boolean(header.querySelector('[data-testid="chevron-lg-down-icon"]'))
+            const wantOpen = header.textContent.includes('[osv-scanner]')
+            if (wantOpen ? !open : open && /Uploading artifacts|Cleaning up/.test(header.textContent)) header.click()
+          }))
+          await settlePage(I)
+          await I.waitForText(verdict, 60, LOG)
+          await I.executeScript(stableJobLog)
+          await I.executeScript((marker) => {
+            const lines = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
+            const start = lines.findIndex(line => line.textContent.includes(marker))
+            if (start === -1) throw new Error(`The OSV job log has no line with ${marker}`)
+            lines.slice(0, start).forEach(line => line.setAttribute('data-e2e-mask', ''))
+            lines.forEach(line => { if (/runner-\S+.*disconnected from network/i.test(line.textContent)) line.setAttribute('data-e2e-mask', '') })
+            document.querySelectorAll('.job-log-line-number, .job-log-line-header .badge').forEach(el => el.setAttribute('data-e2e-blank', ''))
+            document.querySelectorAll('.job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]').forEach(el => el.setAttribute('data-e2e-mask', ''))
+            const box = document.querySelector('.job-log')
+            if (box) box.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(box).lineHeight))}px`
+          }, from)
+        }
       })
-    })
-    await this.I.waitForText(result.exitCode === 0 ? 'No issues found' : 'GHSA-35jh-r3h4-6jhm', 60, '[data-testid="job-log-content"]')
-    await maskPipelinePage(this.I, this.name, { keepContext: true })
-    await this.I.executeScript(stableJobLog)
-    await this.I.executeScript(() => {
-      // OSV's filesystem counters and timings change between otherwise
-      // identical scans. Keep the paths, advisory and verdict untouched.
-      document.querySelectorAll('.job-log-line-number, .job-log-time, [class*="log-line-timestamp"], [class*="line-timestamp"]')
-        .forEach(element => { element.style.visibility = 'hidden' })
-      document.querySelectorAll('.job-log-line-header .badge').forEach(element => { element.style.visibility = 'hidden' })
-      const log = document.querySelector('.job-log')
-      log.style.lineHeight = `${Math.ceil(parseFloat(window.getComputedStyle(log).lineHeight))}px`
-      const walker = document.createTreeWalker(document.querySelector('[data-testid="job-log-content"]'), NodeFilter.SHOW_TEXT)
-      const nodes = []
-      while (walker.nextNode()) nodes.push(walker.currentNode)
-      for (const node of nodes) {
-        node.nodeValue = node.nodeValue
-          .replace(/\d+ (dirs visited|inodes visited)/g, '<count> $1')
-          .replace(/\d+(?:\.\d+)?(?:ms|µs|s) (elapsed|wall time)/g, '<duration> $1')
-          .replace(/\b\d+(?:\.\d+)?s +(?=\|)/g, '<duration>   ')
-          .replace(/\b\d+(?:\.\d+)?s\b/g, '<duration>')
-      }
-    })
-    await this.capture(name, null, result.exitCode === 0 ? 'No issues found' : 'packages affected by')
+    } finally {
+      await I.usePlaywrightTo('unfold the navigation', async ({ page }) => page.context().clearCookies({ name: NAV_FOLDED }))
+    }
   }
 
-  async capture (name, focus = null, logMarker = null) {
-    await this.I.wait(1)
+  // The job details fold away through GitLab's own toggle, the one it shows
+  // when the page is narrow: the log takes their width.
+  async foldJobDetails () {
     await this.I.executeScript(() => {
-      window.scrollTo(0, 0)
-      document.querySelectorAll('main, .content-wrapper, .layout-page, .js-static-panel-inner, .job-log, [data-testid="job-log-content"]').forEach(el => { el.scrollTop = 0 })
+      const toggle = document.querySelector('button[aria-label="Toggle sidebar"]')
+      if (!toggle) throw new Error('The job page has no "Toggle sidebar" button')
+      toggle.click()
     })
-    await this.I.wait(0.5)
-    // Close GitLab's real onboarding hints so they cannot cover the captured file.
-    for (const hintTitle of ['File tree navigation', 'Blame is now in page']) {
-      await this.I.executeScript(text => {
-        const title = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, strong, div'))
-          .find(el => Array.from(el.childNodes).some(node => node.nodeType === 3 && node.nodeValue.trim() === text))
-        let hint = title
-        while (hint && hint !== document.body && !hint.querySelector('button')) hint = hint.parentElement
-        if (hint && hint !== document.body) hint.querySelector('button')?.click()
-      }, hintTitle)
-      await this.I.waitForInvisible(`//*[normalize-space(text())="${hintTitle}"]`, 10)
-      await this.I.dontSee(hintTitle)
-    }
-    if (logMarker) {
-      await this.I.executeScript(marker => {
-        const line = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-          .find(element => element.textContent.includes(marker))
-        if (!line) throw new Error(`The real OSV job log must contain ${marker}`)
-        line.scrollIntoView({ block: 'center' })
-        window.scrollTo(0, 0)
-      }, logMarker)
-      await this.I.waitForFunction(marker => {
-        const line = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
-          .find(element => element.textContent.includes(marker))
-        const box = line?.getBoundingClientRect()
-        return box && box.top >= 0 && box.bottom <= window.innerHeight
-      }, [logMarker], 15)
-    } else if (focus) await this.I.scrollTo(focus, 0, -300)
-    await this.I.usePlaywrightTo('move the cursor away from the captured content', async ({ page }) => {
-      await page.mouse.move(1, 1)
-    })
-    await addStoryboardFrame(this.I, await capturePageFrame(this.I, name))
-    this.I.resizeWindow(1024, 768)
+    await this.I.waitForInvisible('[data-testid="job-sidebar"]', 30)
   }
 }
 

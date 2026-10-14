@@ -13,45 +13,46 @@ Feature: a freshly generated project passes its own quality gate
   # same verdict. ONE sentence = ONE card = ONE pixel baseline (tolerance: 0).
   @osv-scope
   Scenario: OSV checks dependencies where their owner can fix them
-    # Chapter: Framework vulnerability: the project passes
-    # Note: GitLab shows lodash 4.17.20 in the inherited CodeceptJS lockfile. The same vulnerable fixture is present in every framework tool.
+    # Chapter: The toolbox answers for its own tools
+    # Note: GitLab shows lodash 4.17.20, a version with a known vulnerability, in the CodeceptJS lockfile the project inherits from the toolbox. Every framework tool under .config gets the same vulnerable lockfile.
     Given every framework tool in a generated project contains the same vulnerable package
-    # Note: GitLab shows the inherited job's OSV log: no package sources found and No issues found. The vulnerable framework tools leave the project pipeline green.
-    When the generated project's OSV scan leaves inherited tools to the toolbox
-    # Note: The same test repository now uses the toolbox's own scanner configuration. GitLab shows the OSV error and the vulnerable framework lockfiles: the toolbox catches the tools it owns.
+    # Note: The same project, scanned once with the toolbox's own scanner configuration: the scanner's command, printed first, leaves no .config folder out. GitLab's code:megalinter job fails.
+    # Note: OSV reads every framework tool and lists each lockfile with lodash 4.17.20 and advisory GHSA-35jh-r3h4-6jhm. The toolbox catches the tools it ships.
+    # Copy: task megalinter
     Then the toolbox's OSV scan reports the same vulnerable framework tools
-    # Chapter: Project vulnerability: the project fails
-    # Note: GitLab shows the same vulnerable package in .config/project-tool. The fixture is also added at the repository root and in two other project-owned locations.
+    # Chapter: The project answers for its own dependencies
+    # Note: GitLab's page for the commit "test: add project dependencies". Its Files list shows four new lockfiles, each with lodash 4.17.20: one at the root, one under application/.config, and two in .config folders the project created itself, codeceptjs-extra and project-tool.
     When the developer adds vulnerable dependencies in project-owned locations
-    # Note: GitLab shows the OSV error: lodash 4.17.20, advisory GHSA-35jh-r3h4-6jhm, and all four project-owned lockfiles, including .config/project-tool/package-lock.json. This finding blocks the inherited code:megalinter job.
+    # Note: GitLab's page for the Copier update commit. It changes two files: .copier-answers.yml moves from 1.0.0 to 1.0.1, and .config/jq/Taskfile.yml is the one marker file the test release 1.0.1 adds.
+    # Note: The project's scanner settings and its four lockfiles are not in the commit: the update leaves them alone.
+    # Copy: task copier:update
+    And the developer updates the framework through Copier
+    # Note: After the update, the project's code:megalinter job fails. The scanner's command still leaves the framework tools out, with --experimental-exclude=.config/ansible, .config/codeceptjs and the others.
+    # Note: OSV reads only the four lockfiles the project owns, .config/project-tool included, and reports lodash 4.17.20 and advisory GHSA-35jh-r3h4-6jhm in each one.
+    # Copy: task megalinter
     Then OSV reports every project-owned copy of the vulnerable package
-    # Chapter: Framework updates preserve the boundary
-    # Note: GitLab shows version 1.0.1 after a real Copier update. Project settings and dependency files survive.
-    When the developer updates the framework through Copier
-    # Note: GitLab shows the same OSV advisory and project lockfiles after the Copier update. These project vulnerabilities still block the job.
-    Then OSV keeps the same ownership boundary after the update
-    # Note: The project fixtures have been removed. GitLab shows that the vulnerable inherited CodeceptJS fixture is still there.
-    When the developer removes the project dependency fixtures
-    # Note: GitLab shows No issues found again. Only vulnerable framework tools remain, so the generated project's pipeline succeeds.
-    Then the project's empty OSV scan passes with a clear result
+    # Chapter: Without vulnerable dependencies of its own, the project passes
+    # Note: GitLab's page for the commit "test: remove project dependencies": the four project lockfiles are deleted. The framework tools keep their vulnerable lockfiles.
+    When the developer removes the vulnerable dependencies from the project's own locations
+    # Note: The same job now passes. OSV still leaves the framework tools out, says "No package sources found" for the project, then "No issues found". MegaLinter ends on "Successfully linted all files without errors" and GitLab marks the job Passed.
+    # Note: The framework tools are still vulnerable: as the first chapter showed, that is the toolbox's job.
+    # Copy: task megalinter
+    Then the project's OSV scan leaves the framework tools to the toolbox and passes
 
   @task-progress
   Scenario: a worker reports real task progress and preserves failures
-    # Note: GitLab shows the disposable Taskfile.yml: the probe prints "native task output", then exits with an error.
+    # Note: GitLab shows the disposable Taskfile.yml: its probe task prints "native task output", then exits with code 7.
     Given a task emits real output before failing
-    # Note: The real GitLab job is Failed. The test checks that the worker forwards every byte of the task output and preserves its failure.
-    When the worker reports the output and keeps the failed task status
-    # Note: Delete the disposable project, then read its saved CI trace. The real task output and failure remain available, with fixture credentials redacted.
-    Then the failed CI job trace remains available after project cleanup
+    # Note: The real CI job runs that task through the test suite's worker, the helper that streams a task's output back while the task runs. The log shows "native task output", then Task's own "exit status 7".
+    # Note: The worker reports "Worker task exit code: 201", the code Task gives a failed command, and GitLab marks the job Failed: the failure is not swallowed.
+    Then the CI job log shows the worker's real task output and keeps the job failed
 
   @framework-dependencies
   Scenario: the toolbox ships dependencies that pass its own OSV scan
-    # Note: GitLab shows the toolbox's CodeceptJS manifest. The test reads the dependency versions from its actual shipped lockfile.
-    Given the maintainer checks the toolbox's shipped dependency versions
-    # Note: The toolbox's base configuration has no framework exclusion. Its tools are scanned against the live vulnerability database.
-    When the maintainer uses the toolbox's own scanner configuration
-    # Note: GitLab shows the OSV job log with the shipped CodeceptJS lockfile and No issues found. The toolbox scans its own dependencies and passes.
-    Then the toolbox's dependency scan reports no known vulnerabilities
+    # Note: GitLab's page for the toolbox's own code:megalinter job, with OSV as its only scanner, checked against the live vulnerability database. The scanner's command leaves no .config folder out.
+    # Note: The Scanned lines read the dependency file of every tool the toolbox ships. OSV answers "No issues found", the summary marks osv-scanner green, and GitLab marks the job Passed. Package counts show as <count>: they change with every dependency update.
+    # Copy: task megalinter
+    Then the toolbox's own OSV scan reads every dependency file it ships and finds no known vulnerability
 
   @retired-linters
   Scenario: a framework update removes retired linters and preserves project controls

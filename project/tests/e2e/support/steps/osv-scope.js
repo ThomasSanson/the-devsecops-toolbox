@@ -9,13 +9,14 @@ const {
 } = require('../helpers/copierRender')
 const { runTask } = require('../helpers/taskProcess')
 const { OsvCiEvidence } = require('../helpers/osvCiEvidence')
-const { renderPreFrame } = require('../helpers/capturedOutput')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I, GitLabUserPage } = inject()
 
 const FIXTURES = path.join(__dirname, '../../fixtures/osv-scope')
+const OUTPUT = path.join(__dirname, '../../_output')
 const BASE_CONFIG = '.config/megalinter/config.base.yml'
 const PROJECT_CONFIG = '.config/megalinter/config.yml'
+const ANSWERS = '.config/devsecops/.copier-answers.yml'
 const REPORTS = 'megalinter-reports/linters_logs'
 const ADVISORY = 'GHSA-35jh-r3h4-6jhm'
 const PROJECT_LOCKS = [
@@ -87,7 +88,7 @@ function configureScanner () {
     database, path.join(FIXTURES, `${ADVISORY}.json`)])
 }
 
-async function scan () {
+async function localScan () {
   const { raw: output, exitCode } = await runTask(state.project,
     ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=ml-osv-${process.pid}-${sequence++}`], { timeout: 300000 })
   const file = `${REPORTS}/REPOSITORY_OSV_SCANNER-${exitCode === 0 ? 'SUCCESS' : 'ERROR'}.log`
@@ -96,13 +97,16 @@ async function scan () {
   return { exitCode, output, report, file }
 }
 
-async function showReport (name, result) {
-  const directory = path.join(__dirname, '../../_output/osv-reports')
-  fs.mkdirSync(directory, { recursive: true })
-  fs.writeFileSync(path.join(directory, `${name}.log`), result.report)
-  await state.ci.publish(state.project, `test: ${name.replace(/-/g, ' ')}`)
+// The same scan twice, at the same time: `task megalinter` here, and the
+// generated code:megalinter job on GitLab for the last published commit. The
+// CI job must read the same files and reach the same verdict.
+async function scan () {
+  const pipeline = state.ci.run()
+  pipeline.catch(() => {}) // awaited below, once the local scan is done
+  const result = await localScan()
+  await pipeline
   await state.ci.scan(result)
-  await state.ci.reportFrame(name, result)
+  return result
 }
 
 function assertProjectFindings (result) {
@@ -111,6 +115,10 @@ function assertProjectFindings (result) {
   for (const file of PROJECT_LOCKS) {
     assert.ok(result.report.includes(`Scanned ${file} file`), `Project dependency must be scanned: ${file}`)
   }
+  assertFrameworkLeftToToolbox(result)
+}
+
+function assertFrameworkLeftToToolbox (result) {
   for (const tool of state.tools) {
     assert.ok(!result.report.includes(`Scanned .config/${tool}/package-lock.json file`), `Inherited tool must be excluded: ${tool}`)
   }
@@ -145,26 +153,22 @@ storyboardStep(Given, 'every framework tool in a generated project contains the 
   assert.ok(state.tools.includes('codeceptjs') && state.tools.includes('commitlint'))
   assert.ok(listing.includes('.config/codeceptjs/package-lock.json') && lock.includes('4.17.20'))
   await ciEvidence().publish(state.project, 'test: vulnerable framework tools')
-  await state.ci.repositoryFrame('framework-lockfiles', '.config/codeceptjs/package-lock.json', '4.17.20')
+  await state.ci.fileFrame('framework-lockfiles', '.config/codeceptjs/package-lock.json', '4.17.20')
 })
 
-storyboardStep(When, "the generated project's OSV scan leaves inherited tools to the toolbox", async () => {
-  const result = await scan()
-  assert.equal(result.exitCode, 0, `Inherited framework tools must not block a generated project:\n${result.report}`)
-  assert.ok(/no package sources found/i.test(result.report), 'The report must explain that there is no project dependency to scan')
-  assert.ok(result.output.includes('Successfully linted all files without errors'), 'An empty scan must be a clean success, without ignored errors')
-  assert.ok(result.report.includes('No issues found'), 'OSV must return its native clean verdict for an empty scan')
-  await showReport('inherited-tools-excluded', result)
-})
-
+// The toolbox's own configuration scans every tool it ships. Off camera, the
+// project's configuration comes back in a commit of its own, so the next
+// commit card shows the developer's change alone.
 storyboardStep(Then, "the toolbox's OSV scan reports the same vulnerable framework tools", async () => {
   fs.copyFileSync(`/workspace/${BASE_CONFIG}`, path.join(state.project, BASE_CONFIG))
+  await state.ci.publish(state.project, "test: use the toolbox's scanner configuration")
   const result = await scan()
   assert.notEqual(result.exitCode, 0, 'The toolbox must block vulnerable framework tools')
   assert.ok(result.report.includes(ADVISORY))
   for (const tool of state.tools) assert.ok(result.report.includes(`Scanned .config/${tool}/package-lock.json file`), `The toolbox must scan ${tool}`)
-  await showReport('toolbox-tools-reported', result)
+  await state.ci.osvLogFrame('toolbox-tools-reported', { verdict: ADVISORY })
   fs.writeFileSync(path.join(state.project, BASE_CONFIG), state.base)
+  await state.ci.publish(state.project, 'test: restore the project scanner configuration')
 })
 
 storyboardStep(When, 'the developer adds vulnerable dependencies in project-owned locations', async () => {
@@ -173,51 +177,49 @@ storyboardStep(When, 'the developer adds vulnerable dependencies in project-owne
   assert.ok(!fs.existsSync(path.join(state.project, 'project')), 'Root dependencies must work with project mode disabled')
   for (const file of PROJECT_LOCKS) assert.ok(listing.includes(file))
   await state.ci.publish(state.project, 'test: add project dependencies')
-  await state.ci.repositoryFrame('project-lockfiles', '.config/project-tool/package-lock.json', '4.17.20')
+  await state.ci.commitFrame('project-lockfiles', PROJECT_LOCKS, { change: 'new' })
+})
+
+// The update keeps the project's own scanner settings and dependency files,
+// and the inherited exclusions of the framework tools.
+storyboardStep(When, 'the developer updates the framework through Copier', async () => {
+  state.override = fs.readFileSync(path.join(state.project, PROJECT_CONFIG), 'utf8')
+  run('git', ['add', '-A'])
+  run('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'test: customize project scanners'])
+  run('task', ['copier:update', `TASK_COPIER_ANSWER_FILE=${ANSWERS}`,
+    'TASK_COPIER_CLI_OPTS=--defaults --skip-tasks --vcs-ref 1.0.1'])
+  assert.equal(fs.readFileSync(path.join(state.project, PROJECT_CONFIG), 'utf8'), state.override)
+  for (const file of PROJECT_LOCKS) assert.ok(fs.existsSync(path.join(state.project, file)))
+  const answers = run('grep', ['^_commit:', ANSWERS])
+  const argumentsBlock = run('grep', ['-A', '13', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
+  assert.ok(answers.includes('1.0.1') && argumentsBlock.includes('--experimental-exclude=.config/codeceptjs'))
+  await state.ci.publish(state.project, 'test: update the framework through Copier')
+  await state.ci.commitFrame('copier-keeps-osv-scope', [ANSWERS, '.config/jq/Taskfile.yml'], { height: 900 })
 })
 
 storyboardStep(Then, 'OSV reports every project-owned copy of the vulnerable package', async () => {
   const result = await scan()
   assertProjectFindings(result)
-  await showReport('project-tools-reported', result)
+  await state.ci.osvLogFrame('project-tools-reported', { verdict: ADVISORY })
 })
 
-storyboardStep(When, 'the developer updates the framework through Copier', async () => {
-  state.override = fs.readFileSync(path.join(state.project, PROJECT_CONFIG), 'utf8')
-  run('git', ['add', '-A'])
-  run('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'test: customize project scanners'])
-  run('task', ['copier:update', 'TASK_COPIER_ANSWER_FILE=.config/devsecops/.copier-answers.yml',
-    'TASK_COPIER_CLI_OPTS=--defaults --skip-tasks --vcs-ref 1.0.1'])
-  assert.equal(fs.readFileSync(path.join(state.project, PROJECT_CONFIG), 'utf8'), state.override)
-  for (const file of PROJECT_LOCKS) assert.ok(fs.existsSync(path.join(state.project, file)))
-  const answers = run('grep', ['^_commit:', '.config/devsecops/.copier-answers.yml'])
-  const argumentsBlock = run('grep', ['-A', '13', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
-  assert.ok(answers.includes('1.0.1') && argumentsBlock.includes('--experimental-exclude=.config/codeceptjs'))
-  await state.ci.publish(state.project, 'test: update the framework through Copier')
-  await state.ci.repositoryFrame('copier-keeps-osv-scope', '.config/devsecops/.copier-answers.yml', '1.0.1')
-})
-
-storyboardStep(Then, 'OSV keeps the same ownership boundary after the update', async () => {
-  const result = await scan()
-  assertProjectFindings(result)
-  await showReport('updated-project-tools-reported', result)
-})
-
-storyboardStep(When, 'the developer removes the project dependency fixtures', async () => {
+storyboardStep(When, "the developer removes the vulnerable dependencies from the project's own locations", async () => {
   PROJECT_LOCKS.forEach(file => fs.unlinkSync(path.join(state.project, file)))
   const listing = run('sh', ['-c', 'find .config -name package-lock.json | sort'])
   assert.ok(listing.includes('.config/codeceptjs/package-lock.json'))
-  await state.ci.publish(state.project, 'test: remove project dependency fixtures')
-  await state.ci.repositoryFrame('only-framework-lockfiles', '.config/codeceptjs/package-lock.json', '4.17.20')
+  await state.ci.publish(state.project, 'test: remove project dependencies')
+  await state.ci.commitFrame('project-lockfiles-removed', PROJECT_LOCKS, { change: 'deleted' })
 })
 
-storyboardStep(Then, "the project's empty OSV scan passes with a clear result", async () => {
+storyboardStep(Then, "the project's OSV scan leaves the framework tools to the toolbox and passes", async () => {
+  assert.ok(run('cat', ['.config/codeceptjs/package-lock.json']).includes('4.17.20'), 'The framework tools must still be vulnerable')
   const result = await scan()
-  assert.equal(result.exitCode, 0, result.report)
-  assert.ok(/no package sources found/i.test(result.report))
-  assert.ok(result.output.includes('Successfully linted all files without errors'), 'The empty scan must stay a clean success after Copier updates')
-  assert.ok(result.report.includes('No issues found'), 'OSV must still return its native clean verdict after Copier updates')
-  await showReport('empty-project-scan', result)
+  assert.equal(result.exitCode, 0, `Inherited framework tools must not block a generated project:\n${result.report}`)
+  assert.ok(/no package sources found/i.test(result.report), 'The report must explain that there is no project dependency to scan')
+  assert.ok(result.output.includes('Successfully linted all files without errors'), 'An empty scan must be a clean success, without ignored errors')
+  assert.ok(result.report.includes('No issues found'), 'OSV must return its native clean verdict for an empty scan')
+  assertFrameworkLeftToToolbox(result)
+  await state.ci.osvLogFrame('empty-project-scan', { verdict: 'No issues found' })
 })
 
 storyboardStep(Given, 'a task emits real output before failing', async () => {
@@ -226,10 +228,14 @@ storyboardStep(Given, 'a task emits real output before failing', async () => {
   const taskfile = "version: '3'\ntasks:\n  probe:\n    silent: true\n    cmds:\n      - printf 'native task output\\n' >&2\n      - exit 7\n"
   fs.writeFileSync(path.join(state.project, 'Taskfile.yml'), taskfile)
   await ciEvidence('e2e-task-progress').publishTask(state.project)
-  await state.ci.repositoryFrame('failing-task', 'Taskfile.yml', 'native task output')
+  await state.ci.fileFrame('failing-task', 'Taskfile.yml', 'native task output')
 })
 
-storyboardStep(When, 'the worker reports the output and keeps the failed task status', async () => {
+// The worker runs the task here first, then in the real CI job. The card is
+// that job's log; its twins: every byte the task printed reached the worker,
+// the CI worker printed the same bytes and exit code, and the CI trace saved
+// before the disposable project goes keeps both, without fixture credentials.
+storyboardStep(Then, "the CI job log shows the worker's real task output and keeps the job failed", async () => {
   const progress = []
   const result = await new Promise((resolve, reject) => {
     const worker = new Worker(`
@@ -254,59 +260,43 @@ storyboardStep(When, 'the worker reports the output and keeps the failed task st
   assert.notEqual(result.exitCode, 0, 'Task failures must remain failures')
   assert.ok(result.raw.includes('native task output'))
   assert.ok(result.raw.includes('exit status 7'))
-  state.taskResult = result
   await state.ci.taskResult(result)
-  await state.ci.pipelineFrame('failed-task-progress')
-})
+  await state.ci.taskLogFrame('failed-task-progress')
 
-storyboardStep(Then, 'the failed CI job trace remains available after project cleanup', async () => {
   const evidence = state.ci
-  const file = path.join(__dirname, '../../_output/osv-reports', `ci-${evidence.job.id}-trace.log`)
+  const file = path.join(OUTPUT, 'osv-reports', `ci-${evidence.job.id}-trace.log`)
   const credentials = [...Object.values(evidence.headers), ...Object.values(evidence.rootHeaders)]
   state.ci = null
   await evidence.close()
   assert.equal(fs.existsSync(evidence.directory), false, 'The disposable checkout must be removed')
   assert.ok(fs.existsSync(file), 'The CI job trace must survive project cleanup')
   const trace = fs.readFileSync(file, 'utf8')
+  const verdict = `Worker task exit code: ${result.exitCode}`
   assert.ok(trace.includes('native task output'), 'The saved trace must contain the actual task output')
-  assert.ok(trace.includes(`Worker task exit code: ${state.taskResult.exitCode}`), 'The saved trace must preserve the failure')
+  assert.ok(trace.includes(verdict), 'The saved trace must preserve the failure')
   for (const credential of credentials) assert.ok(!trace.includes(credential), 'Saved diagnostics must redact fixture credentials')
-  // Keep timestamps in the saved diagnostic. The picture shows the complete,
-  // contiguous task output, without GitLab's per-run clock and stream prefix.
   const output = trace.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \d{2}[OE] /gm, '').replace(/\r/g, '')
-  const taskOutput = evidence.redact(state.taskResult.raw).replace(/\r/g, '').trim()
-  const start = output.indexOf(taskOutput)
-  const verdict = `Worker task exit code: ${state.taskResult.exitCode}`
-  const end = output.indexOf(verdict, start)
-  assert.ok(start >= 0 && end >= start, 'The saved trace must preserve the complete task output and verdict together')
-  await renderPreFrame(I, 'failed-job-trace', output.slice(start, end + verdict.length))
+  const start = output.indexOf(evidence.redact(result.raw).replace(/\r/g, '').trim())
+  assert.ok(start >= 0 && output.indexOf(verdict, start) >= start, 'The saved trace must preserve the complete task output and verdict together')
 })
 
-storyboardStep(Given, "the maintainer checks the toolbox's shipped dependency versions", async () => {
+// The toolbox itself, scanned by its own configuration against the live
+// vulnerability database: no exclusion of the tools it ships.
+storyboardStep(Then, "the toolbox's own OSV scan reads every dependency file it ships and finds no known vulnerability", async () => {
   state.project = prepareVersionedTemplate()
   state.dirs.push(state.project)
-  state.base = fs.readFileSync(path.join(state.project, BASE_CONFIG), 'utf8')
-  assert.ok(!state.base.includes('--experimental-exclude=.config/'), 'The toolbox must keep its own tools in the scan')
+  const base = fs.readFileSync(path.join(state.project, BASE_CONFIG), 'utf8')
+  assert.ok(!base.includes('--experimental-exclude=.config/'), 'The toolbox must keep its own tools in the scan')
   fs.appendFileSync(path.join(state.project, PROJECT_CONFIG), '\nENABLE_LINTERS: [REPOSITORY_OSV_SCANNER]\nSARIF_REPORTER: false\nOUTPUT_DETAIL: detailed\n')
   const code = 'const lock = require("./.config/codeceptjs/package-lock.json"); for (const [file, pkg] of Object.entries(lock.packages)) if (/\\/(axios|brace-expansion|fast-uri|ip-address|multer|undici)$/.test(file)) console.log(file + ": " + pkg.version)'
-  const versions = run('node', ['--eval', code])
-  assert.ok(versions.includes('node_modules/undici:'))
-  await ciEvidence('e2e-framework-dependencies').publish(state.project, 'test: check the shipped dependency versions')
-  await state.ci.repositoryFrame('shipped-dependency-versions', '.config/codeceptjs/package.json', 'codeceptjs')
-})
-
-storyboardStep(When, "the maintainer uses the toolbox's own scanner configuration", async () => {
-  state.scan = await scan()
-  fs.writeFileSync(path.join(__dirname, '../../_output/framework-osv.log'), state.scan.report)
-  fs.writeFileSync(path.join(__dirname, '../../_output/framework-megalinter.log'), state.scan.output)
-  assert.ok(state.scan.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
-  await state.ci.repositoryFrame('framework-scanner-config', BASE_CONFIG, '--no-resolve', {
-    focus: '//*[contains(@class, "file-content")]//span[contains(text(), "--no-resolve")]'
-  })
-})
-
-storyboardStep(Then, "the toolbox's dependency scan reports no known vulnerabilities", async () => {
-  assert.equal(state.scan.exitCode, 0, `The toolbox must fix its dependency vulnerabilities:\n${state.scan.report}`)
-  assert.ok(state.scan.report.includes('No issues found'), 'OSV must report its native clean verdict')
-  await showReport('framework-dependencies-clean', state.scan)
+  assert.ok(run('node', ['--eval', code]).includes('node_modules/undici:'))
+  await ciEvidence('e2e-framework-dependencies').publish(state.project, 'test: scan the shipped dependencies')
+  const result = await scan()
+  fs.writeFileSync(path.join(OUTPUT, 'framework-osv.log'), result.report)
+  fs.writeFileSync(path.join(OUTPUT, 'framework-megalinter.log'), result.output)
+  assert.ok(result.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
+  assert.equal(result.exitCode, 0, `The toolbox must fix its dependency vulnerabilities:\n${result.report}`)
+  assert.ok(result.report.includes('No issues found'), 'OSV must report its native clean verdict')
+  // A Renovate bump changes how many packages a lockfile holds, not what the card shows.
+  await state.ci.osvLogFrame('framework-dependencies-clean', { verdict: 'No issues found', masks: [[/found \d+ packages?/, 'found <count> packages']] })
 })
