@@ -1,6 +1,5 @@
 /* global inject NodeFilter */
 const { I } = inject()
-const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
 /**
  * GitLab project SETTINGS pages configured by `task devsecops:init` —
@@ -69,8 +68,7 @@ async function scrollToProtectedBranches () {
 
 class GitLabSettingsPage {
   // Navigate + mask WITHOUT asserting — the storyboard steps capture a masked
-  // frame and assert it against their own per-scenario baseline; the verify*
-  // methods add the flat assert on top for the non-storyboard callers.
+  // frame and assert it against their own per-scenario baseline.
   async gotoMergeSettingsAndMask (projectPath, projectName) {
     await I.amOnPage(`/${projectPath}/-/settings/merge_requests`)
     await I.waitForElement('body', 30)
@@ -78,11 +76,6 @@ class GitLabSettingsPage {
     await maskLoggedInChrome(projectName)
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
-  }
-
-  async verifyMergeSettingsVisual (projectPath, projectName, screenshotName) {
-    await this.gotoMergeSettingsAndMask(projectPath, projectName)
-    await assertPageVisualMatch(I, screenshotName)
   }
 
   async gotoProtectedBranchAndMask (projectPath, projectName) {
@@ -94,11 +87,6 @@ class GitLabSettingsPage {
     await maskLoggedInChrome(projectName)
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
-  }
-
-  async verifyProtectedBranchVisual (projectPath, projectName, screenshotName) {
-    await this.gotoProtectedBranchAndMask(projectPath, projectName)
-    await assertPageVisualMatch(I, screenshotName)
   }
 }
 

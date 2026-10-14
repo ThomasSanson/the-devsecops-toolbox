@@ -1,6 +1,5 @@
 /* global inject */
 const { I } = inject()
-const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
 // GitLab 18: revoked tokens stay visible in an "Inactive" section for 30 days.
 // Remove that section before the screenshot, neutralise dynamic dates
@@ -56,23 +55,12 @@ class GitLabAccessTokenPage {
     await I.wait(2)
   }
 
-  async verifyTokenWithMaintainerRole (tokenName) {
-    await I.waitForText(tokenName, 10)
-    await I.see('Maintainer')
-  }
-
   // Navigate + mask WITHOUT asserting — the storyboard step captures a masked
   // frame and asserts it against its own per-scenario baseline.
   async gotoAccessTokensAndMask (projectPath) {
     await this.navigateToAccessTokenSettings(projectPath)
     await I.waitForElement('body', 30)
     await maskAccessTokens()
-  }
-
-  async verifyVisualRegression (screenshotName) {
-    await I.waitForElement('body', 30)
-    await maskAccessTokens()
-    await assertPageVisualMatch(I, screenshotName)
   }
 
   async gotoCiCdAndMask (projectPath) {
@@ -95,17 +83,6 @@ class GitLabAccessTokenPage {
     // Expand Variables section
     await I.click('Expand', '#js-cicd-variables-settings')
     await I.wait(2)
-  }
-
-  async verifyCiCdVariable (variableName) {
-    await I.waitForText(variableName, 10, '#js-cicd-variables-settings')
-  }
-
-  async verifyVisualRegressionCiCd (screenshotName) {
-    await I.scrollTo('[data-testid="ci-variable-table"]')
-    await I.wait(1)
-    await maskCiCd()
-    await assertPageVisualMatch(I, screenshotName)
   }
 }
 

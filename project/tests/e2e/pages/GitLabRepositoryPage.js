@@ -1,6 +1,5 @@
 /* global inject NodeFilter */
 const { I } = inject()
-const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
 /**
  * GitLab repository views along the init journey — visual regression of the
@@ -11,14 +10,8 @@ const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
  * reproducible at tolerance:0.
  */
 class GitLabRepositoryPage {
-  async _captureMasked (projectName, screenshotName) {
-    await this.maskVolatile(projectName)
-    await assertPageVisualMatch(I, screenshotName)
-  }
-
-  // Neutralise the dynamic content only (no assert) — reused by the agent-mode
-  // storyboard, which grabs a masked PNG of the page as one panel of a larger
-  // stitched image instead of asserting the page on its own.
+  // Neutralise the dynamic content only (no assert): the storyboard steps grab
+  // a masked PNG of the page as one card and assert it against its baseline.
   async maskVolatile (projectName) {
     await I.waitForElement('body', 30)
     await I.wait(2)
@@ -95,21 +88,6 @@ class GitLabRepositoryPage {
     }, { projectName })
     await I.moveCursorTo('body', 1, 1)
     await I.wait(0.5)
-  }
-
-  async verifyEmptyProjectVisual (projectPath, projectName, screenshotName) {
-    await I.amOnPage(`/${projectPath}`)
-    await this._captureMasked(projectName, screenshotName)
-  }
-
-  async verifyProjectHomeVisual (projectPath, projectName, screenshotName) {
-    await I.amOnPage(`/${projectPath}`)
-    await this._captureMasked(projectName, screenshotName)
-  }
-
-  async verifyBranchesVisual (projectPath, projectName, screenshotName) {
-    await I.amOnPage(`/${projectPath}/-/branches`)
-    await this._captureMasked(projectName, screenshotName)
   }
 }
 

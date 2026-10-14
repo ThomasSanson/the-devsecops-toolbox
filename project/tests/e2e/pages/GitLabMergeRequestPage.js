@@ -1,6 +1,5 @@
 /* global inject MutationObserver */
 const { I } = inject()
-const { assertPageVisualMatch } = require('../support/helpers/pageVisual')
 
 /**
  * GitLab merge-request pages — visual regression of the MR Overview as a real
@@ -224,8 +223,7 @@ async function maskMergeRequestPage (projectName, { hideMergeWidget = false, kee
 class GitLabMergeRequestPage {
   // Navigate to the MR overview and neutralise its volatile content, WITHOUT
   // asserting — the storyboard steps grab a masked frame of the page and assert
-  // it against their own per-scenario baseline; verifyMergeRequestVisual adds
-  // the assert on top for the flat (non-storyboard) callers.
+  // it against their own per-scenario baseline.
   //
   // opts.hideMergeWidget (default true): a freshly opened MR renders the merge
   // widget mid-transition (no pipeline yet / checking) — hide it unless the MR
@@ -242,11 +240,6 @@ class GitLabMergeRequestPage {
     await maskMergeRequestPage(projectName, { hideMergeWidget, keepContext })
     await I.moveCursorTo('body', 1, 1)
     await I.wait(1)
-  }
-
-  async verifyMergeRequestVisual (projectPath, iid, screenshotName, projectName) {
-    await this.gotoAndMask(projectPath, iid, projectName)
-    await assertPageVisualMatch(I, screenshotName)
   }
 
   // The Changes tab — the page a reviewer opens to see WHICH files a merge
