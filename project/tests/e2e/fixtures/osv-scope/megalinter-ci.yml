@@ -16,7 +16,7 @@ code:megalinter:
   rules:
     - when: always
 
-# Other checks are covered by the full quality-gate scenario.
+# Other checks run in the full generated pipeline of @install-complete.
 code:project: &other_checks
   rules:
     - when: never

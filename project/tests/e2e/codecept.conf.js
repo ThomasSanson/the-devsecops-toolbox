@@ -83,7 +83,6 @@ exports.config = {
       './support/steps/init-baseline.js',
       './support/steps/first-run-help.js',
       './support/steps/release-toggle.js',
-      './support/steps/quality-gate.js',
       './support/steps/retired-linters.js',
       './support/steps/osv-scope.js',
       './support/steps/daily-contribution.js',
