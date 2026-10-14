@@ -21,6 +21,8 @@ function freshRequest (method, url, { body, headers = {}, retries = 5, delay = 3
       agent: false
     }, (res) => {
       let respBody = ''
+      // Decoded as one stream: a character split across two chunks stays whole.
+      res.setEncoding('utf8')
       res.on('data', chunk => { respBody += chunk })
       res.on('end', () => {
         if (raw) {

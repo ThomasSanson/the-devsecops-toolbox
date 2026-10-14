@@ -323,11 +323,16 @@ async function listPipelineSchedules (projectName, headers) {
   )
 }
 
+// The twins of the gitlabCard pages, which take the same project argument as
+// gitlabUrl: a bare name is the lambda user's project, a path with a slash is
+// used as is.
+const cardProject = (project) => encodeURIComponent(String(project).includes('/') ? project : projectPath(project))
+
 // Plain-text reads over the same fresh-connection client: a job log and a raw
 // file are not JSON. The twins of the job-log and file cards.
 async function getJobTrace (projectName, jobId, headers) {
   const res = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/jobs/${jobId}/trace`,
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/jobs/${jobId}/trace`,
     headers, { raw: true }
   )
   if (res.status >= 400) throw new Error(`Job ${jobId} trace: HTTP ${res.status}`)
@@ -336,7 +341,7 @@ async function getJobTrace (projectName, jobId, headers) {
 
 async function getRepositoryFile (projectName, filePath, ref, headers) {
   const res = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/files/` +
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/files/` +
       `${encodeURIComponent(filePath)}/raw?ref=${encodeURIComponent(ref)}`,
     headers, { raw: true }
   )
@@ -347,11 +352,12 @@ async function getRepositoryFile (projectName, filePath, ref, headers) {
 // Newest first, as GitLab's commits page lists them.
 async function listCommits (projectName, ref, headers) {
   const res = await freshGet(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/commits` +
+    `${BASE_URL}/api/v4/projects/${cardProject(projectName)}/repository/commits` +
       `?ref_name=${encodeURIComponent(ref)}&per_page=100`,
     headers
   )
-  return res.data || []
+  if (res.status >= 400) throw new Error(`Commits of ${ref}: HTTP ${res.status}`)
+  return res.data
 }
 
 module.exports = {
