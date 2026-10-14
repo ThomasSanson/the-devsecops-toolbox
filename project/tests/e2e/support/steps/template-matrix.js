@@ -24,9 +24,8 @@ const {
   UPDATE_MARKER
 } = require('../helpers/copierRender')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
-const { assertTextVisualMatch, renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
+const { renderTextInBrowser, ansiToHtml } = require('../helpers/textRender')
 const { renderPreFrame } = require('../helpers/capturedOutput')
-const { runTask } = require('../helpers/taskProcess')
 const { storyboardStep, addStoryboardFrame, capturePageFrame, captureElementFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
@@ -81,44 +80,6 @@ function toolboxPackageRule () {
   }
   return rule
 }
-
-// ============================================
-// GIVEN — render the template
-// ============================================
-
-Given('a versioned working-branch template with releases {string} and {string}', (v1, v2) => {
-  if (v1 !== '1.0.0' || v2 !== '1.0.1') {
-    throw new Error('The versioned template fixture publishes exactly releases 1.0.0 and 1.0.1')
-  }
-  template = prepareVersionedTemplate()
-  cleanupDirs.push(template)
-})
-
-Given('a project generated from the template at release {string}', (vcsRef) => {
-  rendered = renderProjectFromTemplate(template, vcsRef)
-  cleanupDirs.push(rendered)
-})
-
-Given('the project file {string} is customized with the marker {string}', (relative, marker) => {
-  fs.appendFileSync(renderedPath(relative), `\n${marker}\n`)
-  execSync(`git add -A && git commit --quiet --no-verify -m "test: customize ${relative}"`, { cwd: rendered })
-})
-
-// ============================================
-// WHEN — copier update
-// ============================================
-
-When('the project is updated to template release {string}', (vcsRef) => {
-  updateProject(rendered, vcsRef)
-})
-
-When('the project is updated to template release {string} with answers {string}', (vcsRef, answersSpec) => {
-  updateProject(rendered, vcsRef, parseAnswers(answersSpec))
-})
-
-// ============================================
-// THEN — rendered tree assertions
-// ============================================
 
 // Behavioural proof from the DOWNSTREAM (templatized) side: run the framework's
 // own `task renovate:dry-run` INSIDE a freshly generated project. The framework owns
@@ -212,146 +173,6 @@ function downgradeConfigAndExtract (dir) {
   execSync('git add -A && git commit -qm "downgrade every .config version"', { cwd: dir, env: gitEnv })
   lastExtract = runRenovateExtract(dir, gitEnv, version)
 }
-
-// ============================================
-// cspell override seam (issue #162) — a generated project's own vocabulary
-// lives in a skip-if-exists override (.config/cspell/config.project.json) that
-// copier update never clobbers; the framework base imports it so the two word
-// lists merge. Proven by running the project's REAL linter exactly as a developer
-// does — `cd <project> && task megalinter` (unmodified) — and keeping MegaLinter's
-// own coloured cspell verdict (green = recognised, red = unknown word).
-// ============================================
-
-const CSPELL_OVERRIDE = '.config/cspell/config.project.json'
-const CSPELL_SAMPLE = 'cspell-sample.md'
-let spellOutput = null
-let megalinterSeq = 0
-
-// MegaLinter lists the files to analyse via git, so the project must be a repo
-// (the sample itself need not be committed — MegaLinter scans the whole tree).
-function ensureGitRepo (dir) {
-  if (fs.existsSync(path.join(dir, '.git'))) return
-  execSync('git init -q && git config user.email e2e@test.local && git config user.name e2e && git add -A && git commit -q --no-verify -m "test: pristine render"', { cwd: dir })
-}
-
-// Run the project's REAL linter from inside `dir` — `task megalinter`, the exact
-// command a developer types from their project root — and keep MegaLinter's own
-// coloured cspell verdict: the "[cspell]" summary line (green ✅ / red ❌) plus any
-// "Unknown word" finding. MegaLinter runs every linter; we keep only the cspell
-// lines and mask the elapsed time it prints (the sole volatile bit). MegaLinter
-// exits non-zero when any linter fails — the cspell verdict is still in its
-// output, which is all this test reads. A per-run container name isolates workers.
-async function runMegalinterCspell (dir) {
-  // MegaLinter runs as a heavy (~multi-GB) docker image. In CI's EPHEMERAL dind the
-  // image is re-pulled per scenario (≈17×/job) and a pull occasionally stalls/fails,
-  // leaving the run dead mid "Pull complete …" with NO [cspell] verdict — proven by
-  // the surfaced tail on CI job 15048336134 (migration died at the image pull, 199s;
-  // survival, image warm, completed at 322s). Local never sees this: the host socket
-  // is mounted so the image is already cached. Retry once — the second attempt finds
-  // the image warm from the first — then fail loudly with MegaLinter's own tail.
-  let raw = ''
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const container = `ml-cspell-${process.pid}-${megalinterSeq++}`
-    const result = await runTask(dir, ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=${container}`])
-    raw = result.raw
-    if (/with \[cspell\]/.test(stripAnsiEscapeSequences(raw))) break
-  }
-  const plainRaw = stripAnsiEscapeSequences(raw)
-  // Still no "[cspell]" verdict after the retry: MegaLinter never ran cspell (0 files,
-  // or the image pull kept stalling under dind). That is an ENVIRONMENT failure, NOT
-  // "the project word was unrecognised" — returning empty here would make the contrast
-  // guard throw a LYING "Expected only X flagged". Fail loudly with MegaLinter's own
-  // tail so CI shows the real cause (pull stall, kept-files count, missing config).
-  if (!/with \[cspell\]/.test(plainRaw)) {
-    const lines = plainRaw.split('\n').filter(l => l.trim())
-    // Surface what MegaLinter actually DID after the (successful) image pull: its
-    // file-listing / linter summary (so we can tell "0 files" from a crash from a
-    // config error), then a wide tail. The earlier 40-line tail stopped at the docker
-    // pull (>40 layer lines) and hid the real cause.
-    const signals = lines.filter(l => /linted|files?\b|kept|\[spell\]|cspell|error|cannot connect|no such|fatal:|workspace|config/i.test(l)).slice(-50)
-    const tail = lines.slice(-60)
-    throw new Error(`MegaLinter produced no [cspell] verdict in ${dir} after 2 attempts — it ran but never emitted the cspell summary (0 files? crash? config not found?).\n--- MegaLinter signals ---\n${signals.join('\n')}\n--- MegaLinter tail ---\n${tail.join('\n')}`)
-  }
-  return raw.split('\n')
-    .filter(line => /with \[cspell\]|Unknown word/.test(stripAnsiEscapeSequences(line)))
-    .map(line => line.replace(/ - \([0-9.]+m?s\)/, '').replace(/[ \t]+$/, ''))
-    .join('\n')
-    .trim()
-}
-
-// The sample carries the project's OWN word AND an unregistered control word, so
-// the cspell run is a CONTRAST: the project word must be recognised (absent from
-// the errors) while the control is flagged. A bare green "successfully" would not
-// prove the project word specifically was the thing recognised.
-// cspell:ignore Zzunknownword
-const CSPELL_CONTROL = 'Zzunknownword'
-let cspellProjectWord = null
-
-function writeCspellSample (dir, word) {
-  cspellProjectWord = word
-  fs.writeFileSync(path.join(dir, CSPELL_SAMPLE), `${word}\n${CSPELL_CONTROL}\n`)
-}
-
-Given('the generated project carries a file with the unknown word {string}', (word) => {
-  writeCspellSample(rendered, word)
-  ensureGitRepo(rendered)
-})
-
-// Setup proof ("une image vaut mille mots"): the actual file MegaLinter is about
-// to spell-check, so the red verdict below is unambiguous — like renovate's
-// `$ cat project/Dockerfile` before its detection baseline.
-Then('the file under spell-check should visually match {string}', async (baselineName) => {
-  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${readRendered(CSPELL_SAMPLE).trimEnd()}`)
-})
-
-When('MegaLinter runs on the generated project', async () => {
-  spellOutput = await runMegalinterCspell(rendered)
-})
-
-// Setup proof for the survival half: the project-owned override AFTER copier
-// update — its own word is still there, so the green verdict below means "the
-// surviving word is recognised", not "the override was reset to empty".
-Then("the project's surviving cspell override should visually match {string}", async (baselineName) => {
-  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_OVERRIDE}\n${readRendered(CSPELL_OVERRIDE).trimEnd()}`)
-})
-
-Given('the project registers its own word {string} in its cspell override', (word) => {
-  const file = renderedPath(CSPELL_OVERRIDE)
-  if (!fs.existsSync(file)) {
-    throw new Error(`Project override "${CSPELL_OVERRIDE}" is missing from the generated project — the framework must ship it as a skip-if-exists seam`)
-  }
-  const override = JSON.parse(fs.readFileSync(file, 'utf8'))
-  override.words = [...new Set([...(override.words || []), word])]
-  fs.writeFileSync(file, JSON.stringify(override, null, 2) + '\n')
-  writeCspellSample(rendered, word)
-  execSync('git add -A && git commit --quiet --no-verify -m "test: register project cspell word"', { cwd: rendered })
-})
-
-When('MegaLinter runs on the updated project', async () => {
-  spellOutput = await runMegalinterCspell(rendered)
-})
-
-Then('MegaLinter\'s cspell should flag it, matching {string}', async (baselineName) => {
-  // Teeth: MegaLinter's cspell must actually report the unknown word — else the
-  // survival proof below (no spelling error) would be meaningless.
-  if (!/Unknown word/.test(stripAnsiEscapeSequences(spellOutput))) {
-    throw new Error(`Expected MegaLinter's cspell to flag an unknown word, got:\n${spellOutput}`)
-  }
-  await assertTextVisualMatch(I, baselineName, spellOutput)
-})
-
-Then('cspell should recognise the project word and flag only the control, matching {string}', async (baselineName) => {
-  // Contrast: the unregistered control MUST be flagged AND the project's own word
-  // must NOT be — proving the project word is genuinely recognised, not that
-  // cspell ignores everything. The baseline shows the input file and that verdict
-  // together, so the recognition reads at a glance.
-  const plain = stripAnsiEscapeSequences(spellOutput)
-  if (!plain.includes(`Unknown word (${CSPELL_CONTROL})`) || plain.includes(`Unknown word (${cspellProjectWord})`)) {
-    throw new Error(`Expected only "${CSPELL_CONTROL}" flagged and "${cspellProjectWord}" recognised, got:\n${spellOutput}`)
-  }
-  const sample = readRendered(CSPELL_SAMPLE).trimEnd()
-  await assertTextVisualMatch(I, baselineName, `$ cat ${CSPELL_SAMPLE}\n${sample}\n\n${spellOutput}`)
-})
 
 // ============================================
 // Renovate — the REAL validator on the rendered config. Shared by the
