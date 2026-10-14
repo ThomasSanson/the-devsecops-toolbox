@@ -363,15 +363,20 @@ const THEME = {
 
 // Two-column grid of uniform cards, one card per frame: the image sits
 // full-width at the top of the card in a fixed-height slot (scaled to fit,
-// letterboxed on the slot colour), the texts below. A frame WIDER than one
-// card (a whole GitLab page) takes a full row instead, so a 1440 px page shows
-// at ~99% rather than at half its size.
+// letterboxed on the slot colour), the texts below. A PAGE (a frame at least
+// wideFrom pixels wide: the suite's windows are 1024 and 1440) takes a full
+// row instead, 2 * 708 + 24 = 1440, so a 1440 px GitLab page shows at its real
+// size rather than at half of it. Output strips narrower than a page stay two
+// per row, shrunk into their card, so one long line never moves the layout.
+// The text under a full-row card wraps at wideTextW, a line a reader follows.
 const GRID = {
   cols: 2,
-  cardW: 700,
+  cardW: 708,
   pagePad: 32,
   gap: 24,
-  textPad: 18
+  textPad: 18,
+  wideFrom: 1000,
+  wideTextW: 900
 }
 
 /**
@@ -421,10 +426,10 @@ function render (outFile, options = {}) {
   // A full row: every column plus the gaps between them.
   const rowW = g.cols * g.cardW + (g.cols - 1) * g.gap
   const width = 2 * g.pagePad + rowW
-  // A frame wider than a card gets the whole row (see the grid notes below).
-  const isWide = (card) => pngSize(card.file).w > g.cardW
+  // A page gets the whole row (see the grid notes below).
+  const isWide = (card) => pngSize(card.file).w >= g.wideFrom
   const cardWOf = (card) => isWide(card) ? rowW : g.cardW
-  const textWOf = (card) => cardWOf(card) - 2 * g.textPad
+  const textWOf = (card) => Math.min(cardWOf(card), g.wideTextW) - 2 * g.textPad
   const parts = []
 
   const text = (str, x, yy, { size = 14, fill = t.text, font = t.sans, weight = 'normal', anchor = 'start', cls = '' } = {}) => {
@@ -556,8 +561,8 @@ function render (outFile, options = {}) {
   // text must stay crisp) and the slot HUGS it: a 3-line verdict gets a short
   // card, a 90-line one gets a tall card. Cards on the same ROW share the
   // row's tallest slot/text so the grid stays aligned without drowning short
-  // frames in letterbox. A wide card's box is the whole row, so a 1440x900
-  // GitLab page keeps its full height and shows at ~99%.
+  // frames in letterbox. A page's box is the whole row, so a 1440x900
+  // GitLab page keeps its full height and shows at 100%.
   const MAX_SLOT_H = 1100
   const slotOf = (card) => {
     const { w, h } = pngSize(card.file)
@@ -567,9 +572,9 @@ function render (outFile, options = {}) {
   // Cards flow in READING ORDER, two per row, and the two cards of a row are
   // fully UNIFORM: one shared image slot (as tall as the row's tallest frame —
   // a smaller frame is centred inside it) and one shared text zone starting at
-  // the same height in both cards. A WIDE frame (wider than one card) closes
-  // the half-filled row before it and takes a row of its own, full width, so
-  // a whole GitLab page is read at its real size. The top BADGE_BAND of every card is
+  // the same height in both cards. A PAGE (GRID.wideFrom) closes the
+  // half-filled row before it and takes a row of its own, full width, so a
+  // whole GitLab page is read at its real size. The top BADGE_BAND of every card is
   // reserved for the number badge so it never covers the first line of a
   // frame. A `# Chapter:` comment in the .feature closes the current row and
   // inserts a full-width chapter band — that is how a 20-card story keeps a
