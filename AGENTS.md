@@ -8,6 +8,8 @@ It provides a full GitLab CI/CD pipeline and a set of `task` workflows organised
 The framework tooling under `.config/` and the root `Taskfile.yml` are owned by the toolbox and evolve through `task copier:update`; do not edit them here.
 
 > **If `.agent/rules/framework-repo.md` exists, this *is* The DevSecOps Toolbox template repository itself — read that rule for the repository-specific structure, test suite and constraints.**
+>
+> **If `.config/devsecops/Taskfile.test.yml` does not exist, only the AI files were installed, not the framework: the `task` and `devsecops` commands here do not exist. Use the project's own build and test commands, and say which one you ran.**
 
 ---
 
