@@ -25,7 +25,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 | [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |
 | [`.agent/rules/naming-conventions.md`](.agent/rules/naming-conventions.md) | Naming and code-style conventions, script organisation, minimalism principle.                                               |
 | [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
-| [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Redirect terminal output to `./tmp/exec_logs.log`. Read the log if the terminal hangs instead of waiting.                   |
+| [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
 | [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Git conventions for this repository.                                                                                        |
 
 ---

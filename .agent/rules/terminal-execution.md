@@ -7,25 +7,20 @@ description: Redirect terminal output to a log file and check it when the termin
 
 ## ⛔ MANDATORY
 
-- ✅ ALWAYS redirect command output simultaneously to the terminal and to `./tmp/exec_logs.log`
-- ✅ ALWAYS use `tee` to preserve live terminal output while writing to the log file
-- ✅ If the terminal response seems to hang or does not return control within a reasonable time, proactively read `./tmp/exec_logs.log` to determine the execution status
+- ✅ Send a long command's output to a log and keep its exit code: `mkdir -p tmp && task test > tmp/exec_logs.log 2>&1`, then read the log.
+- ❌ Never pipe a task into `tee`, `tail` or `grep`: the pipe returns the last command's exit code, not the task's.
+- ✅ If the terminal response seems to hang or does not return control within a reasonable time, proactively read `tmp/exec_logs.log` to determine the execution status
 - ✅ NEVER wait indefinitely — check the log file instead of stalling
 
 ## Examples
 
 ```bash
-# ✅ CORRECT — redirect output to log file while keeping terminal output
-task test 2>&1 | tee ./tmp/exec_logs.log
-
-task deploy 2>&1 | tee ./tmp/exec_logs.log
-
-# ✅ If the terminal hangs, check the log file directly
-cat ./tmp/exec_logs.log
+mkdir -p tmp && task test > tmp/exec_logs.log 2>&1
+tail -n 50 tmp/exec_logs.log
 ```
 
 ## If the terminal hangs
 
 1. Stop waiting
-2. Read `./tmp/exec_logs.log` to determine whether the command succeeded, failed, or is still running
+2. Read `tmp/exec_logs.log` to determine whether the command succeeded, failed, or is still running
 3. Act on the actual status found in the log — do not retry blindly
