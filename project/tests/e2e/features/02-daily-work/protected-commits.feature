@@ -62,7 +62,7 @@ Feature: the framework guards what reaches the repository: clean commits and no 
     # Note: The branch has three commits now, and its last version holds no key. The scan still finds it, in the commit "chore: add the deploy key": deleting a file does not take it out of the history.
     # Copy: git log --oneline main.. && task betterleaks:scan-branch
     Then the branch scan still finds the key in the commit that added it
-    # Note: task git:clean-secrets removes the file from every commit of the history, not only from the last one. It warns that the operation is destructive and asks to continue, and the teammate answers yes.
+    # Note: task git:clean-secrets removes the file from every commit of the history, not only from the last one. It warns that the operation is destructive and lists its prerequisites. The yes piped into it answers its confirmation question.
     # Note: The branch is rewritten: "Ref 'refs/heads/feature/deploy' was rewritten". The key never left this laptop, so nothing on GitLab needs a force push.
     # Copy: task git:clean-secrets -- deploy-key.pem
     When the teammate rewrites the history with the framework's clean-secrets task
@@ -98,7 +98,7 @@ Feature: the framework guards what reaches the repository: clean commits and no 
     # Note: Two projects generated with different install answers. The Docker one keeps the Taskfile default, "docker". The binary one answered that its runners refuse privileged containers, and its .env.dist says TASK_BETTERLEAKS_MODE=binary.
     # Note: Each has a clean commit and a clean staged change, so no scan reads an empty input.
     Given clean framework projects use Docker and binary scanners from their install answers
-    # Note: The three scans, in each project. All six end with their own "No secrets detected" line.
+    # Note: The three scans, in each project. All six print their own "No secrets detected" line.
     # Copy: task betterleaks:scan-full && task betterleaks:protect && task betterleaks:scan-branch
     Then full, staged and branch scans pass on ordinary work in both modes
     # Chapter: A detected value stays out of the log
