@@ -298,6 +298,31 @@ const UPDATE_RUN_TIMEOUT_MS = 300000
 const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 const runMasks = () => [...COPIER_PIN_MASK, [new RegExp(global.journeyProjectName, 'g'), 'project']]
 
+// GitLab's diff pages pin their file list, their header and each file's
+// header with position: sticky. At the top of the page a sticky element sits
+// exactly where a static one would, but Chrome paints it on a layer of its own,
+// snapped to the pixel grid on its own: one pixel up or down from one run to
+// the next. A diff card opens in its own tab, where these panels are static
+// from the first line of the page, before GitLab's scripts measure them (made
+// static afterwards, they sent the file list's scroller to the wrong file).
+const STICKY_PANELS = '.diff-tree-list, .file-title, .rd-diff-file-header-sticky, .merge-request-sticky-header-wrapper'
+function diffPageTab (fn) {
+  return inNewTab(I, async () => {
+    await I.usePlaywrightTo('keep the sticky diff panels in the page flow', async ({ page }) => {
+      await page.addInitScript((css) => {
+        const add = () => {
+          const style = document.createElement('style')
+          style.textContent = css
+          document.documentElement.appendChild(style)
+        }
+        if (document.documentElement) add()
+        else new MutationObserver((_, observer) => { if (document.documentElement) { observer.disconnect(); add() } }).observe(document, { childList: true })
+      }, `${STICKY_PANELS} { position: static !important }`)
+    })
+    return fn()
+  })
+}
+
 // The main branch's head when the story opens: nobody may move it.
 let mainHeadSha = null
 
@@ -416,11 +441,11 @@ storyboardStep(Given, "a developer's toolbox project sits on GitLab with only it
 })
 
 storyboardStep(Given, 'the developer has pushed their own spelling word and their own task to the main branch', async () => {
-  await gitlabFrame(I, 'developer-commit', gitlabUrl.commit(global.journeyProjectName, mainHeadSha), {
+  await diffPageTab(() => gitlabFrame(I, 'developer-commit', gitlabUrl.commit(global.journeyProjectName, mainHeadSha), {
     waitText: 'No related merge requests found',
     height: 1000,
     prepare: () => I.waitForFunction(() => document.querySelectorAll('diff-file details[open]').length === 2, 30)
-  })
+  }))
   const diff = await projectApi(`/repository/commits/${mainHeadSha}/diff`)
   const paths = diff.map(d => d.new_path).sort()
   if (JSON.stringify(paths) !== JSON.stringify(['.config/cspell/config.json', TASK_FILE])) {
@@ -448,7 +473,7 @@ storyboardStep(When, 'the developer asks for the new toolbox release from the ma
 })
 
 storyboardStep(Then, "GitLab holds a merge request that moves the project to the new release and gives the developer's word a file of its own", async () => {
-  await inNewTab(I, () => mergeRequestChangesFrame('merge-request-changes', Object.keys(UPDATE_CHANGES), {
+  await diffPageTab(() => mergeRequestChangesFrame('merge-request-changes', Object.keys(UPDATE_CHANGES), {
     fold: FOLDED_DIFFS,
     focus: '.config/cspell/config.project.json'
   }))
@@ -491,7 +516,7 @@ storyboardStep(When, 'the developer turns the Ansible option on and pushes the r
 
 storyboardStep(Then, 'the same merge request now also brings the Ansible tooling', async () => {
   const paths = [...Object.keys(UPDATE_CHANGES), ...ANSIBLE_CHANGES]
-  await inNewTab(I, () => mergeRequestChangesFrame('merge-request-ansible', paths))
+  await diffPageTab(() => mergeRequestChangesFrame('merge-request-ansible', paths))
   const changes = await mergeRequestChanges(paths)
   const listed = changes.map(c => c.new_path).sort()
   if (JSON.stringify(listed) !== JSON.stringify([...paths].sort())) {
