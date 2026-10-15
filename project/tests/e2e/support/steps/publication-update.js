@@ -69,6 +69,9 @@ const SETUP_TIMEOUT = 600000
 // command is typed in, the way a CI job has one. It also reads the merged main
 // branch back for the twins of the GitLab cards.
 const CHECKOUT_DIR = '/tmp/publication-update-checkout'
+// How long the merge request may take to settle as merged, and how often to ask.
+const MERGE_DEADLINE_MS = 120000
+const MERGE_POLL_SECONDS = 2
 
 // What the 1.0.1 release changes, one file per audience:
 //   - the publication floor the project HAS, and must receive;
@@ -379,7 +382,7 @@ async function assertOnlyTheSpine (what) {
  * catch the header halfway.
  */
 async function waitForMerged (iid) {
-  const deadline = Date.now() + 120000
+  const deadline = Date.now() + MERGE_DEADLINE_MS
   let mr = null
   while (Date.now() < deadline) {
     mr = (await getMergeRequest(global.pubUpdateProject, iid, tokenHeaders())).data || {}
@@ -388,15 +391,16 @@ async function waitForMerged (iid) {
       const branches = (await listProjectBranches(global.pubUpdateProject, tokenHeaders())).data || []
       if (!branches.some(branch => branch.name === mr.source_branch)) return mr
     }
-    await I.wait(2)
+    await I.wait(MERGE_POLL_SECONDS)
   }
   throw new Error(`The update merge request never settled as merged: ${JSON.stringify({ state: mr && mr.state, branch: mr && mr.source_branch })}`)
 }
 
 /**
  * `task feedback` — the phase the nightly schedule runs — in a checkout of the
- * project, with the environment a CI job would have. Its combined output is the
- * card, so nothing is filtered but what moves between runs.
+ * project, with the environment a CI job would have. Its output is no card,
+ * only a twin (exit code 0, "Renovate started", no artifactErrors): the card
+ * is the merged merge request on GitLab.
  *
  * `copier` on PATH is not optional: Renovate's own copier manager spawns it, and
  * on a missing binary the run dies on an unhandled rejection and hangs. The
@@ -425,7 +429,6 @@ function runFeedback (cloneUrl, token) {
     }
   }
 }
-
 
 // Off camera: the lambda user (logged in, the project is private), its token,
 // the public two-release template and the private project, installed at 1.0.0
