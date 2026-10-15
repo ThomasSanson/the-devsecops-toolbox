@@ -7,7 +7,9 @@
  * `task ...` run inside the copy real: the root Taskfile needs every include it
  * declares. The heavy, irrelevant trees are dropped so the copy stays light.
  */
-const { execSync } = require('child_process')
+const fs = require('fs')
+const path = require('path')
+const { execSync, execFileSync } = require('child_process')
 
 const REPO = '/workspace'
 
@@ -19,4 +21,20 @@ function copyFramework (dir) {
   )
 }
 
-module.exports = { REPO, copyFramework }
+// The copy as a fresh git repository on main, ready for a story's commits: the
+// committed film left out (25 MB nobody renders there), and owned by the test's
+// user, because tar keeps the host uid and git refuses another user's tree.
+function toolboxRepository (dir) {
+  copyFramework(dir)
+  fs.rmSync(path.join(dir, 'project/tests/e2e/storyboards'), { recursive: true, force: true })
+  execFileSync('chown', ['-R', `${process.getuid()}:${process.getgid()}`, dir])
+  for (const args of [
+    ['init', '--quiet', '--initial-branch=main'],
+    ['config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'],
+    ['config', 'user.name', 'Lambda User'],
+    ['config', 'core.hooksPath', '/dev/null']
+  ]) execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' })
+  return dir
+}
+
+module.exports = { REPO, copyFramework, toolboxRepository }

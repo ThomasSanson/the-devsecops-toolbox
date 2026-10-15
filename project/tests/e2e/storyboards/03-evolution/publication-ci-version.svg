@@ -19,8 +19,8 @@
 <text x="50" y="1373" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15.5" font-weight="600" fill="#e8e8ec" xml:space="preserve"><tspan fill="#bb9af7">Then</tspan> GitLab shows the version bump moving the full pipeline and the publication update job</text>
 <text x="50" y="1394" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15.5" fill="#e8e8ec" font-weight="600">to the new toolbox image</text>
 <text x="50" y="1415" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">Off camera, a throwaway copy of the toolbox, set to release 1.0.0 in its four version places so the picture never moves</text>
-<text x="50" y="1433" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">when the toolbox releases. One fix commit lands on its main branch, then the version bump task release runs, without the</text>
-<text x="50" y="1451" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">changelog. Before bumping, commitizen checks that both image lines hold 1.0.0, and refuses otherwise.</text>
+<text x="50" y="1433" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">when the toolbox releases. One fix commit lands on its main branch, then the version bump that task release runs, here</text>
+<text x="50" y="1451" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">without the changelog. Before bumping, commitizen checks that both image lines hold 1.0.0, and refuses otherwise.</text>
 <text x="50" y="1469" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3"></text>
 <text x="50" y="1487" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">On screen, the bump commit as GitLab received it. The image line of .gitlab-ci.yml, the full pipeline, and the one of</text>
 <text x="50" y="1505" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">.config/publication/gitlab-ci.yml, the publication update job, move from 1.0.0 to 1.0.1, together with VERSION and</text>

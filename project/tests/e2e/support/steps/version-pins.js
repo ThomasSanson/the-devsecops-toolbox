@@ -13,7 +13,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
-const { REPO, copyFramework } = require('../helpers/frameworkCopy')
+const { REPO, toolboxRepository } = require('../helpers/frameworkCopy')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabFrame, gitlabUrl } = require('../helpers/gitlabCard')
 const { BASE_URL, encodedProjectPath, getRepositoryFile } = require('../helpers/gitlabApi')
@@ -60,20 +60,14 @@ storyboardStep(Then, 'GitLab shows the version bump moving the full pipeline and
   }
 
   // Off camera: the copy at release 1.0.0 in its four version places, one fix
-  // commit on main, then the bump task release runs, without the changelog.
-  dir = fs.mkdtempSync('/tmp/e2e-toolbox-release-')
-  copyFramework(dir)
-  fs.rmSync(path.join(dir, 'project/tests/e2e/storyboards'), { recursive: true, force: true })
-  execFileSync('chown', ['-R', `${process.getuid()}:${process.getgid()}`, dir])
+  // commit on main, then the version bump that task release runs, here without
+  // the changelog.
+  dir = toolboxRepository(fs.mkdtempSync('/tmp/e2e-toolbox-release-'))
   for (const file of ['VERSION', CZ_CONFIG, ...CI_FILES]) {
     const text = read(dir, file)
     assert.ok(text.includes(version), `${file} must hold the current release ${version}`)
     fs.writeFileSync(path.join(dir, file), text.replaceAll(version, FROM))
   }
-  git('init', '--quiet', '--initial-branch=main')
-  git('config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local')
-  git('config', 'user.name', 'Lambda User')
-  git('config', 'core.hooksPath', '/dev/null')
   git('add', '-A')
   git('commit', '--quiet', '-m', `chore: the toolbox at release ${FROM}`)
   git('tag', FROM)
