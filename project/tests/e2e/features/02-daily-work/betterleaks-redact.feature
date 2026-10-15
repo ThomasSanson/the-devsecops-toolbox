@@ -11,9 +11,8 @@ Feature: Betterleaks keeps a detected secret out of the CI log, and shows more o
     # Note: Hiding a value protects what a scan prints, not the repository: the password stays in the file until someone removes it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/blob/feature/synthetic-password/src/service.js
     When a developer pushes a branch with a synthetic password in it
-    # Note: The developer opens a merge request. Its pipeline runs the generated code:betterleaks job, with no setting changed, and the job fails.
-    # Note: The log names the rule generic-password, the file src/service.js and line 1, and prints "REDACTED" where the password was. Everyone on the project can read this log, so the value stays out of it.
-    # Note: The picture keeps the job's command, the finding and the verdict. It leaves out the install lines and the scanner's side messages, such as "leaks found: 1": GitLab mixes them into the log in a different order on every run. The terminal cards below show a whole run in order.
+    # Note: The developer opens a merge request. Its pipeline runs the generated code:betterleaks job, with no setting changed, and the job fails. GitLab shows the job page, its log scrolled to what the scan found.
+    # Note: The finding names the rule generic-password, the file src/service.js and line 1, and prints "REDACTED" where the password was. Everyone on the project can read this log, so the value stays out of it.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<job-id>
     Then the Betterleaks job fails on GitLab and its log prints REDACTED instead of the password
     # Chapter: The developer sees more in their own terminal only

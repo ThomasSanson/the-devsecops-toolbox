@@ -485,3 +485,22 @@ async function createMergeRequestAfterPush (projectName, payload, headers, tries
 }
 
 module.exports.createMergeRequestAfterPush = createMergeRequestAfterPush
+
+/**
+ * Open a merge request right after a push. GitLab 19.4 can still answer that
+ * the source branch does not exist after its branch API lists it: retry that
+ * one answer, and only that one, until timeoutMs. Returns the last response.
+ */
+async function createMergeRequestWhenBranchExists (projectName, payload, headers, { timeoutMs = 60000 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const response = await createMergeRequest(projectName, payload, headers)
+    const errors = response.data?.message
+    const missingSource = response.status === 400 && Object.keys(errors || {}).length === 1 &&
+      String(errors.source_branch) === 'does not exist'
+    if (!missingSource || Date.now() > deadline) return response
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+}
+
+module.exports.createMergeRequestWhenBranchExists = createMergeRequestWhenBranchExists
