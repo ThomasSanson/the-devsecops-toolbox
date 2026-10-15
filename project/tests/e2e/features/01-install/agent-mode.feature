@@ -46,7 +46,7 @@ Feature: Installing only the AI agent files (agent mode)
     # Copy: git add -A && git commit -q -m "chore: install the AI agent guardrails" && git push -q origin main && git status
     When the developer commits the new files and pushes them to the main branch
     # Note: The same GitLab page as the first card. The table now lists .agents, .claude/skills, AGENTS.md and CLAUDE.md on the commit "chore: install the AI agent guardrails", and README.md is still on "Initial commit".
-    # Note: The Files panel opens .agents and its skills: fifteen of them, each a folder with its instructions. .claude holds one link to each skill, for the AI tools that only look for skills there.
+    # Note: The Files panel opens .agents and its skills: fifteen of them, each a folder with its instructions. The .claude/skills row is where the AI tools that only look there find the same skills.
     Then GitLab shows the AI agent files beside the README on the main branch, and nothing else
     # Chapter: Installing again later
     # Note: Later, the developer runs the same installer again to get the latest AI agent files, with the same two answers. It says "Agent mode installed." as it did the first time.

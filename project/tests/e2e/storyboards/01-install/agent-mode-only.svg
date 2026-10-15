@@ -99,8 +99,8 @@
 <text x="50" y="3847" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">The same GitLab page as the first card. The table now lists .agents, .claude/skills, AGENTS.md and CLAUDE.md on the</text>
 <text x="50" y="3865" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">commit "chore: install the AI agent guardrails", and README.md is still on "Initial commit".</text>
 <text x="50" y="3883" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3"></text>
-<text x="50" y="3901" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">The Files panel opens .agents and its skills: fifteen of them, each a folder with its instructions. .claude holds one</text>
-<text x="50" y="3919" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">link to each skill, for the AI tools that only look for skills there.</text>
+<text x="50" y="3901" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">The Files panel opens .agents and its skills: fifteen of them, each a folder with its instructions. The .claude/skills</text>
+<text x="50" y="3919" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">row is where the AI tools that only look there find the same skills.</text>
 </g>
 <circle cx="36" cy="2731" r="16" fill="#3b82f6"/>
 <text x="36" y="2736" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#ffffff" font-weight="700" text-anchor="middle">6</text>
