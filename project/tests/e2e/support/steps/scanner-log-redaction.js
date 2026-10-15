@@ -171,6 +171,12 @@ storyboardStep(Given, 'clean framework projects use Docker and binary scanners f
         '$ git diff --cached -- src/service.js\n' + git(project, '-c', 'color.ui=always', 'diff', '--cached', '--', 'src/service.js')
     })
   }
+  // The docker project pulls its scanner image on first use. Pull it here, off
+  // camera, so the scan cards show the scans, not a download only a cold
+  // machine prints.
+  const docker = projects.find(project => project.mode === 'docker')
+  const taskfile = fs.readFileSync(path.join(docker.dir, '.config/betterleaks/Taskfile.yml'), 'utf8')
+  execFileSync('docker', ['pull', '--quiet', taskfile.match(/TASK_BETTERLEAKS_IMAGE \| default "([^"]+)"/)[1]], { stdio: 'pipe' })
   const install = runTask(projects[1], 'betterleaks:install')
   if (install.exit !== 0 || !install.raw.includes('Checksum verified')) throw new Error('Real binary install must verify the checksum')
   saveOutput('install', 'clean', install)
