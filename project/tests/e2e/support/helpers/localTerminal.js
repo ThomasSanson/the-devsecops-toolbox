@@ -30,7 +30,9 @@ const PS1 = '\\[\\e[01;32m\\]bootstrap@workspace\\[\\e[00m\\]:\\[\\e[01;34m\\]\\
 // the behaviour a card is about).
 const ENGINE_MASKS = [
   [/CodeceptJS v[0-9][0-9.]*/g, 'CodeceptJS v<version>'],
-  [/ in \d+(\.\d+)?m?s\b/g, ' in <duration>'],
+  // No leading space: the engine colours "in 42ms" on its own, apart from the
+  // space before it.
+  [/\bin \d+(\.\d+)?m?s\b/g, 'in <duration>'],
   [/\/\/ \d+(\.\d+)?m?s\b/g, '// <duration>'],
   [/browserVersion: [0-9.]+/g, 'browserVersion: <version>'],
   [/((?:node:internal|node_modules)\/[\w./@-]+):\d+:\d+/g, '$1:<line>']
