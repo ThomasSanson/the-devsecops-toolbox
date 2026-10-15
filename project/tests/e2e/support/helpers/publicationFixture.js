@@ -1,3 +1,4 @@
+// cspell:ignore Fapproval Fprivate -- team%2Fapproval and team%2Fprivate, URL-encoded project paths
 /**
  * The publication contracts' world: throwaway source repositories inside ONE
  * terminal container, and a stand-in for GitLab's API that the test controls.
@@ -49,7 +50,7 @@ const PUBLIC_PROJECT_RE = /e2e-publication-[0-9a-f]+/g
 
 // The object id `git hash-object` gives a file: the marker a sign-off names.
 function blobHash (content) {
-  return crypto.createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0${content}`).digest('hex')
+  return crypto.createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0${content}`).digest('hex') // DevSkim: ignore DS126858 -- git's own object id, not a security hash.
 }
 
 const question = marker => `Do these paths become public?\n\nPublication-manifest: ${marker}`
@@ -434,7 +435,7 @@ function releaseEnv (target) {
     `TASK_PUBLICATION_TOKEN_USERNAME=${process.env.TASK_GITLAB_LAMBDA_USER}`,
     `TASK_PUBLICATION_TOKEN=${target.token}`,
     'TASK_PUBLICATION_SOURCE_TOKEN=fixture-source-token',
-    `TASK_PUBLICATION_API_URL=http://${FORGE_HOST}:${FORGE_PORT}/api/v4`,
+    `TASK_PUBLICATION_API_URL=http://${FORGE_HOST}:${FORGE_PORT}/api/v4`, // DevSkim: ignore DS137138 -- Stand-in forge on the isolated test network.
     'TASK_PUBLICATION_SCAN=off',
     ''
   ].join('\n')

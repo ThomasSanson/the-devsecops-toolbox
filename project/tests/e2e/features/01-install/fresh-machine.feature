@@ -1,3 +1,4 @@
+# cspell:ignore setsid -- the tool that runs the installer without a terminal
 @e2e
 Feature: Trusting the installer on a fresh machine
   As a developer trying the DevSecOps Toolbox on a brand-new machine

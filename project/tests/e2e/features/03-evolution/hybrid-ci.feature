@@ -1,3 +1,4 @@
+# cspell:ignore hybridciword spellling -- the project's own word and the misspelling the check must catch
 @hybrid-ci
 Feature: Choose a runner according to the work a job does
   The toolbox runs its file checks on an unprivileged runner and keeps Docker

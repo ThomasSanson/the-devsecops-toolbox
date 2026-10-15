@@ -93,8 +93,8 @@ function matrixFile (relative) {
   return fs.readFileSync(path.join(matrix.dir, relative), 'utf8')
 }
 
-// What GitLab's compare lists, one line per file: A(dded), D(eleted),
-// R(enamed) or M(odified), as `git diff --name-status` would print it.
+// What GitLab's compare lists, one line per file: A for added, D for deleted,
+// R for renamed or M for modified, as `git diff --name-status` would print it.
 function changeSet (compare) {
   return compare.diffs.map(d => {
     if (d.new_file) return `A ${d.new_path}`

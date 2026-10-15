@@ -1,4 +1,5 @@
 /* global inject Given When Then After */
+// cspell:ignore Fapproval Fprivate -- team%2Fapproval and team%2Fprivate, URL-encoded project paths
 /**
  * @publication-contracts: the publication's safety promises, typed into ONE
  * live terminal on throwaway repositories (support/helpers/publicationFixture.js),

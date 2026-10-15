@@ -1,5 +1,5 @@
 /* global inject Before After Given When Then NodeFilter MutationObserver requestAnimationFrame */
-// cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
+// cspell:ignore Caddyfile setsid -- the cspell-survival scenario's project word, and the tool that runs the installer without a terminal
 /**
  * E2E developer-journey scenarios.
  *
@@ -1737,7 +1737,7 @@ storyboardStep(Then, 'once the developer links the folder to a GitLab project an
     'git config --global user.name "Lambda"',
     'git config --global init.defaultBranch main',
     'git config --global credential.helper store',
-    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(user)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`,
+    `printf 'http://%s:%s@gitlab\\n' ${shellEscape(user)} ${shellEscape(global.journeyLambdaToken)} > "$HOME/.git-credentials"`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
     'chmod 600 "$HOME/.git-credentials"'
   ].join(' && '))
   if (identity.exitCode !== 0) throw new Error(`Failed to set the git identity:\n${identity.output}`)
