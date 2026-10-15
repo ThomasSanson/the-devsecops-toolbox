@@ -224,11 +224,14 @@ async function fromTheTop () {
   await settlePage(I, { quietMs: 300 })
 }
 
+// Both merge requests on the same page at the same size: the pipeline row and
+// the merge widget. The Activity section under the widget (system notes and an
+// empty comment form) is not this story, so the card stops right below it.
 const mergeRequestCard = (frameName, iid, waitText) => gitlabFrame(I, frameName, gitlabUrl.mr(PROJECT, iid), {
   waitText,
+  height: 620,
   projectNames: [],
-  // The activity feed under the merge widget: system notes, not this story.
-  hide: ['ul.main-notes-list'],
+  hide: ['.issuable-discussion #notes'],
   scrollTo: fromTheTop
 })
 
