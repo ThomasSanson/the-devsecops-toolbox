@@ -91,12 +91,12 @@ function prepareVersionedTemplate () {
 const TASKFILE_JINJA = 'project/Taskfile.yml.jinja'
 const TASKFILE_LINE_BEFORE = 'This task is intended to run Terraform plan, database migrations check, etc.'
 const TASKFILE_LINE_RELEASED = 'This task runs the Terraform plan and checks the database migrations.'
-// The vocabulary 22.0.0 keeps inline in config.json: three framework words
-// that config.base.json still holds today, so the migration recognises them as
-// the framework's own. A short fixed list keeps every picture of 22.0.0 the
-// same whatever words the framework gains later: its full list moves every few
-// days, and a diff inside it would shift with every new word.
-const OLD_FRAMEWORK_WORDS = ['glab', 'megalinter', 'uvx']
+// The framework vocabulary of both releases: inline in config.json at 22.0.0,
+// in config.base.json at 22.7.1, where the migration recognises it as the
+// framework's own. The toolbox's real list moves every few days, and every
+// picture of this fixture (a diff inside the list, its line counts, the height
+// of the merge request's diff) would move with it.
+const FIXTURE_FRAMEWORK_WORDS = ['glab', 'megalinter', 'uvx']
 
 /**
  * Build a versioned template whose 22.0.0 is the OLD single-file cspell design
@@ -121,10 +121,7 @@ function prepareCspellMigrationTemplate () {
   // config.json to add its own words — exactly the situation #162's migration fixes.
   const oldCfg = JSON.parse(realCfg)
   oldCfg.import = oldCfg.import.filter(i => !i.includes('config.base.json') && !i.includes('config.project.json'))
-  const baseWords = JSON.parse(realBase).words
-  const dropped = OLD_FRAMEWORK_WORDS.filter(w => !baseWords.includes(w))
-  if (dropped.length) throw new Error(`Fixture setup: config.base.json no longer holds ${dropped.join(', ')}; pick other framework words for 22.0.0`)
-  oldCfg.words = OLD_FRAMEWORK_WORDS
+  oldCfg.words = FIXTURE_FRAMEWORK_WORDS
   fs.writeFileSync(`${dir}/config.json`, JSON.stringify(oldCfg, null, 2) + '\n')
   for (const f of ['config.base.json', 'config.project.json', 'migrate-words.py']) fs.rmSync(`${dir}/${f}`, { force: true })
   // Remove the historical cspell migration, but retain the list header for
@@ -138,9 +135,10 @@ function prepareCspellMigrationTemplate () {
   run('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
   run('git add -A && git commit --quiet --no-verify -m "chore: release 22.0.0 (old single-file cspell)"', tpl)
   run('git tag 22.0.0', tpl)
-  // 22.7.1 — the current split + migration, restored from the working tree.
+  // 22.7.1 — the current split + migration, restored from the working tree,
+  // its framework list pinned to the fixture's words.
   fs.writeFileSync(`${dir}/config.json`, realCfg)
-  fs.writeFileSync(`${dir}/config.base.json`, realBase)
+  fs.writeFileSync(`${dir}/config.base.json`, JSON.stringify({ ...JSON.parse(realBase), words: FIXTURE_FRAMEWORK_WORDS }, null, 2) + '\n')
   fs.writeFileSync(`${dir}/config.project.json`, realOverride)
   fs.writeFileSync(`${dir}/migrate-words.py`, realMig)
   fs.writeFileSync(`${tpl}/copier.yml`, realCopier)

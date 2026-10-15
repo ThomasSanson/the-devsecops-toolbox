@@ -268,8 +268,9 @@ const UPDATE_CHANGES = {
   [ANSWERS_FILE]: false,
   '.gitlab-ci.yml': false
 }
-// Folded on the card, for room: the framework's word list, the shared file's
-// new wiring (its twin reads it on the branch) and the migration script.
+// Folded on the card, for room: the framework's word list and the shared
+// file's new wiring (their twins read them on the branch), and the migration
+// script.
 const FOLDED_DIFFS = ['.config/cspell/config.base.json', '.config/cspell/config.json', '.config/cspell/migrate-words.py']
 // What the Ansible answer adds to the merge request. Nothing under project/.
 const ANSIBLE_CHANGES = [
@@ -296,11 +297,6 @@ const UPDATE_RUN_TIMEOUT_MS = 300000
 // push and the merge-request link, shows as "project" like on every GitLab card.
 const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 const runMasks = () => [...COPIER_PIN_MASK, [new RegExp(global.journeyProjectName, 'g'), 'project']]
-
-// The line counters of a Changes tab (+N −N per file, and the total): the
-// framework's word list in config.base.json grows every few days, and these
-// numbers with it. The file list and its new or changed icons stay.
-const DIFF_COUNTERS = ['.file-row-stats', '.diff-stats-contents > div:has([data-testid="js-file-addition-line"])']
 
 // The main branch's head when the story opens: nobody may move it.
 let mainHeadSha = null
@@ -371,7 +367,6 @@ async function mergeRequestChangesFrame (frameName, files, { fold = [], focus = 
   await gitlabFrame(I, frameName, url, {
     waitText: UPDATE_TITLE,
     height: CARD_MAX_HEIGHT,
-    hide: DIFF_COUNTERS,
     prepare: async () => {
       const deadline = Date.now() + 120000
       for (;;) {

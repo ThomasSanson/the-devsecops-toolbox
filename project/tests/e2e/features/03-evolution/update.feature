@@ -40,7 +40,6 @@ Feature: A toolbox release arrives as a merge request and keeps my work
     When the developer asks for the new toolbox release from the main branch
     # Note: The Changes tab of that merge request, the page a reviewer reads. The file list on the left shows the dictionary split in three: config.base.json and config.project.json are new, and config.json is changed.
     # Note: The reviewer folds the three long diffs and clicks config.project.json, which GitLab frames in blue. That new file holds "Caddyfile", and the next update will never overwrite it. Below, the answers file moves from 22.0.0 to 22.7.1, and so does the toolbox image of the CI pipeline in .gitlab-ci.yml.
-    # Note: The line counters are hidden: the framework's word list grows every few days.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
     Then GitLab holds a merge request that moves the project to the new release and gives the developer's word a file of its own
     # Chapter: A changed answer adds tools, and my own task stays mine
