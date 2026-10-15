@@ -80,9 +80,12 @@ let matrix = null
 
 Before(() => { matrix = null })
 
+// CodeceptJS does not await an async After: clear the shared state before the
+// first await, or it would wipe the next scenario's matrix mid-run.
 After(async () => {
-  if (matrix && matrix.pub) await matrix.pub.teardown()
+  const done = matrix
   matrix = null
+  if (done && done.pub) await done.pub.teardown()
 })
 
 function matrixGit (args) {

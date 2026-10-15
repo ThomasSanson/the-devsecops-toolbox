@@ -93,11 +93,14 @@ let story = {}
 
 Before(() => { story = {} })
 
+// CodeceptJS does not await an async After: the next scenario's Before can
+// replace `story` while this one still runs, so the hook keeps its own reference.
 After(async () => {
-  if (story.runner) await teardownScopedRunner(story.runner, await getRootHeaders())
-  if (story.pub) await story.pub.teardown()
-  if (story.render) removeRendered(story.render)
-  if (story.cloned) fs.rmSync(CLONE, { recursive: true, force: true })
+  const done = story
+  if (done.runner) await teardownScopedRunner(done.runner, await getRootHeaders())
+  if (done.pub) await done.pub.teardown()
+  if (done.render) removeRendered(done.render)
+  if (done.cloned) fs.rmSync(CLONE, { recursive: true, force: true })
 })
 
 // One command typed in the teammate's clone. Its stdout and stderr share the

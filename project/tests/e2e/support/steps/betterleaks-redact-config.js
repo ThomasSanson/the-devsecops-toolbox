@@ -60,16 +60,19 @@ let s
 
 Before(() => { s = {} })
 
+// CodeceptJS does not await an async After: the next scenario's Before can
+// reset `s` while this one still runs, so the hook keeps its own reference.
 After(async () => {
-  teardownJourneyTerminal(s.terminal)
-  if (s.pub) {
+  const story = s
+  teardownJourneyTerminal(story.terminal)
+  if (story.pub) {
     const root = await getRootHeaders()
     // A failed run must not leave a job queued on the shared runner.
-    await cancelRedundantPipelines(s.pub.projectName, 0, root)
-    await teardownScopedRunner(s.runner, root)
-    await s.pub.teardown()
+    await cancelRedundantPipelines(story.pub.projectName, 0, root)
+    await teardownScopedRunner(story.runner, root)
+    await story.pub.teardown()
   }
-  removeRendered(s.dir)
+  removeRendered(story.dir)
 })
 
 // The dry runs of all six scans (full, staged and branch, in Docker and binary
