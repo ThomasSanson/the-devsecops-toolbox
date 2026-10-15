@@ -464,6 +464,14 @@ storyboardStep(Then, 'the pipeline of that merge request blocks the key from the
   }
   if (trace.includes(KEY_BODY)) throw new Error('The job log printed the key itself')
   if (/\bdocker (run|exec)\b/.test(trace)) throw new Error('The binary scan started a container')
+  // The binary that ran is the one pinned in the project: the installer says
+  // so, and so does the scanner's own banner.
+  const pinned = fs.readFileSync(path.join(story.render, '.config/betterleaks/version'), 'utf8').trim()
+  // Line ends only: the trace prefixes every line with its timestamp.
+  const banner = new RegExp(`(^|\\s)betterleaks ${pinned.replace(/\./g, '\\.')}\\s*$`, 'm')
+  if (!trace.includes(`Installing betterleaks ${pinned} (binary mode, no container)`) || !banner.test(plain(trace))) {
+    throw new Error(`Expected the job to install and run the pinned betterleaks ${pinned}`)
+  }
   await jobLogFrame(I, 'ci-scan-blocks', PROJECT, job.id, {
     from: '$ task betterleaks:scan-branch',
     masks: JOB_MASKS,
