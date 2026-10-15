@@ -1591,7 +1591,7 @@ async function scrollbackFrame (frameName, { from, before = 0, to, mask = [], no
   const placed = await I.executeScript(async ([from, to, before]) => {
     const viewport = document.querySelector('.xterm-viewport')
     const rows = () => Array.from(document.querySelectorAll('.xterm-rows > div')).map(row => row.textContent || '')
-    const redraw = () => new Promise(resolve => setTimeout(() => requestAnimationFrame(() => resolve()), 150))
+    const redraw = () => new Promise(resolve => setTimeout(resolve, 150)).then(() => new Promise(resolve => requestAnimationFrame(resolve)))
     const nodes = document.querySelectorAll('.xterm-rows > div')
     const rowPx = nodes[1].getBoundingClientRect().top - nodes[0].getBoundingClientRect().top
     for (let top = viewport.scrollHeight - viewport.clientHeight; top > -viewport.clientHeight; top -= viewport.clientHeight / 2) {
