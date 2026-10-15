@@ -92,7 +92,10 @@ const TERMINAL_NOISE_PATTERNS = [
   /^Delta compression using /,
   /^Compressing objects: /,
   /^Writing objects: /,
-  /^Total \d+ \(delta /
+  /^Total \d+ \(delta /,
+  // git prints this before a push on some CI hosts and not on others, for the
+  // same remote URL and the same git, curl and GitLab versions.
+  /^warning: redirecting to /
 ]
 
 async function readTerminalState (I) {
