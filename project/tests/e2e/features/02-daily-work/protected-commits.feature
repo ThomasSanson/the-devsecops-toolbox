@@ -40,8 +40,8 @@ Feature: the framework guards what reaches the repository: clean commits and no 
     When a teammate clones it, task dev:setup-environment turns on the commit hooks git never copies
     # Chapter: Every commit message is checked
     # Note: The teammate writes deploy notes on a new branch. deploy/.gitignore ignores *.pem, so git status marks the deploy key "!!", ignored, and git add stages only the two notes files.
-    # Note: The message has no type. The pre-commit scan passes with "No secrets detected in staged files.", then commitizen and commitlint both refuse the message. Commitlint says why: "subject may not be empty" and "type may not be empty". No commit is made.
-    # Copy: git commit -m "add the deploy notes"
+    # Note: The message starts with "deploy:", a type the convention does not know. The pre-commit scan passes with "No secrets detected in staged files.", then commitizen and commitlint both refuse the message. Commitlint lists the types it accepts: "type must be one of [build, chore, ...]". No commit is made.
+    # Copy: git commit -m "deploy: add the deploy notes"
     Then the hooks refuse the teammate's first commit, the deploy notes under a sloppy message, with their own explanation
     # Note: The same staged files, with a message that starts with the type "feat:". The scan, commitizen and commitlint all pass, and git records the commit with its 2 files. The key is not one of them.
     # Copy: git commit -m "feat: add the deploy notes"

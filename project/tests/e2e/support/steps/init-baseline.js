@@ -315,14 +315,15 @@ storyboardStep(Then, "the hooks refuse the teammate's first commit, the deploy n
     ok('cat deploy/.gitignore'),
     ok('git status --short --ignored --untracked-files=all deploy'),
     ok('git add deploy'),
-    sh('git commit -m "add the deploy notes"')
+    sh('git commit -m "deploy: add the deploy notes"')
   ]
   const commit = steps[4]
   if (commit.code === 0) throw new Error(`Expected the hooks to refuse the message:\n${plain(commit.out)}`)
   if (head() !== story.main) throw new Error('A refused commit must leave the branch where it was')
   const staged = lines(ok('git diff --cached --name-only').out)
   if (staged.join(' ') !== 'deploy/.gitignore deploy/README.md') throw new Error(`Expected the two notes files staged, got ${staged}`)
-  expectSaid(commit, 'No secrets detected in staged files.', 'commit validation: failed!', 'subject may not be empty', 'type may not be empty')
+  expectSaid(commit, 'No secrets detected in staged files.', 'commit validation: failed!',
+    'type must be one of [build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test]', '[type-enum]')
   await sessionCard('commit-refused', steps)
 })
 
