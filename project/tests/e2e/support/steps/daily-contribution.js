@@ -213,7 +213,7 @@ storyboardStep(Given, 'an installed project with the framework already on its ma
   // README yet (the template leaves it to the project).
   const tree = await listRepositoryTree(PROJECT_NAME, rootHeaders, '?ref=main&per_page=100')
   const names = (tree.data || []).map(e => e.name)
-  for (const f of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent', 'VERSION']) {
+  for (const f of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agents', '.claude', 'VERSION']) {
     if (!names.includes(f)) throw new Error(`Expected the main branch to carry "${f}". Entries: ${JSON.stringify(names)}`)
   }
   if (names.includes('README.md')) throw new Error('Expected no README.md on the main branch before the change')

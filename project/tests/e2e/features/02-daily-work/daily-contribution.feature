@@ -23,7 +23,7 @@ Feature: An everyday change goes from an issue to a released version
   @daily-contribution
   Scenario: An issue becomes a merge request, and the main branch releases the change
     # Chapter: An issue starts the work
-    # Note: GitLab's page for the main branch of a project the installer already set up. The table lists the framework's files and folders, among them .agent, .config, .gitlab-ci.yml, Taskfile.yml and VERSION, all on the commit "chore: scaffold the project from the devsecops toolbox". There is no README.md yet.
+    # Note: GitLab's page for the main branch of a project the installer already set up. The table lists the framework's files and folders, among them .agents, .claude/skills, .config, .gitlab-ci.yml, Taskfile.yml and VERSION, all on the commit "chore: scaffold the project from the devsecops toolbox". There is no README.md yet.
     # Note: The project's name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     Given an installed project with the framework already on its main branch
