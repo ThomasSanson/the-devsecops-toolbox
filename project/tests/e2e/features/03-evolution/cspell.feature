@@ -29,6 +29,6 @@ Feature: A generated project owns its cspell vocabulary across toolbox updates
     Then cspell should recognise the project word and flag only the control, matching "template/cspell-project-word-survives"
 
   # The live-terminal upgrade journey (a project from an EARLIER toolbox version
-  # runs the real `task copier:update`, the dictionary splits and the project's
+  # runs the real `task devsecops:update`, the dictionary splits and the project's
   # own word moves to its own file) now lives as a storyboard in
   # features/03-evolution/update.feature (@toolbox-update).

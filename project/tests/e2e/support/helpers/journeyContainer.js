@@ -22,7 +22,7 @@ const {
   removeContainer,
   waitForTtyd
 } = require('./docker')
-const { prepareCspellMigrationTemplate, prepareVersionedTemplate } = require('./copierRender')
+const { prepareCspellMigrationTemplate, prepareVersionedTemplate, removeRendered } = require('./copierRender')
 
 const CONTAINER_WORKDIR = '/workspace'
 const PROJECT_DIR = '/workspace/my-project'
@@ -163,17 +163,17 @@ function authenticateGlab (name, token) {
   }
 }
 
-const CSPELL_TEMPLATE_DIR = '/tmp/toolbox-template'
-
 /**
  * Live terminal on a project GENERATED from a versioned template, the way a real
  * repository sits just before a toolbox update: the template is docker-cp'd in
- * with its tags, rendered at `vcsRef`, and committed. `afterRender` runs inside
- * the project between the render and the commit; `push` (a credentialed remote
- * URL) publishes the result to the test GitLab so a scenario can prove what the
- * update does on the forge. Returns the container name (caller tears it down).
+ * with its tags, rendered at `vcsRef`, and committed as `commitMessage`.
+ * `ownCommit` ({ commands, message }) is the developer's own work, run inside
+ * the project and committed on top; `push` ({ remote, user, token }) then
+ * publishes main to the test GitLab. The token goes to git's credential store,
+ * never into the remote URL: a push on camera prints the URL it pushed to.
+ * Returns the container name (caller tears it down).
  */
-function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, afterRender = [], push = null }) {
+function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, ownCommit = null, push = null }) {
   const name = containerName()
 
   runCommand(
@@ -181,7 +181,7 @@ function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, after
     { timeout: SETUP_TIMEOUT }
   )
   runCommand(
-    `docker cp ${shellEscape(template)} ${shellEscape(`${name}:${CSPELL_TEMPLATE_DIR}`)}`,
+    `docker cp ${shellEscape(template)} ${shellEscape(`${name}:${TEMPLATE_DIR}`)}`,
     { timeout: SETUP_TIMEOUT }
   )
 
@@ -190,7 +190,7 @@ function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, after
     'export PATH="$HOME/.local/bin:$PATH"',
     'mkdir -p "$HOME/.local/bin"',
     // uv (Python/Copier launcher) and go-task: the toolbox runs Copier via Taskfile,
-    // so `task copier:update` is the REAL update command — task must be present.
+    // so `task devsecops:update` is the REAL update command — task must be present.
     'curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1',
     'sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin" >/dev/null 2>&1',
     'git config --global user.email "lambda@test.local"',
@@ -202,11 +202,19 @@ function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, after
     "git config --global --add safe.directory '*'",
     // render the project at the OLD release from the versioned template, exactly
     // where a real repo would sit before a toolbox update.
-    `uvx --python 3.14 --from copier==9.14.3 copier copy ${CSPELL_TEMPLATE_DIR} ${PROJECT_DIR} --vcs-ref ${vcsRef} --defaults --trust --skip-tasks --quiet`,
+    `uvx --python 3.14 --from copier==9.14.3 copier copy ${TEMPLATE_DIR} ${PROJECT_DIR} --vcs-ref ${vcsRef} --defaults --trust --skip-tasks --quiet`,
     `cd ${PROJECT_DIR}`,
-    ...afterRender,
     `git init -q && git add -A && git commit -q --no-verify -m ${shellEscape(commitMessage)}`,
-    ...(push ? [`git remote add origin ${shellEscape(push)}`, 'git push -q -u origin main'] : [])
+    ...(ownCommit ? [...ownCommit.commands, `git add -A && git commit -q --no-verify -m ${shellEscape(ownCommit.message)}`] : []),
+    ...(push
+      ? [
+          'git config --global credential.helper store',
+          `printf '%s\\n' ${shellEscape(`http://${push.user}:${encodeURIComponent(push.token)}@gitlab`)} > "$HOME/.git-credentials"`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
+          'chmod 600 "$HOME/.git-credentials"',
+          `git remote add origin ${shellEscape(push.remote)}`,
+          'git push -q -u origin main'
+        ]
+      : [])
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (setup.exitCode !== 0) {
     removeContainer(name)
@@ -232,43 +240,56 @@ function setupGeneratedProjectTerminal ({ template, vcsRef, commitMessage, after
 }
 
 /**
- * Live terminal for the cspell-vocabulary-survives-update scenario: a generated
- * project that PREDATES the cspell split (rendered at the old release, with its
- * own word inline in the single-file config.json), served in a real ttyd shell.
- * The scenario then runs the EXACT command Renovate triggers in a real repo —
- * `task copier:update` — live, with colours, so the migration is shown happening
- * under real conditions, not reconstructed. Reuses the journey terminal engine.
+ * Live terminal for the toolbox-update story: a project generated at release
+ * 22.0.0 of the cspell-migration template (one shared dictionary file, before
+ * the split), the developer's own commit on top, pushed to its test-GitLab
+ * project, with glab authenticated. That is where a developer stands when a new
+ * toolbox release is out and they ask for it themselves. Nothing is exported
+ * into the session: `task devsecops:update` has to find the answers file on its
+ * own, like it does in a real repository.
  */
-function setupCspellUpdateTerminal (projectWord) {
-  return setupGeneratedProjectTerminal({
-    template: prepareCspellMigrationTemplate(),
-    vcsRef: '22.0.0',
-    commitMessage: 'chore: project generated from an earlier toolbox version',
-    afterRender: [
-      `tmp=$(mktemp) && jq --arg w ${shellEscape(projectWord)} '.words = ((.words // []) + [$w])' .config/cspell/config.json > "$tmp" && mv "$tmp" .config/cspell/config.json`
-    ]
-  })
+function setupToolboxUpdateTerminal (projectName, pushToken, { commitMessage, ownCommit }) {
+  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
+  const template = prepareCspellMigrationTemplate()
+  try {
+    const name = setupGeneratedProjectTerminal({
+      template,
+      vcsRef: '22.0.0',
+      commitMessage,
+      ownCommit,
+      push: { remote: `http://gitlab/${lambdaUser}/${projectName}.git`, user: lambdaUser, token: pushToken } // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
+    })
+    authenticateGlab(name, pushToken)
+    return name
+  } finally {
+    // The container holds its own copy now.
+    removeRendered(template)
+  }
 }
 
 /**
- * Live terminal for the manual-update chapter: a project generated at release
- * 1.0.0 of a two-release template and PUSHED to its test-GitLab project, sitting
- * on main with glab authenticated — the state a developer is in when a new
- * toolbox release is out and they ask for it themselves instead of waiting for
- * Renovate. Nothing is exported into the session: `task devsecops:update` has to
- * find the answers file on its own, like it does in a real repository.
+ * Live terminal for the retired-linters story: a project generated at release
+ * 1.0.0 of a two-release template and pushed to its test-GitLab project,
+ * sitting on main with glab authenticated. Nothing is exported into the
+ * session: `task devsecops:update` has to find the answers file on its own,
+ * like it does in a real repository.
  */
 function setupManualUpdateTerminal (projectName, pushToken) {
   const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const encodedToken = encodeURIComponent(pushToken)
-  const name = setupGeneratedProjectTerminal({
-    template: prepareVersionedTemplate(),
-    vcsRef: '1.0.0',
-    commitMessage: 'chore: project generated from an earlier toolbox release',
-    push: `http://${lambdaUser}:${encodedToken}@gitlab/${lambdaUser}/${projectName}.git` // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
-  })
-  authenticateGlab(name, pushToken)
-  return name
+  const template = prepareVersionedTemplate()
+  try {
+    const name = setupGeneratedProjectTerminal({
+      template,
+      vcsRef: '1.0.0',
+      commitMessage: 'chore: project generated from an earlier toolbox release',
+      push: { remote: `http://gitlab/${lambdaUser}/${projectName}.git`, user: lambdaUser, token: pushToken } // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
+    })
+    authenticateGlab(name, pushToken)
+    return name
+  } finally {
+    // The container holds its own copy now.
+    removeRendered(template)
+  }
 }
 
 /**
@@ -346,8 +367,8 @@ module.exports = {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
-  setupCspellUpdateTerminal,
   setupManualUpdateTerminal,
+  setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
   authenticateGlab,

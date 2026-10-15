@@ -45,7 +45,8 @@ const {
   listPipelineJobs,
   getMergeRequest,
   mergeMergeRequest,
-  putRepositoryFile
+  putRepositoryFile,
+  getRepositoryFile
 } = require('../helpers/gitlabApi')
 const {
   registerScopedRunner,
@@ -62,8 +63,7 @@ const {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
-  setupCspellUpdateTerminal,
-  setupManualUpdateTerminal,
+  setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
   authenticateGlab,
@@ -86,7 +86,8 @@ const {
   COMPACT_CAPTURE_ID,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
-const { gitlabUrl, gitlabFrame, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
+const { CARD_MAX_HEIGHT, gitlabUrl, gitlabFrame, settlePage, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
+const { TASKFILE_LINE_RELEASED } = require('../helpers/copierRender')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
 const {
@@ -224,232 +225,309 @@ async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTermi
 // ============================================
 
 // ============================================
-// Toolbox-update storyboard — @toolbox-update (chapter 1).
-// The real Renovate-driven upgrade in a live, coloured ttyd terminal: a project
-// generated from an EARLIER toolbox version (single-file config.json, the
-// developer's word crammed in) runs the exact command Renovate triggers
-// (`task copier:update`), which splits the dictionary and moves the developer's
-// word into its own file. ONE sentence = ONE terminal frame = ONE pixel baseline
-// (anchored on the typed command's `# comment` marker so scrollback is excluded);
-// each AFTER card twins its frame with a filesystem read straight from the
-// container, so a regression fails loud even without eyes.
+// Toolbox-update storyboard — @toolbox-update.
+// A project generated from an older toolbox release (22.0.0) sits on GitLab
+// with the developer's own commit on top: a task of their own, and the word it
+// brings to the spell checker, added to the one shared dictionary file of that
+// release. The developer runs `task devsecops:update` in their terminal, the
+// new release (22.7.1) arrives as a merge request, then a changed answer
+// (Ansible on) is pushed to the same merge request. Six cards are real GitLab
+// pages, two are the developer's terminal. Every card is twinned with REST on
+// the branches, the commits and the merge request, or with the terminal's own
+// words, so a regression fails loud even without eyes.
 // ============================================
 
-const CSPELL_PROJECT_WORD = 'Caddyfile'
+const UPDATE_BRANCH = 'update-framework-devsecops'
+const ANSWERS_FILE = '.config/devsecops/.copier-answers.yml'
+const TASK_FILE = 'project/Taskfile.yml'
 const OLD_TOOLBOX_VERSION = '22.0.0'
 const NEW_TOOLBOX_VERSION = '22.7.1'
+const GENERATED_COMMIT = 'chore: project generated from an earlier toolbox release'
+const UPDATE_TITLE = `chore(deps): update devsecops toolbox to ${NEW_TOOLBOX_VERSION}`
 
-// Read a real path inside the live journey container's project — the
-// programmatic twin of a terminal card (the same fact, unfiltered).
-function readInProject (script) {
-  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cd ${PROJECT_DIR} && ${script}`)
-  if (res.exitCode !== 0) {
-    throw new Error(`Toolbox-update twin failed (\`${script}\`):\n${res.output}`)
-  }
-  return res.output
+// The developer's own commit on the main branch, made before the push: a task
+// at the end of their task file, and the word it brings to the spell checker
+// at the end of config.json, the only dictionary file release 22.0.0 has.
+const DEVELOPER_WORD = 'Caddyfile'
+const DEVELOPER_TASK = 'project:operate:caddy:reload'
+const DEVELOPER_COMMIT = 'feat: add a task that reloads Caddy'
+const DEVELOPER_CHANGE = {
+  message: DEVELOPER_COMMIT,
+  commands: [
+    `tmp=$(mktemp) && jq --arg w ${DEVELOPER_WORD} '.words += [$w]' .config/cspell/config.json > "$tmp" && mv "$tmp" .config/cspell/config.json`,
+    `printf '\\n  %s:\\n    desc: Reload Caddy after an edit to its Caddyfile\\n    cmds:\\n      - caddy reload --config Caddyfile\\n' ${DEVELOPER_TASK} >> ${TASK_FILE}`
+  ]
 }
 
-function twinContains (script, needle) {
-  const out = readInProject(script)
-  if (!out.includes(needle)) {
-    throw new Error(`Toolbox-update twin: expected "${needle}" in \`${script}\`:\n${out}`)
-  }
+// The release, file by file, as the merge request lists it: true for a new file.
+const UPDATE_CHANGES = {
+  '.config/cspell/config.base.json': true,
+  '.config/cspell/config.json': false,
+  '.config/cspell/config.project.json': true,
+  '.config/cspell/migrate-words.py': true,
+  [ANSWERS_FILE]: false,
+  '.gitlab-ci.yml': false
 }
+// Too long to read on a card: the framework's word list (twice) and a script.
+const FOLDED_DIFFS = ['.config/cspell/config.base.json', '.config/cspell/config.json', '.config/cspell/migrate-words.py']
+// What the Ansible answer adds to the merge request. Nothing under project/.
+const ANSIBLE_CHANGES = [
+  '.config/ansible/Taskfile.yml',
+  '.config/ansible/ansible.cfg',
+  '.config/ansible/requirements.txt',
+  '.config/ansible-lint/config.yaml',
+  'Taskfile.yml'
+]
 
-function twinExcludes (script, needle) {
-  const out = readInProject(script)
-  if (out.includes(needle)) {
-    throw new Error(`Toolbox-update twin: did NOT expect "${needle}" in \`${script}\`:\n${out}`)
-  }
-}
-
-// Type a command in the live terminal and snapshot the moment as a storyboard
-// frame, anchored on a unique substring of the command so the non-deterministic
-// scrollback above it is excluded. `mask` freezes a value the terminal really
-// printed but the card is not about.
-async function updateCard (command, marker, frameName, timeoutMs, mask = []) {
-  await typeCommandAndWait(I, command, timeoutMs || COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask }))
-}
+// One typed line on the update branch: the same release again with one answer
+// changed, then the new files committed and pushed to the merge request. The
+// terminal holds 157 columns at 1440 px, so the line wraps right before the
+// commit message, never inside a word.
+const ANSIBLE_COMMIT = 'chore: turn the Ansible option on'
+const ANSIBLE_RUN = `task copier:update TASK_COPIER_CLI_OPTS='--defaults --data ansible_enabled=true' && git add -A && git commit -q -m '${ANSIBLE_COMMIT}' && git push -q`
+const UPDATE_RUN_TIMEOUT_MS = 300000
 
 // go-task echoes the whole uvx command line behind the update task, pinned
 // copier and all, and that echo IS part of what the developer sees — it says
 // which tool the update actually ran. Only the number in it moves, roughly
 // monthly, breaking a card about a toolbox release with a copier release. So
-// the line stays and the version freezes.
+// the line stays and the version freezes. The project's random name, in the
+// push and the merge-request link, shows as "project" like on every GitLab card.
 const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
+const runMasks = () => [...COPIER_PIN_MASK, [new RegExp(global.journeyProjectName, 'g'), 'project']]
 
-storyboardStep(Given, "a developer's project was generated from an earlier toolbox release", async () => {
-  global.journeyContainer = setupCspellUpdateTerminal(CSPELL_PROJECT_WORD)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-  await updateCard(
-    `grep _commit .config/devsecops/.copier-answers.yml   # toolbox version BEFORE (${OLD_TOOLBOX_VERSION})`,
-    'toolbox version BEFORE', 'before-version'
+// The line counters of a Changes tab (+N −N per file, and the total): the
+// framework's word list in config.base.json grows every few days, and these
+// numbers with it. The file list and its new or changed icons stay.
+const DIFF_COUNTERS = ['.file-row-stats', '.diff-stats-contents > div:has([data-testid="js-file-addition-line"])']
+
+// The main branch's head when the story opens: nobody may move it.
+let mainHeadSha = null
+
+async function projectApi (route) {
+  const res = await freshGet(
+    `${BASE_URL}/api/v4/projects/${encodeURIComponent(projectPath(global.journeyProjectName))}${route}`,
+    await getRootHeaders()
   )
-  twinContains('grep _commit .config/devsecops/.copier-answers.yml', OLD_TOOLBOX_VERSION)
-})
-
-storyboardStep(Given, 'its CI pipeline runs on that older toolbox image', async () => {
-  await updateCard(
-    `grep '^image:' .gitlab-ci.yml   # toolbox image BEFORE (${OLD_TOOLBOX_VERSION})`,
-    'toolbox image BEFORE', 'before-ci-image'
-  )
-  twinContains('grep ^image: .gitlab-ci.yml', OLD_TOOLBOX_VERSION)
-})
-
-storyboardStep(Given, 'its spelling dictionary is a single framework-owned file', async () => {
-  await updateCard('ls -1 .config/cspell/   # one framework-owned file', 'one framework-owned file', 'before-one-file')
-  twinExcludes('ls -1 .config/cspell/', 'config.project.json')
-})
-
-storyboardStep(Given, 'the developer has added their own word inside that shared file', async () => {
-  await updateCard(
-    `jq '.words[-4:]' .config/cspell/config.json   # the developer word (${CSPELL_PROJECT_WORD}) crammed in among the framework's`,
-    'crammed in among', 'before-word-inline'
-  )
-  twinContains('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
-})
-
-storyboardStep(When, 'the developer runs the toolbox update in the terminal', async () => {
-  await updateCard(
-    `task devsecops:code:sync-templates TASK_COPIER_CLI_OPTS='--skip-answered --defaults --quiet --vcs-ref ${NEW_TOOLBOX_VERSION}'`,
-    'task devsecops:code:sync-templates', 'update-run', 240000, COPIER_PIN_MASK
-  )
-})
-
-storyboardStep(Then, 'the project now tracks the new toolbox release', async () => {
-  await updateCard(
-    `grep _commit .config/devsecops/.copier-answers.yml   # toolbox version AFTER (${NEW_TOOLBOX_VERSION})`,
-    'toolbox version AFTER', 'after-version'
-  )
-  twinContains('grep _commit .config/devsecops/.copier-answers.yml', NEW_TOOLBOX_VERSION)
-})
-
-storyboardStep(Then, 'its CI pipeline now runs on the new toolbox image', async () => {
-  await updateCard(
-    `grep '^image:' .gitlab-ci.yml   # toolbox image AFTER (${NEW_TOOLBOX_VERSION})`,
-    'toolbox image AFTER', 'after-ci-image'
-  )
-  twinContains('grep ^image: .gitlab-ci.yml', NEW_TOOLBOX_VERSION)
-  twinExcludes('grep ^image: .gitlab-ci.yml', OLD_TOOLBOX_VERSION)
-})
-
-storyboardStep(Then, 'its dictionary has been split into three files', async () => {
-  await updateCard('ls -1 .config/cspell/   # three files now', 'three files now', 'after-three-files')
-  twinContains('ls -1 .config/cspell/', 'config.base.json')
-  twinContains('ls -1 .config/cspell/', 'config.project.json')
-})
-
-storyboardStep(Then, 'the framework keeps its own words in its own file', async () => {
-  await updateCard(
-    "jq '.words[-4:]' .config/cspell/config.base.json   # the framework words: KEPT, in the framework's own file",
-    'framework words: KEPT', 'after-framework-words'
-  )
-  twinExcludes('jq -r .words .config/cspell/config.base.json', CSPELL_PROJECT_WORD)
-})
-
-storyboardStep(Then, "the developer's own word has moved to a project-owned file", async () => {
-  await updateCard(
-    'jq . .config/cspell/config.project.json   # the developer word: MOVED to its own file',
-    'MOVED to its own file', 'after-project-word'
-  )
-  twinContains('jq -r .words .config/cspell/config.project.json', CSPELL_PROJECT_WORD)
-})
-
-storyboardStep(Then, 'the shared file itself is now empty — it only imports the other two', async () => {
-  await updateCard(
-    "jq '.words' .config/cspell/config.json   # config.json: empty now, only imports the other two",
-    'empty now, only imports', 'after-config-image'
-  )
-  twinExcludes('jq -r .words .config/cspell/config.json', CSPELL_PROJECT_WORD)
-})
-
-// ============================================
-// Toolbox-update storyboard — @toolbox-update (chapter 3).
-// The same upgrade asked for BY HAND on a REAL GitLab project: a project
-// generated at release 1.0.0 sits on main, the developer runs
-// `task devsecops:update`, and the new release arrives as a merge request
-// instead of a push to main. ONE sentence = ONE card = ONE pixel baseline;
-// every GitLab card twins its page with the REST fact behind it.
-// ============================================
-
-const UPDATE_BRANCH = 'update-framework-devsecops'
-const MANUAL_UPDATE_VERSION = '1.0.1'
-const GENERATED_COMMIT = 'chore: project generated from an earlier toolbox release'
-
-// The branches page, masked, as one card — the "before" and the "after" of the
-// manual update are shot from the SAME page so the reader compares two panels.
-async function branchesFrame (frameName) {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, frameName)
+  if (res.status >= 400) throw new Error(`GET ${route}: HTTP ${res.status}`)
+  return res.data
 }
 
-async function branchCommitTitle (branch) {
-  const headers = await getRootHeaders()
-  const res = await listProjectBranches(global.journeyProjectName, headers)
-  const found = (res.data || []).find(b => b.name === branch)
-  if (!found) {
-    throw new Error(`Branch "${branch}" not found for ${global.journeyProjectName}`)
+async function rawFile (file, ref) {
+  return getRepositoryFile(global.journeyProjectName, file, ref, await getRootHeaders())
+}
+
+function expectIn (text, needles, what) {
+  for (const needle of needles) {
+    const found = needle instanceof RegExp ? needle.test(text) : String(text).includes(needle)
+    if (!found) throw new Error(`Expected ${what} to contain ${needle}:\n${text}`)
   }
-  return (found.commit && found.commit.title) || ''
 }
 
-storyboardStep(Given, 'a project generated from an earlier toolbox release sits on its main branch', async () => {
-  await ensureLambdaUser()
-  await openBlankProjectTerminal(setupManualUpdateTerminal)
-  await typeCommandAndWait(I, 'clear')
-  // No trailing `# comment` marker on this one: the prompt plus the command
-  // already fill the terminal's width, and a wrapped card reads badly. The
-  // command itself is unique enough to anchor on, right after a `clear`.
-  await updateCard(
-    'git branch --show-current && grep _commit .config/devsecops/.copier-answers.yml',
-    'git branch --show-current', 'review-before-main'
-  )
-  twinContains('git branch --show-current', 'main')
-  twinContains('grep _commit .config/devsecops/.copier-answers.yml', '1.0.0')
-})
+// The merge request's files once its diff covers `paths`: GitLab builds a merge
+// request's diff in the background after each push.
+async function mergeRequestChanges (paths) {
+  const deadline = Date.now() + 120000
+  for (;;) {
+    const changes = (await projectApi(`/merge_requests/${global.journeyMergeRequestIid}/changes`)).changes || []
+    const listed = changes.map(c => c.new_path)
+    if (paths.every(p => listed.includes(p))) return changes
+    if (Date.now() > deadline) throw new Error(`Merge request !${global.journeyMergeRequestIid} never listed ${JSON.stringify(paths)}, found ${JSON.stringify(listed)}`)
+    await I.wait(3)
+  }
+}
 
-storyboardStep(Given, 'GitLab holds that main branch on its own', async () => {
-  await branchesFrame('review-branches-before')
+// The Changes tab of the update merge request as one 1440 x 1100 card: the
+// file list on the left, the diffs on the right. GitLab 19.4 draws it with
+// Rapid Diffs (beta) by default, whose stream fails past the fifth file of this
+// merge request ("Error streaming diffs: Devise could not find the
+// Warden::Proxy" in GitLab's log, a red "Could not fetch all changes" on the
+// page). The card asks for GitLab's standard view, the one GitLab itself falls
+// back to on that error. That view draws only the diffs in sight, so the
+// reload loop reads the file list: the diff is built in the background after a
+// push, and the page is reloaded until the list names exactly `files`.
+// `fold` closes the diffs too long to read on a card, by their own chevron,
+// the way a reviewer does, and `focus` is the diff the card is about: the
+// reviewer clicks it last, so GitLab frames it in blue and highlights it in the
+// file list.
+async function mergeRequestChangesFrame (frameName, files, { fold = [], focus = null } = {}) {
+  const url = `${gitlabUrl.mr(global.journeyProjectName, global.journeyMergeRequestIid, 'diffs')}?rapid_diffs_disabled=true`
+  const names = JSON.stringify(files.map(f => f.split('/').pop()).sort())
+  const listed = async () => JSON.stringify(await I.executeScript(() => Array.from(document.querySelectorAll('[data-testid="file-row"]:not(.folder)'))
+    .map(row => row.getAttribute('aria-label')).sort()))
+  // One click on a diff's chevron, from the page itself (the pointer would
+  // leave a tooltip behind), until its button reads `label`.
+  const toggle = async (file, label) => {
+    const button = `.diff-file[data-path="${file}"] .file-header-content button`
+    await I.waitForElement(button, 30)
+    await I.executeScript((selector) => document.querySelector(selector).click(), button)
+    // waitForFunction hands its argument array over as ONE argument.
+    await I.waitForFunction(([selector, wanted]) => {
+      const el = document.querySelector(selector)
+      return Boolean(el) && el.getAttribute('aria-label') === wanted
+    }, [button, label], 10)
+  }
+  await gitlabFrame(I, frameName, url, {
+    waitText: UPDATE_TITLE,
+    height: CARD_MAX_HEIGHT,
+    hide: DIFF_COUNTERS,
+    prepare: async () => {
+      const deadline = Date.now() + 120000
+      for (;;) {
+        let seen = ''
+        for (let i = 0; i < 10; i++) {
+          seen = await listed()
+          if (seen === names) break
+          await I.wait(1)
+        }
+        if (seen === names) break
+        if (Date.now() > deadline) throw new Error(`The Changes tab never listed ${names}, found ${seen}`)
+        await I.refreshPage()
+        await settlePage(I)
+      }
+      for (const file of fold) await toggle(file, 'Show file contents')
+      if (focus) {
+        await toggle(focus, 'Show file contents')
+        await toggle(focus, 'Hide file contents')
+      }
+    }
+  })
+}
+
+storyboardStep(Given, "a developer's toolbox project sits on GitLab with only its main branch", async () => {
+  await ensureLambdaUser()
+  // CI off: the generated .gitlab-ci.yml would start a pipeline on every push,
+  // on runners the other stories need, and its state would repaint every card.
+  await createJourneyProject((name, token) => setupToolboxUpdateTerminal(name, token, {
+    commitMessage: GENERATED_COMMIT,
+    ownCommit: DEVELOPER_CHANGE
+  }), { builds_access_level: 'disabled' })
+  await gitlabFrame(I, 'branches-before', gitlabUrl.branches(global.journeyProjectName), { waitText: DEVELOPER_COMMIT })
   await assertBranchExists('main')
   await assertBranchAbsent(UPDATE_BRANCH)
   await assertNoOpenMr()
+  const main = (await projectApi('/repository/branches/main')).commit
+  if (main.title !== DEVELOPER_COMMIT) throw new Error(`Expected main to end on "${DEVELOPER_COMMIT}", found "${main.title}"`)
+  mainHeadSha = main.id
+  // What release 22.0.0 put on the main branch: its number, its CI image, and
+  // one dictionary file.
+  expectIn(await rawFile(ANSWERS_FILE, 'main'), [`_commit: ${OLD_TOOLBOX_VERSION}`], `${ANSWERS_FILE} on main`)
+  expectIn(await rawFile('.gitlab-ci.yml', 'main'), [`the-devsecops-toolbox:${OLD_TOOLBOX_VERSION}`], '.gitlab-ci.yml on main')
+  const dictionary = (await projectApi('/repository/tree?ref=main&path=.config/cspell')).map(e => e.name)
+  if (JSON.stringify(dictionary) !== JSON.stringify(['config.json'])) {
+    throw new Error(`Expected .config/cspell to hold only config.json on main, found ${JSON.stringify(dictionary)}`)
+  }
 })
 
+storyboardStep(Given, 'the developer has pushed their own spelling word and their own task to the main branch', async () => {
+  await gitlabFrame(I, 'developer-commit', gitlabUrl.commit(global.journeyProjectName, mainHeadSha), {
+    waitText: 'No related merge requests found',
+    height: 1000,
+    prepare: () => I.waitForFunction(() => document.querySelectorAll('diff-file details[open]').length === 2, 30)
+  })
+  const diff = await projectApi(`/repository/commits/${mainHeadSha}/diff`)
+  const paths = diff.map(d => d.new_path).sort()
+  if (JSON.stringify(paths) !== JSON.stringify(['.config/cspell/config.json', TASK_FILE])) {
+    throw new Error(`Expected the developer's commit to change config.json and ${TASK_FILE}, it changes ${JSON.stringify(paths)}`)
+  }
+  expectIn(diff.find(d => d.new_path === '.config/cspell/config.json').diff, [`+    "${DEVELOPER_WORD}"`], 'the dictionary diff')
+  expectIn(diff.find(d => d.new_path === TASK_FILE).diff, [`+  ${DEVELOPER_TASK}:`], 'the task file diff')
+})
+
+// The terminal opens 1440 wide (159 columns, so go-task's echo of the copier
+// command fits on one row) and tall enough for the whole run, and keeps that
+// size for both terminal cards: the GitLab cards in between open in a second tab.
 storyboardStep(When, 'the developer asks for the new toolbox release from the main branch', async () => {
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-  await typeCommandAndWait(I, 'clear')
-  // The remote URL and the merge-request link the push prints carry this run's
-  // project name (e2e-journey-<hex>), like every GitLab card of this story.
-  await updateCard('task devsecops:update', 'task devsecops:update', 'review-update-run', 240000, [
-    ...COPIER_PIN_MASK,
-    [new RegExp(global.journeyProjectName, 'g'), 'project']
-  ])
-})
-
-storyboardStep(Then, 'GitLab now holds a merge request carrying the new release', async () => {
+  await openTerminal(I, global.journeyContainer, { width: 1440, height: 1200 })
+  const screen = await terminalCard(I, 'update-run', 'task devsecops:update', { mask: runMasks(), timeoutMs: UPDATE_RUN_TIMEOUT_MS })
+  expectIn(screen, [
+    `Updating to template version ${NEW_TOOLBOX_VERSION}`,
+    '[cspell migration] moving the project words out of the shared file',
+    `Opened merge request ${UPDATE_BRANCH} → main.`
+  ], 'the update run')
   const mr = await findOpenMr(UPDATE_BRANCH, 'main')
-  if (!mr.title.includes(MANUAL_UPDATE_VERSION)) {
-    throw new Error(`Expected the merge request title to name release ${MANUAL_UPDATE_VERSION}, got: ${mr.title}`)
-  }
-  await assertMrChangedFiles()
-  await mrPageFrame('review-mr-page')
+  if (mr.title !== UPDATE_TITLE) throw new Error(`Expected the merge request "${UPDATE_TITLE}", found "${mr.title}"`)
+  if (inProject('git branch --show-current').trim() !== UPDATE_BRANCH) throw new Error(`Expected the terminal on ${UPDATE_BRANCH}`)
+  if (inProject('git status --porcelain').trim()) throw new Error('Expected the update to leave nothing uncommitted')
 })
 
-storyboardStep(Then, 'the update branch stands next to a main nobody pushed to', async () => {
-  await branchesFrame('review-branches-after')
-  await assertBranchExists('main')
-  await assertBranchExists(UPDATE_BRANCH)
-  const mainTitle = await branchCommitTitle('main')
-  if (mainTitle !== GENERATED_COMMIT) {
-    throw new Error(`Expected main to still point at the generated commit, found: "${mainTitle}"`)
+storyboardStep(Then, "GitLab holds a merge request that moves the project to the new release and gives the developer's word a file of its own", async () => {
+  await inNewTab(I, () => mergeRequestChangesFrame('merge-request-changes', Object.keys(UPDATE_CHANGES), {
+    fold: FOLDED_DIFFS,
+    focus: '.config/cspell/config.project.json'
+  }))
+  const changes = await mergeRequestChanges(Object.keys(UPDATE_CHANGES))
+  const listed = changes.map(c => c.new_path).sort()
+  if (JSON.stringify(listed) !== JSON.stringify(Object.keys(UPDATE_CHANGES).sort())) {
+    throw new Error(`Expected the merge request to change exactly ${JSON.stringify(Object.keys(UPDATE_CHANGES))}, it changes ${JSON.stringify(listed)}`)
   }
+  for (const change of changes) {
+    if (change.new_file !== UPDATE_CHANGES[change.new_path]) throw new Error(`Expected ${change.new_path} new_file=${UPDATE_CHANGES[change.new_path]}`)
+  }
+  const diffOf = (file) => changes.find(c => c.new_path === file).diff
+  expectIn(diffOf('.config/cspell/config.project.json'), [`+    "${DEVELOPER_WORD}"`], 'the config.project.json diff')
+  expectIn(diffOf(ANSWERS_FILE), [`-_commit: ${OLD_TOOLBOX_VERSION}`, `+_commit: ${NEW_TOOLBOX_VERSION}`], 'the answers diff')
+  expectIn(diffOf('.gitlab-ci.yml'), [/^-.*the-devsecops-toolbox:22\.0\.0/m, /^\+.*the-devsecops-toolbox:22\.7\.1/m], 'the CI image diff')
+  // The split itself, read on the update branch: the framework's words without
+  // the developer's, the shared file empty and importing the other two.
+  const base = JSON.parse(await rawFile('.config/cspell/config.base.json', UPDATE_BRANCH))
+  if (base.words.includes(DEVELOPER_WORD)) throw new Error(`Expected config.base.json to leave ${DEVELOPER_WORD} out`)
+  const shared = JSON.parse(await rawFile('.config/cspell/config.json', UPDATE_BRANCH))
+  if (shared.words.length !== 0 || !['./config.base.json', './config.project.json'].every(i => shared.import.includes(i))) {
+    throw new Error(`Expected config.json to hold no words and import the two lists: ${JSON.stringify(shared)}`)
+  }
+  const own = JSON.parse(await rawFile('.config/cspell/config.project.json', UPDATE_BRANCH))
+  if (JSON.stringify(own.words) !== JSON.stringify([DEVELOPER_WORD])) {
+    throw new Error(`Expected config.project.json to hold ["${DEVELOPER_WORD}"], found ${JSON.stringify(own.words)}`)
+  }
+  // The Ansible answer is still off: no Ansible tooling yet.
+  const tools = (await projectApi(`/repository/tree?ref=${UPDATE_BRANCH}&path=.config&per_page=100`)).map(e => e.name)
+  if (tools.some(name => name.startsWith('ansible'))) throw new Error(`Expected no Ansible tooling before the answer changes, found ${JSON.stringify(tools)}`)
+})
+
+storyboardStep(When, 'the developer turns the Ansible option on and pushes the re-run update to the same merge request', async () => {
+  const screen = await terminalCard(I, 'ansible-run', ANSIBLE_RUN, { mask: runMasks(), timeoutMs: UPDATE_RUN_TIMEOUT_MS })
+  expectIn(screen, ['Copier update completed successfully.'], 'the Ansible run')
+  if (inProject('git status --porcelain').trim()) throw new Error('Expected the Ansible run to leave nothing uncommitted')
+  const head = (await projectApi(`/repository/branches/${UPDATE_BRANCH}`)).commit
+  if (head.title !== ANSIBLE_COMMIT) throw new Error(`Expected ${UPDATE_BRANCH} to end on "${ANSIBLE_COMMIT}", found "${head.title}"`)
+})
+
+storyboardStep(Then, 'the same merge request now also brings the Ansible tooling', async () => {
+  const paths = [...Object.keys(UPDATE_CHANGES), ...ANSIBLE_CHANGES]
+  await inNewTab(I, () => mergeRequestChangesFrame('merge-request-ansible', paths))
+  const changes = await mergeRequestChanges(paths)
+  const listed = changes.map(c => c.new_path).sort()
+  if (JSON.stringify(listed) !== JSON.stringify([...paths].sort())) {
+    throw new Error(`Expected the merge request to change exactly ${JSON.stringify(paths)}, it changes ${JSON.stringify(listed)}`)
+  }
+  expectIn(changes.find(c => c.new_path === ANSWERS_FILE).diff, ['+ansible_enabled: true'], 'the answers diff')
+  expectIn(await rawFile('Taskfile.yml', UPDATE_BRANCH), ['.config/ansible/Taskfile.yml'], 'the root Taskfile.yml')
+  const commits = await projectApi(`/merge_requests/${global.journeyMergeRequestIid}/commits`)
+  if (commits.length !== 2) throw new Error(`Expected the merge request to carry 2 commits, found ${commits.length}`)
+})
+
+storyboardStep(Then, "GitLab's history of the developer's task file shows neither update ever touched it", async () => {
+  await inNewTab(I, () => gitlabFrame(I, 'task-file-history', `${gitlabUrl.commits(global.journeyProjectName, UPDATE_BRANCH)}/${TASK_FILE}`, {
+    waitText: DEVELOPER_COMMIT
+  }))
+  const history = await projectApi(`/repository/commits?ref_name=${UPDATE_BRANCH}&path=${encodeURIComponent(TASK_FILE)}`)
+  const titles = history.map(c => c.title)
+  if (JSON.stringify(titles) !== JSON.stringify([DEVELOPER_COMMIT, GENERATED_COMMIT])) {
+    throw new Error(`Expected ${TASK_FILE} to have been changed only by the generation and the developer, found ${JSON.stringify(titles)}`)
+  }
+  // Release 22.7.1 rewords a line of this file in the template: it must not
+  // have reached the project.
+  const tasks = await rawFile(TASK_FILE, UPDATE_BRANCH)
+  expectIn(tasks, [`  ${DEVELOPER_TASK}:`], `${TASK_FILE} on ${UPDATE_BRANCH}`)
+  if (tasks.includes(TASKFILE_LINE_RELEASED)) throw new Error(`Expected the release's edit to ${TASK_FILE} to stay out of the project`)
+})
+
+storyboardStep(Then, 'the update branch stands next to a main branch nobody pushed to', async () => {
+  await inNewTab(I, () => gitlabFrame(I, 'branches-after', gitlabUrl.branches(global.journeyProjectName), { waitText: UPDATE_BRANCH }))
+  await assertBranchExists(UPDATE_BRANCH)
+  const main = (await projectApi('/repository/branches/main')).commit
+  if (main.id !== mainHeadSha) throw new Error(`Expected main to stay on the developer's commit, it moved to "${main.title}"`)
 })
 
 // The installer WHEN bindings (type command / launch / accept-default-and-wait

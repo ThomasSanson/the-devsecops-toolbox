@@ -85,8 +85,15 @@ function prepareVersionedTemplate () {
   return tpl
 }
 
+// Release 22.7.1 of the cspell fixture also rewords one line of
+// project/Taskfile.yml, a file copier lists under _skip_if_exists: the release
+// changes it, and an update must still leave the project's own copy alone.
+const TASKFILE_JINJA = 'project/Taskfile.yml.jinja'
+const TASKFILE_LINE_BEFORE = 'This task is intended to run Terraform plan, database migrations check, etc.'
+const TASKFILE_LINE_RELEASED = 'This task runs the Terraform plan and checks the database migrations.'
+
 /**
- * Build a versioned template whose 22.7.0 is the OLD single-file cspell design
+ * Build a versioned template whose 22.0.0 is the OLD single-file cspell design
  * (base words inline in config.json, no split, no migration) and whose 22.7.1 is
  * the current split + auto-migration. Tags bracket the copier `_migrations`
  * version (22.7.1) so the migration actually fires on update — proving that a
@@ -130,6 +137,10 @@ function prepareCspellMigrationTemplate () {
   fs.writeFileSync(`${tpl}/copier.yml`, realCopier)
   // 22.7.1 moves the CI base image forward to the new toolbox version.
   pinCiImage(tpl, '22.7.1')
+  const taskfile = `${tpl}/${TASKFILE_JINJA}`
+  const tasks = fs.readFileSync(taskfile, 'utf8')
+  if (!tasks.includes(TASKFILE_LINE_BEFORE)) throw new Error(`Fixture setup: no "${TASKFILE_LINE_BEFORE}" in ${taskfile}`)
+  fs.writeFileSync(taskfile, tasks.replace(TASKFILE_LINE_BEFORE, TASKFILE_LINE_RELEASED))
   run('git add -A && git commit --quiet --no-verify -m "chore: release 22.7.1 (split cspell + migration)"', tpl)
   run('git tag 22.7.1', tpl)
   return tpl
@@ -219,6 +230,7 @@ module.exports = {
   CI_IMAGE_RE,
   UPDATE_MARKER_FILE,
   UPDATE_MARKER,
+  TASKFILE_LINE_RELEASED,
   renderProject,
   prepareVersionedTemplate,
   prepareCspellMigrationTemplate,
