@@ -6,7 +6,7 @@
  * (tolerance: 0). Every card is a real GitLab page at 1440 px (gitlabFrame):
  * the access tokens, the CI/CD variables, the protected branches or a commit.
  * What a command prints is a twin of its card, checked line by line, together
- * with REST on the same fact.
+ * with REST on the same fact and a sign-in with each CI/CD variable's token.
  *
  * Chapters 1 and 2 share one project, set up through workspaceRepo (a clone, a
  * copy of /workspace and a first `task devsecops:init`). Chapter 3 renders its
@@ -44,10 +44,12 @@ const TOKEN = 'TASK_COMMITIZEN_TOKEN'
 const RENOVATE_TOKEN = 'TASK_RENOVATE_TOKEN'
 const TAMPERED_VALUE = 'tampered-by-e2e'
 
-// Per-scenario state.
+// Per-scenario state. Both chapters' glab tokens and working trees are kept
+// for the After hook: chapter 3 moves projectName and glabToken on.
 let projectName = null
 let glabToken = null
-let glabTokenId = null
+let mintedPatIds = []
+let repoDirs = []
 let revokedTokenId = null
 let healedTokenId = null
 let reloadTemplate = null
@@ -60,22 +62,24 @@ function repoDirFor (name) {
 Before(() => {
   projectName = null
   glabToken = null
-  glabTokenId = null
+  mintedPatIds = []
+  repoDirs = []
   revokedTokenId = null
   healedTokenId = null
   tokenIdsBeforeReload = null
 })
 
 After(async () => {
-  // Best-effort: drop the throwaway working tree + clone dir and revoke the
-  // per-scenario glab PAT so credentials do not pile up on the test volume.
-  if (projectName) {
-    try { execSync(`rm -rf ${repoDirFor(projectName)} /tmp/${projectName}-clone`, { stdio: 'ignore' }) } catch (_) {}
+  // Best-effort: drop the throwaway working trees and revoke the glab PATs so
+  // credentials do not pile up on the test volume.
+  for (const dir of repoDirs) {
+    try { execSync(`rm -rf ${dir}`, { stdio: 'ignore' }) } catch (_) {}
   }
-  if (glabTokenId) {
-    try { await revokePersonalAccessToken(glabTokenId, await getRootHeaders()) } catch (_) {}
-    glabTokenId = null
+  for (const id of mintedPatIds) {
+    try { await revokePersonalAccessToken(id, await getRootHeaders()) } catch (_) {}
   }
+  repoDirs = []
+  mintedPatIds = []
   // The versioned template the reload chapter renders from (see below).
   if (reloadTemplate) {
     try { execSync(`rm -rf ${reloadTemplate}`, { stdio: 'ignore' }) } catch (_) {}
@@ -121,7 +125,8 @@ async function provisionInitialisedProject (name) {
     `glab-cli-token-for-${name}`, ['api', 'write_repository'], await getRootHeaders()
   )
   glabToken = minted.token
-  glabTokenId = minted.id
+  mintedPatIds.push(minted.id)
+  repoDirs.push(repoDirFor(name))
   bootstrapWorkspaceRepo(name, repoDirFor(name), glabToken, { runInit: true, timeout: 600000 })
 }
 
@@ -146,6 +151,11 @@ async function waitFor (what, check, { tries = 30, delayMs = 2000 } = {}) {
   }
   throw new Error(`Timed out waiting for ${what}`)
 }
+
+// What every init run prints once the GitLab setup is done; reload shares the
+// branch line.
+const BRANCH_DONE = "Done! Protected branch 'main' is configured."
+const INIT_DONE = ['DevSecOps project initialization completed', BRANCH_DONE]
 
 function assertPrinted (output, lines) {
   for (const line of lines) {
@@ -182,19 +192,15 @@ async function variableValue (name) {
   return value
 }
 
-// A real authenticated clone with the CI/CD variable's token value.
-async function assertCloneWithVariable (variableName) {
-  const tokenValue = await variableValue(variableName)
-  const lambdaUser = process.env.TASK_GITLAB_LAMBDA_USER
-  const cloneDir = `/tmp/${projectName}-clone`
-  try {
-    execSync(
-      `rm -rf ${cloneDir} && git clone http://${lambdaUser}:${tokenValue}@gitlab/${lambdaUser}/${projectName}.git ${cloneDir}`, // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
-      { stdio: 'pipe', timeout: 120000 }
-    )
-  } catch (error) {
-    const stderr = error.stderr ? error.stderr.toString() : ''
-    throw new Error(`git clone using "${variableName}" failed:\n${stderr}`)
+// The CI/CD variable's value signs in to GitLab as the expected project access
+// token, still active. A clone would prove nothing: the projects are public, so
+// git never even sends the credentials.
+async function assertVariableIsToken (name, expectedId) {
+  const res = await freshGet(`${BASE_URL}/api/v4/personal_access_tokens/self`, { 'PRIVATE-TOKEN': await variableValue(name) })
+  const self = res.data || {}
+  if (res.status !== 200 || self.id !== expectedId || !self.active || self.revoked) {
+    throw new Error(`CI/CD variable "${name}" should sign in as token ${expectedId}, GitLab answered ${res.status} ` +
+      JSON.stringify({ id: self.id, active: self.active, revoked: self.revoked }))
   }
 }
 
@@ -208,6 +214,11 @@ async function assertCloneWithVariable (variableName) {
 // table keeps its layout whatever GitLab printed there.
 const VOLATILE_TOKEN_COLUMNS = ['Created', 'Last Used', 'Last Used IPs', 'Expires']
 
+// GitLab 19.4 draws a shimmer over the sidebar's "More features" item for its
+// first seconds, then fades it out. The mask stops every animation, which
+// freezes it fully visible: a blue box the reader would take for a click.
+const SHIMMER = '.feature-library-shimmer::before'
+
 // The access-tokens page: "Active project access tokens" and, below, the
 // inactive ones GitLab keeps marked "Revoked". `rows` = [active, inactive], the
 // row counts the REST twin expects, waited for so a half-loaded table is never shot.
@@ -215,6 +226,7 @@ async function tokensFrame (frameName, [active, inactive]) {
   await gitlabFrame(I, frameName, gitlabUrl.accessTokens(projectName), {
     height: 760,
     waitText: 'Active project access tokens',
+    hide: [SHIMMER],
     prepare: async () => {
       // waitForFunction hands its argument array over as ONE argument.
       await I.waitForFunction(([a, i]) => {
@@ -247,6 +259,7 @@ async function variablesFrame (frameName) {
   const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   await gitlabFrame(I, frameName, gitlabUrl.ciSettings(projectName), {
     height: 760,
+    hide: [SHIMMER],
     textMasks: secrets.map(s => [new RegExp(escape(s)), `${(s.match(/^[a-z]+-/) || [''])[0]}*****`]),
     prepare: async () => {
       const open = '#js-cicd-variables-settings.expanded'
@@ -270,6 +283,7 @@ async function protectedBranchFrame (frameName) {
   const section = '#js-protected-branches-settings'
   await gitlabFrame(I, frameName, gitlabUrl.repoSettings(projectName), {
     height: 640,
+    hide: [SHIMMER],
     prepare: async () => {
       if (!await I.grabNumberOfVisibleElements(`${section}.expanded`)) await I.click('Expand', section)
       await I.waitForElement(`${section}.expanded`, 30)
@@ -279,19 +293,24 @@ async function protectedBranchFrame (frameName) {
   })
 }
 
-// A commit page: its title, its branch, its merge request and its diff. The
-// pipeline row carries a global id and a status, and the Pipelines tab a count
-// that depends on timing: both go. The tab itself only exists once GitLab has
-// created the commit's pipeline, so the card waits for it.
+// A commit page: its title, its branch, its merge request and its diff, the
+// card ending under the diff. The pipeline row carries a global id and a
+// status, and the Pipelines tab a count that depends on timing: both go. The
+// tab itself only exists once GitLab has created the commit's pipeline, so the
+// card waits for it. The sidebar goes back to its top, where "Commits" still
+// fits, instead of the half-cut item GitLab's own scroll leaves on top.
 async function commitFrame (frameName, sha, { waitText, prepare = null }) {
   const headers = await getRootHeaders()
   await waitFor(`a pipeline for commit ${sha}`, async () =>
     ((await listProjectPipelines(projectName, headers, `?sha=${sha}`)).data || []).length)
   await gitlabFrame(I, frameName, gitlabUrl.commit(projectName, sha), {
-    height: 700,
+    height: 660,
     waitText,
-    prepare,
-    hide: ['.well-segment:has([data-testid="pipeline-path"])', '.js-pipelines-mr-count']
+    prepare: async () => {
+      if (prepare) await prepare()
+      await I.executeScript(() => { document.querySelector('#super-sidebar .gl-scroll-scrim').scrollTop = 0 })
+    },
+    hide: ['.well-segment:has([data-testid="pipeline-path"])', '.js-pipelines-mr-count', SHIMMER]
   })
 }
 
@@ -311,22 +330,23 @@ storyboardStep(Given, 'a project the framework set up, whose release token someo
 })
 
 storyboardStep(When, "the developer runs the framework's init again, a brand-new release token takes the revoked one's place", async () => {
-  assertPrinted(runTask('task devsecops:init'), [`Token created and CI/CD variable '${TOKEN}' stored`])
+  assertPrinted(runTask('task devsecops:init'), [`Token created and CI/CD variable '${TOKEN}' stored`, ...INIT_DONE])
   const { active } = await assertReleaseTokens(1, 1)
   healedTokenId = active[0].id
   if (healedTokenId === revokedTokenId) throw new Error(`The heal kept the revoked token ${revokedTokenId}`)
-  // Both variables carry a token that really works.
-  await assertCloneWithVariable(TOKEN)
-  await assertCloneWithVariable(RENOVATE_TOKEN)
+  // Each variable signs in as its own active token, the new release one included.
+  const ids = await automationTokenIds()
+  for (const name of [TOKEN, RENOVATE_TOKEN]) await assertVariableIsToken(name, ids[name])
   await tokensFrame('tokens-healed', [2, 1])
 })
 
 storyboardStep(When, 'the developer runs init a second time, GitLab keeps that release token and revokes nothing', async () => {
-  assertPrinted(runTask('task devsecops:init'), [`Token '${TOKEN}' exists and is valid`])
+  assertPrinted(runTask('task devsecops:init'), [`Token '${TOKEN}' exists and is valid`, ...INIT_DONE])
   const { active } = await assertReleaseTokens(1, 1)
   if (active[0].id !== healedTokenId) {
     throw new Error(`The second init replaced the release token: ${healedTokenId} became ${active[0].id}`)
   }
+  await assertVariableIsToken(TOKEN, healedTokenId)
   await tokensFrame('tokens-idempotent', [2, 1])
 })
 
@@ -352,7 +372,7 @@ storyboardStep(When, "someone overwrites the release token's CI/CD variable with
 })
 
 storyboardStep(When, "the developer runs the framework's init once more, a single release token is left", async () => {
-  assertPrinted(runTask('task devsecops:init'), ['Purging duplicates', 'out of sync. Rotating'])
+  assertPrinted(runTask('task devsecops:init'), ['Purging duplicates', 'out of sync. Rotating', ...INIT_DONE])
   // Revoked: chapter 1's token, init's own older duplicate (the purge keeps the
   // newest), and the planted one, replaced because the variable no longer matched it.
   await assertReleaseTokens(1, 3)
@@ -360,8 +380,8 @@ storyboardStep(When, "the developer runs the framework's init once more, a singl
 })
 
 storyboardStep(Then, 'the CI/CD variable holds a GitLab token again instead of the bad value', async () => {
-  if (await variableValue(TOKEN) === TAMPERED_VALUE) throw new Error('The CI/CD variable still carries the tampered value')
-  await assertCloneWithVariable(TOKEN)
+  // The single release token left by the purge, the one the variable must sign in as.
+  await assertVariableIsToken(TOKEN, (await automationTokenIds())[TOKEN])
   await variablesFrame('variables-healed')
 })
 
@@ -421,7 +441,8 @@ async function provisionGeneratedProject (name) {
     `glab-cli-token-for-${name}`, ['api', 'write_repository'], await getRootHeaders()
   )
   glabToken = minted.token
-  glabTokenId = minted.id
+  mintedPatIds.push(minted.id)
+  repoDirs.push(repoDirFor(name))
 
   // No README: the generated project's own first commit is what lands on main,
   // so the push below is a plain fast-forward.
@@ -487,7 +508,7 @@ storyboardStep(Given, 'someone pushed a hand edit of the pipeline file straight 
 
 storyboardStep(When, 'the developer reloads the framework, both automation tokens are revoked and replaced by new ones', async () => {
   const output = runTask('task devsecops:reload')
-  assertPrinted(output, ['♻️ Framework reloaded'])
+  assertPrinted(output, ['Copier recopy completed successfully', BRANCH_DONE, '♻️ Framework reloaded'])
   const refreshes = output.split('Force refresh: revoking existing token').length - 1
   if (refreshes !== 2) throw new Error(`Expected reload to force-refresh 2 tokens, it refreshed ${refreshes}:\n${output}`)
   const after = await automationTokenIds()
@@ -497,6 +518,7 @@ storyboardStep(When, 'the developer reloads the framework, both automation token
     }
     const old = (await tokensNamed(name)).find(t => t.id === tokenIdsBeforeReload[name])
     if (!old || !old.revoked) throw new Error(`Expected the install-day "${name}" (${tokenIdsBeforeReload[name]}) to be revoked`)
+    await assertVariableIsToken(name, after[name])
   }
   await tokensFrame('reload-tokens-replaced', [2, 2])
 })
