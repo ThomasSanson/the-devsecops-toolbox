@@ -268,7 +268,8 @@ const UPDATE_CHANGES = {
   [ANSWERS_FILE]: false,
   '.gitlab-ci.yml': false
 }
-// Too long to read on a card: the framework's word list (twice) and a script.
+// Folded on the card, for room: the framework's word list, the shared file's
+// new wiring (its twin reads it on the branch) and the migration script.
 const FOLDED_DIFFS = ['.config/cspell/config.base.json', '.config/cspell/config.json', '.config/cspell/migrate-words.py']
 // What the Ansible answer adds to the merge request. Nothing under project/.
 const ANSIBLE_CHANGES = [

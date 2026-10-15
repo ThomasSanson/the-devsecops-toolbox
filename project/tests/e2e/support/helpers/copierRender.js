@@ -91,6 +91,12 @@ function prepareVersionedTemplate () {
 const TASKFILE_JINJA = 'project/Taskfile.yml.jinja'
 const TASKFILE_LINE_BEFORE = 'This task is intended to run Terraform plan, database migrations check, etc.'
 const TASKFILE_LINE_RELEASED = 'This task runs the Terraform plan and checks the database migrations.'
+// The vocabulary 22.0.0 keeps inline in config.json: three framework words
+// that config.base.json still holds today, so the migration recognises them as
+// the framework's own. A short fixed list keeps every picture of 22.0.0 the
+// same whatever words the framework gains later: its full list moves every few
+// days, and a diff inside it would shift with every new word.
+const OLD_FRAMEWORK_WORDS = ['glab', 'megalinter', 'uvx']
 
 /**
  * Build a versioned template whose 22.0.0 is the OLD single-file cspell design
@@ -109,13 +115,16 @@ function prepareCspellMigrationTemplate () {
   const realOverride = fs.readFileSync(`${TEMPLATE_SRC}/.config/cspell/config.project.json`, 'utf8')
   const realMig = fs.readFileSync(`${TEMPLATE_SRC}/.config/cspell/migrate-words.py`, 'utf8')
   const realCopier = fs.readFileSync(`${TEMPLATE_SRC}/copier.yml`, 'utf8')
-  // 22.0.0 — the OLD single-file design: the base vocabulary lives inline in
+  // 22.0.0 — the OLD single-file design: the framework vocabulary lives inline in
   // config.json (which imports neither config.base.json nor config.project.json),
   // and none of the split files / migration exist. A project then has nowhere but
   // config.json to add its own words — exactly the situation #162's migration fixes.
   const oldCfg = JSON.parse(realCfg)
   oldCfg.import = oldCfg.import.filter(i => !i.includes('config.base.json') && !i.includes('config.project.json'))
-  oldCfg.words = JSON.parse(realBase).words
+  const baseWords = JSON.parse(realBase).words
+  const dropped = OLD_FRAMEWORK_WORDS.filter(w => !baseWords.includes(w))
+  if (dropped.length) throw new Error(`Fixture setup: config.base.json no longer holds ${dropped.join(', ')}; pick other framework words for 22.0.0`)
+  oldCfg.words = OLD_FRAMEWORK_WORDS
   fs.writeFileSync(`${dir}/config.json`, JSON.stringify(oldCfg, null, 2) + '\n')
   for (const f of ['config.base.json', 'config.project.json', 'migrate-words.py']) fs.rmSync(`${dir}/${f}`, { force: true })
   // Remove the historical cspell migration, but retain the list header for
