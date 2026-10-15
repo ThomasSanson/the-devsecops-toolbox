@@ -23,7 +23,11 @@ After(() => {
   for (const dir of rendered.splice(0)) removeRendered(dir)
 })
 
-const ENV = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error' }
+// RENOVATE_X_IGNORE_RE2: Renovate's optional RE2 engine is a native module
+// npx fetches from GitHub. When that download fails, the validator prints a
+// 40-line warning and validates the same way with JavaScript regexes: the card
+// would change with the network, not with the toolbox.
+const ENV = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error', RENOVATE_X_IGNORE_RE2: 'true' }
 
 function sh (dir, command) {
   try {
@@ -63,7 +67,7 @@ storyboardStep(Then, 'a project without Renovate installed gets the pinned valid
   execFileSync('sh', ['-c', 'git init -q && git add -A && git -c user.email=e2e@test.local -c user.name=e2e commit -qm render'], { cwd: project })
 
   const session = [
-    'command -v renovate renovate-config-validator || echo "Renovate is not installed"',
+    'command -v renovate || command -v renovate-config-validator || echo "Renovate is not installed"',
     'echo \'{ "unknownOptionForTest": true }\' > .config/renovate/config.json',
     'task renovate:validate',
     'git checkout -- .config/renovate/config.json',
