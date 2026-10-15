@@ -29,11 +29,7 @@ exports.config = {
   include: {
     I: '../../../.config/codeceptjs/steps_file.js',
     GitLabUserPage: './pages/GitLabUserPage.js',
-    GitLabProjectPage: './pages/GitLabProjectPage.js',
-    GitLabAccessTokenPage: './pages/GitLabAccessTokenPage.js',
-    GitLabMergeRequestPage: './pages/GitLabMergeRequestPage.js',
-    GitLabRepositoryPage: './pages/GitLabRepositoryPage.js',
-    GitLabSettingsPage: './pages/GitLabSettingsPage.js'
+    GitLabProjectPage: './pages/GitLabProjectPage.js'
   },
   helpers: {
     Playwright: {
