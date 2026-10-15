@@ -3,6 +3,7 @@ const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
+const { parentPort, workerData } = require('worker_threads')
 const {
   BASE_URL, projectPath, encodedProjectPath, getRootHeaders, createProject,
   deleteProject, createLambdaPersonalAccessToken, revokePersonalAccessToken,
@@ -176,7 +177,9 @@ class OsvCiEvidence {
   }
 
   // Plain timers, not I.wait: a caller may start the pipeline and run the local
-  // scan while this one polls.
+  // scan while this one polls. Each poll tells CodeceptJS's worker monitor the
+  // test is alive: it ends a worker silent for 5 minutes, and a pipeline can
+  // wait that long for the runner or the MegaLinter image.
   async run (jobName = 'code:megalinter') {
     if (this.job && this.job.commit.id === this.sha) return this.job
     const triggered = await triggerProjectPipeline(this.name, 'main', this.headers)
@@ -187,6 +190,8 @@ class OsvCiEvidence {
     while (Date.now() < deadline) {
       status = (await getPipeline(this.name, pid, this.headers)).data.status
       if (['success', 'failed', 'canceled', 'skipped'].includes(status)) break
+      console.log(`OSV CI pipeline: ${status}`)
+      parentPort?.postMessage({ type: 'osv-ci-wait', workerIndex: workerData?.workerIndex, status })
       await sleep(5000)
     }
     assert.ok(['success', 'failed'].includes(status), `The actual CI job must finish, the pipeline is ${status}`)
@@ -226,11 +231,14 @@ class OsvCiEvidence {
   // The page of the last published commit: its title and every file it
   // changed. Taken before any pipeline runs on it, so no status badge sits on
   // the page. The twin reads the same commit through REST: exactly these
-  // files, each added or deleted as the card shows it.
-  async commitFrame (frameName, files, { change = null, height = 1100 } = {}) {
+  // files, each added or deleted as the card shows it, each diff with `text`.
+  async commitFrame (frameName, files, { change = null, text = null, height = 1100 } = {}) {
     const diff = await getCommitDiff(this.name, this.sha, this.headers)
     assert.deepEqual(diff.map(entry => entry.new_path).sort(), [...files].sort(), `The commit must change exactly ${files.join(', ')}`)
-    if (change) for (const entry of diff) assert.equal(entry[`${change}_file`], true, `${entry.new_path} must be ${change}`)
+    for (const entry of diff) {
+      if (change) assert.equal(entry[`${change}_file`], true, `${entry.new_path} must be ${change}`)
+      if (text) assert.ok(entry.diff.includes(text), `${entry.new_path} must change a line with ${text}`)
+    }
     const paths = [...files]
     await gitlabFrame(this.I, frameName, gitlabUrl.commit(this.name, this.sha), {
       height,
