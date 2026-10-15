@@ -578,7 +578,9 @@ storyboardStep(Then, 'the Docker runner builds and tests the web application', a
     waitText: 'Job succeeded',
     height: 1000,
     fold: RUNNER_SECTIONS,
-    masks: [[/\b\d+(?:\.\d+)?s\b/g, '<duration>']],
+    // BuildKit prints a step's time before 'done' only when it was long enough
+    // to measure, so the same step reads 'done' on one run and '0.1s done' on the next.
+    masks: [[/\b\d+(?:\.\d+)?s\b/g, '<duration>'], [/ <duration> done\b/g, ' done']],
     focus: verdict
   })
 })
