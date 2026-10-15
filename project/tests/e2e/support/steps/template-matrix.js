@@ -1,4 +1,4 @@
-/* global inject Given When Then Before After document */
+/* global inject Given Then Before After document */
 /**
  * Steps of three 03-evolution stories that render the WORKING-BRANCH template
  * inside the codeceptjs container: @render-matrix (every Copier answer, shown
@@ -25,12 +25,10 @@ const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard
 // Per-scenario state. Worker processes run scenarios sequentially, so
 // module-level state is safe; the Before hook resets it for every scenario.
 let rendered = null
-let template = null
 let cleanupDirs = []
 
 Before(() => {
   rendered = null
-  template = null
   cleanupDirs = []
 })
 
@@ -50,16 +48,6 @@ function readRendered (relative) {
     throw new Error(`Rendered file "${relative}" does not exist in ${rendered}`)
   }
   return fs.readFileSync(file, 'utf8')
-}
-
-function parseAnswers (answersSpec) {
-  const answers = {}
-  answersSpec.split(/\s+/).filter(Boolean).forEach(token => {
-    const eq = token.indexOf('=')
-    if (eq < 0) throw new Error(`Invalid answer token "${token}" (expected key=value)`)
-    answers[token.slice(0, eq)] = token.slice(eq + 1)
-  })
-  return answers
 }
 
 function toolboxPackageRule () {

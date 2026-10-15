@@ -24,7 +24,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
-const { I, GitLabRepositoryPage, GitLabUserPage } = inject()
+const { I, GitLabUserPage } = inject()
 const {
   shellEscape,
   execInContainerAsUser,
@@ -32,7 +32,6 @@ const {
 } = require('../helpers/docker')
 const {
   BASE_URL,
-  projectPath,
   encodedProjectPath,
   getRootHeaders,
   createProject,
@@ -81,9 +80,7 @@ const {
 } = require('../terminal/capture')
 const {
   storyboardStep,
-  addStoryboardFrame,
-  capturePageFrame,
-  captureElementFrame
+  addStoryboardFrame
 } = require('../../../../../.config/codeceptjs/storyboard')
 
 // The scanner the publication runs before anything leaves. Installed as a binary
@@ -449,60 +446,6 @@ function inProjectOrThrow (script) {
     throw new Error(`Command failed in the private project (\`${script}\`):\n${res.output}`)
   }
   return stripAnsiEscapeSequences(res.output || '')
-}
-
-/**
- * What the live terminal currently SAYS — the same rows the card photographs,
- * read back as text. The twin of every terminal card: the picture proves it to a
- * human, this proves it to the suite.
- */
-async function terminalText () {
-  const rows = await I.executeScript(function () {
-    return Array.from(document.querySelectorAll('.xterm-rows > div'))
-      .map(function (row) { return row.textContent || '' })
-      .join('\n')
-  })
-  return String(rows || '')
-}
-
-/** Type a command in the live shell and keep the moment as a storyboard frame. */
-async function terminalCard (command, marker, frameName) {
-  await typeCommandAndWait(I, command, COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: marker, mask: TERMINAL_MASKS }))
-  return terminalText()
-}
-
-/**
- * What a GitLab page shows the reader but the story is not about, and which is
- * not the same twice: the one-off "new feature" callouts GitLab pops for a user
- * who has never dismissed them, any tooltip left hanging, and the row the mouse
- * happens to sit on. The pointer is parked in the corner rather than styled
- * away, so the picture stays a picture of the product.
- */
-async function settlePageChrome () {
-  await I.usePlaywrightTo('park the pointer outside the content', async ({ page }) => {
-    await page.mouse.move(2, 2)
-  })
-  await I.executeScript(() => {
-    const style = document.createElement('style')
-    style.textContent = [
-      '[role="tooltip"], .tooltip, .gl-tooltip { display: none !important }',
-      '.user-callout, [data-testid*="callout"], [class*="popover"] { display: none !important }'
-    ].join('\n')
-    document.head.appendChild(style)
-  })
-  await I.wait(0.5)
-}
-
-async function gitlabCard (url, frameName, height = 640) {
-  I.resizeWindow(1024, height)
-  await I.amOnPage(url)
-  // The private project's random name is what both projects are masked on: the
-  // public one is that name plus "-public", so both read as "project".
-  await GitLabRepositoryPage.maskVolatile(global.pubPrivate)
-  await settlePageChrome()
-  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
-  I.resizeWindow(1024, 768)
 }
 
 function mustContain (haystack, needles, what) {

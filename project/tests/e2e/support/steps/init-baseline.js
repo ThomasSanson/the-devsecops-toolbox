@@ -21,6 +21,7 @@ const path = require('path')
 const { spawnSync } = require('child_process')
 const { I, GitLabProjectPage, GitLabUserPage } = inject()
 const { renderProject, removeRendered } = require('../helpers/copierRender')
+const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabUrl, gitlabFrame, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
 const {
@@ -116,7 +117,7 @@ function ok (command, opts) {
   return res
 }
 
-const plain = (out) => screenText(out).replace(/\u001b\[[0-9;]*m/g, '')
+const plain = (out) => stripAnsiEscapeSequences(screenText(out))
 const lines = (out) => plain(out).split('\n').map(l => l.trim()).filter(Boolean)
 const head = () => ok('git rev-parse HEAD').out.trim()
 

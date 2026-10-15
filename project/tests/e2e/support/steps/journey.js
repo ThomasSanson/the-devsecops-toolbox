@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then NodeFilter */
+/* global inject Before After Given When Then NodeFilter MutationObserver requestAnimationFrame */
 // cspell:ignore Caddyfile -- the cspell-survival scenario's project word, named in a step comment
 /**
  * E2E developer-journey scenarios.
@@ -828,6 +828,16 @@ storyboardStep(Then, 'GitLab shows the AI agent files beside the README on the m
 // init-framework-mr) and the shared plain bindings (init-baseline /
 // release-toggle) all assert the exact same fact.
 // ============================================
+
+async function branchCommitTitle (branch) {
+  const headers = await getRootHeaders()
+  const res = await listProjectBranches(global.journeyProjectName, headers)
+  const found = (res.data || []).find(b => b.name === branch)
+  if (!found) {
+    throw new Error(`Branch "${branch}" not found for ${global.journeyProjectName}`)
+  }
+  return (found.commit && found.commit.title) || ''
+}
 
 async function assertBranchExists (branch) {
   const headers = await getRootHeaders()

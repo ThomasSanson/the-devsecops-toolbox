@@ -308,7 +308,7 @@ storyboardStep(When, 'the first release is published to an empty public project 
     'cd ~/release && cat .gitignore && grep TARGET_URL .env && task publication:publish'
   ])
   assert.match(publish, /^src\/\*\.txt\n/)
-  assert.ok(publish.includes(`Pushed main as `) && publish.includes(`to ${ctx.target.url} (branch main)`), `The first release was not pushed:\n${publish}`)
+  assert.ok(publish.includes('Pushed main as ') && publish.includes(`to ${ctx.target.url} (branch main)`), `The first release was not pushed:\n${publish}`)
   assert.ok(!publish.includes(FAILED), `The first release failed after it pushed:\n${publish}`)
   assert.ok(!publish.includes(ctx.target.token), 'The publication printed its token')
 })
