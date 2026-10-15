@@ -30,35 +30,41 @@ const JOB_CARD_HEIGHT = 720
 let state
 
 Before(() => { state = { projects: [], runners: [], environment: {} } })
+// CodeceptJS fires a Gherkin After without awaiting it: the next scenario's
+// Before replaces `state` while this one still awaits GitLab, so it keeps its own.
 After(async () => {
-  if (!state.directory) return
-  let finished = !state.job
+  const s = state
+  if (!s.directory) return
+  // First, before any await: the next scenario must not find docker through
+  // this one's discovery adapter.
+  for (const [key, value] of Object.entries(s.environment)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+  let finished = !s.job
   try {
-    for (const project of state.projects) await cancelRedundantPipelines(project.name, 0, state.root)
-    if (state.job) {
+    for (const project of s.projects) await cancelRedundantPipelines(project.name, 0, s.root)
+    if (s.job) {
       await poll(async () => {
-        const response = await freshGet(`${BASE_URL}/api/v4/projects/${state.first.id}/jobs/${state.job.id}`, state.headers)
+        const response = await freshGet(`${BASE_URL}/api/v4/projects/${s.first.id}/jobs/${s.job.id}`, s.headers)
         return ['success', 'failed', 'canceled'].includes(response.data?.status)
       }, 'the fixture job to finish cancellation')
       finished = true
     }
-    for (const runner of state.runners) await teardownScopedRunner(runner, state.root)
-    for (const project of state.projects) await deleteProject(project.name, state.headers)
-    if (state.tokenId) await revokePersonalAccessToken(state.tokenId, state.root)
+    for (const runner of s.runners) await teardownScopedRunner(runner, s.root)
+    for (const project of s.projects) await deleteProject(project.name, s.headers)
+    if (s.tokenId) await revokePersonalAccessToken(s.tokenId, s.root)
   } finally {
     try {
       // Preserve a live job if GitLab cannot confirm its cancellation. Only
       // finished fixture jobs and our disposable service can be removed.
-      if (finished && state.docker && state.owner) {
-        const owned = docker('ps', '--all', '--quiet', '--filter', `label=io.digital-commons.e2e.run=${state.owner}`).trim()
+      if (finished && s.docker && s.owner) {
+        const docker = (...args) => execFileSync(s.docker, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
+        const owned = docker('ps', '--all', '--quiet', '--filter', `label=io.digital-commons.e2e.run=${s.owner}`).trim()
         if (owned) docker('rm', '--force', '--volumes', ...owned.split('\n'))
       }
     } finally {
-      for (const [key, value] of Object.entries(state.environment)) {
-        if (value === undefined) delete process.env[key]
-        else process.env[key] = value
-      }
-      fs.rmSync(state.directory, { recursive: true, force: true })
+      fs.rmSync(s.directory, { recursive: true, force: true })
     }
   }
 })

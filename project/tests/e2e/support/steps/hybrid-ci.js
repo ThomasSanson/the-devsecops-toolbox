@@ -61,26 +61,29 @@ function loadYaml (input) {
 }
 
 Before(() => { state = { runners: [], runtime: new Map(), traces: new Map() } })
+// CodeceptJS fires a Gherkin After without awaiting it: the next scenario's
+// Before replaces `state` while this one still awaits GitLab, so it keeps its own.
 After(async () => {
-  if (!state.dir && !state.template) return
+  const s = state
+  if (!s.dir && !s.template) return
   try {
-    if (state.pub) {
+    if (s.pub) {
       const root = await getRootHeaders()
-      await cancelRedundantPipelines(state.pub.projectName, 0, root)
-      for (const runner of state.runners) {
+      await cancelRedundantPipelines(s.pub.projectName, 0, root)
+      for (const runner of s.runners) {
         try { docker('exec', runner.service, 'gitlab-runner', 'unregister', '--url', 'http://gitlab', '--token', runner.token) } catch (_) {} // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
         await deleteRunner(runner.id, root)
       }
     }
   } finally {
     // The unprivileged runner service and any job container it left behind.
-    if (state.owner) {
-      const owned = docker('ps', '--all', '--quiet', '--filter', `label=${OWNER_LABEL}=${state.owner}`).trim()
+    if (s.owner) {
+      const owned = docker('ps', '--all', '--quiet', '--filter', `label=${OWNER_LABEL}=${s.owner}`).trim()
       if (owned) docker('rm', '--force', '--volumes', ...owned.split('\n'))
     }
-    if (state.pub) await state.pub.teardown()
-    removeRendered(state.dir)
-    removeRendered(state.template)
+    if (s.pub) await s.pub.teardown()
+    removeRendered(s.dir)
+    removeRendered(s.template)
   }
 })
 
