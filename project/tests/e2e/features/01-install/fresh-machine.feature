@@ -13,7 +13,8 @@ Feature: Trusting the installer on a fresh machine
   # (the keystrokes reach it through /dev/tty while bash reads the pipe), the
   # setup adds unzip with sudo by itself, and the run stops because the folder
   # has no GitLab remote. Chapter 3: the remote added as told, the setup opens
-  # the framework merge request on GitLab.
+  # the framework merge request on GitLab. Chapter 4: the same installer with
+  # no terminal at all, as in a CI job, asks nothing and finishes on its own.
   #
   # ONE sentence = ONE card = ONE pixel baseline, asserted inside the step
   # (tolerance: 0). Every card is twinned with a check of the same fact: the
@@ -37,10 +38,15 @@ Feature: Trusting the installer on a fresh machine
     # Note: This part scrolled by on the way: the setup says "unzip is required before task devsecops:init.", installs it with sudo on its own, and ends on "unzip installed successfully!". Apt's progress lines are left out.
     Then the setup finds unzip missing and installs it with sudo by itself
     # Note: The end of the run. The setup reaches "Configuring GitLab project..." and stops: "No 'origin' remote configured. Add a GitLab remote, then re-run." The folder is not linked to any GitLab project, so the framework has nowhere to go yet.
-    # Note: The prompt is back, and the project files are already in the folder. Only the delivery to GitLab is missing.
+    # Note: The developer then types echo "exit code: $?": the run ended with exit code 201, and the prompt is back.
     And the installer stops and says the project needs a GitLab remote
     # Chapter: Following that advice opens the merge request
     # Note: In the same terminal, the developer turns the folder into a git repository, adds an empty GitLab project as its origin remote and runs the setup again. The sign-in to GitLab with glab was done off screen.
     # Note: GitLab's page for the merge request the setup opened: "chore: initialize devsecops framework", Open, from the init-framework-devsecops branch into the main branch. The project's random name shows as "project". The merge box and the tab counters are hidden, as they follow the pipelines GitLab starts on its own.
     # Copy: git init && git remote add origin https://gitlab.com/<namespace>/<project>.git && task devsecops:init
     Then once the developer links the folder to a GitLab project and runs the setup again, GitLab shows the framework merge request into the main branch
+    # Chapter: With no terminal at all, nothing is asked
+    # Note: A new empty folder on the same machine, and one typed line that runs the installer the way a CI job does: setsid leaves it no terminal, </dev/null leaves it nothing to read, and TASK_GLAB_ENABLED=false skips the GitLab part, as the README advises for a folder with no GitLab project.
+    # Note: Nobody answers anything and everything goes to /tmp/ci.log. The run ends with exit code 0, and the log ends on "Installation complete!" and "Run 'task' to see available commands."
+    # Copy: TASK_GLAB_ENABLED=false setsid -w bash /tmp/install.sh </dev/null >/tmp/ci.log 2>&1; echo "exit code: $?"; tail -n 3 /tmp/ci.log
+    Then on a machine with no terminal at all, as in a CI job, the same installer asks nothing and installs the complete framework

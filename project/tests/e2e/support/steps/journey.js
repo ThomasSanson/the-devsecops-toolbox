@@ -1442,7 +1442,8 @@ storyboardStep(Then, 'the project folder now holds the full DevSecOps framework'
 // (curl from GitLab, piped into bash) asks before each tool it adds, the setup
 // adds unzip with sudo by itself, and the run stops on the missing GitLab
 // remote; following that advice opens the framework merge request on GitLab.
-// Each stop's advice is proven by the next card. The terminal is 1440 px wide
+// Each stop's advice is proven by the next card. A last chapter runs the same
+// installer with no terminal at all, as a CI job does. The terminal is 1440 px wide
 // (159 columns, so the typed lines never wrap) and 900 px tall: about 52 rows,
 // which keeps the first of the two "Configuring GitLab project..." lines (one
 // per init attempt, some 70 rows apart) off the final card. Every card is
@@ -1612,19 +1613,20 @@ storyboardStep(Then, 'the setup finds unzip missing and installs it with sudo by
   if (onMachine('command -v unzip').exitCode !== 0) throw new Error('Expected unzip to be installed on the machine')
 })
 
-// The last screen, from the step that stopped. The twins: the stop is in the
-// log, the run never claimed success, and the Copier answers sent through the
-// pipe did build the project.
+// The last screen, from the step that stopped, plus its exit code: $? is
+// still the piped bash's status, since the scrollback card typed nothing. The
+// twins: the stop is in the log, and the Copier answers sent through the pipe
+// did build the project.
 storyboardStep(Then, 'the installer stops and says the project needs a GitLab remote', async () => {
+  await typeCommandAndWait(I, 'echo "exit code: $?"')
   const screen = await terminalScreenText(I)
   if (screen.split('Configuring GitLab project...').length !== 2) {
     throw new Error(`Expected exactly one "Configuring GitLab project..." on the last screen:\n${screen}`)
   }
+  if (!/exit code: [1-9]/.test(screen)) throw new Error(`Expected the installer to exit non-zero:\n${screen}`)
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'no-remote', { fromMarker: 'Configuring GitLab project...' }))
   const log = readInstallLog()
   assertLogSays(log, [NO_REMOTE_MARKER, 'task devsecops:init failed. Attempting to install missing prerequisites...'])
-  // install.sh's own last line (glab's installer prints its own "Installation complete!").
-  if (log.includes("Run 'task' to see available commands")) throw new Error('Expected the installer to stop short of its final lines')
   const files = linesOf(inProject('ls -A1'))
   for (const file of ['.config', '.gitlab-ci.yml', 'Taskfile.yml']) {
     if (!files.includes(file)) throw new Error(`Expected the project folder to hold "${file}": ${JSON.stringify(files)}`)
@@ -1651,6 +1653,7 @@ storyboardStep(Then, 'once the developer links the folder to a GitLab project an
   assertLogSays(readInstallLog(), ['Opened merge request'])
   const mr = await findOpenMr('init-framework-devsecops', 'main')
   await assertBranchExists('main')
+  await assertBranchExists('init-framework-devsecops')
   await assertMrChangedFiles()
   await inNewTab(I, () => gitlabFrame(I, 'framework-merge-request', gitlabUrl.mr(global.journeyProjectName, mr.iid), {
     waitText: 'init-framework-devsecops',
@@ -1658,4 +1661,28 @@ storyboardStep(Then, 'once the developer links the folder to a GitLab project an
     // on its own.
     hide: ['.mr-state-widget', '.merge-request-tabs-container .gl-badge']
   }))
+})
+
+// The same installer with no terminal at all, as a CI job runs it: setsid
+// leaves it no terminal to open and </dev/null nothing to read, so it may ask
+// nothing. TASK_GLAB_ENABLED=false (the README's offline switch) skips the
+// GitLab part: this folder belongs to no GitLab project. Off camera, gum and
+// glow are taken off again, so the run has a tool to add without asking.
+const CI_RUN = 'TASK_GLAB_ENABLED=false setsid -w bash /tmp/install.sh </dev/null >/tmp/ci.log 2>&1; echo "exit code: $?"; tail -n 3 /tmp/ci.log'
+storyboardStep(Then, 'on a machine with no terminal at all, as in a CI job, the same installer asks nothing and installs the complete framework', async () => {
+  const removed = onMachine('rm "$HOME/.local/bin/gum" "$HOME/.local/bin/glow"')
+  if (removed.exitCode !== 0) throw new Error(`Failed to take gum and glow off the machine:\n${removed.output}`)
+  await typeCommandAndWait(I, 'mkdir ~/ci && cd ~/ci')
+  const screen = await terminalCard(I, 'no-terminal', CI_RUN)
+  const log = stripAnsiEscapeSequences(onMachine('cat /tmp/ci.log').output || '')
+  assertLogSays(screen, ['exit code: 0', 'Installation complete!'])
+  assertLogSays(log, ['Installing gum v', 'Installing glow v', 'Project scaffolded successfully.'])
+  for (const question of ['Install gum and glow?', 'Install the complete DevSecOps framework?']) {
+    if (log.includes(question)) throw new Error(`Expected no question without a terminal, got "${question}":\n${log.slice(-2000)}`)
+  }
+  const files = linesOf(stripAnsiEscapeSequences(onMachine('ls -A1 "$HOME/ci"').output || ''))
+  for (const file of ['.agent', '.gitlab-ci.yml', 'Taskfile.yml']) {
+    if (!files.includes(file)) throw new Error(`Expected the complete framework in ~/ci, missing "${file}": ${JSON.stringify(files)}`)
+  }
+  if (onMachine('command -v gum glow').exitCode !== 0) throw new Error('Expected gum and glow back on the machine')
 })
