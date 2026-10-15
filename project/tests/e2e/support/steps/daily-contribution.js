@@ -361,20 +361,20 @@ storyboardStep(Then, 'the merge request shows that one-line change', async () =>
 // the source branch gone, then the main branch's own pipeline run to its end
 // before the card is taken: the merged page then shows both pipelines in a
 // final state, never one mid-run.
-storyboardStep(When, "the merge request's pipeline passes and the developer merges it into the main branch", async () => {
-  const rootHeaders = await getRootHeaders()
-  const svc = global.dailyRunner && global.dailyRunner.svc
+async function assertMergeRequestPipelineGreen (rootHeaders, svc) {
   const mrPipeline = await waitMergeRequestPipeline(I, PROJECT_NAME, global.dailyMrIid, rootHeaders)
   const mrJobs = mrPipeline.pid ? ((await listPipelineJobs(PROJECT_NAME, mrPipeline.pid, rootHeaders)).data || []) : []
   if (mrPipeline.status !== 'success') {
     dumpFailedTraces(PROJECT_NAME, mrJobs, rootHeaders, svc)
     throw new Error(`Expected the merge request pipeline to pass, got status=${mrPipeline.status}`)
   }
-  const notGreen = mrJobs.filter(j => j.status !== 'success')
+  const notGreen = mrJobs.filter(j => j.status !== 'success').map(j => j.name + '=' + j.status)
   if (!mrJobs.length || notGreen.length) {
-    throw new Error(`Expected every job green (${mrJobs.length} jobs), not: ${notGreen.map(j => `${j.name}=${j.status}`).join(', ') || 'none'}`)
+    throw new Error(`Expected every job green (${mrJobs.length} jobs), not: ${notGreen.join(', ') || 'none'}`)
   }
+}
 
+async function mergeAndWaitForBranchDeletion (rootHeaders) {
   const merged = await mergeMergeRequest(PROJECT_NAME, global.dailyMrIid, lambdaHeaders())
   let state = merged.data && merged.data.state
   for (let i = 0; i < 15 && state !== 'merged'; i++) {
@@ -391,7 +391,9 @@ storyboardStep(When, "the merge request's pipeline passes and the developer merg
     await I.wait(2)
   }
   if (branches.includes(BRANCH)) throw new Error(`Expected the source branch ${BRANCH} to be deleted by the merge`)
+}
 
+async function assertMainPipelineGreen (rootHeaders, svc) {
   const main = await waitRefPipeline(I, PROJECT_NAME, 'main', rootHeaders)
   global.dailyMainPid = main.pid
   if (main.status !== 'success') {
@@ -399,6 +401,14 @@ storyboardStep(When, "the merge request's pipeline passes and the developer merg
     dumpFailedTraces(PROJECT_NAME, jobs, rootHeaders, svc)
     throw new Error(`Expected the main branch pipeline to pass, got status=${main.status} (pipeline ${main.pid})`)
   }
+}
+
+storyboardStep(When, "the merge request's pipeline passes and the developer merges it into the main branch", async () => {
+  const rootHeaders = await getRootHeaders()
+  const svc = global.dailyRunner && global.dailyRunner.svc
+  await assertMergeRequestPipelineGreen(rootHeaders, svc)
+  await mergeAndWaitForBranchDeletion(rootHeaders)
+  await assertMainPipelineGreen(rootHeaders, svc)
 
   await gitlabFrame(I, 'merged-into-main', gitlabUrl.mr(PROJECT_NAME, global.dailyMrIid), {
     waitText: 'Deleted the source branch',
