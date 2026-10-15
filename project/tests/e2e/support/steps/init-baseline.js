@@ -75,6 +75,9 @@ const MASKS = [
   [/betterleaks \d+(?:\.\d+)+/g, 'betterleaks <version>'],
   [/commitizen==\d[\w.]*/g, 'commitizen==<version>'],
   [/\b[0-9a-f]{7,40}\b/g, '<sha>'],
+  // filter-branch refreshes its commit counter only when it reads the clock,
+  // so whether the last line says 3/4 or 4/4 depends on a second boundary.
+  [/(Rewrite <sha> \()\d+\//g, '$1<n>/'],
   [/\b\d{4}-\d{2}-\d{2}T\S+/g, '<date>'],
   [/\b\d{1,2}:\d{2}(?::\d{2})?(?:AM|PM)\b/g, '<time>'],
   [/\b\d+(?:\.\d+)?(?:µs|ms|s)\b/g, '<duration>'],
