@@ -13,7 +13,7 @@ Feature: Choose a runner according to the work a job does
     Given I generate a self-hosted project using the saas-linux-medium-amd64 Docker runner tag and push it to GitLab
     # Chapter: Add the application
     # Note: The merge request's Changes tab. The file tree lists the 11 files it adds or changes, and .gitlab-ci.yml is not one of them: the web application runs on the generated pipeline as it is.
-    # Note: The first diff gives the project dictionary .config/cspell/config.project.json its own word, "hybridciword". The diff of project/code/transport.js holds the first deliberate mistake, an http URL. The second, a misspelled word in project/README.md, is further down the page.
+    # Note: The web application's plumbing is folded to its file names. The open diffs give the project dictionary .config/cspell/config.project.json its own word, "hybridciword", and add the project's own lint settings in project/quality/megalinter.yml. project/code/transport.js holds the first deliberate mistake, an http URL. project/README.md holds the second, the misspelled word "spellling".
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
     When I open a merge request that adds the web application, its own lint settings and two deliberate mistakes
     # Chapter: Run the checks on real runners
@@ -28,11 +28,11 @@ Feature: Choose a runner according to the work a job does
     # Note: The job failed, and its side panel still offers the reports under "Job artifacts".
     And MegaLinter rejects the misspelled word and the insecure URL and keeps its reports
     # Chapter: Keep the project settings through an update
-    # Note: GitLab compares the merge request before and after the next push, which brought two commits: "chore: update the toolbox through Copier" and "fix: correct spelling and use HTTPS".
+    # Note: GitLab's Compare revisions page, from the commit the merge request opened with to the branch after the next push. That push brought two commits: "chore: update the toolbox through Copier" and "fix: correct spelling and use HTTPS".
     # Note: Only four files changed. In .copier-answers.yml, _commit moves from 1.0.0 to 1.0.1, and the toolbox's own .config/jq/Taskfile.yml gains the line "# e2e-update-marker". The README and transport.js carry the two fixes. The runner tag, the project dictionary and the lint settings are not in the list: Copier kept them.
     # Copy: http://gitlab/<lambda-user>/<project>/-/compare/<before the push>...<after the push>
     When I update the project through Copier and correct both mistakes in the same merge request
-    # Note: The code:megalinter job of the new pipeline, seen from the same place in its log. devskim and cspell now pass, and the README still holds "hybridciword": the project dictionary came through the update. The reports are kept again under "Job artifacts", and the runner is still Unprivileged file checks.
+    # Note: The code:megalinter job of the new pipeline, seen from the same place in its log. devskim and cspell now pass, with the project's own word "hybridciword" still in the README, as the compare page above shows: the project dictionary came through the update. The reports are kept again under "Job artifacts", and the runner is still Unprivileged file checks.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<code:megalinter job>
     Then MegaLinter passes on the unprivileged runner and accepts both corrections
     # Chapter: Containers keep their own runner

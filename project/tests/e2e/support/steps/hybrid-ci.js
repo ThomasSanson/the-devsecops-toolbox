@@ -33,6 +33,8 @@ const FILE_CHECKS = ['code:commitlint', 'code:commitizen-check', 'code:commitize
   'code:lizard', 'code:renovate-validate', 'code:betterleaks', 'code:megalinter', 'code:all', 'no-cheat']
 const PROJECT_JOBS = ['code:project', 'plan', 'build', 'test', 'release', 'deploy', 'operate', 'monitor', 'feedback']
 const OWNER_LABEL = 'io.digital-commons.e2e.run'
+// The web application's plumbing above the README diff on the Changes tab.
+const PLUMBING = ['project/code/check-runtime.sh', 'project/tests/health.sh', 'project/web/Dockerfile', 'project/web/index.html']
 // The runner's own sections, folded the way a reader skips them.
 const RUNNER_SECTIONS = ['Preparing the "docker" executor', 'Preparing environment', 'Getting source from Git repository',
   'Restoring cache', 'Saving cache', 'Uploading artifacts', 'Cleaning up project directory']
@@ -389,12 +391,46 @@ storyboardStep(When, 'I open a merge request that adds the web application, its 
   } while (Date.now() < deadline)
   assert.deepEqual(diffs.data.map(diff => diff.new_path).sort(), changed)
   assert.ok(!changed.includes('.gitlab-ci.yml'), 'The merge request must leave the generated pipeline alone')
+  // Twin of the open diffs: the project's word, its lint settings and the two mistakes.
+  for (const [file, line] of [[DICTIONARY, `"${PROJECT_WORD}"`], ['project/quality/megalinter.yml', 'EXTENDS: .config/megalinter/config.yml'],
+    [SECURITY_FILE, INSECURE_URL], ['project/README.md', `${PROJECT_WORD} ${MISSPELLING}`],
+    ['.env.dist', 'TASK_MEGALINTER_CONFIG=project/quality/megalinter.yml']]) {
+    assert.ok(diffs.data.find(diff => diff.new_path === file).diff.includes(line), `The ${file} diff must add ${line}`)
+  }
   // The merge request pipeline exists, and waits for the runners of the next step.
   const until = Date.now() + 60000
   while (!(await mergeRequestPipelines()).length && Date.now() < until) await I.wait(2)
   assert.equal((await mergeRequestPipelines()).length, 1, 'Opening the merge request must start its pipeline')
   await gitlabFrame(I, 'merge-request-changes', gitlabUrl.mr(state.projectName, state.mr, 'diffs'), {
-    waitText: 'config.project.json', height: 1100
+    waitText: 'config.project.json',
+    height: 1100,
+    // The web application's plumbing, folded with GitLab's own chevron: its
+    // headers stay in the list, and the diffs the sentence names fit the card.
+    prepare: async () => {
+      // waitForFunction hands its argument array over as ONE argument.
+      await I.waitForFunction(([count]) => document.querySelectorAll('diff-file').length === count, [changed.length], 60)
+      await I.executeScript((paths) => {
+        for (const file of document.querySelectorAll('diff-file')) {
+          if (paths.includes(file.querySelector('.rd-diff-file-title')?.textContent.trim())) {
+            file.querySelector('button.rd-diff-file-toggle-button[data-opened]').click()
+          }
+        }
+      }, PLUMBING)
+      await I.waitForFunction(([paths]) => document.querySelectorAll('diff-file article[data-collapsed="true"]').length === paths.length,
+        [PLUMBING], 30)
+    },
+    // Down to the README diff, the second mistake: GitLab swaps the title for
+    // its sticky merge request header, as it does for any reader who scrolls.
+    scrollTo: async () => {
+      await I.executeScript(() => {
+        document.querySelectorAll('.js-static-panel-inner').forEach(el => { el.scrollTop = 0 })
+        const readme = Array.from(document.querySelectorAll('diff-file'))
+          .find(file => file.querySelector('.rd-diff-file-title')?.textContent.trim() === 'project/README.md')
+        if (!readme) throw new Error('The Changes tab shows no project/README.md diff')
+        readme.querySelector('article').scrollIntoView({ block: 'end' })
+      })
+      await settlePage(I, { quietMs: 300 })
+    }
   })
 })
 
@@ -405,6 +441,9 @@ storyboardStep(When, 'the project gets an unprivileged runner for file checks an
   assert.equal(await runPipeline(), 'failed', 'The deliberate spelling error must fail the pipeline')
   const commitlint = job('code:commitlint')
   assert.equal(commitlint.status, 'success', stripAnsiEscapeSequences(await trace(commitlint)).slice(-6000))
+  // The generated jobs still go through Task.
+  assert.ok((await trace(commitlint)).includes('$ task commitlint'))
+  assert.ok((await trace(job('code:megalinter'))).includes('$ task megalinter:ci'))
   await assertNativeJob('code:commitlint')
   // Only MegaLinter fails, and each runner took exactly its own half of the jobs.
   for (const current of state.jobs) {
@@ -533,6 +572,7 @@ storyboardStep(Then, 'the Docker runner builds and tests the web application', a
   }
   assert.ok((await trace(job('code:project'))).includes('PASS: the project task keeps its Docker engine'))
   const verdict = 'PASS: the Compose web application returns the expected HTTP response'
+  assert.ok((await trace(job('test'))).includes('$ task test'))
   assert.ok((await trace(job('test'))).includes(verdict))
   await jobLogFrame(I, 'docker-web-application', state.projectName, job('test').id, {
     waitText: 'Job succeeded',
