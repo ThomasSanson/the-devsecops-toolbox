@@ -77,6 +77,18 @@ fi
 
 git push -u origin "${MR_BRANCH}"
 
+# GitLab registers a pushed branch in the background and refuses a merge
+# request from it until then ("source_branch does not exist"): on a busy
+# instance that takes a few seconds. Wait on the check GitLab itself runs, a
+# minute at most, then let glab report whatever is still wrong.
+branch_path="$(printf '%s' "${MR_BRANCH}" | sed 's|/|%2F|g')"
+tries=0
+until glab api --method HEAD "projects/:fullpath/repository/branches/${branch_path}" >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  [ "${tries}" -lt 30 ] || break
+  sleep 2
+done
+
 # Open the merge request — idempotent (skip if one already exists for the branch).
 existing_count="$(glab mr list --source-branch "${MR_BRANCH}" 2>/dev/null | grep -c "${MR_BRANCH}" || true)"
 if [ "${existing_count:-0}" -gt 0 ]; then
