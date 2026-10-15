@@ -71,7 +71,7 @@ anyone in a hurry steps over.
 
 ## Visual Regression
 
-Every test that proves something observable MUST include visual regression (`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.
+Every test that proves something observable MUST include visual regression (`assertVisualMatch`) at tolerance **0**.
 
 ### A baseline must be REAL output — never composed
 
@@ -84,7 +84,7 @@ Every test that proves something observable MUST include visual regression (`ass
 
 An image is worth a thousand words: show the precondition you established (the file you created, the `git diff` of what you changed) AND THEN the result. A test that only captures the final state cannot prove its own setup.
 
-**Count the baselines: a result-only scenario is a half-job.** Every scenario that screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`, `$ git diff`) so a human reading the images understands the journey without guessing. Rule of thumb: a scenario with exactly one `assertTextVisualMatch` almost always forgot its setup.
+**Count the baselines: a result-only scenario is a half-job.** Every scenario that screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`, `$ git diff`) so a human reading the images understands the journey without guessing. Rule of thumb: a scenario with exactly one baseline almost always forgot its setup.
 
 ### A discriminating proof needs BOTH halves
 
@@ -114,7 +114,7 @@ The cards prove the fact; the WORDS make a stranger understand it. A storyboard 
 - ✅ Name everything in full, every time: "the main branch" (never a bare "main"), "the release job", "GitLab", "push access" — the reader never guesses what an "it" or a metaphor points to. A metaphor (the door) is allowed ONLY if its literal meaning (push access to the main branch) sits in the same clause the first time, then drop it for plain words.
 - ✅ Show REAL GitLab, not a look-alike: when the fact lives in the CI, the card is the actual GitLab page (pipeline graph / job log / protected-branch settings), never a `<pre>` that merely resembles a terminal — the reader must see it IS the product, not a CLI reconstruction.
 - ✅ Tell ONE arc across the cards: the normal rule → the one exception and its danger → the incident → the automatic rescue → the proof; close the last card back to the opening rule so the story resolves.
-- ✅ Anchor each `# Note:` on what THAT card's screenshot actually shows, and quote its verbatim strings (the task name, the exact log line, the exact settings label — e.g. `task glab:release:lock-default-branch`, `Allowed to push: No one`); invent no UI.
+- ✅ Anchor each `# Note:` on what THAT card's screenshot actually shows, and quote its verbatim strings (the task name, the exact log line, the exact settings label — e.g. `task glab:release:lock-default-branch`, `Allowed to push and merge: No one`); invent no UI.
 - ✅ Explain any unavoidable term in one plain clause (after_script = a cleanup step GitLab runs on every outcome, pass or fail; merge request = a reviewed change). Keep each note 2-4 short concrete sentences; no comma splices, no padding.
 - ✅ Frame the EVIDENCE for the sentence, never a state that merely agrees with it. For each sentence ask: "a reader who doubts this — what would they demand to see?" That is the frame. A sentence naming an actor ("the gate refuses", "the release job re-locks main") wants that actor's own words, its log, its verdict line; a page downstream that happens to agree proves nothing about WHY.
 - ✅ Narrow the sentence when the frame cannot hold it. If the card cannot show the evidence, the sentence is claiming more than the story proves — say less, or change the frame.

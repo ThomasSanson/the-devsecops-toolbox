@@ -44,7 +44,7 @@ two guards read the facts themselves.
 
 ## Visual Regression
 
-Every test that proves something observable MUST include visual regression (`assertVisualMatch` / `assertTextVisualMatch`) at tolerance **0**.
+Every test that proves something observable MUST include visual regression (`assertVisualMatch`) at tolerance **0**.
 
 ### A baseline must be REAL output — never composed
 
@@ -57,7 +57,7 @@ Every test that proves something observable MUST include visual regression (`ass
 
 An image is worth a thousand words: show the precondition you established (the file you created, the `git diff` of what you changed) AND THEN the result. A test that only captures the final state cannot prove its own setup.
 
-**Count the baselines: a result-only scenario is a half-job.** Every scenario that screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`, `$ git diff`) so a human reading the images understands the journey without guessing. Rule of thumb: a scenario with exactly one `assertTextVisualMatch` almost always forgot its setup.
+**Count the baselines: a result-only scenario is a half-job.** Every scenario that screenshots a command's verdict MUST be preceded by a setup baseline (`$ cat <input-file>`, `$ git diff`) so a human reading the images understands the journey without guessing. Rule of thumb: a scenario with exactly one baseline almost always forgot its setup.
 
 ### A discriminating proof needs BOTH halves
 
