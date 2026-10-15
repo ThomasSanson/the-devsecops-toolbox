@@ -1855,7 +1855,7 @@ storyboardStep(Then, 'on a machine with no terminal at all, as in a CI job, the 
     if (log.includes(question)) throw new Error(`Expected no question without a terminal, got "${question}":\n${log.slice(-2000)}`)
   }
   const files = linesOf(stripAnsiEscapeSequences(onMachine('ls -A1 "$HOME/ci"').output || ''))
-  for (const file of ['.agent', '.gitlab-ci.yml', 'Taskfile.yml']) {
+  for (const file of ['.agents', '.claude', '.gitlab-ci.yml', 'Taskfile.yml']) {
     if (!files.includes(file)) throw new Error(`Expected the complete framework in ~/ci, missing "${file}": ${JSON.stringify(files)}`)
   }
   if (onMachine('command -v gum glow').exitCode !== 0) throw new Error('Expected gum and glow back on the machine')

@@ -225,7 +225,7 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   if (taskfile.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the default root Taskfile to leave the podman include out')
   if (!matrixFile('.config/gitlab/ci/variables.yml').includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected the CI variables to target tcp://docker:2376')
   if (!matrixFile('.config/gitlab/ci/devsecops/release.yml').includes('after_script:')) throw new Error('Expected the release job to keep its after_script')
-  if (!matrixFile('.agent/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
+  if (!matrixFile('.agents/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
   rendered = matrix.dir
   const rule = toolboxPackageRule()
   if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward') {
@@ -391,14 +391,14 @@ storyboardStep(Then, 'turning off automerge only removes the fast-forward rule f
 storyboardStep(Then, 'choosing French Gherkin switches every test-writing rule and skill to French', async () => {
   const compare = await renderAnswerBranch('gherkin-fr', { gherkin_language: 'fr' }, [
     `M ${MATRIX_ANSWERS}`,
-    'M .agent/rules/interaction.md',
-    'M .agent/rules/tests-structure.md',
-    'M .agent/skills/tdd/SKILL.md',
-    'M .agent/skills/test/SKILL.md',
-    'M .agent/workflows/development-cycle.md',
-    'M .agent/workflows/tdd-step1-red.md'
+    'M .agents/rules/interaction.md',
+    'M .agents/rules/tests-structure.md',
+    'M .agents/skills/development-cycle/SKILL.md',
+    'M .agents/skills/tdd-step1-red/SKILL.md',
+    'M .agents/skills/tdd/SKILL.md',
+    'M .agents/skills/test/SKILL.md'
   ])
-  if (!matrixFile('.agent/rules/tests-structure.md').includes('Gherkin in **fr**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **fr**')
+  if (!matrixFile('.agents/rules/tests-structure.md').includes('Gherkin in **fr**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **fr**')
   // Twin: every changed line is the same line with en swapped for fr.
   for (const d of compare.diffs) {
     const lines = d.diff.split('\n')
@@ -409,7 +409,7 @@ storyboardStep(Then, 'choosing French Gherkin switches every test-writing rule a
     }
   }
   await compareFrame('answers-gherkin-fr', 'gherkin-fr', compare, {
-    expand: [MATRIX_ANSWERS, '.agent/rules/tests-structure.md'],
+    expand: [MATRIX_ANSWERS, '.agents/rules/tests-structure.md'],
     height: 910
   })
 })

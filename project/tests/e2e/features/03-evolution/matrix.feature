@@ -28,7 +28,7 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: The project's random name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks /workspace acme
     Given GitLab holds a project rendered with every default Copier answer on its main branch
-    # Note: The repository page of the main branch. The project folder sits next to .agent, .config, .devcontainer and docs, and the root files run from .dockerignore to lefthook.yml.
+    # Note: The repository page of the main branch. The project folder sits next to .agents, .claude, .config, .devcontainer and docs, and the root files run from .dockerignore to lefthook.yml.
     # Note: There is no README.md between LICENSE and Taskfile.yml: the toolbox keeps its own README out of the projects it generates.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
     Then the main branch carries the project workspace and leaves the toolbox README out
@@ -61,7 +61,7 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: In .config/renovate/config.json the toolbox rule loses its four automerge lines, "automergeStrategy": "fast-forward" among them, and nothing else changes.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data devsecops_automerge=false /workspace acme
     And turning off automerge only removes the fast-forward rule from the Renovate config
-    # Note: The same page for the branch gherkin-fr. Six rules, skills and workflows under .agent change, each by one or two lines.
+    # Note: The same page for the branch gherkin-fr. Six rules and skills under .agents change, each by one or two lines.
     # Note: tests-structure.md is unfolded: features/ and pages/ now ask for fr instead of en. The answers file at the bottom shows gherkin_language turning to fr.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data gherkin_language=fr /workspace acme
     And choosing French Gherkin switches every test-writing rule and skill to French
