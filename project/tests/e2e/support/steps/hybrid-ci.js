@@ -578,9 +578,11 @@ storyboardStep(Then, 'the Docker runner builds and tests the web application', a
     waitText: 'Job succeeded',
     height: 1000,
     fold: RUNNER_SECTIONS,
-    // BuildKit prints a step's time before 'done' only when it was long enough
-    // to measure, so the same step reads 'done' on one run and '0.1s done' on the next.
-    masks: [[/\b\d+(?:\.\d+)?s\b/g, '<duration>'], [/ <duration> done\b/g, ' done']],
+    // BuildKit's progress lines change from one run to the next (a step's
+    // time, a second 'writing image' line): the log starts where Compose says
+    // the image is built.
+    from: 'Image project-web Built',
+    masks: [[/\b\d+(?:\.\d+)?s\b/g, '<duration>']],
     focus: verdict
   })
 })
