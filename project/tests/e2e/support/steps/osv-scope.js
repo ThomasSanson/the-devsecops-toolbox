@@ -177,7 +177,7 @@ storyboardStep(When, 'the developer adds vulnerable dependencies in project-owne
   assert.ok(!fs.existsSync(path.join(state.project, 'project')), 'Root dependencies must work with project mode disabled')
   for (const file of PROJECT_LOCKS) assert.ok(listing.includes(file))
   await state.ci.publish(state.project, 'test: add project dependencies')
-  await state.ci.commitFrame('project-lockfiles', PROJECT_LOCKS, { change: 'new' })
+  await state.ci.commitFrame('project-lockfiles', PROJECT_LOCKS, { change: 'new', text: '4.17.20' })
 })
 
 // The update keeps the project's own scanner settings and dependency files,
@@ -194,7 +194,7 @@ storyboardStep(When, 'the developer updates the framework through Copier', async
   const argumentsBlock = run('grep', ['-A', '13', '^REPOSITORY_OSV_SCANNER_ARGUMENTS:', BASE_CONFIG])
   assert.ok(answers.includes('1.0.1') && argumentsBlock.includes('--experimental-exclude=.config/codeceptjs'))
   await state.ci.publish(state.project, 'test: update the framework through Copier')
-  await state.ci.commitFrame('copier-keeps-osv-scope', [ANSWERS, '.config/jq/Taskfile.yml'], { height: 900 })
+  await state.ci.commitFrame('copier-keeps-osv-scope', [ANSWERS, '.config/jq/Taskfile.yml'], { height: 800 })
 })
 
 storyboardStep(Then, 'OSV reports every project-owned copy of the vulnerable package', async () => {
@@ -208,7 +208,7 @@ storyboardStep(When, "the developer removes the vulnerable dependencies from the
   const listing = run('sh', ['-c', 'find .config -name package-lock.json | sort'])
   assert.ok(listing.includes('.config/codeceptjs/package-lock.json'))
   await state.ci.publish(state.project, 'test: remove project dependencies')
-  await state.ci.commitFrame('project-lockfiles-removed', PROJECT_LOCKS, { change: 'deleted' })
+  await state.ci.commitFrame('project-lockfiles-removed', PROJECT_LOCKS, { change: 'deleted', text: '4.17.20' })
 })
 
 storyboardStep(Then, "the project's OSV scan leaves the framework tools to the toolbox and passes", async () => {
@@ -281,8 +281,10 @@ storyboardStep(Then, "the CI job log shows the worker's real task output and kee
 })
 
 // The toolbox itself, scanned by its own configuration against the live
-// vulnerability database: no exclusion of the tools it ships.
-storyboardStep(Then, "the toolbox's own OSV scan reads every dependency file it ships and finds no known vulnerability", async () => {
+// vulnerability database: no exclusion of the tools it ships. OSV runs with
+// --no-resolve, so it reads lockfiles and requirements files, never a bare
+// package.json: the scanned files are exactly those of the template's tools.
+storyboardStep(Then, "the toolbox's own OSV scan reads the lockfile or requirements file of every tool that has one and finds no known vulnerability", async () => {
   state.project = prepareVersionedTemplate()
   state.dirs.push(state.project)
   const base = fs.readFileSync(path.join(state.project, BASE_CONFIG), 'utf8')
@@ -295,6 +297,13 @@ storyboardStep(Then, "the toolbox's own OSV scan reads every dependency file it 
   fs.writeFileSync(path.join(OUTPUT, 'framework-osv.log'), result.report)
   fs.writeFileSync(path.join(OUTPUT, 'framework-megalinter.log'), result.output)
   assert.ok(result.report.includes('Scanned .config/codeceptjs/package-lock.json file'), 'OSV must read the actual shipped lockfile')
+  const shipped = fs.readdirSync(path.join(state.project, '.config')).sort().flatMap(tool => {
+    const directory = path.join(state.project, '.config', tool)
+    if (!fs.statSync(directory).isDirectory()) return []
+    return fs.readdirSync(directory).filter(file => /^(package-lock\.json|requirements.*\.txt)$/.test(file)).map(file => `.config/${tool}/${file}`)
+  }).sort()
+  const scanned = result.report.split('\n').map(line => line.match(/^Scanned (\.config\/\S+) file/)?.[1]).filter(Boolean).sort()
+  assert.deepEqual(scanned, shipped, 'OSV must read every lockfile and requirements file the toolbox ships, and nothing else under .config')
   assert.equal(result.exitCode, 0, `The toolbox must fix its dependency vulnerabilities:\n${result.report}`)
   assert.ok(result.report.includes('No issues found'), 'OSV must report its native clean verdict')
   // A Renovate bump changes how many packages a lockfile holds, not what the card shows.

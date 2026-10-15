@@ -21,7 +21,7 @@ Feature: a freshly generated project passes its own quality gate
     # Copy: task megalinter
     Then the toolbox's OSV scan reports the same vulnerable framework tools
     # Chapter: The project answers for its own dependencies
-    # Note: GitLab's page for the commit "test: add project dependencies". Its Files list shows four new lockfiles, each with lodash 4.17.20: one at the root, one under application/.config, and two in .config folders the project created itself, codeceptjs-extra and project-tool.
+    # Note: GitLab's page for the commit "test: add project dependencies". Its Files list shows four new lockfiles: one at the root, one under application/.config, and two in .config folders the project created itself, codeceptjs-extra and project-tool. The two diffs in view show lodash 4.17.20 inside.
     When the developer adds vulnerable dependencies in project-owned locations
     # Note: GitLab's page for the Copier update commit. It changes two files: .copier-answers.yml moves from 1.0.0 to 1.0.1, and .config/jq/Taskfile.yml is the one marker file the test release 1.0.1 adds.
     # Note: The project's scanner settings and its four lockfiles are not in the commit: the update leaves them alone.
@@ -32,7 +32,7 @@ Feature: a freshly generated project passes its own quality gate
     # Copy: task megalinter
     Then OSV reports every project-owned copy of the vulnerable package
     # Chapter: Without vulnerable dependencies of its own, the project passes
-    # Note: GitLab's page for the commit "test: remove project dependencies": the four project lockfiles are deleted. The framework tools keep their vulnerable lockfiles.
+    # Note: GitLab's page for the commit "test: remove project dependencies". It deletes the four project lockfiles and nothing else: the lockfiles of the framework tools are not in the commit.
     When the developer removes the vulnerable dependencies from the project's own locations
     # Note: The same job now passes. OSV still leaves the framework tools out, says "No package sources found" for the project, then "No issues found". MegaLinter ends on "Successfully linted all files without errors" and GitLab marks the job Passed.
     # Note: The framework tools are still vulnerable: as the first chapter showed, that is the toolbox's job.
@@ -50,9 +50,10 @@ Feature: a freshly generated project passes its own quality gate
   @framework-dependencies
   Scenario: the toolbox ships dependencies that pass its own OSV scan
     # Note: GitLab's page for the toolbox's own code:megalinter job, with OSV as its only scanner, checked against the live vulnerability database. The scanner's command leaves no .config folder out.
-    # Note: The Scanned lines read the dependency file of every tool the toolbox ships. OSV answers "No issues found", the summary marks osv-scanner green, and GitLab marks the job Passed. Package counts show as <count>: they change with every dependency update.
+    # Note: The Scanned lines name seven files: the requirements.txt of ansible, commitizen, copier, lizard and yamllint, and the package-lock.json of codeceptjs and commitlint. The .config/megalinter folder ships only a package.json, which OSV does not read without a lockfile.
+    # Note: OSV answers "No issues found", the summary marks osv-scanner green, and GitLab marks the job Passed. Package counts show as <count>: they change with every dependency update.
     # Copy: task megalinter
-    Then the toolbox's own OSV scan reads every dependency file it ships and finds no known vulnerability
+    Then the toolbox's own OSV scan reads the lockfile or requirements file of every tool that has one and finds no known vulnerability
 
   @retired-linters
   Scenario: a framework update removes retired linters and preserves project controls
