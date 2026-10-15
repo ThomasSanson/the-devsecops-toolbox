@@ -385,16 +385,15 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
     height: 1100,
     waitText: 'storyboard.png',
     // GitLab loads each image on its own: wait until both pairs are drawn.
-    // The first file's block ends on a fraction of a pixel that changes from
-    // run to run, and the second file's name is drawn half a pixel higher or
-    // lower: each block is pinned to its whole-pixel height.
+    // Each file name sits in a sticky header that Chromium sometimes paints on
+    // a layer of its own, half a pixel off: the headers stay in the page flow.
     prepare: async () => {
       await I.waitForFunction(() => {
         const images = Array.from(document.querySelectorAll('.diff-file img, [data-testid="diff-file"] img'))
         return images.length >= 4 && images.every(img => img.complete && img.naturalWidth > 0)
       }, 60)
-      await I.executeScript(() => document.querySelectorAll('.diff-file').forEach(file => {
-        file.style.height = `${Math.round(file.getBoundingClientRect().height)}px`
+      await I.executeScript(() => document.querySelectorAll('.rd-diff-file-header-sticky').forEach(header => {
+        header.style.position = 'static'
       }))
     }
   })
