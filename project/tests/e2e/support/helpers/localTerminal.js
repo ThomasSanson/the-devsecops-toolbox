@@ -71,14 +71,14 @@ async function openLocalTerminal (I, { cwd, env, port, height = 1200, width = 14
     const deadline = Date.now() + 15000
     for (;;) {
       try {
-        execSync(`curl -sf http://localhost:${port}/ >/dev/null`) // DevSkim: ignore DS137138 -- Ephemeral test terminal inside the suite container.
+        execSync(`curl -sf http://localhost:${port}/ >/dev/null`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal inside the suite container.
         break
       } catch (_) {
         if (Date.now() > deadline) throw new Error(`ttyd did not answer on port ${port}`)
         execSync('sleep 0.2')
       }
     }
-    await openTerminal(I, `http://localhost:${port}`, { height, width }) // DevSkim: ignore DS137138 -- Ephemeral test terminal inside the suite container.
+    await openTerminal(I, `http://localhost:${port}`, { height, width }) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal inside the suite container.
   } catch (err) {
     close()
     throw err
