@@ -503,6 +503,14 @@ async function renderAnswerBranch (branch, answers, expected) {
   return compare
 }
 
+// The render on disk, not only what git committed: a file main never had, or
+// one the rendered .gitignore keeps out of the commit, never shows in a compare.
+function assertLeftOut (branch, paths) {
+  for (const p of paths) {
+    if (fs.existsSync(path.join(matrix.dir, p))) throw new Error(`Expected the ${branch} render to leave ${p} out`)
+  }
+}
+
 /**
  * GitLab's compare page of `branch` against the main branch (Rapid Diffs on
  * GitLab 19.4): every changed file listed in its Files panel, the files in
@@ -542,7 +550,14 @@ async function compareFrame (frameName, branch, compare, { expand, height }) {
       }), [expand], 30)
     },
     scrollTo: async () => {
-      await I.executeScript(() => document.querySelector('.rd-app-header').scrollIntoView({ block: 'start' }))
+      await I.executeScript(() => {
+        document.querySelector('.rd-app-header').scrollIntoView({ block: 'start' })
+        // GitLab scrolls its left navigation to the active item, by an amount
+        // that depends on the card's height: every compare card starts it at the top.
+        const sidebar = document.querySelector('#super-sidebar')
+        if (!sidebar) throw new Error('compareFrame: GitLab shows no #super-sidebar')
+        ;[sidebar, ...sidebar.querySelectorAll('*')].forEach(el => { el.scrollTop = 0 })
+      })
       await settlePage(I, { quietMs: 300 })
     }
   })
@@ -596,11 +611,13 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   if (!lint.data || lint.data.valid !== true) throw new Error(`Expected GitLab to find the main branch CI valid: ${JSON.stringify(lint.data)}`)
   // The skipped pipeline is recorded a moment after the push: wait for it, so
   // its status icon is on every card or on none.
-  for (let i = 0; i < 30; i++) {
+  let skipped = false
+  for (let i = 0; i < 30 && !skipped; i++) {
     const pipelines = await listProjectPipelines(projectName, headers, '?ref=main')
-    if (Array.isArray(pipelines.data) && pipelines.data.length) break
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    skipped = Array.isArray(pipelines.data) && pipelines.data.length > 0
+    if (!skipped) await new Promise(resolve => setTimeout(resolve, 2000))
   }
+  if (!skipped) throw new Error('GitLab recorded no skipped pipeline on the main branch after 60 s')
 
   await gitlabFrame(I, 'defaults-answers', gitlabUrl.file(projectName, 'main', MATRIX_ANSWERS), {
     waitText: 'container_runtime: docker',
@@ -657,11 +674,13 @@ storyboardStep(Then, 'choosing podman swaps docker-ce and compose for podman and
     'M Taskfile.yml',
     'D project/docker-compose.yml'
   ])
+  assertLeftOut('podman', ['.config/docker-ce', 'project/docker-compose.yml'])
   const taskfile = matrixFile('Taskfile.yml')
   if (!taskfile.includes('.config/podman/Taskfile.yml') || taskfile.includes('.config/docker-ce/Taskfile.yml')) {
     throw new Error('Expected the root Taskfile to include podman instead of docker-ce')
   }
-  await compareFrame('answers-podman', 'podman', compare, { expand: [MATRIX_ANSWERS], height: 963 })
+  // The swapped includes fill the card: the answers file stays folded.
+  await compareFrame('answers-podman', 'podman', compare, { expand: ['Taskfile.yml'], height: 1100 })
 })
 
 storyboardStep(Then, 'turning off Docker Compose only deletes the compose file', async () => {
@@ -669,6 +688,7 @@ storyboardStep(Then, 'turning off Docker Compose only deletes the compose file',
     `M ${MATRIX_ANSWERS}`,
     'D project/docker-compose.yml'
   ])
+  assertLeftOut('no-compose', ['project/docker-compose.yml'])
   await compareFrame('answers-no-compose', 'no-compose', compare, { expand: [MATRIX_ANSWERS, 'project/docker-compose.yml'], height: 520 })
 })
 
@@ -715,7 +735,20 @@ storyboardStep(Then, 'turning off project mode deletes the project directory and
     'D project/Taskfile.yml',
     'D project/docker-compose.yml'
   ])
+  assertLeftOut('no-project', ['project'])
   if (matrixFile('Taskfile.yml').includes('project/Taskfile.yml')) throw new Error('Expected the root Taskfile to drop its project include')
+  // Twin: each phase Taskfile only loses its calls into the project tasks,
+  // plus the test phase's coverage defaults, which follow project mode.
+  for (const d of compare.diffs.filter(d => /^\.config\/devsecops\/Taskfile\.\w+\.yml$/.test(d.new_path))) {
+    const changed = d.diff.split('\n').filter(l => /^[-+]/.test(l))
+    const calls = changed.filter(l => /^-\s*- task: :project:/.test(l))
+    if (!calls.length || changed.some(l => !calls.includes(l) && !/TASK_DEVSECOPS_TEST_BUILD_COVERAGE_/.test(l))) {
+      throw new Error(`Expected ${d.new_path} to only drop its calls into the project tasks:\n${d.diff}`)
+    }
+  }
+  // Unfolding the root Taskfile.yml instead of the answers file needs 1135 px,
+  // past the 1100 cap: every other file stays folded, the twins above
+  // carry what they change.
   await compareFrame('answers-no-project', 'no-project', compare, { expand: [MATRIX_ANSWERS], height: 1095 })
 })
 

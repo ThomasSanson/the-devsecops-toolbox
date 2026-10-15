@@ -38,7 +38,7 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     And the storyboard engine folder on the main branch ships its own manual
     # Chapter: Each answer changes exactly what it promises, one branch per answer
     # Note: The same project rendered again with container_runtime: podman and pushed as the branch podman. GitLab's compare page shows what that branch changes against the main branch: the Files panel lists every changed file, the diffs unfold the telling ones.
-    # Note: Ten files: the docker-ce files and project/docker-compose.yml are deleted, the podman files are new, and Taskfile.yml swaps its include. In the answers file, docker becomes podman and the use_docker_compose line disappears with it.
+    # Note: Ten files change: the docker-ce files leave (their .gitignore moves to the podman folder), the podman files arrive and project/docker-compose.yml is deleted. Taskfile.yml is unfolded: its docker-ce include goes, and a podman include arrives further down.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data container_runtime=podman /workspace acme
     Then choosing podman swaps docker-ce and compose for podman and changes nothing else
     # Note: The same page for the branch no-compose. Only two files change: the answers file, where use_docker_compose turns false, and project/docker-compose.yml, deleted.
@@ -53,8 +53,8 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: In tags.yml the runner tags become an empty list. In variables.yml, DOCKER_HOST: tcp://docker:2376 and the TLS settings go, DOCKER_TLS_CERTDIR turns empty and the BuildKit line is commented out. The answers file stays folded to leave room for both files.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data ci_platform=gitlab_self_hosted --data gitlab_docker_host= --data gitlab_docker_tls_certdir= /workspace acme
     And a self-hosted CI platform only changes the docker-in-docker variables and the runner tags
-    # Note: The same page for the branch no-project. project/Taskfile.yml and project/docker-compose.yml are deleted.
-    # Note: Every file that called into the project folder loses that call: the root Taskfile.yml, the nine phase Taskfiles under .config/devsecops and the MegaLinter base config. The answers file shows project_enabled turning false.
+    # Note: The same page for the branch no-project. The answers file shows project_enabled turning false, and project/Taskfile.yml and project/docker-compose.yml are deleted.
+    # Note: Eleven files that called into the project folder change too, shown folded with their line counts: the root Taskfile.yml, the nine phase Taskfiles under .config/devsecops and the MegaLinter base config.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data project_enabled=false /workspace acme
     And turning off project mode deletes the project directory and every task that called into it
     # Note: The same page for the branch automerge-off. The answers file turns devsecops_automerge to false.
