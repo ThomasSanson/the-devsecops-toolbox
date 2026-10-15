@@ -21,6 +21,7 @@ const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
 const { copyFrameworkWithEngine, engineCommand } = require('../helpers/frameworkCopy')
+const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { ENGINE_MASKS, openLocalTerminal } = require('../helpers/localTerminal')
 const { terminalCard } = require('../terminal/capture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
@@ -337,7 +338,7 @@ storyboardStep(Given, 'a reference image and a captured page differ visibly in t
 storyboardStep(Then, 'a flag set to zero, like no flag at all, is not passed on, and both checks refuse the difference', async () => {
   // No flag at all, off camera: the same line, read as plain text.
   const unset = execSync(baselineMode.caseLine(''), { cwd: baselineMode.ROOT, env: baselineEnv(), shell: '/bin/bash', encoding: 'utf8' })
-  baselineMode.assertCase(unset.replace(/\x1b\[[0-9;]*m/g, ''), { value: undefined, ci: false }) // eslint-disable-line no-control-regex
+  baselineMode.assertCase(stripAnsiEscapeSequences(unset), { value: undefined, ci: false })
   await baselineCard('baseline-mode-zero', 'TASK_E2E_UPDATE_BASELINES=0', '0', false)
 })
 

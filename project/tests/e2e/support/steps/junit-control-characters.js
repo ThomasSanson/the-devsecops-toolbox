@@ -251,7 +251,7 @@ storyboardStep(Then, 'GitLab shows the coloured failure as readable text, withou
   const output = String(coloured.system_output || '')
   assert.ok(output.includes('Expected <hello> & "world", got café 🧪') && output.includes('Message ends here.'),
     `GitLab must read the whole failure message: ${JSON.stringify(coloured.system_output)}`)
-  assert.equal(/\x1b|\[31m/.test(output), false, `No terminal colour may reach GitLab: ${JSON.stringify(output)}`) // eslint-disable-line no-control-regex
+  assert.equal(output.includes(String.fromCharCode(27)) || output.includes('[31m'), false, `No terminal colour may reach GitLab: ${JSON.stringify(output)}`)
 
   // The same page and size as the card before: the reader compares the two.
   await gitlabFrame(I, 'gitlab-coloured-failure', `${gitlabUrl.pipeline(pub.projectName, story.pipeline)}/test_report`, {
