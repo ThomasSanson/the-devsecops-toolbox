@@ -19,7 +19,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { spawn, execFileSync } = require('child_process')
-const { REPO, copyFramework } = require('../helpers/frameworkCopy')
+const { REPO, toolboxRepository } = require('../helpers/frameworkCopy')
 const { renderProjectFromTemplate } = require('../helpers/copierRender')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabFrame, gitlabUrl } = require('../helpers/gitlabCard')
@@ -91,16 +91,18 @@ const TOOLS = [
 // Test-only settings of the toolbox run, merged after the framework's own
 // config: every dependency off but the five, each held to its one release, and
 // no hourly limit (Renovate opens two merge requests an hour by default).
+// The off switch only lists the five as exceptions and never turns one back
+// on: a framework rule that disables one of them still wins, and the "exactly
+// one update branch" twin fails.
 const TOOLBOX_RUN_ENV = {
   RENOVATE_INCLUDE_PATHS: [...new Set([...PIN_BACK.map(([file]) => file), ...TOOLS.map(tool => tool.source)])].join(','),
   RENOVATE_CONFIG: JSON.stringify({
     prHourlyLimit: 0,
     prConcurrentLimit: 0,
     packageRules: [
-      { matchPackageNames: ['*'], enabled: false },
+      { matchPackageNames: Object.keys(UPDATES).map(name => `!${name}`), enabled: false },
       ...Object.entries(UPDATES).map(([name, version]) => ({
         matchPackageNames: [name],
-        enabled: true,
         allowedVersions: `/^${version.replace(/\./g, '\\.')}$/`
       }))
     ]
@@ -144,16 +146,7 @@ function pin (dir, file, re, to) {
 // A copy of the framework as a toolbox with releases 1.0.0 and 1.0.1, then the
 // pin-back commit on its main branch.
 function buildToolbox () {
-  const dir = tempDir('e2e-renovate-toolbox')
-  copyFramework(dir)
-  // The committed film is 25 MB nobody renders or updates here.
-  fs.rmSync(path.join(dir, 'project/tests/e2e/storyboards'), { recursive: true, force: true })
-  // tar keeps the host uid, and git refuses a repository another user owns.
-  execFileSync('chown', ['-R', `${process.getuid()}:${process.getgid()}`, dir])
-  git(dir, 'init', '--quiet', '--initial-branch=main')
-  git(dir, 'config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local')
-  git(dir, 'config', 'user.name', 'Lambda User')
-  git(dir, 'config', 'core.hooksPath', '/dev/null')
+  const dir = toolboxRepository(tempDir('e2e-renovate-toolbox'))
   for (const [release, pins] of Object.entries(RELEASES)) {
     for (const [file, version] of Object.entries(pins)) fs.writeFileSync(path.join(dir, file), `${version}\n`)
     git(dir, 'add', '-A')
