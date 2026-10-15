@@ -56,6 +56,22 @@ _migrations:
       uv run --quiet --no-project --with-requirements .config/copier/requirements.txt
       python .config/megalinter/cleanup-removed-linters.py
     when: "{{ _stage == 'after' and install_scope != 'publication' }}"
+  # The AI agent files moved from .agent/ to .agents/. File by file, compared
+  # with the release the project is on: a toolbox file the team never touched
+  # is removed and copier writes it fresh at its new place, anything else moves
+  # with git mv and merges like any change of the team's. A plain move of the
+  # whole folder would turn every rule the release changes into a conflict.
+  # The script runs from the template checkout, which holds the old release.
+  - command: >-
+      sh '{{ _copier_conf.src_path }}/.config/copier/migrate-agents.sh'
+      '{{ _copier_conf.src_path }}' '{{ _version_from }}' '{{ _copier_conf.answers_file }}'
+    when: "{{ _stage == 'before' }}"
+  # A publication-scope project with no AGENTS.md never had the AI files, yet
+  # copier writes every path that is new in a release: take those back. Not an
+  # _exclude: a project that installed the AI files too has the same answers,
+  # and would lose them.
+  - command: "sh '{{ _copier_conf.src_path }}/.config/copier/keep-agents-out.sh' '{{ _copier_conf.src_path }}'"
+    when: "{{ _stage == 'after' and install_scope == 'publication' }}"
 
 # Questions — CI/CD platform
 ci_platform:
@@ -162,10 +178,10 @@ gherkin_language:
 # Which scope the installer rendered at. Never asked: the installer passes it
 # with --data when a developer picks a single component from the checklist, and
 # copier records it in the answers file so every later `task copier:update`
-# renders the same shape. Its only job is to keep the framework's
-# `_skip_if_exists` files out of a component-only project: without it, copier
-# creates VERSION and the cspell word list on the first update, in a project
-# that has neither a version to bump nor a spell checker to feed.
+# renders the same shape. It keeps the framework's `_skip_if_exists` files out
+# of a component-only project: without it, copier creates VERSION and the cspell
+# word list on the first update, in a project that has neither a version to bump
+# nor a spell checker to feed. Some _migrations read it too.
 install_scope:
   type: str
   choices:
@@ -186,6 +202,9 @@ _exclude:
   # AGENTS.md/CLAUDE.md without the template-only structure and constraints.
   - .agents/rules/framework-repo.md
   - .cache
+  # Run from the template checkout during an update (see _migrations).
+  - .config/copier/keep-agents-out.sh
+  - .config/copier/migrate-agents.sh
   # CI sharding is a framework-suite concern: the shard map lives under the
   # excluded project/tests and the guard would have nothing to check downstream.
   - .config/devsecops/scripts/check-shard-coverage.sh
