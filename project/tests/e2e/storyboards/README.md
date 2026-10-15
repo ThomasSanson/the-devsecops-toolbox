@@ -9,97 +9,111 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**1. install-complete**](01-install/install-complete.svg) — One interactive install turns an empty project into a working framework and a locked-down GitLab.
   Chapters: Answer the questions, build the framework · The framework arrives as a merge request · GitLab is locked and wired.
   Replay: `task project:test:e2e -- --grep "@install-complete"`
-- [**2. agent-mode-only**](01-install/agent-mode-only.svg) — Saying no to the full framework installs only the AI agent files, nothing else.
+- [**2. agent-mode-only**](01-install/agent-mode-only.svg): Saying no to the full framework installs only the AI agent files, nothing else.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@agent-mode-only"`
-- [**3. publication-only**](01-install/publication-only.svg) — Ticking source publication on the same checklist installs it alone, wires GitLab for it, and it runs with nothing but a shell and git.
+- [**3. publication-only**](01-install/publication-only.svg): Ticking source publication on the same checklist installs it alone, wires GitLab for it, and it runs with nothing but a shell and git.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@publication-only"`
-- [**4. fresh-machine**](01-install/fresh-machine.svg) — The installer adds its own missing tools and stays interactive even when piped from curl.
-  Chapters: A bare machine sets itself up · The one-line install stays interactive.
+- [**publication-existing-framework**](01-install/publication-existing-framework.svg): On a project that already carries the complete framework, ticking source publication alone is refused. The installer names the update path instead and leaves every file as it was.
+  Replay: `task project:test:e2e -- --grep "@publication-existing-framework"`
+- [**4. fresh-machine**](01-install/fresh-machine.svg): Without curl the installer refuses cleanly. On a bare machine, the README one-liner piped into bash asks before each tool, adds unzip by itself and says what to do next. With no terminal at all, as in CI, it asks nothing and finishes.
+  Chapters: Without curl, the installer refuses cleanly · The one-line install sets up the bare machine · Following that advice opens the merge request · With no terminal at all, nothing is asked.
   Replay: `task project:test:e2e -- --grep "@fresh-machine"`
-- [**5. first-run-help**](01-install/first-run-help.svg) — On the first run, every check stops and names the exact fix, then finishes cleanly once nothing is missing.
+- [**5. first-run-help**](01-install/first-run-help.svg): Every check stops and names the fix, and init finishes cleanly once GitLab is turned off.
   Chapters: The check names each missing tool · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
   Replay: `task project:test:e2e -- --grep "@first-run-help"`
-- [**6. merge-request-safety**](01-install/merge-request-safety.svg) — init always reaches main through a review you can see, from any branch — unless you opt out on purpose.
-  Chapters: main already exists · you started on an experiment branch · the opt-out you ask for on purpose.
+- [**6. merge-request-safety**](01-install/merge-request-safety.svg): init always reaches the main branch through a review you can see, from any branch, unless you opt out on purpose.
+  Chapters: The main branch already exists, and the developer is on an experiment branch · The review switched off on purpose.
   Replay: `task project:test:e2e -- --grep "@merge-request-safety"`
 
 ## Act 2 — Daily work (`02-daily-work`)
 
-- [**retired-linters-paths**](02-daily-work/retired-linters-paths.svg) — A linked configuration points outside the generated project. The migration refuses it before changing either file.
-  Replay: `task project:test:e2e -- --grep "@retired-linters-paths"`
-- [**retired-linters**](02-daily-work/retired-linters.svg) — A real Copier update removes retired MegaLinter references while preserving project controls and comments. Repeating the update leaves the configuration unchanged.
+- [**7. daily-contribution**](02-daily-work/daily-contribution.svg): An everyday change goes from an issue to a merge request, passes its pipeline, and the main branch releases it with no manual step.
+  Chapters: An issue starts the work · The change rides a merge request · The main branch releases it.
+  Replay: `task project:test:e2e -- --grep "@daily-contribution"`
+- [**retired-linters**](02-daily-work/retired-linters.svg): On a real GitLab project, a framework update stops at a MegaLinter settings file linked outside the project. Without the link, the same update arrives as a merge request that removes only the retired linters and keeps every comment and control. Asking again changes nothing.
+  Chapters: A settings file linked outside the project stops the update · Without the link, the update arrives as a clean merge request.
   Replay: `task project:test:e2e -- --grep "@retired-linters"`
-- [**framework-dependencies**](02-daily-work/framework-dependencies.svg) — The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
+- [**framework-dependencies**](02-daily-work/framework-dependencies.svg): The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
   Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
-- [**task-progress**](02-daily-work/task-progress.svg) — Workers report actual task output while preserving failed exit codes.
+- [**task-progress**](02-daily-work/task-progress.svg): Workers report actual task output while preserving failed exit codes.
   Replay: `task project:test:e2e -- --grep "@task-progress"`
-- [**osv-scope**](02-daily-work/osv-scope.svg) — OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
-  Chapters: Framework tools are checked in the toolbox · Project dependencies still block the project · Framework updates preserve the boundary.
+- [**osv-scope**](02-daily-work/osv-scope.svg): OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
+  Chapters: The toolbox answers for its own tools · The project answers for its own dependencies · Without vulnerable dependencies of its own, the project passes.
   Replay: `task project:test:e2e -- --grep "@osv-scope"`
-- [**7. protected-commits**](02-daily-work/protected-commits.svg) — The commit checks accept clean work and secrets never reach the repository.
-  Chapters: The commit message is checked · Secrets never reach the repository.
+- [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
+  Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`
-- [**8. self-healing**](02-daily-work/self-healing.svg) — init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed.
-  Chapters: A revoked token is rebuilt · A tampered variable and a duplicate token are repaired.
+- [**scanner-log-redaction**](02-daily-work/scanner-log-redaction.svg): Full, staged and branch scans pass ordinary work and block a made-up password, with the Docker scanner and with the pinned binary, without copying its value into the scan log.
+  Chapters: Ordinary work passes in both modes · A detected value stays out of the log.
+  Replay: `task project:test:e2e -- --grep "@scanner-log-redaction"`
+- [**betterleaks-redact-config**](02-daily-work/betterleaks-redact-config.svg): A made-up password reaches a merge request. The generated Betterleaks job fails and prints REDACTED in the shared CI log, and only the developer's own terminal shows more, on request.
+  Chapters: Every scan hides the whole value unless told otherwise · The shared CI log never prints the value · The developer sees more in their own terminal only.
+  Replay: `task project:test:e2e -- --grep "@betterleaks-redact-config"`
+- [**9. self-healing**](02-daily-work/self-healing.svg): init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed. One `task devsecops:reload` then puts a drifted project back (main branch protection, pipeline file, both tokens).
+  Chapters: A revoked release token is rebuilt · A duplicate token and a tampered variable are repaired · A project that drifted is put back in one command.
   Replay: `task project:test:e2e -- --grep "@self-healing"`
-- [**9. release-window**](02-daily-work/release-window.svg) — A release that fails leaves nothing broken behind: the main branch re-locks itself, and no tag is pushed for an image that was never published.
+- [**10. release-window**](02-daily-work/release-window.svg): A release that fails leaves nothing broken behind: the main branch re-locks itself, and no tag is pushed for an image that was never published.
   Chapters: The push window always closes · A release that cannot publish its image pushes nothing.
   Replay: `task project:test:e2e -- --grep "@release-window"`
-- [**10. source-publication**](02-daily-work/source-publication.svg) — A private project publishes its source to a public one from its own pipeline, minus the files that never leave, and only after an owner approved the exact list.
-  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · A file nobody approved does not slip through · A secret in a published file stops everything.
+- [**11. source-publication**](02-daily-work/source-publication.svg): A private project publishes its source to a public one from its own pipeline, minus the files that never leave, and only after an owner approved the exact list.
+  Chapters: What would leave the private project · Nothing leaves until somebody has said yes · The right person has to be the one who says yes · Later changes do not slip through.
   Replay: `task project:test:e2e -- --grep "@source-publication"`
-
-- [**Publication refusal and recovery contracts**](02-daily-work/publication-contracts.svg) — Real Git snapshots, task output and an explicitly simulated approval API exercise exact bytes, approval freshness, activation, failed setup and atomic release publication. The source-publication journey above covers the real GitLab API.
-
+- [**Publication refusal and recovery contracts**](02-daily-work/publication-contracts.svg): Publication keeps its safety promises, typed in a live terminal on throwaway repositories against fixture-forge, a stand-in for GitLab's API, then a release chapter published to a real public project on GitLab.
+  Chapters: Exactly the committed files, or nothing · Publication runs only when asked, and only after a real scan · Approval names the exact list · Tokens and setup failures stay safe · Releases on a real public project on GitLab.
   Replay: `task project:test:e2e -- --grep "@publication-contracts"`
-- [**11. tdd-cycle**](02-daily-work/tdd-cycle.svg) — The toolbox tells a real failure apart from a run that died on its way to the test, and the phase refuses to certify work where a check was switched off.
-  Chapters: A failure that proves nothing · A failure that proves something · The phase refuses to certify itself.
+- [**12. tdd-cycle**](02-daily-work/tdd-cycle.svg): The toolbox tells a real failure apart from a run that died on its way to the test, refuses yesterday's failure as today's proof, and the phase refuses to certify work where a check was switched off.
+  Chapters: A failure that proves nothing · A failure that proves something · Yesterday's proof does not count · The phase refuses to certify itself.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
-
-- [**baseline-mode**](02-daily-work/baseline-mode.svg) — Changed pixels fail unless a developer explicitly requests new references locally. CI refuses regeneration.
+- [**baseline-mode**](02-daily-work/baseline-mode.svg): Only the value 1, on a developer's machine, rewrites a reference. CI refuses it, and a merge request shows each rewritten reference for a reviewer to accept.
+  Chapters: A visible difference must fail · A developer rewrites the references, a reviewer accepts them.
   Replay: `task project:test:e2e -- --grep "@baseline-mode"`
-- [**worker-completion**](02-daily-work/worker-completion.svg) — A missing worker result fails the run, even when the engine returns zero. Filtered runs contain only their selected scenarios.
+- [**worker-completion**](02-daily-work/worker-completion.svg): A lost worker fails the run even when the engine exits 0. A complete selection still passes, with a grep filter or its inverse.
+  Chapters: A worker can disappear before its result exists · A complete selection still passes.
   Replay: `task project:test:e2e -- --grep "@worker-completion"`
-- [**junit-freshness**](02-daily-work/junit-freshness.svg) — A config crash cannot reuse an earlier failure as RED evidence. A filter matching no scenario fails clearly.
-  Replay: `task project:test:e2e -- --grep "@junit-freshness"`
+- [**junit-control-characters**](02-daily-work/junit-control-characters.svg): GitLab reads a real failure report even when an assertion carries terminal colours, and the RED gate accepts the same coloured failure as a genuine one.
+  Chapters: GitLab reads the report of a merge request · The RED gate reads the same report.
+  Replay: `task project:test:e2e -- --grep "@junit-control-characters"`
 - [**storyboard-wide-card**](02-daily-work/storyboard-wide-card.svg): A whole GitLab page gets a row of its own and shows at its real size. Smaller captures share rows two by two, and a card alone on its row sits in the middle.
   Replay: `task project:test:e2e -- --grep "@storyboard-wide-card"`
 
 ## Act 3 — Evolution (`03-evolution`)
 
-- [**12. toolbox-update**](03-evolution/toolbox-update.svg) — A toolbox update splits the dictionary and delivers new tools, while keeping the developer's own word and edits.
-  Chapters: The update splits the dictionary and keeps my word · A flipped answer delivers new tools and spares my edits.
+- [**13. toolbox-update**](03-evolution/toolbox-update.svg): A toolbox release asked for with `task devsecops:update` arrives as a merge request: the dictionary splits, the developer's word moves to its own file, a changed answer adds Ansible, and the developer's task file is never touched.
+  Chapters: Before the release, my project on GitLab carries my own changes · I ask for the release, and it arrives as a merge request · A changed answer adds tools, and my own task stays mine.
   Replay: `task project:test:e2e -- --grep "@toolbox-update"`
-- [**13. render-matrix**](03-evolution/render-matrix.svg) — The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
-  Chapters: What the default project looks like · Each answer changes exactly what it promises.
+- [**14. toolbox-update-conflict**](03-evolution/toolbox-update-conflict.svg): A toolbox release changes a line the developer edited. `task devsecops:update` warns about it, the update merge request shows both lines as a conflict, and the developer settles it on the update branch.
+  Chapters: My edit and the release touch the same line · The merge request shows the clash, and the developer settles it.
+  Replay: `task project:test:e2e -- --grep "@toolbox-update-conflict"`
+- [**15. render-matrix**](03-evolution/render-matrix.svg): The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
+  Chapters: What the default project looks like on GitLab · Each answer changes exactly what it promises, one branch per answer.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`
-- [**14. renovate-flow**](03-evolution/renovate-flow.svg) — Dependency updates flow through the framework, and every pinned tool is watched at both of its endpoints.
-  Chapters: Updates flow through the framework · Every pinned tool is watched in both places.
+- [**16. renovate-flow**](03-evolution/renovate-flow.svg): On a generated project, the real Renovate bot opens only the toolbox update and the project's own update. On the toolbox itself, it opens one merge request per dependency.
+  Chapters: A generated project only receives the toolbox update · The toolbox updates its own tools, one merge request each.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
-- [**Renovate runtime**](03-evolution/renovate-runtime.svg) — The pinned download rejects invalid configuration and accepts the correction, without a global Renovate installation.
+- [**Renovate runtime**](03-evolution/renovate-runtime.svg): The pinned download rejects invalid configuration and accepts the correction, without a global Renovate installation.
   Replay: `task project:test:e2e -- --grep "@renovate-runtime"`
-- [**15. test-discipline**](03-evolution/test-discipline.svg) — A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
+- [**17. test-discipline**](03-evolution/test-discipline.svg): A real merge request is stopped when the framework moves with no proof card, and stopped again when the test behind that card is switched off.
   Chapters: A framework change that brings no proof card · The card is there, and the test behind it was switched off.
   Replay: `task project:test:e2e -- --grep "@test-discipline"`
-- [**16. publication-update**](03-evolution/publication-update.svg) — Renovate brings a toolbox release to a project that installed only source publication: its component and its spine move, the team's own rules do not, and nothing it never installed arrives.
+- [**18. publication-update**](03-evolution/publication-update.svg): Renovate brings a toolbox release to a project that installed only source publication: its component and its spine move, the team's own rules do not, and nothing it never installed arrives.
   One continuous scene (no chapters).
   Replay: `task project:test:e2e -- --grep "@publication-update"`
-
-- [**Runner cleanup**](03-evolution/runner-cleanup.svg) — Registering another project runner preserves the stopped helper of a live job, and GitLab accepts its artifact.
+- [**publication-ci-version**](03-evolution/publication-ci-version.svg): A toolbox version bump moves the full pipeline and the publication update job to the new toolbox image, in the same commit as VERSION.
+  Replay: `task project:test:e2e -- --grep "@publication-ci-version"`
+- [**19. hybrid-ci**](03-evolution/hybrid-ci.svg): A self-hosted project runs its file checks on an unprivileged runner and its Docker jobs on a tagged runner, and keeps its own settings through a Copier update. It also guards #162: the project's own spelling words survive that update.
+  Chapters: Choose the Docker runners · Add the application · Run the checks on real runners · Keep the project settings through an update · Containers keep their own runner.
+  Replay: `task project:test:e2e -- --grep "@hybrid-ci"`
+- [**Runner cleanup**](03-evolution/runner-cleanup.svg): This story checks the test suite's own runner setup, not a toolbox feature: registering another project runner keeps the stopped checkout helper of a running job, and GitLab still accepts that job's artifact.
   Replay: `task project:test:e2e -- --grep "@runner-cleanup"`
-
-## The two tests with no story to tell
-
-`features/03-evolution/cspell.feature` and `version-pins.feature` stay classic tests, not storyboards: cspell compares two lint outputs (before and after an update), version-pins compares two version numbers — neither walks a journey, so there is nothing visual to narrate.
 
 ## How to read one
 
 - **Open it locally in a browser** (double-click the file in your working copy). GitLab's preview shows it as a static image only.
 - Everything around the frames is real text: **one click selects a whole command** (the replay command in the header, the reproduce command under each card) — Chromium/Safari.
 - Keyword colours: green `Given` = the stage, blue `When` = the actions, purple `Then` = the proofs (each Then card is also asserted via API).
-- Chapters read top to bottom: a full-width band ("Chapter N — Title") opens each new part of a long story.
+- Chapters read top to bottom: a full-width band ("Chapter N" and its title) opens each new part of a long story.
 - Hover a frame to see the name of its pixel baseline (`screenshots/base/<act>/<story>/<name>.png`).
 
 ## When a run fails
