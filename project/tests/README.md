@@ -18,7 +18,7 @@ project/tests/e2e/
 ├── pages/                        # GitLab Page Objects (with masking for visual determinism)
 ├── support/
 │   ├── helpers/                  # gitlabCard.js (GitLab cards), gitlabProject.js, gitlabApi.js, journeyContainer.js, docker.js, …
-│   ├── steps/                    # journey.js, init-baseline.js, init-guidance.js, release-toggle.js, glab-auth-ensure.js
+│   ├── steps/                    # journey.js, first-run-help.js, init-baseline.js, release-toggle.js, …
 │   └── terminal/                 # capture.js — live xterm/ttyd compact capture + visual assert
 ├── screenshots/base/             # Visual baselines (tolerance: 0)
 ├── storyboards/                  # Committed storyboard SVGs (one per journey scenario)
@@ -28,8 +28,8 @@ project/tests/e2e/
 ### Three visual-proof styles
 
 1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm session is captured via `support/terminal/capture.js` (`terminalCard`, `captureTerminalFrame`), anchored from a marker row (`fromMarker`, which must still be on screen) or bounded (`maxRows`) to isolate deterministic blocks.
-2. **Filtered `<pre>` render** (init-effects/guidance/release scenarios): the captured command output is noise-filtered, rendered as a `<pre>` block in the browser and screenshotted.
-3. **Storyboard** (the 16 journeys): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
+2. **Replayed output** (`support/helpers/terminalRender.js`): a command that runs in the test runner itself, where no live terminal exists (git hooks, secret scans), has the bytes it printed replayed as a wide dark terminal card.
+3. **Storyboard** (every story): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
 
 ### Storyboards — the default for whole-journey proofs
 
@@ -38,8 +38,8 @@ Reference scenario: `features/01-install/agent-mode.feature`, its committed stor
 Open the SVG locally in a browser: the chrome around the frames is real selectable text (one click selects a whole command in Chromium/Safari); GitLab's blob preview shows it as a static image only.
 
 Prefer FEW, BIG stories over many small ones: merge overlapping scenarios into one end-to-end journey (20+ cards is fine) and show the failure AND its fix in the same story.
-Split a long story into chapters with a `# Chapter: Title` comment on its own line inside the Scenario body, between two sentences — the engine draws a full-width "Chapter N — Title" band before the next card.
-The whole film (3 acts, 16 stories in reading order) is indexed in [storyboards/README.md](e2e/storyboards/README.md).
+Split a long story into chapters with a `# Chapter: Title` comment on its own line inside the Scenario body, between two sentences — the engine draws a full-width band, "Chapter N" and its title, before the next card.
+The whole film (3 acts, 34 stories in reading order) is indexed in [storyboards/README.md](e2e/storyboards/README.md).
 
 Layout is flat: baselines land in `screenshots/base/<act>/<story-tag>/` and the committed SVG in `storyboards/<act>/<story-tag>.svg` (e.g. `storyboards/01-install/install-complete.svg`) — one level, no per-feature subfolder.
 
@@ -80,13 +80,19 @@ second tab.
   at most: scroll to the evidence instead), masked by `maskGitLabPage`, and restores the window. The project named in the URL shows as "project"; pass `projectNames` when its display name differs
   from its path. Such a page takes a full row of the storyboard.
 - **Terminal card**: `openTerminal(I, container, { height, width })` sizes the window BEFORE ttyd loads, in 15 px type, and keeps it: 1024 px wide by default (113 columns, a 78-column card fills its
-  half row), 1440 px when a typed line would wrap in the middle of a word (159 columns). `terminalCard(I, frame, 'cmd-a && cmd-b   # label')` clears the screen, runs ONE line and captures everything
+  half row), 1440 px when a typed line would wrap in the middle of a word (157 columns). `terminalCard(I, frame, 'cmd-a && cmd-b   # label')` clears the screen, runs ONE line and captures everything
   since the clear, and returns the screen text for the twin. An interactive menu is caught live, before its answer, with `captureTerminalFrame` anchored on the typed command. A marker that is not on
   screen throws: this is a code change (open the terminal taller, or anchor lower), never a regeneration.
 - **Both in one story**: take the GitLab card inside `inNewTab(I, () => gitlabFrame(...))`, so the bash session and its window size survive.
-- **Not in the reference story yet**: job logs go through `jobLogFrame` (checked once on a real finished job, a folded section unfolded, before the first story used it), the pipeline editor through
-  `ciEditorFrame`, CI/CD variables through `ciVariablesFrame`, and `publishToGitLab(dir)` (`support/helpers/gitlabProject.js`) gives a local tree a GitLab ending in seconds, no runner. The first
-  story that calls one of them is its committed check: inspect its card with extra care.
+- **Proven by other stories**: job logs go through `jobLogFrame` (folded and unfolded sections, a focused line, masks across spans), on real failed, passed and running jobs in
+  @test-discipline, @hybrid-ci and the other runner stories. CI/CD variables go through `ciVariablesFrame` (`publication-only-variables.png` in @publication-only). `unfoldFileTree` also
+  works on a file page (`publication-only-gitlab-after.png`). `publishToGitLab(dir)` (`support/helpers/gitlabProject.js`) gives a local tree a GitLab ending in seconds, no runner, as in
+  @render-matrix, @renovate-flow and @hybrid-ci (with `pushOptions: ['ci.skip']`).
+- **A job log that mixes stdout and stderr**: the runner reads the two streams apart, and task logs its commands on stderr, so their lines can swap in GitLab's log. A demo pipeline whose
+  log is carded starts its `before_script` with `exec 2>&1`, as @protected-commits does.
+- **A terminal in the suite's own container**: `openLocalTerminal(I, { cwd, env, port })` (`support/helpers/localTerminal.js`) opens the same live terminal inside the codeceptjs
+  container, for a story whose subject only runs there, such as the nested test engine of @tdd-cycle. `terminalCard` then works as usual.
+- **Not in any story yet**: the pipeline editor through `ciEditorFrame`. The first story that calls it is its committed check: inspect its card with extra care.
 - **After the last `# Note:` edit, run the story once more in update mode**: a strict run writes its board under `_output/` only, so the committed board keeps the old notes otherwise.
 
 ### Your first storyboard — 4 steps
@@ -107,7 +113,9 @@ task project:test:e2e TASK_CODECEPTJS_GREP=@self-healing   # filter by tag (env 
 TASK_E2E_WORKERS=5 task project:test:e2e                # bump parallelism
 ```
 
-The suite executes inside the `codeceptjs` container (identical font stack local / CI). Scenarios that need a fresh Ubuntu spawn one through the docker socket via `support/helpers/freshUbuntu.js` (init-effects) or `support/helpers/journeyContainer.js` (developer journey: clone of a blank test-GitLab project + working-branch installer). Scenarios that target GitLab clone a fresh project via `support/helpers/workspaceRepo.js`.
+The suite executes inside the `codeceptjs` container (identical font stack local / CI).
+Scenarios that need a fresh Ubuntu spawn one through the docker socket via `support/helpers/freshUbuntu.js` (first-run-help: a copy of the toolbox with a live terminal) or `support/helpers/journeyContainer.js` (developer journey: clone of a blank test-GitLab project + working-branch installer).
+Scenarios that target GitLab clone a fresh project via `support/helpers/workspaceRepo.js`.
 
 ### Regenerating terminal baselines
 
@@ -120,14 +128,14 @@ This writes the element-cropped actuals over `screenshots/base/` instead of asse
 ### Adding a scenario
 
 1. Pick the right act under `features/<NN>-<act>/` (or create one).
-2. Reuse existing steps from `support/steps/` when possible — see `journey.js` for the developer-journey pattern, `init-guidance.js` for the fresh-Ubuntu pattern, `release-toggle.js` for the GitLab-linked pattern.
+2. Reuse existing steps from `support/steps/` when possible — see `journey.js` for the developer-journey pattern, `first-run-help.js` for the fresh-Ubuntu pattern, `release-toggle.js` for the GitLab-linked pattern.
 3. Add a pixel baseline for every stage whose rendering is deterministic. Fall back to log/REST assertions only for genuinely volatile content.
 4. Run `task project:test:e2e -- --grep "@your-tag"` to validate.
 5. Run `task code` before submitting.
 
 ### Conventions
 
-- Tag every scenario with `@e2e` plus a unique story tag used as the replay filter. Storyboard stories use a plain kebab tag (`@release-window`, `@self-healing`); the two classic non-story tests keep the `@e2e-template-*` prefix (`@e2e-template-cspell`, `@e2e-template-version-pins`).
+- Tag every scenario with `@e2e` plus a unique story tag used as the replay filter, a plain kebab tag (`@release-window`, `@self-healing`). Every scenario is a storyboard story.
 - Filter dynamic noise from terminal captures with the noise-pattern lists (per-step file, plus `TERMINAL_NOISE_PATTERNS` in `support/terminal/capture.js`). Page objects mask dates, avatars, the top bar and per-run project names so GitLab pages render deterministically.
 - Visual regression uses `tolerance: 0` (pixel-perfect). Raising the tolerance, lowering the threshold or skipping a visual assertion is forbidden.
 

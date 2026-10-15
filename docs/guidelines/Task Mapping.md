@@ -200,16 +200,13 @@ Features are organized by journey act: `01-install/` (installer, agent-mode, fre
 
 **Step Definitions**: `project/tests/e2e/support/steps/`
 
-| File                   | Purpose                                     |
-|------------------------|---------------------------------------------|
-| `journey.js`           | Developer-journey steps (terminal + GitLab) |
-| `init-baseline.js`     | devsecops:init effect steps                 |
-| `init-guidance.js`     | init failure / opt-out guidance steps       |
-| `release-toggle.js`    | task release protection-window steps        |
-| `glab-auth-ensure.js`  | glab auth guidance steps                    |
-| `template-matrix.js`   | Copier rendering matrix + update steps      |
-| `betterleaks.js`       | Secret-scanning steps                       |
-| `installer-prereqs.js` | Bare-machine prerequisite steps             |
+| File                 | Purpose                                                          |
+|----------------------|------------------------------------------------------------------|
+| `journey.js`         | Developer-journey steps (terminal + GitLab)                      |
+| `first-run-help.js`  | First-run guidance: missing tools, GitLab host, sign-in, opt-out |
+| `init-baseline.js`   | Protected-commits story: commit hooks and secret scans           |
+| `release-toggle.js`  | task release protection-window steps                             |
+| `template-matrix.js` | Copier rendering matrix steps                                    |
 
 **Helpers**: `project/tests/e2e/support/helpers/`
 
@@ -218,7 +215,7 @@ Features are organized by journey act: `01-install/` (installer, agent-mode, fre
 | `copierRender.js` | Copier render/update helpers                    |
 | `gitlabApi.js`    | GitLab REST helpers                             |
 | `docker.js`       | Container orchestration helpers                 |
-| `textRender.js`   | Text-to-pixel proof helper                      |
+| `textRender.js`   | ANSI colour codes to HTML                       |
 | `pageVisual.js`   | Page visual assert + baseline regeneration mode |
 
 ### Test Execution
