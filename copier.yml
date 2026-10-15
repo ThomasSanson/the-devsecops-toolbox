@@ -9,6 +9,9 @@ _skip_if_exists:
   - project/Taskfile.yml
   - project/docker-compose.yml
 _min_copier_version: "9.3.0"
+# .claude/skills holds one link per skill in .agents/skills: keep them links,
+# not a second copy of every skill.
+_preserve_symlinks: true
 
 # cspell vocabulary migration (issue #162): when a project crosses into the
 # version that split the cspell config, move any words it kept inline in the

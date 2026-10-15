@@ -179,6 +179,9 @@ tasks:
             --exclude='project/tests/e2e/screenshots/diff' \
             -cf - . | \
             (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
+      # Except the tracked .claude/skills links to .agents/skills: they are part
+      # of the template. A personal skill next to them stays out.
+      - cmd: git ls-files -z .claude/skills | tar --null -T - -cf - | (cd project && docker compose exec -T codeceptjs tar -xf - -C /workspace)
       # Inline equivalent of `codeceptjs:docker` but using `run-workers <N>` so
       # scenarios execute in parallel. `codeceptjs:docker` hard-codes `run`
       # (single-process) and lives under `.config/` (read-only), so the parallel

@@ -43,6 +43,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 ```text
 /
 ├── .agents/          # AI agent instructions (rules and skills) — read these first
+├── .claude/skills/   # One link per skill in .agents/skills, for the tools that read skills there
 ├── .config/          # Framework tooling — managed by the toolbox, do NOT edit
 ├── docs/             # Documentation
 ├── Taskfile.yml      # Root orchestrator — managed by the toolbox, do NOT edit

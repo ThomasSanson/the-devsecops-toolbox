@@ -436,7 +436,9 @@ pyrightconfig.json
 .ionide
 
 ### Claude Code ###
-.claude/
+.claude/*
+# One link per skill into .agents/skills, for the AI tools that read skills from .claude/skills only.
+!.claude/skills/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,ansible,python,java,archive,node,visualstudiocode,php,helm
 

@@ -31,6 +31,7 @@ Detailed code style for this repository: [`.agents/rules/code-style.md`](code-st
 ```text
 /
 ├── .agents/                 # AI agent instructions (rules and skills; .jinja twins ship downstream)
+├── .claude/skills/          # One link per skill in .agents/skills, for the tools that read skills there
 ├── .config/                 # Framework tooling — owned & evolved by THIS template repo
 ├── docs/                    # Documentation
 ├── copier.yml               # Copier template questions
