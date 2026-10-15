@@ -9,8 +9,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**1. install-complete**](01-install/install-complete.svg) — One interactive install turns an empty project into a working framework and a locked-down GitLab.
   Chapters: Answer the questions, build the framework · The framework arrives as a merge request · GitLab is locked and wired.
   Replay: `task project:test:e2e -- --grep "@install-complete"`
-- [**2. agent-mode-only**](01-install/agent-mode-only.svg): Saying no to the full framework installs only the AI agent files, nothing else.
-  One continuous scene (no chapters).
+- [**2. agent-mode-only**](01-install/agent-mode-only.svg): Saying no to the full framework installs only the AI agent files, nothing else. Running the installer again later changes nothing, and on the old .agent folder of an earlier release it moves the team's own rule to .agents.
+  Chapters: Installing again later · Moving from the old .agent folder.
   Replay: `task project:test:e2e -- --grep "@agent-mode-only"`
 - [**3. publication-only**](01-install/publication-only.svg): Ticking source publication on the same checklist installs it alone, wires GitLab for it, and it runs with nothing but a shell and git.
   One continuous scene (no chapters).

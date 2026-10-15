@@ -39,7 +39,7 @@ GLOW_VERSION="2.1.1"
 # NO COMMA in a label: gum reads --selected as a COMMA-SEPARATED list, so a
 # label containing one is split into fragments that match no option, nothing
 # starts ticked, and a plain Enter then installs nothing at all.
-AGENT_COMPONENT_LABEL="Agent mode: AI agent guardrails (.agent/ AGENTS.md CLAUDE.md)"
+AGENT_COMPONENT_LABEL="Agent mode: AI agent guardrails (.agents/ AGENTS.md CLAUDE.md)"
 PUBLICATION_COMPONENT_LABEL="Source publication: publish this repository's source to a public one"
 DEFAULT_TEMPLATE_URL="https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
 TEMPLATE_URL="${DEVSECOPS_TEMPLATE_URL:-$DEFAULT_TEMPLATE_URL}"
@@ -414,7 +414,7 @@ scaffold_project() {
 # ---------------------------------------------------------------------------
 # Installation scope — ask what to install before scaffolding.
 #   everything : the complete framework (Copier questionnaire + init)
-#   agent      : only the AI agent context (.agent/, CLAUDE.md, AGENTS.md)
+#   agent      : only the AI agent context (.agents/, CLAUDE.md, AGENTS.md)
 #   none       : nothing selected
 # Driven by the premium gum/glow UI layer when available, with a plain
 # yes/no fallback so the installer still works without it.
@@ -507,7 +507,7 @@ select_install_scope_plain() {
 
   INSTALL_AGENT=0
   INSTALL_PUBLICATION=0
-  if prompt_yes_no_default_yes "Install the AI agent guardrails (.agent/, CLAUDE.md, AGENTS.md)? [Y/n]: "; then
+  if prompt_yes_no_default_yes "Install the AI agent guardrails (.agents/, CLAUDE.md, AGENTS.md)? [Y/n]: "; then
     INSTALL_AGENT=1
   fi
   if prompt_yes_no_default_yes "Install source publication (.config/publication/)? [Y/n]: "; then
@@ -556,26 +556,49 @@ normalise_permissions() {
   done
 }
 
+# Releases before the move installed the AI agent files in .agent/. Move each
+# rule and skill to .agents/ (the copy below then refreshes the toolbox's own),
+# so the files the team added there come along. The guides those releases kept
+# in .agent/workflows are skills now: drop them. Anything else, such as a
+# team's own workflow, stays where it is.
+move_old_agent_folder() {
+  [ -d .agent ] || return 0
+  (cd .agent && find rules skills -type f 2>/dev/null) | while read -r f; do
+    [ -e ".agents/$f" ] || {
+      mkdir -p ".agents/$(dirname "$f")"
+      mv ".agent/$f" ".agents/$f"
+    }
+  done
+  for w in create-feature delete-feature development-cycle read-feature tdd-step1-red tdd-step2-green tdd-step3-refactor update-feature; do
+    rm -f ".agent/workflows/$w.md"
+  done
+  find .agent -depth -type d -empty -delete
+}
+
 # Agent mode — render ONLY the AI agent context into the project.
 scaffold_agent_only() {
   echo ""
   echo "📋 Installing agent mode..."
-  log_action "Rendering the AI agent context (.agent/, CLAUDE.md, AGENTS.md)..."
+  log_action "Rendering the AI agent context (.agents/, CLAUDE.md, AGENTS.md)..."
 
   render_dir="$(mktemp -d)"
   render_template_to_scratch "${render_dir}" ""
+  # The rendered files only: a team's own files keep the modes they have.
+  normalise_permissions "${render_dir}"
+  move_old_agent_folder
 
   agent_installed=0
-  for item in .agent AGENTS.md CLAUDE.md; do
+  for item in .agents .claude AGENTS.md CLAUDE.md; do
     if [ -e "${render_dir}/${item}" ]; then
-      cp -a "${render_dir}/${item}" "./${item}"
+      # Into `.`, not onto `./${item}`: when the folder already exists, the
+      # second form copies the new one INSIDE it, as .agents/.agents.
+      cp -a "${render_dir}/${item}" .
       agent_installed=1
     fi
   done
   rm -rf "${render_dir}"
-  normalise_permissions .agent AGENTS.md CLAUDE.md
 
-  if [ "$agent_installed" -ne 1 ] || [ ! -d ".agent" ]; then
+  if [ "$agent_installed" -ne 1 ] || [ ! -d ".agents" ]; then
     log_error "Agent mode installation failed — the AI agent context was not found in the template."
     sed 's/^/    /' "${render_log}" 2>/dev/null | tail -n 20
     rm -f "${render_log}"
@@ -886,7 +909,7 @@ main() {
     echo ""
     log_ok "Installation complete!"
     if [ "${INSTALL_AGENT:-0}" -eq 1 ]; then
-      log_info "Installed the AI agent context: .agent/, CLAUDE.md, AGENTS.md."
+      log_info "Installed the AI agent context: .agents/, CLAUDE.md, AGENTS.md."
       log_info "See AGENTS.md to get started."
     fi
     if [ "${INSTALL_PUBLICATION:-0}" -eq 1 ]; then

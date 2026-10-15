@@ -89,7 +89,7 @@ const {
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
 const { CARD_MAX_HEIGHT, gitlabUrl, gitlabFrame, jobLogFrame, ciVariablesFrame, settlePage, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
-const { TASKFILE_LINE_RELEASED, COPIER_RUN_MASKS } = require('../helpers/copierRender')
+const { TASKFILE_LINE_RELEASED, OLD_WORKFLOWS, COPIER_RUN_MASKS } = require('../helpers/copierRender')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
 const {
@@ -652,7 +652,7 @@ async function answerAndCompleteInstaller () {
 const AGENT_COMMIT = 'chore: install the AI agent guardrails'
 // The line the developer types after the install, and the card's # Copy.
 const AGENT_PUSH = `git add -A && git commit -q -m "${AGENT_COMMIT}" && git push -q origin main && git status`
-// Tall enough for the Files panel with .agent, its rules and its skills unfolded.
+// Tall enough for the Files panel with .agent, its rules and its workflows unfolded.
 const AGENT_PAGE_HEIGHT = 1040
 
 // The repository page of main, the Files panel unfolded on `unfold` (folder
@@ -750,8 +750,9 @@ storyboardStep(Then, 'a checklist opens with the AI agent line already ticked', 
 // the typed command down to the prompt that came back. The twin reads the
 // install log and the working tree: the AI agent files were added, the README
 // kept, nothing else.
-storyboardStep(Then, 'once the developer confirms the ticked line, the installer installs only the AI agent files', async () => {
-  I.pressKey('Enter')
+// Wait for the installer's end marker in its log (or the "Nothing selected"
+// trap of a buggy build), then for the prompt to come back.
+async function waitForAgentInstall () {
   const deadline = Date.now() + 240000
   let log = ''
   while (Date.now() < deadline) {
@@ -763,9 +764,14 @@ storyboardStep(Then, 'once the developer confirms the ticked line, the installer
     throw new Error(`The installer never reported "${AGENT_DONE_MARKER}" (tail):\n${log.slice(-1500)}`)
   }
   await waitForPromptReturn(I, `bash ${WRAPPER_PATH}`, 60000)
+}
+
+storyboardStep(Then, 'once the developer confirms the ticked line, the installer installs only the AI agent files', async () => {
+  I.pressKey('Enter')
+  await waitForAgentInstall()
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-4-installed', { fromMarker: `bash ${WRAPPER_PATH}` }))
   const local = linesOf(inProject('ls -A1'))
-  const expected = ['.agent', '.git', 'AGENTS.md', 'CLAUDE.md', 'README.md']
+  const expected = ['.agents', '.claude', '.git', 'AGENTS.md', 'CLAUDE.md', 'README.md']
   if (JSON.stringify(local) !== JSON.stringify(expected)) {
     throw new Error(`Expected the working tree to hold exactly ${JSON.stringify(expected)}, found ${JSON.stringify(local)}`)
   }
@@ -793,17 +799,124 @@ storyboardStep(When, 'the developer commits the new files and pushes them to the
 // still on "Initial commit". The twins: the remote tree and no merge request
 // opened.
 storyboardStep(Then, 'GitLab shows the AI agent files beside the README on the main branch, and nothing else', async () => {
-  await inNewTab(I, () => agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agent', 'rules', 'skills']))
-  await assertRootTreeExactly('main', ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
-  const headers = await getRootHeaders()
-  const res = await listRepositoryTree(global.journeyProjectName, headers, '?ref=main&path=.agent&per_page=100')
-  const names = (res.data || []).map(entry => entry.name)
-  for (const dir of ['rules', 'skills', 'workflows']) {
-    if (!names.includes(dir)) {
-      throw new Error(`Expected the remote .agent tree to contain "${dir}". Entries: ${JSON.stringify(names)}`)
-    }
-  }
+  await inNewTab(I, () => agentRepositoryFrame('agent-mode-gitlab-after', AGENT_COMMIT, ['.agents', 'skills']))
+  await assertRootTreeExactly('main', ['.agents', '.claude', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
+  await assertAgentFilesOnMain()
   await assertNoOpenMr()
+})
+
+// The names one folder of the main branch holds on GitLab, sorted.
+async function remoteNames (dir) {
+  const res = await listRepositoryTree(global.journeyProjectName, await getRootHeaders(), `?ref=main&path=${encodeURIComponent(dir)}&per_page=100`)
+  return (res.data || []).map(entry => entry.name).sort()
+}
+
+// .agents holds rules and skills only, and .claude/skills one link per skill.
+async function assertAgentFilesOnMain () {
+  const agents = await remoteNames('.agents')
+  if (JSON.stringify(agents) !== JSON.stringify(['rules', 'skills'])) {
+    throw new Error(`Expected .agents on the main branch to hold exactly rules and skills, found ${JSON.stringify(agents)}`)
+  }
+  const skills = await remoteNames('.agents/skills')
+  const links = await remoteNames('.claude/skills')
+  if (!skills.length || JSON.stringify(links) !== JSON.stringify(skills)) {
+    throw new Error(`Expected one .claude/skills link per skill: skills ${JSON.stringify(skills)}, links ${JSON.stringify(links)}`)
+  }
+}
+
+// The same two answers as the first install, without a card for each menu:
+// the first chapter shows them. The log is emptied first, so the end marker of
+// an earlier install cannot pass for this one.
+async function runInstallerAgain () {
+  execInContainerAsUser(global.journeyContainer, 'bootstrap', `: > ${INSTALL_LOG}`)
+  await clearTerminal(I)
+  I.type(`bash ${WRAPPER_PATH}`)
+  I.pressKey('Enter')
+  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  I.pressKey('ArrowRight')
+  await waitForTerminalSettle(I)
+  I.pressKey('Enter')
+  await waitForTerminalText(I, 'Select what to install', COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  I.pressKey('Enter')
+  await waitForAgentInstall()
+}
+
+// The installer again, on top of its own files, in the same terminal, then the
+// check line typed below it: one card from the installer line down. The twins:
+// .agents holds no copy of itself (cp onto an existing folder nests one), and
+// git has nothing to commit.
+storyboardStep(When, 'the developer runs the installer again later, git finds nothing to commit', async () => {
+  await runInstallerAgain()
+  await typeCommandAndWait(I, 'ls -A1 .agents && git status')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-6-installed-again', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  for (const [dir, want] of [['.agents', ['rules', 'skills']], ['.claude', ['skills']]]) {
+    const found = linesOf(inProject(`ls -A1 ${dir}`))
+    if (JSON.stringify(found) !== JSON.stringify(want)) throw new Error(`Expected ${dir} to hold exactly ${JSON.stringify(want)} after a second install, found ${JSON.stringify(found)}`)
+  }
+  const status = inProject('git status --porcelain').trim()
+  if (status) throw new Error(`Expected a second install to leave nothing to commit, git status says:\n${status}`)
+})
+
+const OLD_LAYOUT_COMMIT = 'chore: the AI agent files of an earlier toolbox, and our own rule'
+const TEAM_RULE = 'our-team.md'
+const MOVE_COMMIT = 'chore: move the AI files to .agents'
+// The line the developer types after the install, and the card's # Copy.
+const MOVE_PUSH = `git add -A && git commit -q -m "${MOVE_COMMIT}" && git push -q origin main && git status`
+
+// Off camera, the project goes back to the layout an earlier release
+// installed (.agent/, its guides in workflows/, no .claude), the team adds a
+// rule of its own there, and the main branch takes it. On camera: the
+// repository page of the main branch, the Files panel open on that folder.
+storyboardStep(Given, 'the main branch still keeps the AI agent files in the old .agent folder, with a rule the team added', async () => {
+  inProject([
+    'git mv .agents .agent',
+    'git rm -rq .claude',
+    'mkdir -p .agent/workflows',
+    ...OLD_WORKFLOWS.map(n => `git mv .agent/skills/${n}/SKILL.md .agent/workflows/${n}.md`),
+    'find .agent -type d -empty -delete',
+    `printf -- '---\ntrigger: always_on\n---\n\n# Our team rule\n\nRun the e2e suite before every merge request.\n' > .agent/rules/${TEAM_RULE}`,
+    'git add -A',
+    `git commit -q -m "${OLD_LAYOUT_COMMIT}"`,
+    'git push -q origin main'
+  ].join(' && '))
+  await inNewTab(I, () => agentRepositoryFrame('agent-mode-gitlab-old-folder', OLD_LAYOUT_COMMIT, ['.agent', 'rules', 'workflows']))
+  await assertRootTreeExactly('main', ['.agent', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
+  const workflows = await remoteNames('.agent/workflows')
+  if (JSON.stringify(workflows) !== JSON.stringify(OLD_WORKFLOWS.map(n => `${n}.md`))) {
+    throw new Error(`Expected the eight guides in .agent/workflows on the main branch, found ${JSON.stringify(workflows)}`)
+  }
+  if (!(await remoteNames('.agent/rules')).includes(TEAM_RULE)) throw new Error(`Expected ${TEAM_RULE} in .agent/rules on the main branch`)
+})
+
+// The installer over the old folder, then the developer's one typed line, in
+// the same terminal: one card from the installer line down. The twins: in the
+// clone, no .agent is left, the team rule kept its content in .agents/rules,
+// and git says the push left nothing behind.
+storyboardStep(When, 'the developer runs the installer over the old folder and pushes the result to the main branch', async () => {
+  const rule = inProject(`cat .agent/rules/${TEAM_RULE}`)
+  await runInstallerAgain()
+  await typeCommandAndWait(I, MOVE_PUSH)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-7-installed-over-old-folder', { fromMarker: `bash ${WRAPPER_PATH}` }))
+  const screen = await terminalScreenText(I)
+  for (const said of ["Your branch is up to date with 'origin/main'.", 'nothing to commit, working tree clean']) {
+    if (!screen.includes(said)) throw new Error(`Expected git to say "${said}" after the push:\n${screen}`)
+  }
+  const left = inProject('test -e .agent && echo left || echo gone').trim()
+  if (left !== 'gone') throw new Error(`Expected no .agent folder after the install, found:\n${inProject('find .agent | sort')}`)
+  if (inProject(`cat .agents/rules/${TEAM_RULE}`) !== rule) throw new Error(`Expected ${TEAM_RULE} moved to .agents/rules unchanged`)
+})
+
+// The same page as the chapter's first card. The twins: the remote tree of the
+// main branch, the team rule in .agents/rules, and the move as the last commit.
+storyboardStep(Then, "GitLab shows the team's rule in .agents/rules, and no .agent folder is left on the main branch", async () => {
+  await inNewTab(I, () => agentRepositoryFrame('agent-mode-gitlab-moved', MOVE_COMMIT, ['.agents', 'rules']))
+  await assertRootTreeExactly('main', ['.agents', '.claude', 'AGENTS.md', 'CLAUDE.md', 'README.md'])
+  await assertAgentFilesOnMain()
+  if (!(await remoteNames('.agents/rules')).includes(TEAM_RULE)) throw new Error(`Expected ${TEAM_RULE} in .agents/rules on the main branch`)
+  const title = await branchCommitTitle('main')
+  if (title !== MOVE_COMMIT) throw new Error(`Expected main to point at "${MOVE_COMMIT}", found "${title}"`)
 })
 
 // ============================================
