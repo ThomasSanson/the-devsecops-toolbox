@@ -1,9 +1,7 @@
 /* global inject Given Then Before After document */
 /**
- * Steps of three 03-evolution stories that render the WORKING-BRANCH template
- * inside the codeceptjs container: @render-matrix (every Copier answer, shown
- * on GitLab), @renovate-flow (chapter 1, the rendered Renovate config) and
- * @toolbox-update (chapter 2, copier update with a flipped answer).
+ * Steps of @render-matrix: the WORKING-BRANCH template rendered inside the
+ * codeceptjs container, once per Copier answer, and shown on GitLab.
  */
 const { I } = inject()
 const fs = require('fs')

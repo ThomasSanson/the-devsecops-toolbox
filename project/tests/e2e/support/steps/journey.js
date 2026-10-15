@@ -216,9 +216,7 @@ async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTermi
 }
 
 // openBlankProjectTerminal, prepareWorkingBranchInstaller, preinstallToolchain
-// and authenticateGlab are now called directly from the storyboard Given steps
-// (installer / piped / init-framework-mr / agent-mode); their former plain
-// Given bindings were removed with the storyboard migration.
+// and authenticateGlab are called directly from the storyboard steps below.
 
 // ============================================
 // WHEN — drive the live terminal
@@ -455,9 +453,9 @@ storyboardStep(Given, 'the developer has pushed their own spelling word and thei
   expectIn(diff.find(d => d.new_path === TASK_FILE).diff, [`+  ${DEVELOPER_TASK}:`], 'the task file diff')
 })
 
-// The terminal opens 1440 wide (159 columns, so go-task's echo of the copier
-// command fits on one row) and tall enough for the whole run, and keeps that
-// size for both terminal cards: the GitLab cards in between open in a second tab.
+// The terminal opens 1440 wide (157 columns) and tall enough for the whole
+// run, and keeps that size for both terminal cards: the GitLab cards in
+// between open in a second tab.
 storyboardStep(When, 'the developer asks for the new toolbox release from the main branch', async () => {
   await openTerminal(I, global.journeyContainer, { width: 1440, height: 1200 })
   const screen = await terminalCard(I, 'update-run', 'task devsecops:update', { mask: runMasks(), timeoutMs: UPDATE_RUN_TIMEOUT_MS })
@@ -560,11 +558,6 @@ storyboardStep(Then, 'the update branch stands next to a main branch nobody push
 // ============================================
 // THEN — proofs
 // ============================================
-
-// The milestone-block and install-log plain bindings (used only by the retired
-// flat installer/piped scenarios) were removed with the storyboard migration;
-// the storyboard steps below assert the install log through assertInstallLog()
-// and assertCreatedFilesAtLeast() instead.
 
 // ============================================
 // Init-framework-devsecops MR flow (stage 4)
@@ -823,10 +816,8 @@ storyboardStep(Then, 'GitLab shows the AI agent files beside the README on the m
 })
 
 // ============================================
-// Reusable REST asserts (the programmatic twin of each storyboard proof).
-// Kept as plain functions so the storyboard steps (installer / piped /
-// init-framework-mr) and the shared plain bindings (init-baseline /
-// release-toggle) all assert the exact same fact.
+// Reusable REST asserts (the programmatic twin of each storyboard proof),
+// shared by the storyboard steps of this file.
 // ============================================
 
 async function branchCommitTitle (branch) {
@@ -980,13 +971,6 @@ function assertCreatedFilesAtLeast (min) {
     throw new Error(`Expected Copier to scaffold at least ${min} files, the install log reports ${count}`)
   }
 }
-
-// Shared plain bindings (used across features) delegating to the asserts above.
-// (the branch / merge-request bindings were removed with the storyboard
-// migration — their only caller, piped-install, is now a storyboard that
-// twins assertBranchExists / findOpenMr directly.)
-Then('a project access token {string} must exist with Maintainer role for the journey project', assertTokenMaintainer)
-Then('the branch {string} must be protected with merge for maintainers and push for no one for the journey project', assertMainProtected)
 
 // The root of a branch on GitLab holds EXACTLY these names: the agent-mode
 // storyboard's twin of its before and after repository pages.
@@ -1553,7 +1537,7 @@ storyboardStep(Then, 'the project folder now holds the full DevSecOps framework'
 // remote; following that advice opens the framework merge request on GitLab.
 // Each stop's advice is proven by the next card. A last chapter runs the same
 // installer with no terminal at all, as a CI job does. The terminal is 1440 px wide
-// (159 columns, so the typed lines never wrap) and 900 px tall: about 52 rows,
+// (157 columns, so the typed lines never wrap) and 900 px tall: about 52 rows,
 // which keeps the first of the two "Configuring GitLab project..." lines (one
 // per init attempt, some 70 rows apart) off the final card. Every card is
 // twinned with the session log, the machine itself or the GitLab API.

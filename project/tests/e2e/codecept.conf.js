@@ -8,9 +8,9 @@
  *   1. Live-terminal capture (journey scenarios): the user's real ttyd/xterm
  *      session is screenshotted via support/terminal/capture.js, optionally
  *      anchored from a marker row to skip non-deterministic scrollback.
- *   2. Filtered <pre> render (init-effects/guidance/release scenarios): the
- *      captured command output is noise-filtered, rendered in the browser as
- *      a <pre> block and screenshotted.
+ *   2. Replayed output (support/helpers/terminalRender.js): a command that
+ *      runs in the test runner itself, where no live terminal exists, has the
+ *      bytes it printed replayed as a terminal card.
  *
  * GitLab-side effects are proven by page screenshots (masked: dates, avatars,
  * top bar, per-run project names) plus REST assertions where content is

@@ -195,14 +195,6 @@ async function updateProjectVariable (projectName, variableName, payload, header
   )
 }
 
-async function rotateProjectAccessToken (projectName, tokenId, headers) {
-  return freshPost(
-    `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/access_tokens/${tokenId}/rotate`,
-    {},
-    headers
-  )
-}
-
 // Ask the embedded GitLab to statically validate the .gitlab-ci.yml that was
 // pushed to `ref` — the way it would before running it. Project-scoped so the
 // `local:` includes and the `spec:inputs` header resolve against the real tree;
@@ -270,9 +262,7 @@ async function cancelPipeline (projectName, pipelineId, headers) {
   )
 }
 
-// Remove a pipeline entirely (owner/root only). The daily-contribution story
-// deletes the fixture push's bootstrap pipeline so the ?ref=main pipeline list
-// card shows exactly ONE pipeline: the release run the merge started.
+// Remove a pipeline entirely (owner/root only), status icon on its commit included.
 async function deletePipeline (projectName, pipelineId, headers) {
   return freshDelete(
     `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/pipelines/${pipelineId}`,
@@ -382,7 +372,6 @@ module.exports = {
   listProjectAccessTokens,
   createProjectAccessToken,
   revokeProjectAccessToken,
-  rotateProjectAccessToken,
   lintProjectCi,
   createProjectRunner,
   deleteRunner,

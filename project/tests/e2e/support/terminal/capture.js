@@ -571,7 +571,7 @@ async function terminalScreenText (I) {
 
 /**
  * Open the live terminal of a ttyd container (or URL) at width x height
- * (TERMINAL_WIDTH, 113 columns, by default; 1440 gives 159 columns, for a typed
+ * (TERMINAL_WIDTH, 113 columns, by default; 1440 gives 157 columns, for a typed
  * line that would otherwise wrap in the middle of a word), in
  * TERMINAL_FONT_SIZE (ttyd reads its options from the URL). The
  * window is sized BEFORE ttyd loads and never resized while the session lives:
