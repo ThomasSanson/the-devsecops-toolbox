@@ -117,6 +117,6 @@ next to it is not one. Do ONE of:
     baseline it captures (project/tests/e2e/screenshots/base/**);
   - if the change is genuinely invisible, add a commit trailer:
         Storyboard-exempt: <why this needs no visual proof>
-See .agent/rules/tests-integrity.md.
+See .agents/rules/tests-integrity.md.
 MSG
 exit 1

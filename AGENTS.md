@@ -1,13 +1,13 @@
 # AGENTS.md
 
 > **This file is the single entry point for every AI coding agent working on this repository.**
-> Before taking any action, you **MUST** read and follow the rules in `.agent/`.
+> Before taking any action, you **MUST** read and follow the rules in `.agents/`.
 
 This repository is built on **The DevSecOps Toolbox**, a [Copier](https://copier.readthedocs.io) framework.
 It provides a full GitLab CI/CD pipeline and a set of `task` workflows organised around the DevSecOps phases.
 The framework tooling under `.config/` and the root `Taskfile.yml` are owned by the toolbox and evolve through `task copier:update`; do not edit them here.
 
-> **If `.agent/rules/framework-repo.md` exists, this *is* The DevSecOps Toolbox template repository itself — read that rule for the repository-specific structure, test suite and constraints.**
+> **If `.agents/rules/framework-repo.md` exists, this *is* The DevSecOps Toolbox template repository itself — read that rule for the repository-specific structure, test suite and constraints.**
 >
 > **If `.config/devsecops/Taskfile.test.yml` does not exist, only the AI files were installed, not the framework: the `task` and `devsecops` commands here do not exist. Use the project's own build and test commands, and say which one you ran.**
 
@@ -17,18 +17,18 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 
 **You MUST read and comply with ALL rule files before performing any action.**
 
-| Rule file                                                                  | Description                                                                                                                 |
-|----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| [`.agent/rules/task-commands.md`](.agent/rules/task-commands.md)           | Build, lint, test and deploy go through `task` from the repository root. Reading files and read-only git commands do not.   |
-| [`.agent/rules/environment.md`](.agent/rules/environment.md)               | Environment files live at the repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
-| [`.agent/rules/stability.md`](.agent/rules/stability.md)                   | Never modify `.config/` or the root `Taskfile.yml`. A failure rooted there is fixed in the toolbox, never here.             |
-| [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                        |
-| [`.agent/rules/tests-integrity.md`](.agent/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                               |
-| [`.agent/rules/tests-structure.md`](.agent/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |
-| [`.agent/rules/naming-conventions.md`](.agent/rules/naming-conventions.md) | Task names follow `project:{phase}:{service}:{action}`. Taskfile variables start with `TASK_`.                              |
-| [`.agent/rules/interaction.md`](.agent/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
-| [`.agent/rules/terminal-execution.md`](.agent/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
-| [`.agent/rules/version-control.md`](.agent/rules/version-control.md)       | Agents only read git. The person commits.                                                                                   |
+| Rule file                                                                    | Description                                                                                                                 |
+|------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| [`.agents/rules/task-commands.md`](.agents/rules/task-commands.md)           | Build, lint, test and deploy go through `task` from the repository root. Reading files and read-only git commands do not.   |
+| [`.agents/rules/environment.md`](.agents/rules/environment.md)               | Environment files live at the repository root only (`.env.dist`, `.env.dev`). Never create `.env`. Never modify `.config/`. |
+| [`.agents/rules/stability.md`](.agents/rules/stability.md)                   | Never modify `.config/` or the root `Taskfile.yml`. A failure rooted there is fixed in the toolbox, never here.             |
+| [`.agents/rules/tdd-cycle.md`](.agents/rules/tdd-cycle.md)                   | TDD is mandatory for ANY code change. Follow RED → GREEN → REFACTOR in strict order.                                        |
+| [`.agents/rules/tests-integrity.md`](.agents/rules/tests-integrity.md)       | Never modify a test to hide a failure. Never delete or weaken existing tests.                                               |
+| [`.agents/rules/tests-structure.md`](.agents/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |
+| [`.agents/rules/naming-conventions.md`](.agents/rules/naming-conventions.md) | Task names follow `project:{phase}:{service}:{action}`. Taskfile variables start with `TASK_`.                              |
+| [`.agents/rules/interaction.md`](.agents/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
+| [`.agents/rules/terminal-execution.md`](.agents/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
+| [`.agents/rules/version-control.md`](.agents/rules/version-control.md)       | Agents only read git. The person commits.                                                                                   |
 
 ---
 
@@ -42,7 +42,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 
 ```text
 /
-├── .agent/           # AI agent instructions (rules, skills, workflows) — read these first
+├── .agents/          # AI agent instructions (rules and skills) — read these first
 ├── .config/          # Framework tooling — managed by the toolbox, do NOT edit
 ├── docs/             # Documentation
 ├── Taskfile.yml      # Root orchestrator — managed by the toolbox, do NOT edit
@@ -90,15 +90,15 @@ If the command you need has no task, **create one** in `project/Taskfile.yml`, f
 
 **Consult the relevant skill file before performing an action in that domain.**
 
-| Skill       | File                                                               | When to use                                                          |
-|-------------|--------------------------------------------------------------------|----------------------------------------------------------------------|
-| **Build**   | [`.agent/skills/build/SKILL.md`](.agent/skills/build/SKILL.md)     | After Dockerfile changes, dependency updates, or before first deploy |
-| **Code**    | [`.agent/skills/code/SKILL.md`](.agent/skills/code/SKILL.md)       | Running linters, fixing code style, before committing                |
-| **Deploy**  | [`.agent/skills/deploy/SKILL.md`](.agent/skills/deploy/SKILL.md)   | Starting the environment, after pulling changes, before tests        |
-| **Test**    | [`.agent/skills/test/SKILL.md`](.agent/skills/test/SKILL.md)       | Running tests, debugging failures, writing new tests                 |
-| **TDD**     | [`.agent/skills/tdd/SKILL.md`](.agent/skills/tdd/SKILL.md)         | Implementing features, fixing bugs — RED → GREEN → REFACTOR          |
-| **Operate** | [`.agent/skills/operate/SKILL.md`](.agent/skills/operate/SKILL.md) | Stopping services, shell access, database operations                 |
-| **Monitor** | [`.agent/skills/monitor/SKILL.md`](.agent/skills/monitor/SKILL.md) | Investigating failures, checking logs, debugging                     |
+| Skill       | File                                                                 | When to use                                                          |
+|-------------|----------------------------------------------------------------------|----------------------------------------------------------------------|
+| **Build**   | [`.agents/skills/build/SKILL.md`](.agents/skills/build/SKILL.md)     | After Dockerfile changes, dependency updates, or before first deploy |
+| **Code**    | [`.agents/skills/code/SKILL.md`](.agents/skills/code/SKILL.md)       | Running linters, fixing code style, before committing                |
+| **Deploy**  | [`.agents/skills/deploy/SKILL.md`](.agents/skills/deploy/SKILL.md)   | Starting the environment, after pulling changes, before tests        |
+| **Test**    | [`.agents/skills/test/SKILL.md`](.agents/skills/test/SKILL.md)       | Running tests, debugging failures, writing new tests                 |
+| **TDD**     | [`.agents/skills/tdd/SKILL.md`](.agents/skills/tdd/SKILL.md)         | Implementing features, fixing bugs — RED → GREEN → REFACTOR          |
+| **Operate** | [`.agents/skills/operate/SKILL.md`](.agents/skills/operate/SKILL.md) | Stopping services, shell access, database operations                 |
+| **Monitor** | [`.agents/skills/monitor/SKILL.md`](.agents/skills/monitor/SKILL.md) | Investigating failures, checking logs, debugging                     |
 
 ---
 
@@ -121,7 +121,7 @@ If the command you need has no task, **create one** in `project/Taskfile.yml`, f
 
 ## Testing — TDD is Mandatory
 
-Detailed rules: [`.agent/rules/tdd-cycle.md`](.agent/rules/tdd-cycle.md) | Skill: [`.agent/skills/tdd/SKILL.md`](.agent/skills/tdd/SKILL.md)
+Detailed rules: [`.agents/rules/tdd-cycle.md`](.agents/rules/tdd-cycle.md) | Skill: [`.agents/skills/tdd/SKILL.md`](.agents/skills/tdd/SKILL.md)
 
 Every code change MUST follow this cycle:
 
@@ -143,7 +143,7 @@ Steps 8 and 9 each certify a phase with one exit code: the linter passes and the
 
 Handing work to an AI assistant? The whole contract — including what an
 orchestrator delegating to a cheaper model must check — is one page:
-[`.agent/rules/ai-delegation.md`](.agent/rules/ai-delegation.md).
+[`.agents/rules/ai-delegation.md`](.agents/rules/ai-delegation.md).
 
 Gherkin scenarios are written in the language configured for the project.
 A visual-regression E2E engine (CodeceptJS + Gherkin, with a storyboard helper) ships under `.config/codeceptjs/`; use its sample config to wire up `project/tests/` if you want visual E2E coverage.

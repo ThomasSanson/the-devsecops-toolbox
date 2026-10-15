@@ -15,7 +15,7 @@ The cycle does **NOT** trigger on:
 - `project/**/docker-compose.yml`, `Dockerfile`, `entrypoint.sh` — infrastructure
 - `project/Taskfile.yml`, `.gitlab-ci.yml` — orchestration
 - `project/tests/**` — test code itself
-- `.agent/**`, `CLAUDE.md`, `AGENTS.md`, `*.md` at root — meta/docs
+- `.agents/**`, `CLAUDE.md`, `AGENTS.md`, `*.md` at root — meta/docs
 
 The cycle **DOES** trigger on these — commonly (and wrongly) waved through as
 "just config" or "just a tweak":

@@ -475,5 +475,5 @@ project/public/helm/index.yaml
 ### Root-Level Shell Scripts ###
 # The preceding slash ensures only shell scripts in the root directory are ignored.
 /*.sh
-!.agent/skills/build
+!.agents/skills/build
 project/tests/e2e/.impeccable/hook.cache.json

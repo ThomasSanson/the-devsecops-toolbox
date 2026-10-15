@@ -7,7 +7,7 @@ description: You are in The DevSecOps Toolbox template repository itself — rep
 
 The presence of this file means you are working **in the toolbox template repository itself**, not in a generated project.
 Here, `.config/`, the root `Taskfile.yml` and their `.jinja` twins ARE the product: they are owned and evolved here.
-The generic "never modify `.config/` / root `Taskfile.yml`" rules in `AGENTS.md`, `CLAUDE.md` and the other `.agent/rules/` are written for the generated-project audience; they do not forbid maintaining the template itself.
+The generic "never modify `.config/` / root `Taskfile.yml`" rules in `AGENTS.md`, `CLAUDE.md` and the other `.agents/rules/` are written for the generated-project audience; they do not forbid maintaining the template itself.
 Everything still runs through `task` from the repository root, and the TDD cycle still applies to every change.
 
 ---
@@ -24,13 +24,13 @@ Its own Renovate config (`.config/renovate/config.json`) tracks those tools at b
 Projects generated FROM this template inherit a deliberately LIGHTER Renovate (`config.json.jinja`) that does NOT track `.config/`: it only watches the framework-evolution MR (`.copier-answers.yml` → `task copier:update`) plus its own `project/**` deps.
 So tool upgrades flow framework → generated projects via one Copier MR, never per-tool MRs in every downstream repo. Enforced by `features/03-evolution/renovate.feature`.
 
-Detailed code style for this repository: [`.agent/rules/code-style.md`](code-style.md) (framework-only; not shipped downstream).
+Detailed code style for this repository: [`.agents/rules/code-style.md`](code-style.md) (framework-only; not shipped downstream).
 
 ### Key directory structure
 
 ```text
 /
-├── .agent/                  # AI agent instructions (rules, skills, workflows; .jinja twins ship downstream)
+├── .agents/                 # AI agent instructions (rules and skills; .jinja twins ship downstream)
 ├── .config/                 # Framework tooling — owned & evolved by THIS template repo
 ├── docs/                    # Documentation
 ├── copier.yml               # Copier template questions
@@ -51,7 +51,7 @@ Detailed code style for this repository: [`.agent/rules/code-style.md`](code-sty
             └── screenshots/base/  # Visual baselines (tolerance: 0)
 ```
 
-Some files are framework-only and excluded from generated projects via `_exclude` in `copier.yml` (e.g. `.agent/rules/code-style.md`, this `framework-repo.md`, `README.md`, `project/gitlab`, `project/tests`, `project/ubuntu`).
+Some files are framework-only and excluded from generated projects via `_exclude` in `copier.yml` (e.g. `.agents/rules/code-style.md`, this `framework-repo.md`, `README.md`, `project/gitlab`, `project/tests`, `project/ubuntu`).
 
 ---
 

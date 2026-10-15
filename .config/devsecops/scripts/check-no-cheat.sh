@@ -233,6 +233,6 @@ nothing. Do ONE of:
   - if the check is genuinely obsolete, remove it and say so in review;
   - if this really is the honest thing to do, add a commit trailer:
         No-cheat-exempt: <why switching this off is right>
-See .agent/rules/tests-integrity.md.
+See .agents/rules/tests-integrity.md.
 MSG
 exit 1
