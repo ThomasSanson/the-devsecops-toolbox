@@ -20,7 +20,8 @@ Feature: The whole install, from an empty project to a locked-down GitLab
   # Chapter 1 installs the framework, from the installer's first question to the
   # merge request it opens. Chapter 2 shows the GitLab settings the install
   # locked and wired. Chapter 3 runs the framework's own pipeline on that merge
-  # request, merges it, and shows the framework on the main branch.
+  # request, merges it, waits for the main branch's own pipeline, and shows the
+  # framework on the main branch.
   @install-complete
   Scenario: One interactive install builds the framework and configures GitLab
     # Chapter: Install the framework
@@ -33,7 +34,7 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && git status && bash /tmp/devsecops-install.sh
     When the developer starts the toolbox installer in the freshly cloned project
     # Note: Saying yes to the complete framework opens the ten setup questions of Copier, the tool that builds the project from the answers. The developer presses Enter on each one and keeps its default.
-    # Note: The card is caught on the last question, the language of the test descriptions, with its default "en" still open. Above it, the nine answers already given: No to Ansible, GitLab SaaS (gitlab.com), the runner tag saas-linux-medium-amd64, Docker, then Yes, Yes, Yes, No and Yes.
+    # Note: The card is caught on the last question, the language of the test descriptions, with its default "en". Above it, the nine answers already given: No to Ansible, GitLab SaaS (gitlab.com), the runner tag saas-linux-medium-amd64, Docker, then Yes, Yes, Yes, No and Yes.
     # Copy: y
     And the developer answers the ten setup questions, keeping every default
     # Note: The installer builds the framework, pushes it to a new branch, init-framework-devsecops, and opens a merge request into the main branch. This is GitLab's page for it: "chore: initialize devsecops framework", Open.
@@ -61,9 +62,10 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs
     Then the framework's first pipeline passes, its MegaLinter job green on every linter, the secret and dependency scanners included
     # Note: The same merge request page as in chapter 1, now Merged. "Merge request pipeline passed" shows its stages, all green, as the "Pipelines must succeed" rule demands, and "Deleted the source branch" closes the review.
+    # Note: Below it, "Pipeline passed on main": the merge started the main branch's own pipeline, and its three stages, plan, release and feedback, passed too. With only chores in the history, the release makes no new version, and the job still passes.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     And the merge request merges into the main branch
-    # Note: The same home page as the first card. The main branch now holds the whole framework, .agent, .config, .gitlab-ci.yml and Taskfile.yml among them, on the commit "chore: initialize devsecops framework". Only README.md stays on "chore: initialize repository", the commit the installer made to create the main branch.
+    # Note: The same home page as the first card. The main branch now holds the whole framework, .agent, .config, .gitlab-ci.yml and Taskfile.yml among them, on the commit "chore: initialize devsecops framework". Only README.md stays on "chore: initialize repository", the commit the installer made to create the main branch. The green check next to the last commit is the main branch's pipeline, passed.
     # Note: The first install is proven end to end.
     # Copy: http://gitlab/<lambda-user>/<project>
     And the main branch now carries the whole framework, merged through review

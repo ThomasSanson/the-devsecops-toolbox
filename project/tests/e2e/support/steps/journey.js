@@ -1,4 +1,4 @@
-/* global inject Before After Given When Then NodeFilter MutationObserver requestAnimationFrame */
+/* global inject Before After Given When Then MutationObserver requestAnimationFrame */
 // cspell:ignore Caddyfile setsid -- the cspell-survival scenario's project word, and the tool that runs the installer without a terminal
 /**
  * E2E developer-journey scenarios.
@@ -21,7 +21,7 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
-const { I, GitLabMergeRequestPage, GitLabRepositoryPage, GitLabUserPage } = inject()
+const { I, GitLabUserPage } = inject()
 const {
   ttydPort,
   runCommand,
@@ -46,17 +46,15 @@ const {
   getMergeRequest,
   mergeMergeRequest,
   putRepositoryFile,
-  listProjectPipelines,
-  getPipeline,
-  cancelPipeline,
-  deletePipeline,
   getJobTrace,
-  getRepositoryFile
+  getRepositoryFile,
+  listCommits
 } = require('../helpers/gitlabApi')
 const {
   registerScopedRunner,
   teardownScopedRunner,
   waitMergeRequestPipeline,
+  waitRefPipeline,
   dumpFailedTraces
 } = require('../helpers/pipelineRunner')
 const { freshGet } = require('../helpers/http')
@@ -97,7 +95,6 @@ const { TASKFILE_LINE_RELEASED } = require('../helpers/copierRender')
 const {
   storyboardStep,
   addStoryboardFrame,
-  capturePageFrame,
   frameOutputPath
 } = require('../../../../../.config/codeceptjs/storyboard')
 
@@ -211,16 +208,6 @@ async function createJourneyProject (setupTerminal = setupClonedProjectTerminal,
 
   global.journeyContainer = setupTerminal(projectName, lambdaToken)
 }
-
-async function openBlankProjectTerminal (setupTerminal = setupClonedProjectTerminal, projectExtra = {}) {
-  await createJourneyProject(setupTerminal, projectExtra)
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-}
-
-// openBlankProjectTerminal, prepareWorkingBranchInstaller, preinstallToolchain
-// and authenticateGlab are called directly from the storyboard steps below.
 
 // ============================================
 // WHEN — drive the live terminal
@@ -904,18 +891,6 @@ async function assertTokenMaintainer (tokenName) {
   }
 }
 
-// The install creates a second token for the update bot; the access-tokens card
-// shows both, so the twin proves both are really there (this one carries no
-// Maintainer role, only its presence matters).
-async function assertTokenExists (tokenName) {
-  const headers = await getRootHeaders()
-  const tokens = await listProjectAccessTokens(global.journeyProjectName, headers)
-  const token = (tokens.data || []).find(t => t.name === tokenName && t.active && !t.revoked)
-  if (!token) {
-    throw new Error(`Active token "${tokenName}" not found for ${global.journeyProjectName}`)
-  }
-}
-
 async function assertMainProtected (branch) {
   const headers = await getRootHeaders()
   const encodedPath = encodeURIComponent(projectPath(global.journeyProjectName))
@@ -1004,50 +979,6 @@ async function ensureLambdaUser () {
       name: 'Lambda User',
       password: process.env.TASK_GITLAB_LAMBDA_PASSWORD
     }
-  )
-}
-
-// Capture a masked GitLab page as a storyboard frame at the storyboard's page
-// aspect (1024x640 by default), then restore the default window. `navigate`
-// runs the page-object goto+mask; `frameName` is the per-scenario baseline
-// stem. Pass `{ height }` to grab a taller viewport when a page has more to
-// prove than fits at 640 (e.g. every merge check, or two access tokens).
-async function pageFrame (navigate, frameName, opts = {}) {
-  I.resizeWindow(1024, opts.height || 640)
-  await navigate()
-  await maskProjectName(global.journeyProjectName)
-  await addStoryboardFrame(I, await capturePageFrame(I, frameName))
-  I.resizeWindow(1024, 768)
-}
-
-// This story generates its project with a random suffix (e2e-journey-<hex>), and
-// GitLab 19 prints the project name in a breadcrumb above EVERY settings page —
-// a different card on every run. The page objects each mask their own volatile
-// bits; the name belongs to the story, so it is neutralised here, on the one
-// road every page card of this story takes.
-async function maskProjectName (projectName) {
-  if (!projectName) return
-  await I.executeScript((name) => {
-    const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-    const nodes = []
-    while (walker.nextNode()) nodes.push(walker.currentNode)
-    nodes.forEach(n => { n.nodeValue = n.nodeValue.replace(pattern, 'project') })
-  }, projectName)
-}
-
-// The full masked merge-request overview page — the whole GitLab view a
-// reviewer sees (title, state badge, "requested to merge <source> into
-// <target>"), not a cropped header band. Reused by the flagship story and the
-// toolbox update so every MR card reads as a real page.
-async function mrPageFrame (frameName) {
-  await pageFrame(
-    () => GitLabMergeRequestPage.gotoAndMask(
-      projectPath(global.journeyProjectName),
-      global.journeyMergeRequestIid,
-      global.journeyProjectName
-    ),
-    frameName
   )
 }
 
@@ -1343,33 +1274,6 @@ async function reloadUntil (texts) {
   throw new Error(`The page never showed ${JSON.stringify(texts)}`)
 }
 
-// The merge starts the main branch's own pipeline. This story is about the
-// merge request's pipeline, and the release main's pipeline makes is pictured
-// by @daily-contribution: cancel it, so the single runner is free again, and
-// delete it, so no card shows a pipeline still on its way.
-async function dropMainPipeline (headers) {
-  const project = global.journeyProjectName
-  const main = ((await listProjectBranches(project, headers)).data || []).find(b => b.name === 'main')
-  if (!main) throw new Error('The main branch is gone after the merge')
-  for (let i = 0; i < 24; i++) {
-    const pipelines = (await listProjectPipelines(project, headers, `?ref=main&sha=${main.commit.id}`)).data || []
-    if (pipelines.length) {
-      for (const pipeline of pipelines) {
-        await cancelPipeline(project, pipeline.id, headers)
-        for (let j = 0; j < 30; j++) {
-          const state = (await getPipeline(project, pipeline.id, headers)).data.status
-          if (['success', 'failed', 'canceled', 'skipped'].includes(state)) break
-          await I.wait(2)
-        }
-        const gone = await deletePipeline(project, pipeline.id, headers)
-        if (gone.status >= 400) throw new Error(`Could not delete main's pipeline ${pipeline.id}: HTTP ${gone.status}`)
-      }
-      return
-    }
-    await I.wait(5)
-  }
-}
-
 async function assertMergeSettings () {
   const headers = await getRootHeaders()
   const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
@@ -1483,7 +1387,7 @@ storyboardStep(Then, 'GitLab now refuses pushes straight to the main branch', as
 
 storyboardStep(Then, "GitLab now holds the project's two automation tokens", async () => {
   await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
-  await assertTokenExists('TASK_RENOVATE_TOKEN')
+  await assertTokenMaintainer('TASK_RENOVATE_TOKEN')
   await gitlabFrame(I, 'gitlab-access-tokens', gitlabUrl.accessTokens(global.journeyProjectName), {
     waitText: 'TASK_RENOVATE_TOKEN', textMasks: TOKEN_PAGE_MASKS, height: 700
   })
@@ -1538,9 +1442,11 @@ storyboardStep(Then, "the framework's first pipeline passes, its MegaLinter job 
 })
 
 // A green pipeline meets the "Pipelines must succeed" rule, so the merge goes
-// through. GitLab deletes the source branch on its own, a moment later, and
-// main's own pipeline is dropped (see dropMainPipeline) before the shot: the
-// same page as in chapter 1, merged, its widget showing the passed pipeline.
+// through. GitLab deletes the source branch on its own, a moment later. The
+// merge starts the main branch's own pipeline (plan, release, feedback), waited
+// to its end before the shot so no card shows it on its way: on a history of
+// chores the release has nothing to cut, and it must still pass. Then the same
+// page as in chapter 1, merged.
 storyboardStep(Then, 'the merge request merges into the main branch', async () => {
   const project = global.journeyProjectName
   const rootHeaders = await getRootHeaders()
@@ -1560,14 +1466,29 @@ storyboardStep(Then, 'the merge request merges into the main branch', async () =
     await I.wait(2)
   }
   if (branches.includes(FRAMEWORK_BRANCH)) throw new Error(`Expected the source branch ${FRAMEWORK_BRANCH} to be deleted by the merge`)
-  await dropMainPipeline(rootHeaders)
+  const { pid, status } = await waitRefPipeline(I, project, 'main', rootHeaders)
+  const jobs = pid ? ((await listPipelineJobs(project, pid, rootHeaders)).data || []) : []
+  if (status !== 'success') {
+    dumpFailedTraces(project, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
+    throw new Error(`Expected main's first pipeline to pass, got status=${status}: ${jobs.map(j => `${j.name}=${j.status}`).join(', ')}`)
+  }
+  if (!jobs.some(j => j.name === 'release' && j.status === 'success')) {
+    throw new Error(`Expected a green release job in main's first pipeline, got: ${jobs.map(j => `${j.name}=${j.status}`).join(', ')}`)
+  }
   await frameworkMrFrame('framework-mr-merged', 'Deleted the source branch')
 })
 
-// The same home page as the Given, now on the merged framework. The twin
-// first: the framework's own files at the root of main on GitLab.
+// The same home page as the Given, now on the merged framework. The twins
+// first: the framework's own files at the root of main on GitLab, and main's
+// history, the framework's commit on top of the one that created main.
 storyboardStep(Then, 'the main branch now carries the whole framework, merged through review', async () => {
-  const tree = await listRepositoryTree(global.journeyProjectName, await getRootHeaders(), '?ref=main&per_page=100')
+  const rootHeaders = await getRootHeaders()
+  const history = (await listCommits(global.journeyProjectName, 'main', rootHeaders)).map(commit => commit.title)
+  const expected = [FRAMEWORK_TITLE, 'chore: initialize repository']
+  if (JSON.stringify(history) !== JSON.stringify(expected)) {
+    throw new Error(`Expected main's history to be ${JSON.stringify(expected)}, newest first, got ${JSON.stringify(history)}`)
+  }
+  const tree = await listRepositoryTree(global.journeyProjectName, rootHeaders, '?ref=main&per_page=100')
   const names = (tree.data || []).map(entry => entry.name)
   for (const name of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']) {
     if (!names.includes(name)) throw new Error(`Expected main to carry "${name}" after the merge. Entries: ${JSON.stringify(names)}`)
