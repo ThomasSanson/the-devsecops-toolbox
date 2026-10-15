@@ -20,6 +20,14 @@ const TEMPLATE_SRC = '/workspace'
 const COPIER = 'uvx --python 3.14 --from copier==9.14.3 copier'
 const RENDER_TIMEOUT_MS = 300000
 
+// What a copier update prints that moves between two runs of the same story:
+// the pinned copier in go-task's echo of the update (Renovate moves it every
+// month), and the temporary checkout of the template its migrations run from.
+const COPIER_RUN_MASKS = [
+  [/copier==[0-9][\w.]*/g, 'copier==<version>'],
+  [/copier\._vcs\.clone\.\w+/g, 'copier._vcs.clone.<tmp>']
+]
+
 const UPDATE_MARKER_FILE = '.config/jq/Taskfile.yml'
 const UPDATE_MARKER = '# e2e-update-marker'
 
@@ -216,6 +224,7 @@ function removeRendered (dir) {
 module.exports = {
   TEMPLATE_SRC,
   COPIER,
+  COPIER_RUN_MASKS,
   UPDATE_MARKER_FILE,
   UPDATE_MARKER,
   TASKFILE_LINE_RELEASED,

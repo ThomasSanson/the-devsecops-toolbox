@@ -26,6 +26,7 @@ const {
   getRepositoryFile
 } = require('../helpers/gitlabApi')
 const { PROJECT_DIR, setupManualUpdateTerminal, teardownJourneyTerminal } = require('../helpers/journeyContainer')
+const { COPIER_RUN_MASKS } = require('../helpers/copierRender')
 const { openTerminal, terminalCard } = require('../terminal/capture')
 const { gitlabUrl, gitlabFrame, inNewTab } = require('../helpers/gitlabCard')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
@@ -82,9 +83,6 @@ const ANNOUNCEMENT = '[megalinter migration] removed retired references from '
 const REFUSED_RUN = `readlink ${LINK} && task devsecops:update; git status --short`
 const ACCEPTED_RUN = 'git reset -q --hard origin/main && git clean -fdq && task devsecops:update'
 const REPEATED_RUN = 'task devsecops:update'
-// go-task echoes the uvx line behind the update, pinned Copier included: the
-// line stays, the version that Renovate moves every month freezes.
-const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
 
 let story = {}
 Before(() => { story = {} })
@@ -216,7 +214,7 @@ storyboardStep(Then, 'the framework update stops at a settings file linked outsi
   const remoteBefore = await remoteState()
 
   await openTerminal(I, story.container, { width: 1440 })
-  const screen = await terminalCard(I, 'update-refused-by-link', REFUSED_RUN, { mask: COPIER_PIN_MASK })
+  const screen = await terminalCard(I, 'update-refused-by-link', REFUSED_RUN, { mask: COPIER_RUN_MASKS })
 
   assert.ok(screen.includes(OUTSIDE), screen)
   assert.ok(screen.includes(REFUSAL), screen)
@@ -233,7 +231,7 @@ storyboardStep(Then, 'the framework update stops at a settings file linked outsi
 // clean-up announcement per settings file, and the merge request on GitLab.
 storyboardStep(When, 'the developer drops the link and asks for the framework update again', async () => {
   const screen = await terminalCard(I, 'update-merge-request', ACCEPTED_RUN, {
-    mask: [...COPIER_PIN_MASK, [new RegExp(story.project, 'g'), 'project']]
+    mask: [...COPIER_RUN_MASKS, [new RegExp(story.project, 'g'), 'project']]
   })
   for (const file of [FLOW_CONFIG, CONFIG]) {
     assert.equal(screen.split(ANNOUNCEMENT + file + '\n').length - 1, 1,
@@ -285,7 +283,7 @@ storyboardStep(Then, 'the merge request removes only the retired linters and kee
 storyboardStep(Then, 'asking for the update a second time leaves nothing to change', async () => {
   const before = megalinterFiles()
   const remoteBefore = await remoteState()
-  const screen = await terminalCard(I, 'update-repeated', REPEATED_RUN, { mask: COPIER_PIN_MASK })
+  const screen = await terminalCard(I, 'update-repeated', REPEATED_RUN, { mask: COPIER_RUN_MASKS })
   assert.ok(screen.includes(`Keeping template version ${RELEASE}`), screen)
   assert.ok(!screen.includes(ANNOUNCEMENT), screen)
   assert.ok(screen.includes(`Nothing to commit on ${UPDATE_BRANCH}.`), screen)

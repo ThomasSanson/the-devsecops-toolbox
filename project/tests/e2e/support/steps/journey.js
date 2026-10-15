@@ -89,7 +89,7 @@ const {
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
 const { CARD_MAX_HEIGHT, gitlabUrl, gitlabFrame, jobLogFrame, ciVariablesFrame, settlePage, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
-const { TASKFILE_LINE_RELEASED } = require('../helpers/copierRender')
+const { TASKFILE_LINE_RELEASED, COPIER_RUN_MASKS } = require('../helpers/copierRender')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
 const {
@@ -282,10 +282,10 @@ const UPDATE_RUN_TIMEOUT_MS = 300000
 // copier and all, and that echo IS part of what the developer sees — it says
 // which tool the update actually ran. Only the number in it moves, roughly
 // monthly, breaking a card about a toolbox release with a copier release. So
-// the line stays and the version freezes. The project's random name, in the
-// push and the merge-request link, shows as "project" like on every GitLab card.
-const COPIER_PIN_MASK = [[/copier==[0-9][\w.]*/g, 'copier==<version>']]
-const runMasks = () => [...COPIER_PIN_MASK, [new RegExp(global.journeyProjectName, 'g'), 'project']]
+// the line stays and the version freezes, as does the temporary checkout the
+// migrations run from. The project's random name, in the push and the
+// merge-request link, shows as "project" like on every GitLab card.
+const runMasks = () => [...COPIER_RUN_MASKS, [new RegExp(global.journeyProjectName, 'g'), 'project']]
 
 // GitLab's diff pages pin their file list, their header and each file's
 // header with position: sticky. At the top of the page a sticky element sits

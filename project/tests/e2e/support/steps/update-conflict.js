@@ -29,7 +29,7 @@ const {
 } = require('../helpers/gitlabApi')
 const { freshGet } = require('../helpers/http')
 const { PROJECT_DIR, setupManualUpdateTerminal, teardownJourneyTerminal } = require('../helpers/journeyContainer')
-const { prepareConflictTemplate, removeRendered } = require('../helpers/copierRender')
+const { prepareConflictTemplate, removeRendered, COPIER_RUN_MASKS } = require('../helpers/copierRender')
 const { openTerminal, terminalCard } = require('../terminal/capture')
 const { gitlabUrl, gitlabFrame } = require('../helpers/gitlabCard')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
@@ -42,8 +42,6 @@ const FIX_COMMIT = 'ci: keep our hardened image on 1.0.1'
 // The lines the developer types, exactly as the cards' # Copy gives them.
 const PIN = `sed -i 's/:1.0.0$/:1.0.0-hardened/' ${CI_FILE} && git commit -qam "${PIN_COMMIT}" && git push -q`
 const FIX = `sed -i '/^<<<<<<< /,/^>>>>>>> /c ${IMAGE}:1.0.1-hardened' ${CI_FILE} && git commit -qam "${FIX_COMMIT}" && git push -q`
-// go-task echoes the pinned copier of the update; only its number moves.
-const COPIER_PIN_MASK = [/copier==[0-9][\w.]*/g, 'copier==<version>']
 
 let state = {}
 
@@ -157,7 +155,7 @@ storyboardStep(When, 'the developer runs the toolbox update and it warns that th
   await openTerminal(I, state.container, { width: 1430 })
   const screen = await terminalCard(I, 'update-run', 'task devsecops:update', {
     timeoutMs: 300000,
-    mask: [COPIER_PIN_MASK, [new RegExp(state.project, 'g'), 'project']]
+    mask: [...COPIER_RUN_MASKS, [new RegExp(state.project, 'g'), 'project']]
   })
   for (const said of [CI_FILE, `Opened merge request ${UPDATE_BRANCH}`]) {
     if (!screen.includes(said)) throw new Error(`Expected the update to say "${said}":\n${screen}`)
