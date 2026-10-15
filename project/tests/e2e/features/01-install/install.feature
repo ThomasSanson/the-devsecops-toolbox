@@ -65,7 +65,7 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Note: Below it, "Pipeline passed on main": the merge started the main branch's own pipeline, and its three stages, plan, release and feedback, passed too. With only chores in the history, the release makes no new version, and the job still passes.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
     And the merge request merges into the main branch
-    # Note: The same home page as the first card. The main branch now holds the whole framework, .agent, .config, .gitlab-ci.yml and Taskfile.yml among them, on the commit "chore: initialize devsecops framework". Only README.md stays on "chore: initialize repository", the commit the installer made to create the main branch. The green check next to the last commit is the main branch's pipeline, passed.
+    # Note: The same home page as the first card. The main branch now holds the whole framework, .agents, .claude, .config, .gitlab-ci.yml and Taskfile.yml among them, on the commit "chore: initialize devsecops framework". Only README.md stays on "chore: initialize repository", the commit the installer made to create the main branch. The green check next to the last commit is the main branch's pipeline, passed.
     # Note: The first install is proven end to end.
     # Copy: http://gitlab/<lambda-user>/<project>
     And the main branch now carries the whole framework, merged through review

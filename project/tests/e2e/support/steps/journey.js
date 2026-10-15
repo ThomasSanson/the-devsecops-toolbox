@@ -1603,7 +1603,7 @@ storyboardStep(Then, 'the main branch now carries the whole framework, merged th
   }
   const tree = await listRepositoryTree(global.journeyProjectName, rootHeaders, '?ref=main&per_page=100')
   const names = (tree.data || []).map(entry => entry.name)
-  for (const name of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']) {
+  for (const name of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agents', '.claude']) {
     if (!names.includes(name)) throw new Error(`Expected main to carry "${name}" after the merge. Entries: ${JSON.stringify(names)}`)
   }
   await projectHomeFrame('framework-on-main', 'Taskfile.yml', () => reloadUntil([FRAMEWORK_TITLE, 'CI/CD configuration']))
