@@ -7,7 +7,6 @@ const os = require('node:os')
 const path = require('node:path')
 const { execFileSync, spawnSync } = require('node:child_process')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
-const { composeService } = require('../helpers/docker')
 const {
   BASE_URL, getRootHeaders, createLambdaPersonalAccessToken, revokePersonalAccessToken,
   createProject, deleteProject, getJobTrace, getJobArtifact, getRunnerCard
@@ -15,13 +14,13 @@ const {
 const { freshGet, freshPost } = require('../helpers/http')
 const { jobLogFrame } = require('../helpers/gitlabCard')
 const { runnersFrame } = require('../helpers/runnersCard')
-const { registerScopedRunner, teardownScopedRunner, cancelRedundantPipelines, RUNNER_NET } = require('../helpers/pipelineRunner')
+const { registerScopedRunner, teardownScopedRunner, cancelRedundantPipelines, startIsolatedRunnerService } = require('../helpers/pipelineRunner')
 
 const FIXTURES = path.join(__dirname, '../../fixtures/runner-cleanup')
 // The two projects show as "first-project" and "second-project". Their random
 // suffix starts with x, not a hex digit, so the job log's SHA mask leaves it
-// whole for this mask to remove.
-const SUFFIX_MASK = [/-x[0-9a-f]{12}\b/g, '']
+// whole for this mask to remove, with the e2e- prefix every test project wears.
+const SUFFIX_MASK = [/\be2e-((?:first|second)-project)-x[0-9a-f]{12}\b/g, '$1']
 const WAIT_LINE = '$ while [ ! -f /tmp/job-release ]; do sleep 1; done'
 // The runner's own setup sections are folded, the way a reader skips them.
 const SETUP_SECTIONS = ['Preparing the "docker" executor', 'Preparing environment', 'Getting source from Git repository']
@@ -84,21 +83,9 @@ async function isolateRunner () {
   state.directory = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-cleanup-'))
   state.owner = crypto.randomBytes(8).toString('hex')
   state.docker = execFileSync('which', ['docker'], { encoding: 'utf8' }).trim()
-  const image = docker('inspect', '--format', '{{.Config.Image}}', composeService('gitlab-runner')).trim()
-  state.service = `e2e-cleanup-${state.owner}-gitlab-runner-1`
-  const config = path.join(state.directory, 'config.toml')
-  const template = path.join(state.directory, 'template.toml')
-  fs.writeFileSync(config, 'concurrent = 1\ncheck_interval = 0\n')
-  fs.writeFileSync(template,
-    '[[runners]]\n  [runners.docker]\n    [runners.docker.container_labels]\n' +
-    `      "io.digital-commons.e2e.run" = "${state.owner}"\n`)
-  docker('create', '--name', state.service, '--network', RUNNER_NET,
-    '--label', `io.digital-commons.e2e.run=${state.owner}`,
-    '--env', 'TEMPLATE_CONFIG_FILE=/etc/gitlab-runner/template.toml',
-    '--volume', '/var/run/docker.sock:/var/run/docker.sock', image)
-  docker('cp', config, `${state.service}:/etc/gitlab-runner/config.toml`)
-  docker('cp', template, `${state.service}:/etc/gitlab-runner/template.toml`)
-  docker('start', state.service)
+  // Named like a compose service, so that registerScopedRunner, through the
+  // discovery adapter below, finds this service and no other.
+  state.service = startIsolatedRunnerService(`e2e-cleanup-${state.owner}-gitlab-runner-1`, state.owner)
   const adapter = path.join(state.directory, 'docker')
   fs.copyFileSync(path.join(FIXTURES, 'limit-docker-discovery.sh'), adapter)
   fs.chmodSync(adapter, 0o700)
@@ -108,7 +95,7 @@ async function isolateRunner () {
 }
 
 async function createFixtureProject (label) {
-  const name = `${label}-x${crypto.randomBytes(6).toString('hex')}`
+  const name = `e2e-${label}-x${crypto.randomBytes(6).toString('hex')}`
   const response = await createProject({
     name,
     visibility: 'public',

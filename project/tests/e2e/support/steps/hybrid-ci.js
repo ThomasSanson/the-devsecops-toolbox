@@ -2,7 +2,6 @@
 const assert = require('assert/strict')
 const crypto = require('crypto')
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const { execFileSync } = require('child_process')
 const { I, GitLabUserPage } = inject()
@@ -15,7 +14,7 @@ const {
 const { gitlabFrame, gitlabUrl, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { runnersFrame } = require('../helpers/runnersCard')
-const { cancelRedundantPipelines, PIPELINE_TIMEOUT_MS, RUNNER_NET } = require('../helpers/pipelineRunner')
+const { cancelRedundantPipelines, startIsolatedRunnerService, PIPELINE_TIMEOUT_MS, RUNNER_NET } = require('../helpers/pipelineRunner')
 const { freshGet, freshPut } = require('../helpers/http')
 const { composeService, stripAnsiEscapeSequences } = require('../helpers/docker')
 
@@ -153,27 +152,10 @@ async function mergeRequestPipelines () {
 // The file checks get a runner service of their own: they start no
 // container, so they run beside the Docker jobs instead of queuing behind
 // them in the shared service, whose single slot keeps the Docker-in-Docker
-// jobs apart. Every container it starts carries the owner label for After.
+// jobs apart.
 function startNativeRunnerService () {
   state.owner = crypto.randomBytes(8).toString('hex')
-  const image = docker('inspect', '--format', '{{.Config.Image}}', composeService('gitlab-runner')).trim()
-  state.nativeService = `e2e-hybrid-${state.owner}-runner`
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hybrid-runner-'))
-  try {
-    fs.writeFileSync(path.join(directory, 'config.toml'), 'concurrent = 1\ncheck_interval = 0\n')
-    fs.writeFileSync(path.join(directory, 'template.toml'),
-      '[[runners]]\n  [runners.docker]\n    [runners.docker.container_labels]\n' +
-      `      "${OWNER_LABEL}" = "${state.owner}"\n`)
-    docker('create', '--name', state.nativeService, '--network', RUNNER_NET,
-      '--label', `${OWNER_LABEL}=${state.owner}`,
-      '--env', 'TEMPLATE_CONFIG_FILE=/etc/gitlab-runner/template.toml',
-      '--volume', '/var/run/docker.sock:/var/run/docker.sock', image)
-    docker('cp', path.join(directory, 'config.toml'), `${state.nativeService}:/etc/gitlab-runner/config.toml`)
-    docker('cp', path.join(directory, 'template.toml'), `${state.nativeService}:/etc/gitlab-runner/template.toml`)
-    docker('start', state.nativeService)
-  } finally {
-    fs.rmSync(directory, { recursive: true, force: true })
-  }
+  state.nativeService = startIsolatedRunnerService(`e2e-hybrid-${state.owner}-runner`, state.owner)
 }
 
 async function registerRunner (privileged) {

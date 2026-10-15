@@ -324,3 +324,36 @@ module.exports = {
   dumpFailedTraces,
   maskPipelinePage
 }
+
+// A gitlab-runner service of the story's own, beside the shared one: same
+// image, same network, one job at a time. The service and every container it
+// starts carry `io.digital-commons.e2e.run=<owner>`, so the story's After
+// removes them all with one label filter. A `name` ending in
+// -gitlab-runner-<n> is found by composeService('gitlab-runner'); any other
+// name stays out of the other stories' way.
+function startIsolatedRunnerService (name, owner) {
+  const { execFileSync } = require('child_process')
+  const fs = require('fs')
+  const os = require('os')
+  const path = require('path')
+  const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
+  const label = 'io.digital-commons.e2e.run'
+  const image = docker('inspect', '--format', '{{.Config.Image}}', composeService('gitlab-runner')).trim()
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-runner-'))
+  try {
+    fs.writeFileSync(path.join(directory, 'config.toml'), 'concurrent = 1\ncheck_interval = 0\n')
+    fs.writeFileSync(path.join(directory, 'template.toml'),
+      `[[runners]]\n  [runners.docker]\n    [runners.docker.container_labels]\n      "${label}" = "${owner}"\n`)
+    docker('create', '--name', name, '--network', RUNNER_NET, '--label', `${label}=${owner}`,
+      '--env', 'TEMPLATE_CONFIG_FILE=/etc/gitlab-runner/template.toml',
+      '--volume', '/var/run/docker.sock:/var/run/docker.sock', image)
+    docker('cp', path.join(directory, 'config.toml'), `${name}:/etc/gitlab-runner/config.toml`)
+    docker('cp', path.join(directory, 'template.toml'), `${name}:/etc/gitlab-runner/template.toml`)
+    docker('start', name)
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+  return name
+}
+
+module.exports.startIsolatedRunnerService = startIsolatedRunnerService
