@@ -182,6 +182,40 @@ function prepareConflictTemplate () {
   return tpl
 }
 
+// The eight step-by-step guides releases before the move shipped as
+// .agent/workflows/<name>.md, each the skill of the same name today.
+const OLD_WORKFLOWS = ['create-feature', 'delete-feature', 'development-cycle', 'read-feature', 'tdd-step1-red', 'tdd-step2-green', 'tdd-step3-refactor', 'update-feature']
+// What release 1.0.1 of the agents-move fixture adds to two toolbox rules the
+// team never touches: one plain file, one rendered from a .jinja twin.
+const AGENTS_MOVE_RELEASE_LINE = 'Release 1.0.1 adds this line.'
+const AGENTS_MOVE_RELEASED_RULES = ['.agents/rules/tdd-cycle.md', '.agents/rules/tests-structure.md.jinja']
+
+/**
+ * Build a versioned template whose 1.0.0 keeps the AI agent files the way every
+ * release before the move did: in .agent/, the guides in .agent/workflows/, no
+ * .claude/skills links, and copier's excludes pointing into .agent/. Its 1.0.1
+ * is the working tree, plus one line in two rules the team never touches, so
+ * an update has toolbox changes to merge in the moved folder.
+ */
+function prepareAgentsMoveTemplate () {
+  const tpl = tmpDir('e2e-agents-move')
+  run(`mkdir -p ${tpl} && cp -a ${TEMPLATE_SRC}/. ${tpl} && chown -R "$(id -u):$(id -g)" ${tpl}`)
+  run('git init --quiet --initial-branch=main', tpl)
+  run('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
+  run(['mv .agents .agent', 'rm -rf .claude', 'mkdir -p .agent/workflows',
+    ...OLD_WORKFLOWS.map(n => `for f in .agent/skills/${n}/SKILL.md*; do mv "$f" ".agent/workflows/${n}.md\${f##*SKILL.md}"; done && rmdir .agent/skills/${n}`)
+  ].join(' && '), tpl)
+  const copierYml = fs.readFileSync(`${tpl}/copier.yml`, 'utf8')
+  fs.writeFileSync(`${tpl}/copier.yml`, copierYml.replaceAll('.agents/rules/', '.agent/rules/'))
+  run('git add -A && git commit --quiet --no-verify -m "chore: template release 1.0.0 (.agent)"', tpl)
+  run('git tag 1.0.0', tpl)
+  run(`rm -rf .agent && cp -a ${TEMPLATE_SRC}/.agents ${TEMPLATE_SRC}/.claude ${TEMPLATE_SRC}/copier.yml .`, tpl)
+  for (const rule of AGENTS_MOVE_RELEASED_RULES) fs.appendFileSync(`${tpl}/${rule}`, `\n${AGENTS_MOVE_RELEASE_LINE}\n`)
+  run('git add -A && git commit --quiet --no-verify -m "chore: template release 1.0.1 (.agents)"', tpl)
+  run('git tag 1.0.1', tpl)
+  return tpl
+}
+
 /**
  * Generate a project from a versioned template at the given release, and make
  * the destination a clean git repo (a copier update prerequisite).
@@ -228,10 +262,13 @@ module.exports = {
   UPDATE_MARKER_FILE,
   UPDATE_MARKER,
   TASKFILE_LINE_RELEASED,
+  OLD_WORKFLOWS,
+  AGENTS_MOVE_RELEASE_LINE,
   renderProject,
   prepareVersionedTemplate,
   prepareCspellMigrationTemplate,
   prepareConflictTemplate,
+  prepareAgentsMoveTemplate,
   renderProjectFromTemplate,
   updateProject,
   removeRendered

@@ -86,6 +86,9 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**14. toolbox-update-conflict**](03-evolution/toolbox-update-conflict.svg): A toolbox release changes a line the developer edited. `task devsecops:update` warns about it, the update merge request shows both lines as a conflict, and the developer settles it on the update branch.
   Chapters: My edit and the release touch the same line · The merge request shows the clash, and the developer settles it.
   Replay: `task project:test:e2e -- --grep "@toolbox-update-conflict"`
+- [**agents-move**](03-evolution/agents-move.svg): The release that moves the AI agent files from .agent to .agents keeps the team's own work: its rule moves with the toolbox's, the toolbox rules it never touched update cleanly, and only its edit to a toolbox rule is left between conflict markers.
+  Chapters: The team's work sits in the old .agent folder · The release moves the folder, and only the team's edit is left to settle.
+  Replay: `task project:test:e2e -- --grep "@agents-move"`
 - [**15. render-matrix**](03-evolution/render-matrix.svg): The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
   Chapters: What the default project looks like on GitLab · Each answer changes exactly what it promises, one branch per answer.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`

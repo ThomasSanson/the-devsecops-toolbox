@@ -38,3 +38,31 @@ Feature: A toolbox release changes a line I edited myself, and the update merge 
     # Note: The same tab now shows one plain change, from 1.0.0-hardened to 1.0.1-hardened, with no marker left. Commits counts 2, the update and the fix, ready for review.
     # Copy: sed -i '/^<<<<<<< /,/^>>>>>>> /c image: registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:1.0.1-hardened' .gitlab-ci.yml && git commit -qam "ci: keep our hardened image on 1.0.1" && git push -q
     And once the developer fixes that line on the update branch, the merge request carries their hardened tag on the new release
+
+  # A second story on the same promise, for the release that moves the AI agent
+  # files from .agent/ to .agents/. A move is where an update loses work most
+  # easily: the team's own rule and its edit to a toolbox rule live in the old
+  # folder. Release 1.0.0 of a two-release template keeps the old folder;
+  # release 1.0.1 is today's layout, plus one line in two toolbox rules the team
+  # never touched. The release's migration moves the files one by one before
+  # copier merges, so those two rules come through clean and only the team's
+  # edit is left to settle. CI is switched off for this project: no pipeline
+  # repaints its pages.
+  @agents-move
+  Scenario: a toolbox update moves the AI agent files to .agents and keeps the team's own work
+    # Chapter: The team's work sits in the old .agent folder
+    # Note: The project came from toolbox release 1.0.0, which kept the AI agent files in a folder named .agent, without the s. The developer adds a rule of the team's own, .agent/rules/our-team.md, and one line to a toolbox rule, .agent/rules/stability.md, then pushes the commit to the main branch.
+    # Note: GitLab's page for that commit, "docs: add our own rules for the AI agents": the new file and the added line, in green.
+    # Copy: printf '# Our team rule\n\nRun the e2e suite before every merge request.\n' > .agent/rules/our-team.md && echo 'Our CI images are built in project/ci, never in .config.' >> .agent/rules/stability.md && git add -A && git commit -qm "docs: add our own rules for the AI agents" && git push -q
+    Given the team added a rule of its own and a line to a toolbox rule in the old .agent folder, on the main branch
+    # Chapter: The release moves the folder, and only the team's edit is left to settle
+    # Note: Release 1.0.1 moves the AI agent files to .agents, the folder AI tools read today, and adds a line to two toolbox rules the team never touched. The developer asks for it with one command, from the main branch.
+    # Note: Copier first runs the release's migration, migrate-agents.sh: a toolbox file the team never changed is removed, so the release writes it fresh in .agents, and every other file moves there with git. One warning follows, for .agents/rules/stability.md and no other file. The update then opens merge request !1.
+    # Copy: task devsecops:update
+    When the developer runs the toolbox update to the release that moves the AI agent files to .agents
+    # Note: GitLab's page for the update branch, update-framework-devsecops, the Files panel open on .agents and its rules: our-team.md moved there, next to the toolbox rules.
+    # Note: The table lists .agents and .claude/skills, and no .agent folder is left. .agents holds rules and skills only: the eight step-by-step guides of release 1.0.0 came back as skills.
+    Then GitLab shows the team's rule in .agents/rules on the update branch, and no .agent folder left
+    # Note: The page of .agents/rules/stability.md on the update branch, the conflict highlighted. The release did not change this rule, it moved it, so Copier cannot tell the team's line from the toolbox's copy.
+    # Note: The team's line waits under "<<<<<<< before updating", for the developer to keep or drop before merging. Nothing was lost.
+    And the team's line in that toolbox rule waits between conflict markers in the rule's new place
