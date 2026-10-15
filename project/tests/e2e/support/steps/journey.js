@@ -10,7 +10,7 @@
  *
  * Determinism policy:
  *   - VISUAL baseline (tolerance:0, marker-anchored) for stable screens: the
- *     typed install command, each Copier question, the scaffold-complete screen.
+ *     typed install command, the Copier questionnaire.
  *   - The toolchain install output (git/uv versions, temp dirs, download
  *     progress) is NON-deterministic and is NOT pixel-baselined (raising
  *     tolerance is forbidden). Instead the FULL session is recorded to
@@ -21,7 +21,7 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
-const { I, GitLabMergeRequestPage, GitLabRepositoryPage, GitLabSettingsPage, GitLabAccessTokenPage, GitLabUserPage } = inject()
+const { I, GitLabMergeRequestPage, GitLabRepositoryPage, GitLabUserPage } = inject()
 const {
   ttydPort,
   runCommand,
@@ -46,13 +46,17 @@ const {
   getMergeRequest,
   mergeMergeRequest,
   putRepositoryFile,
+  listProjectPipelines,
+  getPipeline,
+  cancelPipeline,
+  deletePipeline,
+  getJobTrace,
   getRepositoryFile
 } = require('../helpers/gitlabApi')
 const {
   registerScopedRunner,
   teardownScopedRunner,
   waitMergeRequestPipeline,
-  waitRefPipeline,
   dumpFailedTraces
 } = require('../helpers/pipelineRunner')
 const { freshGet } = require('../helpers/http')
@@ -86,7 +90,7 @@ const {
   COMPACT_CAPTURE_ID,
   COMMAND_TIMEOUT_MS
 } = require('../terminal/capture')
-const { CARD_MAX_HEIGHT, gitlabUrl, gitlabFrame, settlePage, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
+const { CARD_MAX_HEIGHT, gitlabUrl, gitlabFrame, jobLogFrame, ciVariablesFrame, settlePage, unfoldFileTree, inNewTab } = require('../helpers/gitlabCard')
 const { TASKFILE_LINE_RELEASED } = require('../helpers/copierRender')
 // The storyboard API ships with the template (.config/codeceptjs/) so
 // generated projects use the exact same step-side helpers.
@@ -552,7 +556,7 @@ storyboardStep(Then, 'the update branch stands next to a main branch nobody push
 // The installer WHEN bindings (type command / launch / accept-default-and-wait
 // per prompt / wait-for-completion) were removed with the storyboard migration:
 // the questionnaire is now driven by the @install-complete storyboard
-// steps below, which capture each Copier question as its own card. The poll for
+// steps below, which catch all ten Copier questions on one card. The poll for
 // install.sh's completion marker lives in waitForInstallerComplete().
 
 // ============================================
@@ -930,21 +934,11 @@ async function assertMainProtected (branch) {
   }
 }
 
-async function assertMergeMethodFf () {
+async function assertProjectVariable (key) {
   const headers = await getRootHeaders()
-  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
-  const res = await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)
-  const method = res.data && res.data.merge_method
-  if (method !== 'ff') {
-    throw new Error(`Expected project merge_method "ff" (fast-forward), got ${JSON.stringify(method)}`)
-  }
-}
-
-async function assertCommitizenVariable () {
-  const headers = await getRootHeaders()
-  const res = await readProjectVariable(global.journeyProjectName, 'TASK_COMMITIZEN_TOKEN', headers)
-  if (res.status >= 400 || !(res.data && res.data.key === 'TASK_COMMITIZEN_TOKEN')) {
-    throw new Error(`Expected CI/CD variable TASK_COMMITIZEN_TOKEN to exist (status ${res.status}): ${JSON.stringify(res.data)}`)
+  const res = await readProjectVariable(global.journeyProjectName, key, headers)
+  if (res.status >= 400 || !(res.data && res.data.key === key)) {
+    throw new Error(`Expected CI/CD variable ${key} to exist (status ${res.status}): ${JSON.stringify(res.data)}`)
   }
 }
 
@@ -1056,196 +1050,6 @@ async function mrPageFrame (frameName) {
     frameName
   )
 }
-
-// --- Case A: blank project (flagship) ---------------------------------------
-
-storyboardStep(Given, 'a developer has just cloned a brand-new empty project from GitLab', async () => {
-  await ensureLambdaUser()
-  await openBlankProjectTerminal()
-  prepareWorkingBranchInstaller(global.journeyContainer)
-  preinstallToolchain(global.journeyContainer)
-  authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-empty-project')
-})
-
-storyboardStep(When, 'the developer runs the toolbox installer on the blank project', async () => {
-  await launchWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
-})
-
-storyboardStep(When, 'the installer sets up the framework and says the setup is done', async () => {
-  await answerAndCompleteInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
-  assertInstallLog('Bootstrapping main', 'init-framework-devsecops', 'Opened merge request', 'Installation complete!')
-})
-
-storyboardStep(Then, 'a merge request into main is now waiting for review on GitLab', async () => {
-  await findOpenMr('init-framework-devsecops', 'main')
-  await mrPageFrame('gitlab-merge-request')
-  await assertMrChangedFiles()
-})
-
-storyboardStep(Then, 'GitLab now lists main and the new init-framework-devsecops branch', async () => {
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}/-/branches`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-branches')
-  await assertBranchExists('main')
-  await assertBranchExists('init-framework-devsecops')
-})
-
-storyboardStep(Then, 'GitLab now lets main accept only fast-forward merges', async () => {
-  // First login-gated page: authenticate as lambda off-camera, then the
-  // subsequent config pages reuse the session.
-  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
-  await pageFrame(
-    () => GitLabSettingsPage.gotoMergeSettingsAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
-    'gitlab-merge-settings',
-    // Tall enough to reach the "Merge checks" section: pipelines must succeed
-    // and all threads resolved are part of what init locks down.
-    { height: 1500 }
-  )
-  await assertMergeMethodFf()
-})
-
-storyboardStep(Then, 'GitLab now refuses pushes straight to main', async () => {
-  await pageFrame(
-    () => GitLabSettingsPage.gotoProtectedBranchAndMask(projectPath(global.journeyProjectName), global.journeyProjectName),
-    'gitlab-protected-branch',
-    // Tall enough for the whole main row: allowed to merge (Maintainers),
-    // allowed to push (No one) and the force-push toggle.
-    { height: 950 }
-  )
-  await assertMainProtected('main')
-})
-
-storyboardStep(Then, 'GitLab now holds an automation token for the project', async () => {
-  await pageFrame(
-    () => GitLabAccessTokenPage.gotoAccessTokensAndMask(projectPath(global.journeyProjectName)),
-    'gitlab-access-tokens',
-    { height: 1200 }
-  )
-  await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
-  await assertTokenExists('TASK_RENOVATE_TOKEN')
-})
-
-storyboardStep(Then, 'GitLab now keeps that token as a CI/CD variable', async () => {
-  await pageFrame(
-    () => GitLabAccessTokenPage.gotoCiCdAndMask(projectPath(global.journeyProjectName)),
-    'gitlab-cicd-variables'
-  )
-  await assertCommitizenVariable()
-})
-
-// ============================================
-// @install-complete chapter 4 — "The merge request proves itself".
-// The framework MR (init-framework-devsecops -> main, opened by THIS install)
-// runs its full pipeline on a project-scoped runner, goes green, and merges into
-// main — proving the framework a fresh install ships actually builds and lands
-// through review. Each card is a REAL masked GitLab page — the green pipeline
-// graph, the "Merged" merge-request header, the file tree on main — with all
-// volatile chrome (durations, SHAs, dates, avatars, the pipeline id) masked for
-// tolerance:0, twinned with the REST assert that reads the same fact.
-// ============================================
-
-// The runner + pipeline machinery (registerScopedRunner / waitMergeRequestPipeline
-// / waitRefPipeline / maskPipelinePage / dumpFailedTraces) lives in
-// support/helpers/pipelineRunner.js — shared with @daily-contribution, which runs
-// a real pipeline the same way on its own shard.
-
-storyboardStep(Then, 'the framework pipeline passes and the merge request merges into main', async () => {
-  const rootHeaders = await getRootHeaders()
-  global.journeyRunner = await registerScopedRunner(I, global.journeyProjectName, rootHeaders)
-  const { pid, status } = await waitMergeRequestPipeline(I, global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
-  global.journeyPipelineId = pid
-  const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
-  jobs.sort((a, b) => a.id - b.id)
-  // Twin FIRST: fail loud (with the trace tails) before the merge/capture.
-  if (status !== 'success') {
-    console.log(`framework pipeline not green (status=${status}); failed: ${jobs.filter(j => j.status === 'failed').map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
-    dumpFailedTraces(global.journeyProjectName, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
-    throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
-  }
-  // Twin: the WHOLE generated pipeline ran — all 18 jobs, every one green.
-  // 18 since the toolbox ships `no-cheat`: a generated project's merge requests
-  // are now read for a switched-off check, and this story is where that count
-  // is felt.
-  if (jobs.length !== 18) {
-    throw new Error(`Expected 18 pipeline jobs, got ${jobs.length}: ${jobs.map(j => j.name).join(', ')}`)
-  }
-  const notGreen = jobs.filter(j => j.status !== 'success')
-  if (notGreen.length) {
-    throw new Error(`Expected every job green, these were not: ${notGreen.map(j => `${j.name}=${j.status}`).join(', ')}`)
-  }
-  // A green pipeline meets main's "pipeline must pass" rule, so the merge goes
-  // through — do it and confirm the merged state.
-  const lambdaHeaders = { 'PRIVATE-TOKEN': global.journeyLambdaToken }
-  const merged = await mergeMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, lambdaHeaders)
-  let state = merged.data && merged.data.state
-  for (let i = 0; i < 10 && state !== 'merged'; i++) {
-    await I.wait(2)
-    const mr = await getMergeRequest(global.journeyProjectName, global.journeyMergeRequestIid, rootHeaders)
-    state = mr.data && mr.data.state
-  }
-  // Twin FIRST: the green pipeline (18 jobs) unblocked the merge, MR is merged.
-  if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
-  // GitLab removes the source branch asynchronously after accepting the merge.
-  // Wait for that result before photographing the merged widget.
-  const sourceBranch = merged.data.source_branch
-  if (!sourceBranch) throw new Error('The merged request must name its source branch')
-  const branchDeletionPollSeconds = 2
-  let branches = []
-  for (let i = 0; i < 30; i++) {
-    const listed = await listProjectBranches(global.journeyProjectName, rootHeaders)
-    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
-    branches = (listed.data || []).map(branch => branch.name)
-    if (!branches.includes(sourceBranch)) break
-    await I.wait(branchDeletionPollSeconds)
-  }
-  if (branches.includes(sourceBranch)) throw new Error(`Expected the source branch ${sourceBranch} to be deleted by the merge`)
-  // ONE proof: the merged merge-request page, full width — the Merged badge,
-  // its pipeline shown passed, the branch joined into main.
-  I.resizeWindow(1024, 900)
-  await GitLabMergeRequestPage.gotoAndMaskMerged(
-    projectPath(global.journeyProjectName),
-    global.journeyMergeRequestIid,
-    global.journeyProjectName
-  )
-  await I.waitForText('Merged', 30)
-  await addStoryboardFrame(I, await capturePageFrame(I, 'framework-mr-merged'))
-  I.resizeWindow(1024, 768)
-})
-
-storyboardStep(Then, 'main now carries the whole framework, merged through review', async () => {
-  const rootHeaders = await getRootHeaders()
-  const tree = await listRepositoryTree(global.journeyProjectName, rootHeaders, '?ref=main&per_page=100')
-  const names = (tree.data || []).map(e => e.name)
-  const want = ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']
-  // Twin FIRST: the framework files a fresh install ships are now on main.
-  for (const f of want) {
-    if (!names.includes(f)) throw new Error(`Expected main to carry "${f}" after the merge. Entries: ${JSON.stringify(names)}`)
-  }
-  // Show the finality, not a spinner: wait for main's own post-merge pipeline
-  // to go green before the shot, so the project page's commit reads success.
-  const { pid, status } = await waitRefPipeline(I, global.journeyProjectName, 'main', rootHeaders)
-  if (status !== 'success') {
-    const jobs = pid ? ((await listPipelineJobs(global.journeyProjectName, pid, rootHeaders)).data || []) : []
-    jobs.sort((a, b) => a.id - b.id)
-    console.log(`main pipeline not green (status=${status}, pipeline ${pid})`)
-    dumpFailedTraces(global.journeyProjectName, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
-    throw new Error(`Expected main's post-merge pipeline to pass, got status=${status}`)
-  }
-  // The proof is GitLab's own file tree for main, now carrying the whole
-  // framework (Taskfile.yml, .gitlab-ci.yml, .config, .agent) with a green
-  // commit pipeline, on the masked project page.
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'framework-on-main')
-})
 
 // ============================================
 // Merge-request-safety storyboard — @merge-request-safety. ONE sentence = ONE
@@ -1418,114 +1222,357 @@ storyboardStep(Then, 'the main branch on GitLab holds only the starter README', 
 })
 
 // ============================================
-// Installer questionnaire storyboard — @install-complete (chapter 1).
-// The full Copier walkthrough: one card per question, re-capturing the exact
-// anchored moments the retired copier-*-terminal baselines proved (each gum/
-// copier prompt erases itself on answer, so it is captured live). The Given
-// closes the off-camera stage (lambda user, blank clone, staged installer,
-// pre-installed toolchain, glab auth) with the blank working tree; the Then
-// twins the completion screen and the scaffolded tree with install-log and ls
-// asserts. Same underlying run as init-framework-mr, framed on the terminal
-// journey instead of the GitLab pages.
+// @install-complete — the flagship story. ONE sentence = ONE card = ONE pixel
+// baseline. GitLab opens and closes it on the SAME page at the SAME size, the
+// project's home page (empty, then carrying the framework). The terminal in
+// between is one session typed on camera: the installer's first question, then
+// the ten Copier questions, each caught live before its answer. Chapter 2
+// photographs the settings init wrote, chapter 3 the merge request's own
+// pipeline (one job log), the merge and the main branch. Every card is twinned
+// with a check of the same fact: the screen, the install log, REST on GitLab.
 // ============================================
 
-// Advance to THIS Copier question, wait for its prompt, and capture it as a
-// card. `advanceKey` accepts the PREVIOUS answer: 'y' keeps the complete
-// framework (the gum scope confirm, ahead of the first question), 'Enter'
-// keeps each subsequent default. The frame is anchored on the prompt so the
-// copier scrollback above it is excluded.
-// NO I.click here: copier's prompt (prompt_toolkit) enables mouse tracking, so
-// clicking .xterm-screen is swallowed as a mouse report instead of focusing the
-// terminal — the following Enter then never reaches copier and it hangs on the
-// question. Focus persists from the launch card's click through every capture
-// (a capture is DOM-only and never blurs the xterm textarea), so pressKey alone
-// drives the questionnaire — the same key-only pattern answerAndCompleteInstaller
-// and the agent-mode gum menus use after a frame.
-async function captureCopierQuestion (advanceKey, prompt, frameName) {
-  I.pressKey(advanceKey)
-  await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
-  await waitForTerminalSettle(I)
-  // No context rows above the anchor: the scrollback there (previous answer,
-  // Copier chatter) wraps into a DIFFERENT row count per environment — one
-  // extra line in CI broke tolerance:0 — so the card starts at the question.
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: prompt }))
+// The line the developer types; the card's # Copy downloads the installer first.
+const INSTALL_LAUNCH = `git status && bash ${WRAPPER_PATH}`
+// Tall enough for the launch and the whole questionnaire in one session, wide
+// enough that no help line of a question wraps.
+const INSTALL_TERMINAL = { height: 1400, width: 1440 }
+const FRAMEWORK_BRANCH = 'init-framework-devsecops'
+const FRAMEWORK_TITLE = 'chore: initialize devsecops framework'
+// The answers file the questionnaire leaves behind: every default kept.
+const DEFAULT_ANSWERS = [
+  'ansible_enabled: false',
+  'ci_platform: gitlab_saas',
+  'saas-linux-medium-amd64',
+  'container_runtime: docker',
+  'use_docker_compose: true',
+  'privileged_ci_runners: true',
+  'project_enabled: true',
+  'source_publication: false',
+  'devsecops_automerge: true',
+  'gherkin_language: en'
+]
+// The home page's side panel counts commits and bytes, which move with every
+// template change and arrive after a push, and the language bar shifts with any
+// file: hidden on both home cards.
+const HOME_HIDE = ['.project-stats', '[data-testid="project-stats"]', '[class*="repository-language"]', '[data-testid="repository-language-bar"]']
+const HOME_HEIGHT = 1100
+// Token expiry ("in 12 months") and the address that last used a token.
+const TOKEN_PAGE_MASKS = [[/\bin \d+ (day|week|month|year)s?\b/, ''], [/\b\d{1,3}(?:\.\d{1,3}){3}\b/, '']]
+// The secret and dependency scanners whose green verdict the MegaLinter card
+// shows (moved here with the retired @quality-gate story).
+const SECURITY_LINTERS = ['betterleaks', 'trivy', 'trufflehog', 'grype']
+// MegaLinter's verdict line for each linter ends on its duration, "- (1.56s)".
+const MEGALINTER_DURATION_MASK = [[/ - \(\d+(?:\.\d+)?s\)/, '']]
+
+// MegaLinter's own per-linter verdict line for each named scanner — the
+// rendering-stable "✅ Linted [REPOSITORY] files with [X] successfully" (a linter
+// with findings prints ❌/error instead). The volatile elapsed suffix
+// "- (0.21s)" is the sole per-run variance, so it is dropped. Returns one entry
+// per SECURITY_LINTER, null when the green verdict is absent.
+function scannerVerdicts (raw) {
+  const lines = raw.split('\n')
+  return SECURITY_LINTERS.map(linter => {
+    const line = lines.find(l => l.includes(`with [${linter}] successfully`))
+    return line ? line.replace(/\s*-\s*\([\d.]+m?s\)\s*$/, '').trim() : null
+  })
 }
 
+// The sections of the linters that found something, blocking or not, for a
+// failure message: the summary table only counts them.
+function megalinterFindings (trace) {
+  const lines = trace.split('\n')
+  return lines.flatMap((line, i) => /Linted \[[^\]]+\] files with \[[^\]]+\]: Found/.test(line) ? lines.slice(i, i + 40) : []).join('\n')
+}
+
+async function projectHomeFrame (frameName, waitText, prepare = null) {
+  await gitlabFrame(I, frameName, gitlabUrl.project(global.journeyProjectName), {
+    waitText, height: HOME_HEIGHT, hide: HOME_HIDE, prepare
+  })
+}
+
+// The framework merge request's page, open then merged. The activity feed
+// (system notes that land with their own timing) and the tab counters (the
+// template's file count, the pipelines GitLab has created so far) are hidden;
+// `hide` adds the merge widget while the pipeline still waits for a runner.
+// The widget fills in pieces, the pipeline's artifacts last: wait for them.
+const MR_TAB_COUNTERS = ['.merge-request-tabs-holder', '.merge-request-tabs-container', '[data-testid="merge-request-tabs"]', '.merge-request-tabs']
+  .map(tabs => `${tabs} .gl-badge, ${tabs} .badge`).join(', ')
+async function frameworkMrFrame (frameName, waitText, hide = []) {
+  await gitlabFrame(I, frameName, gitlabUrl.mr(global.journeyProjectName, global.journeyMergeRequestIid), {
+    waitText,
+    hide: ['ul.main-notes-list', MR_TAB_COUNTERS, ...hide],
+    prepare: () => I.waitForFunction(() => !document.body.innerText.includes('Loading artifacts'), 30)
+  })
+}
+
+// A settings page shows its sections folded: unfold the one titled `title`,
+// the way a reader clicks Expand, then wait for its content.
+async function openSettingsSection (title, waitText) {
+  await I.executeScript((name) => {
+    const heading = Array.from(document.querySelectorAll('h2')).find(h => h.textContent.trim() === name)
+    const section = heading && heading.closest('section')
+    if (!section) throw new Error(`No settings section titled "${name}"`)
+    if (section.classList.contains('expanded')) return
+    const toggle = Array.from(section.querySelectorAll('button'))
+      .find(b => /expand/i.test(`${b.textContent} ${b.getAttribute('aria-label') || ''}`))
+    if (!toggle) throw new Error(`No Expand button in the "${name}" section`)
+    toggle.click()
+  }, title)
+  await I.waitForText(waitText, 30)
+}
+
+async function scrollToSettingsSection (title) {
+  await I.executeScript((name) => {
+    const heading = Array.from(document.querySelectorAll('h2')).find(h => h.textContent.trim() === name)
+    heading.closest('section').scrollIntoView({ block: 'start' })
+  }, title)
+  await settlePage(I, { quietMs: 300 })
+}
+
+// GitLab refreshes a project's caches (its badges, its last commit) a moment
+// after a push: reload until the page shows every one of `texts`.
+async function reloadUntil (texts) {
+  for (let i = 0; i < 12; i++) {
+    const body = await I.executeScript(() => document.body.innerText)
+    if (texts.every(text => body.includes(text))) return
+    await I.wait(5)
+    await I.refreshPage()
+    await settlePage(I)
+  }
+  throw new Error(`The page never showed ${JSON.stringify(texts)}`)
+}
+
+// The merge starts the main branch's own pipeline. This story is about the
+// merge request's pipeline, and the release main's pipeline makes is pictured
+// by @daily-contribution: cancel it, so the single runner is free again, and
+// delete it, so no card shows a pipeline still on its way.
+async function dropMainPipeline (headers) {
+  const project = global.journeyProjectName
+  const main = ((await listProjectBranches(project, headers)).data || []).find(b => b.name === 'main')
+  if (!main) throw new Error('The main branch is gone after the merge')
+  for (let i = 0; i < 24; i++) {
+    const pipelines = (await listProjectPipelines(project, headers, `?ref=main&sha=${main.commit.id}`)).data || []
+    if (pipelines.length) {
+      for (const pipeline of pipelines) {
+        await cancelPipeline(project, pipeline.id, headers)
+        for (let j = 0; j < 30; j++) {
+          const state = (await getPipeline(project, pipeline.id, headers)).data.status
+          if (['success', 'failed', 'canceled', 'skipped'].includes(state)) break
+          await I.wait(2)
+        }
+        const gone = await deletePipeline(project, pipeline.id, headers)
+        if (gone.status >= 400) throw new Error(`Could not delete main's pipeline ${pipeline.id}: HTTP ${gone.status}`)
+      }
+      return
+    }
+    await I.wait(5)
+  }
+}
+
+async function assertMergeSettings () {
+  const headers = await getRootHeaders()
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const project = (await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)).data || {}
+  const expected = { merge_method: 'ff', only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true }
+  for (const [key, value] of Object.entries(expected)) {
+    if (project[key] !== value) throw new Error(`Expected the project's ${key} to be ${value}, got ${JSON.stringify(project[key])}`)
+  }
+}
+
+// Off camera: the test user, the empty project and its clone, the staged
+// installer, its tools and the glab login, then the story's ONE sign-in to
+// GitLab (a second one would wait on a redirect). On camera: the owner's view
+// of the empty project. The twin: GitLab holds no branch at all.
 storyboardStep(Given, 'a brand-new empty project waits on GitLab', async () => {
   await ensureLambdaUser()
-  await openBlankProjectTerminal()
+  await createJourneyProject()
   prepareWorkingBranchInstaller(global.journeyContainer)
   preinstallToolchain(global.journeyContainer)
   authenticateGlab(global.journeyContainer, global.journeyLambdaToken)
-  // Open on the empty project exactly as agent-mode does: the GitLab page of a
-  // brand-new repository with nothing pushed.
-  await pageFrame(async () => {
-    await I.amOnPage(`/${projectPath(global.journeyProjectName)}`)
-    await GitLabRepositoryPage.maskVolatile(global.journeyProjectName)
-  }, 'gitlab-empty-project')
-})
-
-storyboardStep(Given, 'the developer has just cloned it into the terminal', async () => {
-  // The GitLab navigation left the ttyd page — return to it (the shell session
-  // is still alive, xterm reconnects) before driving the terminal.
-  I.amOnPage(`http://${global.journeyContainer}:${ttydPort()}`) // DevSkim: ignore DS162092,DS137138 -- Ephemeral test terminal on the local Compose network.
-  I.waitForElement('.xterm-screen', 10)
-  I.wait(3)
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'git status')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-blank-clone', { fromMarker: 'git status' }))
-})
-
-storyboardStep(When, 'the developer starts the toolbox installer', async () => {
-  await launchWorkingBranchInstaller()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: `bash ${WRAPPER_PATH}` }))
-})
-
-storyboardStep(When, 'the developer keeps the complete framework and the first question asks about Ansible', () => captureCopierQuestion('y', 'Do you need Ansible?', 'copier-ansible'))
-
-storyboardStep(When, 'the developer keeps GitLab as the CI/CD platform', () => captureCopierQuestion('Enter', 'Which CI/CD platform are you using?', 'copier-ci-platform'))
-
-storyboardStep(When, 'the developer keeps the existing medium runner tag for Docker jobs', () => captureCopierQuestion('Enter', 'Runner tags for jobs that need Docker', 'copier-docker-runner-tags'))
-
-storyboardStep(When, 'the developer keeps Docker as the container runtime', () => captureCopierQuestion('Enter', 'Which container runtime would you like to use?', 'copier-runtime'))
-
-storyboardStep(When, 'the developer keeps the generated docker-compose file', () => captureCopierQuestion('Enter', 'Generate a docker-compose.yml file', 'copier-compose'))
-
-storyboardStep(When, 'the developer confirms the runners can start privileged containers', () => captureCopierQuestion('Enter', 'Can your CI runners start privileged containers', 'copier-privileged-runners'))
-
-storyboardStep(When, 'the developer keeps the project workspace enabled', () => captureCopierQuestion('Enter', 'Enable the project workspace?', 'copier-workspace'))
-
-storyboardStep(When, 'the developer leaves source publication switched off', () => captureCopierQuestion('Enter', "Publish this project's source", 'copier-publication'))
-storyboardStep(When, 'the developer keeps Renovate auto-merge enabled', () => captureCopierQuestion('Enter', 'Auto-merge Renovate merge requests', 'copier-automerge'))
-
-storyboardStep(When, 'the developer keeps English as the Gherkin language', () => captureCopierQuestion('Enter', 'Language for Gherkin test specifications', 'copier-gherkin'))
-
-storyboardStep(Then, 'the installer builds the project and shows the finished screen', async () => {
-  // No click (see captureCopierQuestion): copier is still on the last question
-  // with mouse tracking on; pressing Enter on the focused terminal accepts it.
-  I.pressKey('Enter')
-  await waitForInstallerComplete()
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-complete', { fromMarker: 'Installation complete!' }))
-  assertInstallLog(
-    'Scaffolding project with Copier',
-    'Your DevSecOps project has been created successfully!',
-    'scaffolded successfully',
-    'Installation complete!'
-  )
-  assertCreatedFilesAtLeast(200)
-})
-
-storyboardStep(Then, 'the project folder now holds the full DevSecOps framework', async () => {
-  await typeCommandAndWait(I, 'clear')
-  await typeCommandAndWait(I, 'ls -A1p --color=never')
-  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-project-tree', { fromMarker: 'ls -A1p --color=never' }))
-  const res = execInContainerAsUser(global.journeyContainer, 'bootstrap', `cd ${PROJECT_DIR} && ls -A1`)
-  const entries = stripAnsiEscapeSequences(res.output || '').split('\n').map(line => line.trim()).filter(Boolean)
-  for (const file of ['Taskfile.yml', '.config', '.gitlab-ci.yml', '.agent']) {
-    if (!entries.includes(file)) {
-      throw new Error(`Expected the scaffolded working tree to contain "${file}". Entries: ${JSON.stringify(entries)}`)
-    }
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await projectHomeFrame('gitlab-empty-project', 'The repository for this project is empty')
+  const branches = await listProjectBranches(global.journeyProjectName, await getRootHeaders())
+  if ((branches.data || []).length) {
+    throw new Error(`Expected an empty project, GitLab lists ${JSON.stringify(branches.data.map(b => b.name))}`)
   }
+})
+
+// The terminal opens before ttyd loads, at the size it keeps for the whole
+// session. One typed line: git status, then the installer, which stops on its
+// first question with the default answer highlighted (gum paints the focused
+// button's background). The twins read the screen.
+storyboardStep(When, 'the developer starts the toolbox installer in the freshly cloned project', async () => {
+  await openTerminal(I, global.journeyContainer, INSTALL_TERMINAL)
+  await I.click('.xterm-screen')
+  await I.type(INSTALL_LAUNCH)
+  await I.pressKey('Enter')
+  await waitForTerminalText(I, SCOPE_PROMPT, COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'terminal-installer-launch', { fromMarker: INSTALL_LAUNCH }))
+  const screen = await terminalScreenText(I)
+  for (const said of ['No commits yet', '• Complete framework', SCOPE_PROMPT]) {
+    if (!screen.includes(said)) throw new Error(`Expected the terminal to say "${said}":\n${screen}`)
+  }
+  if (screen.includes('**')) throw new Error(`Expected the scope card rendered by glow, not its markdown source:\n${screen}`)
+  const focused = await I.executeScript(() => Array.from(document.querySelectorAll('.xterm-rows span'))
+    .filter(span => span.textContent.includes('Install everything'))
+    .some(span => /xterm-bg-212/.test(span.className)))
+  if (!focused) throw new Error(`Expected "Install everything" to be the highlighted answer:\n${screen}`)
+})
+
+// 'y' takes the complete framework, then Enter keeps each default. NO click:
+// Copier's prompt (prompt_toolkit) turns mouse tracking on, so a click on the
+// terminal is swallowed as a mouse report and the next key never reaches it.
+// The card is the last question, still open, under the nine answered ones: a
+// question erases itself when answered and leaves only its answer. The twins:
+// the ten questions on the screen, the install log, and the answers file the
+// installer pushed to the framework branch.
+storyboardStep(When, 'the developer answers the ten setup questions, keeping every default', async () => {
+  await I.pressKey('y')
+  for (const prompt of COPIER_PROMPTS.slice(0, -1)) {
+    await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
+    await I.pressKey('Enter')
+  }
+  await waitForTerminalText(I, COPIER_PROMPTS[COPIER_PROMPTS.length - 1], COMMAND_TIMEOUT_MS)
+  await waitForTerminalSettle(I)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'copier-questionnaire', { fromMarker: COPIER_PROMPTS[0] }))
+  const screen = await terminalScreenText(I)
+  const missing = COPIER_PROMPTS.filter(prompt => !screen.includes(prompt))
+  if (missing.length) throw new Error(`Expected all ten questions on the screen, missing ${JSON.stringify(missing)}:\n${screen}`)
+  await I.pressKey('Enter')
+  await waitForInstallerComplete()
+  assertInstallLog('Scaffolding project with Copier', 'Project scaffolded successfully.', 'Your DevSecOps project has been created successfully!')
+  assertCreatedFilesAtLeast(200)
+  const answers = await getRepositoryFile(global.journeyProjectName, '.config/devsecops/.copier-answers.yml', FRAMEWORK_BRANCH, await getRootHeaders())
+  const changed = DEFAULT_ANSWERS.filter(answer => !answers.includes(answer))
+  if (changed.length) throw new Error(`Expected every default in the answers file, missing ${JSON.stringify(changed)}:\n${answers}`)
+})
+
+// The installer pushed the framework branch and opened the merge request: its
+// page, the merge widget hidden while the pipeline waits for a runner. Then,
+// off camera, the runner scoped to this project, so the pipeline runs while
+// chapter 2 is photographed (the token variables are protected, so no job of
+// this branch reads them, and the token page stays as it is).
+storyboardStep(Then, "the installer's merge request into the main branch now waits for review on GitLab", async () => {
+  assertInstallLog('Bootstrapping main', `Opened merge request ${FRAMEWORK_BRANCH}`, 'Installation complete!')
+  await assertBranchExists('main')
+  await assertBranchExists(FRAMEWORK_BRANCH)
+  const mr = await findOpenMr(FRAMEWORK_BRANCH, 'main')
+  if (mr.title !== FRAMEWORK_TITLE) throw new Error(`Expected the merge request "${FRAMEWORK_TITLE}", got "${mr.title}"`)
+  await assertMrChangedFiles()
+  await frameworkMrFrame('gitlab-merge-request', FRAMEWORK_TITLE, ['.mr-state-widget'])
+  global.journeyRunner = await registerScopedRunner(I, global.journeyProjectName, await getRootHeaders())
+})
+
+storyboardStep(Then, 'GitLab now lets the main branch accept only fast-forward merges', async () => {
+  await assertMergeSettings()
+  await gitlabFrame(I, 'gitlab-merge-settings', gitlabUrl.mergeSettings(global.journeyProjectName), {
+    waitText: 'Fast-forward merge', height: 1100
+  })
+})
+
+storyboardStep(Then, 'GitLab now refuses pushes straight to the main branch', async () => {
+  await assertMainProtected('main')
+  await gitlabFrame(I, 'gitlab-protected-branch', gitlabUrl.repoSettings(global.journeyProjectName), {
+    waitText: 'Protected branches',
+    prepare: () => openSettingsSection('Protected branches', 'No one'),
+    scrollTo: () => scrollToSettingsSection('Protected branches')
+  })
+})
+
+storyboardStep(Then, "GitLab now holds the project's two automation tokens", async () => {
+  await assertTokenMaintainer('TASK_COMMITIZEN_TOKEN')
+  await assertTokenExists('TASK_RENOVATE_TOKEN')
+  await gitlabFrame(I, 'gitlab-access-tokens', gitlabUrl.accessTokens(global.journeyProjectName), {
+    waitText: 'TASK_RENOVATE_TOKEN', textMasks: TOKEN_PAGE_MASKS, height: 700
+  })
+})
+
+storyboardStep(Then, 'GitLab now keeps both tokens as CI/CD variables', async () => {
+  await assertProjectVariable('TASK_COMMITIZEN_TOKEN')
+  await assertProjectVariable('TASK_RENOVATE_TOKEN')
+  await ciVariablesFrame(I, 'gitlab-cicd-variables', global.journeyProjectName)
+})
+
+// The merge request's pipeline, waited to its end on the project's runner. The
+// twins come first, so a red pipeline fails loud with its trace tails: every
+// one of the 18 jobs green (18 since the toolbox ships no-cheat), then the
+// code:megalinter job's own log, its all-green verdict and one green verdict
+// per secret and dependency scanner. The card is that log on GitLab, at
+// MegaLinter's own verdict line for each linter, one folded line per linter;
+// the page's side panel shows the job and its pipeline passed.
+storyboardStep(Then, "the framework's first pipeline passes, its MegaLinter job green on every linter, the secret and dependency scanners included", async () => {
+  const project = global.journeyProjectName
+  const rootHeaders = await getRootHeaders()
+  const { pid, status } = await waitMergeRequestPipeline(I, project, global.journeyMergeRequestIid, rootHeaders)
+  global.journeyPipelineId = pid
+  const jobs = pid ? ((await listPipelineJobs(project, pid, rootHeaders)).data || []) : []
+  jobs.sort((a, b) => a.id - b.id)
+  if (status !== 'success') {
+    console.log(`framework pipeline not green (status=${status}); failed: ${jobs.filter(j => j.status === 'failed').map(j => `${j.stage}/${j.name}`).join(', ') || 'none'}`)
+    dumpFailedTraces(project, jobs, rootHeaders, global.journeyRunner && global.journeyRunner.svc)
+    const failedLinter = jobs.find(j => j.name === 'code:megalinter' && j.status === 'failed')
+    if (failedLinter) console.log(`code:megalinter findings:\n${megalinterFindings(stripAnsiEscapeSequences(await getJobTrace(project, failedLinter.id, rootHeaders)))}`)
+    throw new Error(`Expected the framework MR pipeline to pass, got status=${status}`)
+  }
+  if (jobs.length !== 18) throw new Error(`Expected 18 pipeline jobs, got ${jobs.length}: ${jobs.map(j => j.name).join(', ')}`)
+  const notGreen = jobs.filter(j => j.status !== 'success')
+  if (notGreen.length) throw new Error(`Expected every job green, these were not: ${notGreen.map(j => `${j.name}=${j.status}`).join(', ')}`)
+  const megalinter = jobs.find(j => j.name === 'code:megalinter')
+  if (!megalinter) throw new Error(`Expected a code:megalinter job, got: ${jobs.map(j => j.name).join(', ')}`)
+  const trace = stripAnsiEscapeSequences(await getJobTrace(project, megalinter.id, rootHeaders))
+  if (!trace.includes('Successfully linted all files without errors')) {
+    console.log(`code:megalinter findings:\n${megalinterFindings(trace)}`)
+    throw new Error(`Expected MegaLinter's all-green verdict in the code:megalinter log, these linters found something:\n${megalinterFindings(trace).slice(0, 3000)}`)
+  }
+  const verdicts = scannerVerdicts(trace)
+  SECURITY_LINTERS.forEach((linter, i) => {
+    if (!verdicts[i]) throw new Error(`Expected MegaLinter's green verdict for ${linter} in the code:megalinter log`)
+  })
+  await jobLogFrame(I, 'framework-megalinter-log', project, megalinter.id, {
+    from: /Linted \[[A-Z_]+\] files with/,
+    masks: MEGALINTER_DURATION_MASK,
+    height: 1100
+  })
+})
+
+// A green pipeline meets the "Pipelines must succeed" rule, so the merge goes
+// through. GitLab deletes the source branch on its own, a moment later, and
+// main's own pipeline is dropped (see dropMainPipeline) before the shot: the
+// same page as in chapter 1, merged, its widget showing the passed pipeline.
+storyboardStep(Then, 'the merge request merges into the main branch', async () => {
+  const project = global.journeyProjectName
+  const rootHeaders = await getRootHeaders()
+  const merged = await mergeMergeRequest(project, global.journeyMergeRequestIid, { 'PRIVATE-TOKEN': global.journeyLambdaToken })
+  let state = merged.data && merged.data.state
+  for (let i = 0; i < 10 && state !== 'merged'; i++) {
+    await I.wait(2)
+    state = ((await getMergeRequest(project, global.journeyMergeRequestIid, rootHeaders)).data || {}).state
+  }
+  if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
+  let branches = []
+  for (let i = 0; i < 30; i++) {
+    const listed = await listProjectBranches(project, rootHeaders)
+    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
+    branches = (listed.data || []).map(branch => branch.name)
+    if (!branches.includes(FRAMEWORK_BRANCH)) break
+    await I.wait(2)
+  }
+  if (branches.includes(FRAMEWORK_BRANCH)) throw new Error(`Expected the source branch ${FRAMEWORK_BRANCH} to be deleted by the merge`)
+  await dropMainPipeline(rootHeaders)
+  await frameworkMrFrame('framework-mr-merged', 'Deleted the source branch')
+})
+
+// The same home page as the Given, now on the merged framework. The twin
+// first: the framework's own files at the root of main on GitLab.
+storyboardStep(Then, 'the main branch now carries the whole framework, merged through review', async () => {
+  const tree = await listRepositoryTree(global.journeyProjectName, await getRootHeaders(), '?ref=main&per_page=100')
+  const names = (tree.data || []).map(entry => entry.name)
+  for (const name of ['Taskfile.yml', '.gitlab-ci.yml', '.config', '.agent']) {
+    if (!names.includes(name)) throw new Error(`Expected main to carry "${name}" after the merge. Entries: ${JSON.stringify(names)}`)
+  }
+  await projectHomeFrame('framework-on-main', 'Taskfile.yml', () => reloadUntil([FRAMEWORK_TITLE, 'CI/CD configuration']))
 })
 
 // ============================================

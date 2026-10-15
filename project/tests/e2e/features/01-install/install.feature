@@ -6,83 +6,64 @@ Feature: The whole install, from an empty project to a locked-down GitLab
   So that one story proves the entire first install, end to end
 
   # The flagship story: ONE interactive install in a real terminal (ttyd) builds
-  # ONE project, and every GitLab proof below is read from THAT same project.
-  # ONE Gherkin sentence = ONE card = ONE pixel baseline, asserted inside the
-  # step (tolerance: 0); each terminal card is anchored on the typed command, and
-  # each GitLab card twins its masked page with a REST check of the same fact, so
-  # a regression fails loud even without eyes. Set up off-camera: the test user,
-  # the blank cloned project, the staged working-branch installer, the tools it
-  # needs, and the GitLab login. A merge request is the page where changes get
-  # reviewed before joining main.
+  # ONE project, and every GitLab card below is read from THAT same project.
+  # ONE sentence = ONE card = ONE pixel baseline, asserted inside the step
+  # (tolerance: 0). GitLab opens and closes the story on the same page, the
+  # project's home page, before and after. The terminal in between is one
+  # session, typed on camera, and each menu is caught live, before its answer.
+  # Every card is paired with a check of the same fact (the screen, the install
+  # log, REST on GitLab), so a regression fails loud even without eyes. Set up
+  # off camera: the test user, the empty project and its clone, the staged
+  # installer, the tools it needs, the GitLab login and, once the merge request
+  # exists, a runner for its pipeline.
   #
-  # Chapter 1 walks the whole Copier questionnaire, one card per question, to the
-  # finished screen and the scaffolded project. Chapter 2 shows how the framework
-  # arrives — as a merge request from init-framework-devsecops into main, never a
-  # forced push. Chapter 3 shows the GitLab project init locked and wired:
-  # fast-forward-only merges, no direct pushes to main, the automation token, and
-  # that token saved as a CI/CD variable.
+  # Chapter 1 installs the framework, from the installer's first question to the
+  # merge request it opens. Chapter 2 shows the GitLab settings the install
+  # locked and wired. Chapter 3 runs the framework's own pipeline on that merge
+  # request, merges it, and shows the framework on the main branch.
   @install-complete
   Scenario: One interactive install builds the framework and configures GitLab
-    # Chapter: Answer the questions, build the framework
-    # Note: The brand-new project on GitLab: completely empty, nothing pushed yet. Set up off-screen: the test user, the installer, the tools it needs, and the GitLab login.
+    # Chapter: Install the framework
+    # Note: GitLab's home page of a brand-new project, as its owner sees it. GitLab says "The repository for this project is empty" and lists the commands that push a first commit.
+    # Note: The project's random name shows as "project", and dates and avatars are hidden, so the picture is the same on every run.
     # Copy: http://gitlab/<lambda-user>/<project>
     Given a brand-new empty project waits on GitLab
-    # Note: The same project freshly cloned in the terminal: git shows nothing saved yet.
-    # Copy: git status
-    And the developer has just cloned it into the terminal
-    # Note: The installer opens with its first question — install the complete framework? — with the typed command still visible above it.
-    # Copy: bash /tmp/devsecops-install.sh
-    When the developer starts the toolbox installer
-    # Note: Saying yes to the complete framework starts the setup questions from Copier (the tool that builds the project from your answers); the first — does the project need Ansible? — defaults to no.
+    # Note: The developer's terminal, in the clone of that empty project. Git answers "No commits yet", then the installer starts and asks its first question, "Install the complete DevSecOps framework?".
+    # Note: The card lists the two choices, "Complete framework" and "Choose components". The highlighted button, "Install everything", is the default answer and takes the complete framework.
+    # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && git status && bash /tmp/devsecops-install.sh
+    When the developer starts the toolbox installer in the freshly cloned project
+    # Note: Saying yes to the complete framework opens the ten setup questions of Copier, the tool that builds the project from the answers. The developer presses Enter on each one and keeps its default.
+    # Note: The card is caught on the last question, the language of the test descriptions, with its default "en" still open. Above it, the nine answers already given: No to Ansible, GitLab SaaS (gitlab.com), the runner tag saas-linux-medium-amd64, Docker, then Yes, Yes, Yes, No and Yes.
     # Copy: y
-    And the developer keeps the complete framework and the first question asks about Ansible
-    # Note: The next question asks which CI/CD platform to use — the automatic build-and-deploy system that runs on every change; the developer keeps the default, GitLab.
-    And the developer keeps GitLab as the CI/CD platform
-    # Note: Docker jobs need a runner that can start containers. The developer keeps the existing saas-linux-medium-amd64 tag; file checks do not need this tag.
-    And the developer keeps the existing medium runner tag for Docker jobs
-    # Note: The next question asks which tool runs the containers; the developer keeps the default, Docker.
-    And the developer keeps Docker as the container runtime
-    # Note: With Docker chosen, the setup offers to create project/docker-compose.yml; the developer keeps the default, yes.
-    And the developer keeps the generated docker-compose file
-    # Note: The next question asks whether the CI runners may start privileged containers. Answering no would move the secret scan off Docker, onto a pinned binary the job installs itself; the developer's runners can, so the default yes stands.
-    And the developer confirms the runners can start privileged containers
-    # Note: The next question turns the project workspace on or off (it adds project/Taskfile.yml and docker-compose.yml); the developer keeps it on.
-    And the developer keeps the project workspace enabled
-    # Note: The next question is for projects that must live in a private repository and publish their source all the same; it defaults to no, because a project that is already public has nothing to publish anywhere else.
-    And the developer leaves source publication switched off
-    # Note: The next question asks whether Renovate — the bot that proposes dependency updates — should merge toolbox updates on its own; the developer keeps it on.
-    And the developer keeps Renovate auto-merge enabled
-    # Note: The last question sets the language for the test descriptions; the developer keeps the default, en.
-    And the developer keeps English as the Gherkin language
-    # Note: Answering the last question builds the framework and runs the setup all the way to the finished screen.
-    Then the installer builds the project and shows the finished screen
-    # Note: The project folder the questions produced: Taskfile.yml, .config, .gitlab-ci.yml, .agent and more.
-    # Copy: ls -A1p --color=never
-    And the project folder now holds the full DevSecOps framework
-    # Chapter: The framework arrives as a merge request
-    # Note: The merge request from init-framework-devsecops into main, open and ready for review. The framework never lands on main without this step.
+    And the developer answers the ten setup questions, keeping every default
+    # Note: The installer builds the framework, pushes it to a new branch, init-framework-devsecops, and opens a merge request into the main branch. This is GitLab's page for it: "chore: initialize devsecops framework", Open.
+    # Note: A merge request is a change that waits for review before it joins the main branch. The framework never reaches the main branch any other way.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    Then a merge request into main is now waiting for review on GitLab
-    # Note: GitLab's branches page: main, with the framework branch beside it.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/branches
-    And GitLab now lists main and the new init-framework-devsecops branch
+    Then the installer's merge request into the main branch now waits for review on GitLab
     # Chapter: GitLab is locked and wired
-    # Note: Main only accepts fast-forward merges, and further down the page a change must pass its pipeline before it can merge — so history stays a straight line and nothing broken reaches main.
+    # Note: The project's merge request settings. "Fast-forward merge" is selected, so the history of the main branch stays a straight line.
+    # Note: Under "Merge checks", "Pipelines must succeed" and "All threads must be resolved" are ticked: nothing broken or still under discussion can merge.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/merge_requests
-    Then GitLab now lets main accept only fast-forward merges
-    # Note: On the protected-branches page: maintainers may merge, but no one may push straight to main. Every change has to go through a review.
+    Then GitLab now lets the main branch accept only fast-forward merges
+    # Note: The protected branches settings. On the main branch, "Allowed to merge" is "Maintainers" and "Allowed to push and merge" is "No one": every change has to go through a merge request.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/repository
-    And GitLab now refuses pushes straight to main
-    # Note: On the access-tokens page: the two project tokens the install created — TASK_COMMITIZEN_TOKEN (Maintainer role, used by the release) and TASK_RENOVATE_TOKEN (used by the update bot).
+    And GitLab now refuses pushes straight to the main branch
+    # Note: The project access tokens page lists the two tokens the install created: TASK_COMMITIZEN_TOKEN, which the release uses, and TASK_RENOVATE_TOKEN, which the update bot uses. Both have the Maintainer role.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
-    And GitLab now holds an automation token for the project
-    # Note: On the CI/CD variables page: the same token, saved as TASK_COMMITIZEN_TOKEN so the pipeline can read it.
+    And GitLab now holds the project's two automation tokens
+    # Note: The project's CI/CD variables hold both tokens under the same names, so the pipeline can read them. GitLab shows their values as dots.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
-    And GitLab now keeps that token as a CI/CD variable
+    And GitLab now keeps both tokens as CI/CD variables
     # Chapter: The merge request proves itself
-    # Note: The framework merge request, now merged: the green Merged badge, the pipeline that passed every job, and the branch joined into main. A project-scoped runner (the machine that runs the pipeline) ran the checks; the merge only happened once they were green — reached through review, never a forced push.
+    # Note: A runner, the machine that runs pipelines, now serves this project, and the merge request's pipeline runs every job the framework ships. All of them pass.
+    # Note: The card is the log of one of them, the code:megalinter job: MegaLinter's verdict for each of its linters, one line each, every one "successfully". The secret and dependency scanners betterleaks, grype, trivy and trufflehog are among them.
+    # Note: The panel on the right says the job and its pipeline Passed, and lists the other code jobs of the pipeline, all green.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs
+    Then the framework's first pipeline passes, its MegaLinter job green on every linter, the secret and dependency scanners included
+    # Note: The same merge request page as in chapter 1, now Merged. "Merge request pipeline passed" shows its stages, all green, as the "Pipelines must succeed" rule demands, and "Deleted the source branch" closes the review.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
-    Then the framework pipeline passes and the merge request merges into main
-    # Note: GitLab's file tree for main now holds the whole framework — Taskfile.yml, .gitlab-ci.yml, .config, .agent — and the commit's own pipeline runs green, so main built clean after the merge. The first install is proven end to end.
-    # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main
-    And main now carries the whole framework, merged through review
+    And the merge request merges into the main branch
+    # Note: The same home page as the first card. The main branch now holds the whole framework, .agent, .config, .gitlab-ci.yml and Taskfile.yml among them, on the commit "chore: initialize devsecops framework". Only README.md stays on "chore: initialize repository", the commit the installer made to create the main branch.
+    # Note: The first install is proven end to end.
+    # Copy: http://gitlab/<lambda-user>/<project>
+    And the main branch now carries the whole framework, merged through review
