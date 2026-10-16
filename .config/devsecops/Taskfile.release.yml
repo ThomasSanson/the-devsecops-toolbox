@@ -207,11 +207,19 @@ tasks:
           echo "🔐 Configuring ${REMOTE_PROTOCOL^^} remote with Commitizen token..."
           git remote set-url origin "${REMOTE_PROTOCOL}://oauth2:${TOKEN}@${HOST}/${PROJECT_PATH}.git"
 
-          # ONE push for both refs: a remote that refuses the connection, the
-          # token or the branch leaves the default branch exactly as it was,
-          # instead of a tag landing on its own with no commit behind it.
+          # ONE atomic push for the version commit and the tag commitizen put
+          # on it, named after the version (tag_format: $version). A remote that
+          # refuses the connection, the token or either ref leaves both exactly
+          # as they were: no tag lands on its own when the default branch moved
+          # on, and no other local tag leaves the clone. HEAD without its
+          # version tag means nothing was worth a version: the branch goes alone.
+          set -- HEAD:"${BRANCH}"
+          TAG="$(cat VERSION)"
+          if git tag --points-at HEAD | grep -qxF "${TAG}"; then
+            set -- "$@" "refs/tags/${TAG}"
+          fi
           echo "Pushing tags and the version commit to ${BRANCH}..."
-          git push origin HEAD:"${BRANCH}" --tags
+          git push --atomic origin "$@"
         silent: true
       - cmd: echo "🎉 Release push completed successfully"
         silent: true
