@@ -38,30 +38,33 @@ function stripAnsiEscapeSequences (value) {
   return cleaned
 }
 
-// The compose service of THIS stack, by suffix ("gitlab", "gitlab-runner").
+// The running container of a compose service of THIS stack ("gitlab",
+// "gitlab-runner").
 //
-// A developer machine can host two toolbox-derived stacks at once — the
-// framework's own and a generated project's — and `docker ps --filter
-// name=gitlab` then lists both. Picking the first match minted an admin token
-// on the neighbour's GitLab and every call answered 401. Compose labels every
-// container with its project, and the container running the suite is one of
-// them, so ask Docker which project we belong to and stay inside it. Falls back
-// to the first match when the label is unreadable (a runner without the socket
-// mounted, say), which is the old behaviour.
-function composeService (suffix) {
-  const names = runCommand(`docker ps --format '{{.Names}}' --filter 'name=${suffix}'`)
-    .split('\n').map(n => n.trim())
-    .filter(n => new RegExp(`-${suffix}-\\d+$`).test(n))
-  if (names.length <= 1) return names[0]
+// A developer machine can host several Compose projects at once, and two of
+// them can both run a gitlab service. Taking the neighbour's minted an admin
+// token on it. Compose labels every container with its project and its
+// service, and the container running the suite is one of them: read our
+// project, then look inside it only. No guess: an unreadable label or a
+// missing service stops the suite instead of handing it someone else's.
+function composeService (service) {
+  const self = runCommand('hostname').trim()
+  let project = ''
   try {
-    const self = runCommand('hostname').trim()
-    const project = runCommand(
-      `docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' ${self}`
+    project = runCommand(
+      `docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' ${shellEscape(self)}`,
+      { stdio: ['ignore', 'pipe', 'pipe'] }
     ).trim()
-    const mine = project && names.find(n => n.startsWith(`${project}-${suffix}-`))
-    if (mine) return mine
   } catch (_) {}
-  return names[0]
+  if (!project) {
+    throw new Error(`Cannot tell the Compose project of this suite: the com.docker.compose.project label of its container ${self} is empty or unreadable.`)
+  }
+  const name = runCommand(
+    `docker ps --format '{{.Names}}' --filter ${shellEscape(`label=com.docker.compose.project=${project}`)} ` +
+    `--filter ${shellEscape(`label=com.docker.compose.service=${service}`)}`
+  ).split('\n')[0].trim()
+  if (!name) throw new Error(`No "${service}" service is running in the Compose project "${project}".`)
+  return name
 }
 
 function runCommand (command, options = {}) {

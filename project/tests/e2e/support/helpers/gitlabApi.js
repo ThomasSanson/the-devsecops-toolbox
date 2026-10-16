@@ -38,7 +38,6 @@ async function getRootHeaders () {
   // its runner, and answers no API. composeService keeps us inside OUR stack
   // when a second toolbox-derived one runs on the same machine.
   const service = composeService('gitlab')
-  if (!service) throw new Error('the gitlab compose service is not running')
   const ruby =
     `puts User.find_by_username('${process.env.TASK_GITLAB_ROOT_USER}')` +
     ".personal_access_tokens.create!(name: 'e2e-root', scopes: ['api'], expires_at: 30.days.from_now).token"

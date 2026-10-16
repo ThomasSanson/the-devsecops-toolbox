@@ -58,7 +58,6 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   // Our OWN runner service: a second toolbox-derived stack on the machine would
   // otherwise be picked first and register the runner on the neighbour's GitLab.
   const svc = composeService('gitlab-runner')
-  if (!svc) throw new Error('gitlab-runner compose service is not running')
   // A stopped checkout helper can still belong to a running job: GitLab Runner
   // reuses it for cache and artifact upload. Registration must leave every job
   // container alone and let its runner own the lifecycle. Keep concurrent=1
@@ -328,9 +327,8 @@ module.exports = {
 // A gitlab-runner service of the story's own, beside the shared one: same
 // image, same network, one job at a time. The service and every container it
 // starts carry `io.digital-commons.e2e.run=<owner>`, so the story's After
-// removes them all with one label filter. A `name` ending in
-// -gitlab-runner-<n> is found by composeService('gitlab-runner'); any other
-// name stays out of the other stories' way.
+// removes them all with one label filter. It carries no Compose label, so
+// composeService('gitlab-runner') never hands it to the other stories.
 function startIsolatedRunnerService (name, owner) {
   const { execFileSync } = require('child_process')
   const fs = require('fs')

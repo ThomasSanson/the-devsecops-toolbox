@@ -111,7 +111,6 @@ async function startLocalImageRunner (projectId, rootHeaders) {
   const runner = await createProjectRunner(projectId, rootHeaders)
   if (runner.status >= 400) throw new Error(`createProjectRunner failed (${runner.status}): ${JSON.stringify(runner.data)}`)
   const svc = composeService('gitlab-runner')
-  if (!svc) throw new Error('gitlab-runner compose service is not running')
   const image = execFileSync('docker', ['inspect', '--format', '{{.Config.Image}}', svc], { encoding: 'utf8' }).trim()
   const name = `e2e-junit-runner-${crypto.randomBytes(4).toString('hex')}`
   // The token travels in the environment, never on a command line.
