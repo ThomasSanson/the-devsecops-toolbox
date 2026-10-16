@@ -181,6 +181,19 @@ tasks:
           TASK_COPIER_CLI_OPTS: --skip-answered --defaults
       - task: glab:update-merge-request
 
+  devsecops:agent:run:
+    # One task run for an AI assistant, started from the repository root. The
+    # runner, not the shell, writes the task's output to a log and its verdict
+    # to a status file under tmp/agent-runs/, so neither a pipe nor a command
+    # typed after it can change them. -x hands the task's own exit code to the
+    # shell, 124 when it ran past the time limit.
+    desc: 🤖 Run one task for an AI assistant, with its own log, status file and exit code (task -x)
+    silent: true
+    vars:
+      TASK_DEVSECOPS_AGENT_RUN_TIMEOUT: '{{.TASK_DEVSECOPS_AGENT_RUN_TIMEOUT | default "1800"}}'
+    cmds:
+      - TASK_DEVSECOPS_AGENT_RUN_TIMEOUT={{.TASK_DEVSECOPS_AGENT_RUN_TIMEOUT}} bash .config/devsecops/scripts/agent-run.sh {{.CLI_ARGS}}
+
   plan:
     cmds:
       - cmd: echo "{{.TASK_DEVSECOPS_ICON}} Plan"

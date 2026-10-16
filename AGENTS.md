@@ -27,7 +27,7 @@ The framework tooling under `.config/` and the root `Taskfile.yml` are owned by 
 | [`.agents/rules/tests-structure.md`](.agents/rules/tests-structure.md)       | Test conventions (Gherkin BDD, structure, tags).                                                                            |
 | [`.agents/rules/naming-conventions.md`](.agents/rules/naming-conventions.md) | Task names follow `project:{phase}:{service}:{action}`. Taskfile variables start with `TASK_`.                              |
 | [`.agents/rules/interaction.md`](.agents/rules/interaction.md)               | Mirror the user's language. Be professional, direct, and proactive.                                                         |
-| [`.agents/rules/terminal-execution.md`](.agents/rules/terminal-execution.md) | Send long output to `tmp/exec_logs.log` with `>`, never through a pipe that hides the exit code. Read the log if it hangs.  |
+| [`.agents/rules/terminal-execution.md`](.agents/rules/terminal-execution.md) | Run each task through `task -x devsecops:agent:run -- <task>`: its exit code, log and status land in `tmp/agent-runs/`.     |
 | [`.agents/rules/version-control.md`](.agents/rules/version-control.md)       | Agents only read git. The person commits.                                                                                   |
 
 ---
