@@ -23,6 +23,14 @@
  * `:project:release`, and only then `push` — and by the 4th invariant of
  * .config/devsecops/scripts/check-release-lock.sh.
  *
+ * Chapters 3 and 4 — the version commit and its tag leave in ONE atomic push
+ * (issue #296). A third release is queued, a teammate's change lands on the main
+ * branch before the job clones, so git rejects the push of the version commit:
+ * the story proves the tag stayed behind with it. Then the release is relaunched
+ * on the moved main branch, and the story proves it pushes the version commit
+ * and its own tag together, and not the tag the project's publish step kept in
+ * the job.
+ *
  * Both crashes are deterministic, not timing races. Chapter 1 points the
  * release's git server host at a name that does not resolve, so the push fails
  * while the door open and the re-lock (which go through the API URL) both still
@@ -56,6 +64,7 @@ const {
   createProjectVariable,
   updateProjectVariable,
   updateProjectSettings,
+  putRepositoryFile,
   listProjectBranches,
   listProjectTags,
   listProjectPipelines,
@@ -66,7 +75,7 @@ const {
   triggerProjectPipeline,
   getJobTrace
 } = require('../helpers/gitlabApi')
-const { freshGet, freshPost, freshDelete } = require('../helpers/http')
+const { freshGet, freshPost, freshPut, freshDelete } = require('../helpers/http')
 const {
   registerScopedRunner,
   teardownScopedRunner,
@@ -170,6 +179,10 @@ async function wireReleaseAutomation (projectName, rootHeaders) {
 // which is the incident of issue #221: the image never reaches the registry, and
 // the question is whether the tag reached the main branch anyway.
 const PUBLISH_FAILS_VAR = 'E2E_PUBLISH_FAILS'
+// Chapters 3 and 4 also make the publish step tag its build in the job's clone,
+// the way a project's own tooling may: a tag that is the project's business,
+// and that the release must not publish along with its own.
+const LOCAL_TAG_VAR = 'E2E_PUBLISH_KEEPS_A_TAG'
 const RELEASE_PHASE_DONE = '      - cmd: echo "✅ Project Release phase completed successfully"'
 // GitLab merges a job's stdout and stderr in arrival order, and two writes on
 // different streams a few microseconds apart can land in either order (a 0.5%
@@ -185,6 +198,10 @@ const PUBLISH_STEP = `      - cmd: |
             exit 1
           fi
           echo "Image published."
+          if [ "\${${LOCAL_TAG_VAR}:-false}" = "true" ]; then
+            git tag "image-$(cat VERSION)" &&
+              echo "Tagged the image build image-$(cat VERSION), a tag for this job only."
+          fi
         silent: true
 `
 function wirePublishStep (repoDir) {
@@ -341,21 +358,37 @@ async function releaseTrace (jobId, headers) {
     .join('\n')
 }
 
+// Hold or release this story's runner. A paused runner takes no job, so a
+// pipeline triggered meanwhile waits, and whatever changes on GitLab before it
+// resumes is already there when its job clones the project.
+async function holdRunner (paused, headers) {
+  const res = await freshPut(`${BASE_URL}/api/v4/runners/${runner.runnerId}`, { paused }, headers)
+  if (res.status >= 400) throw new Error(`Failed to ${paused ? 'pause' : 'resume'} the runner (status ${res.status}): ${JSON.stringify(res.data)}`)
+}
+
 // Run one release pipeline on the main branch to its end. The release job must
-// fail (`why` says how, for the error), then the pipeline is settled: the job
-// card shows the pipeline's own status beside the log, so its still-running
-// siblings are cancelled and it stops on a fixed "Failed". Returns the release
-// job id and its trace (printed when the job did not fail: the runner truncates
-// a long error, and the whole log is what says where the release stopped).
-async function runFailingRelease (rootHeaders, why) {
+// end on `status` (`why` says how, for the error). `whileQueued` runs while the
+// pipeline waits for a held runner, its other jobs are then cancelled, and only
+// then may the runner start. Then the pipeline is settled: the job card shows
+// the pipeline's own status beside the log, so its still-running siblings are
+// cancelled and it stops on a fixed status. Returns the release job id and its
+// trace (printed when the job did not end as expected: the runner truncates a
+// long error, and the whole log is what says where the release stopped).
+async function runRelease (rootHeaders, why, { status = 'failed', whileQueued = null } = {}) {
+  if (whileQueued) await holdRunner(true, rootHeaders)
   const trigger = await triggerProjectPipeline(PROJECT_NAME, 'main', lambdaHeaders)
   if (trigger.status >= 400) throw new Error(`Failed to trigger a release pipeline on main (status ${trigger.status}): ${JSON.stringify(trigger.data)}`)
   const pid = trigger.data.id
+  if (whileQueued) {
+    await whileQueued()
+    await cancelSiblingJobs(PROJECT_NAME, (await listPipelineJobs(PROJECT_NAME, pid, rootHeaders)).data || [])
+    await holdRunner(false, rootHeaders)
+  }
   const release = await waitReleaseJobTerminal(I, PROJECT_NAME, pid, rootHeaders, runner)
   const trace = await releaseTrace(release.id, rootHeaders)
-  if (release.status !== 'failed') {
+  if (release.status !== status) {
     console.log(`release-crash: release job log:\n${trace}`)
-    throw new Error(`Expected the release job to fail ${why}, got ${release.status}`)
+    throw new Error(`Expected the release job to end ${status} ${why}, got ${release.status}`)
   }
   await cancelPipeline(PROJECT_NAME, pid, lambdaHeaders)
   await waitPipelineTerminal(I, PROJECT_NAME, pid, rootHeaders)
@@ -366,8 +399,35 @@ async function runFailingRelease (rootHeaders, why) {
 }
 
 // The release job's page, its log from RELEASE_CUT down to the end of the job.
-function releaseJobCard (frameName, jobId) {
-  return jobLogFrame(I, frameName, PROJECT_NAME, jobId, { from: RELEASE_CUT, masks: EXIT_CODE_MASKS })
+// A push prints the old and new commit of the branch it moved, abbreviated.
+// `fold` closes GitLab's own log sections the card is not about.
+function releaseJobCard (frameName, jobId, { fold = [] } = {}) {
+  return jobLogFrame(I, frameName, PROJECT_NAME, jobId, {
+    from: RELEASE_CUT,
+    masks: [...EXIT_CODE_MASKS, [/\b[0-9a-f]{7,}\.\.[0-9a-f]{7,}\b/, '<sha>..<sha>']],
+    fold
+  })
+}
+
+// The main branch as GitLab holds it: its tip commit (id, title, parent_ids).
+async function mainTip (headers) {
+  const branches = await listProjectBranches(PROJECT_NAME, headers)
+  const main = (branches.data || []).find(b => b.name === 'main')
+  return (main && main.commit) || {}
+}
+
+// A teammate's change lands on the main branch while a release is queued: one
+// commit, standing in for a merged merge request. Push access is opened for
+// that one commit only, then the main branch is locked again. "[skip ci]" in
+// its body: a pipeline of its own on the main branch would cancel the queued
+// release as redundant.
+const TEAMMATE_COMMIT = 'docs: explain how to contribute'
+async function landTeammateChange (rootHeaders) {
+  const gone = await freshDelete(`${BASE_URL}/api/v4/projects/${encodedProjectPath(PROJECT_NAME)}/protected_branches/main`, rootHeaders)
+  if (gone.status >= 400 && gone.status !== 404) throw new Error(`Failed to open the main branch for the teammate's change (status ${gone.status})`)
+  await putRepositoryFile(PROJECT_NAME, 'CONTRIBUTING.md', 'Open a merge request against the main branch.\n', lambdaHeaders,
+    { message: `${TEAMMATE_COMMIT}\n\n[skip ci]` })
+  await lockMainToNoOne(PROJECT_NAME, rootHeaders)
 }
 
 let project = null
@@ -454,7 +514,7 @@ storyboardStep(Given, 'a release job on the main branch crashes mid-push while i
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
 
   runner = await registerScopedRunner(I, PROJECT_NAME, rootHeaders)
-  const { jobId, trace } = await runFailingRelease(rootHeaders, 'on its refused push')
+  const { jobId, trace } = await runRelease(rootHeaders, 'on its refused push')
 
   // Twins, in the order the card reads: the release opened the push window,
   // died on the push itself...
@@ -535,7 +595,7 @@ storyboardStep(When, 'the image of a second release cannot be published, so the 
   const fails = await createProjectVariable(PROJECT_NAME, { key: PUBLISH_FAILS_VAR, value: 'true' }, rootHeaders)
   if (fails.status >= 400) throw new Error(`Failed to break the publish step (status ${fails.status}): ${JSON.stringify(fails.data)}`)
 
-  const { jobId, trace } = await runFailingRelease(rootHeaders, 'on its publish step')
+  const { jobId, trace } = await runRelease(rootHeaders, 'on its publish step')
   // Twin: the release really died on its publish step...
   if (!trace.includes('the image could not be published')) {
     console.log(`release-crash: second release job log:\n${trace}`)
@@ -569,6 +629,101 @@ storyboardStep(Then, 'the project has no tag at all, so the main branch never po
 
   await gitlabFrame(I, 'no-tag-without-its-image', gitlabUrl.tags(PROJECT_NAME), {
     waitText: 'Repository has no tags yet',
+    height: 640
+  })
+})
+
+// ============================================
+// Chapter 3 — a rejected push publishes nothing
+// ============================================
+
+storyboardStep(When, "a teammate's change moves the main branch while a third release waits, so the release job's push is rejected and sends neither the version commit nor its tag", async () => {
+  const rootHeaders = await getRootHeaders()
+  // The publish step works again, so this release reaches its push, and it
+  // keeps a tag of its own in the job, which the push must leave alone.
+  const fails = await updateProjectVariable(PROJECT_NAME, PUBLISH_FAILS_VAR, { value: 'false' }, rootHeaders)
+  if (fails.status >= 400) throw new Error(`Failed to repair the publish step (status ${fails.status}): ${JSON.stringify(fails.data)}`)
+  const tags = await createProjectVariable(PROJECT_NAME, { key: LOCAL_TAG_VAR, value: 'true' }, rootHeaders)
+  if (tags.status >= 400) throw new Error(`Failed to make the publish step tag its build (status ${tags.status}): ${JSON.stringify(tags.data)}`)
+
+  const { jobId, trace } = await runRelease(rootHeaders, 'on its rejected push', {
+    whileQueued: () => landTeammateChange(rootHeaders)
+  })
+  // Twins, in the order the card reads: the release cut its version with a
+  // local tag beside it, reached its push, and git rejected the main branch...
+  for (const line of ['Tagged the image build image-0.2.0', 'Pushing tags and the version commit to main']) {
+    if (!trace.includes(line)) throw new Error(`Expected "${line}" in the rejected release's log, trace:\n${trace}`)
+  }
+  if (!/\[rejected\]\s+HEAD -> main\b/.test(trace)) {
+    throw new Error(`Expected git to reject the push of the version commit to the main branch, trace:\n${trace}`)
+  }
+  // ...and sent no tag on its own: a tag that lands without its version commit
+  // names a commit the main branch does not have, and no retry gets past it.
+  if (trace.includes('[new tag]')) {
+    throw new Error(`The release pushed a tag although its version commit was rejected, trace:\n${trace}`)
+  }
+
+  await releaseJobCard('push-rejected', jobId)
+})
+
+storyboardStep(Then, 'the project still has no tag after the rejected push', async () => {
+  const rootHeaders = await getRootHeaders()
+  // Twin: no tag on the remote, and the main branch on the teammate's commit,
+  // without the release's version commit on top.
+  const names = ((await listProjectTags(PROJECT_NAME, rootHeaders)).data || []).map(t => t.name)
+  if (names.length) throw new Error(`Expected no tag after the rejected push, got: ${names.join(', ')}`)
+  const tip = await mainTip(rootHeaders)
+  if (tip.title !== TEAMMATE_COMMIT) {
+    throw new Error(`Expected the main branch to end on the teammate's commit "${TEAMMATE_COMMIT}", got: ${tip.title}`)
+  }
+
+  await gitlabFrame(I, 'no-tag-after-rejected-push', gitlabUrl.tags(PROJECT_NAME), {
+    waitText: 'Repository has no tags yet',
+    height: 640
+  })
+})
+
+// ============================================
+// Chapter 4 — the relaunched release pushes its version commit and its tag together
+// ============================================
+
+storyboardStep(When, 'the release is relaunched on the updated main branch and pushes its version commit and its tag together', async () => {
+  const rootHeaders = await getRootHeaders()
+  const { jobId, trace } = await runRelease(rootHeaders, 'once relaunched on the updated main branch', { status: 'success' })
+  // Twins: the publish step kept its local tag again, and the push carried the
+  // main branch and the release's own tag, and nothing else.
+  if (!trace.includes('Tagged the image build image-0.2.0')) {
+    throw new Error(`Expected the publish step to tag its build again, trace:\n${trace}`)
+  }
+  if (!/\s+HEAD -> main\b/.test(trace) || !/\[new tag\]\s+0\.2\.0 -> 0\.2\.0\b/.test(trace)) {
+    throw new Error(`Expected the push of the version commit to main and of the tag 0.2.0, trace:\n${trace}`)
+  }
+  if (/image-0\.2\.0 ->/.test(trace)) {
+    throw new Error(`The release pushed the tag its publish step kept for the job, trace:\n${trace}`)
+  }
+
+  // Only a passing job saves its cache: that section folds, so the card ends on
+  // "Job succeeded" the way the rejected one ends on "Job failed".
+  await releaseJobCard('relaunch-pushed', jobId, { fold: ['Saving cache'] })
+})
+
+storyboardStep(Then, 'the project has exactly one tag, 0.2.0, on the version commit at the tip of the main branch', async () => {
+  const rootHeaders = await getRootHeaders()
+  // Twin: one tag, the release's, on the version commit at the tip of the main
+  // branch.
+  const tags = (await listProjectTags(PROJECT_NAME, rootHeaders)).data || []
+  const names = tags.map(t => t.name)
+  if (names.join(',') !== '0.2.0') throw new Error(`Expected exactly the tag 0.2.0, got: ${names.join(', ')}`)
+  const tip = await mainTip(rootHeaders)
+  if (!String(tip.title).startsWith('build: bump version 0.1.0')) {
+    throw new Error(`Expected the version commit at the tip of the main branch, got: ${tip.title}`)
+  }
+  if (tags[0].commit.id !== tip.id) {
+    throw new Error(`Expected the tag 0.2.0 on the tip of the main branch ${tip.id}, got ${tags[0].commit.id}`)
+  }
+
+  await gitlabFrame(I, 'one-tag-with-its-commit', gitlabUrl.tags(PROJECT_NAME), {
+    waitText: '0.2.0',
     height: 640
   })
 })
