@@ -179,7 +179,7 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: The second reads its rules from broken.toml, a scanner configuration missing its closing bracket. betterleaks stops on it with "unable to load config", and the scan says it did not finish. Both fail, and neither one says that a secret was found, or that none was.
     # Copy: TASK_PUBLICATION_SCAN_CONFIG=broken.toml task publication:scan
     And a scan whose scanner cannot run, or stops on an error, fails and says so
-    # Note: Last, the same scan of release 1.4.0, the three files the public project holds today: TASK_PUBLICATION_SOURCE_REF names the tag. betterleaks reads them to the end, "scanned ~<n> bytes", and finds nothing.
+    # Note: Last, the same scan of release 1.4.0, the three files the public project holds today: TASK_PUBLICATION_SOURCE_REF names the tag. betterleaks reads them to the end, "scanned ~289 bytes", and finds nothing.
     # Note: This is the only run on this machine that says "No secret found in what would become public", and the only one that passes.
     # Copy: TASK_PUBLICATION_SOURCE_REF=1.4.0 task publication:scan
     And only a scan that read every file to the end says no secret was found, here on release 1.4.0

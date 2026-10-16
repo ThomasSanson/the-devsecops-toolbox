@@ -87,8 +87,9 @@ tasks:
         everything the public repository will ever hold.
 
         Uses an installed `betterleaks` if there is one, the container image
-        otherwise. With neither, the publication stops rather than pushing
-        unscanned — set TASK_PUBLICATION_SCAN=off to waive that.
+        otherwise. Passes only when the scan read every file and found no
+        secret: a secret, a scanner error, no scanner at all and
+        TASK_PUBLICATION_SCAN=off all fail it.
 
       🔄 Execution:
         Runs publish.sh in scan mode.

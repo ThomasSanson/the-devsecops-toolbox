@@ -203,9 +203,17 @@ secret was: everyone who can read the job log would read it there.
 reads, can show part of it on your own machine.
 
 With neither, the publication **stops**: a scanner that is missing is not a
-scanner that passed. The only modes are `required` and `off`. Setting
-`TASK_PUBLICATION_SCAN=off` explicitly disables the scan altogether, even when a
-scanner is available; it is not a fallback used only when a tool is missing.
+scanner that passed. Only a scan that read every file says `No secret found`. A
+scan that found a secret, a scanner that stopped on an error and a scan that
+could not run each say so, fail, and publish nothing.
+
+The only modes are `required` and `off`. Setting `TASK_PUBLICATION_SCAN=off`
+disables the scan altogether, even when a scanner is available; it is not a
+fallback used only when a tool is missing. `task publication:scan` then says the
+scan was skipped and fails, so the `publication:scan` job never turns green
+without a scan. A pipeline (`CI` set) refuses to publish while the scan is off.
+Only a publication started by hand, outside a pipeline, goes out unscanned, and
+it says so.
 
 The publication is a **task**, not a CI job: the same command behaves the same
 way from a developer's machine and from the pipeline. On the default branch,
@@ -323,7 +331,7 @@ next publication from carrying it.
 | `TASK_PUBLICATION_APPROVAL_BRANCH` | `publication-approval` | The branch the approval merge request uses.        |
 | `TASK_PUBLICATION_SOURCE_REF`      | the default branch     | The branch or tag that gets published.             |
 | `TASK_PUBLICATION_ON`              | `release`              | `release`, `tag` or `manual`.                      |
-| `TASK_PUBLICATION_SCAN`            | `required`             | `required` or explicit `off`; no prior-job bypass. |
+| `TASK_PUBLICATION_SCAN`            | `required`             | `required`, or `off`: by hand only, never in CI.   |
 | `TASK_PUBLICATION_SCAN_IMAGE`      | betterleaks image      | The scanner, when no binary is installed.          |
 | `TASK_BETTERLEAKS_REDACT`          | `100`                  | Percentage of a found secret the report hides.     |
 | `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.     |

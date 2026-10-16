@@ -47,7 +47,10 @@
 #   TASK_PUBLICATION_ON               when it happens by itself: release (default),
 #                                     tag, or manual
 #   TASK_PUBLICATION_SCAN             required (default) or off — whether
-#                                     the snapshot is scanned for secrets first
+#                                     the snapshot is scanned for secrets first.
+#                                     Off scans nothing: the scan fails, and
+#                                     only a publication run by hand, outside
+#                                     a pipeline, goes out unscanned
 #   TASK_PUBLICATION_SCAN_IMAGE       default: ghcr.io/betterleaks/betterleaks:latest
 #   TASK_PUBLICATION_SCAN_CONFIG      default: .config/betterleaks/config.toml
 #   TASK_BETTERLEAKS_REDACT           default: 100, the share of a secret the
@@ -102,6 +105,9 @@ SCAN_MODE="${TASK_PUBLICATION_SCAN:-$(dotenv_value TASK_PUBLICATION_SCAN)}"
 SCAN_MODE="${SCAN_MODE:-required}"
 SCAN_IMAGE="${TASK_PUBLICATION_SCAN_IMAGE:-ghcr.io/betterleaks/betterleaks:latest}"
 SCAN_CONFIG="${TASK_PUBLICATION_SCAN_CONFIG:-.config/betterleaks/config.toml}"
+# betterleaks exits 1 on an error, and by default on a finding too. A finding
+# gets a code of its own, so a scanner that broke is never read as a secret.
+SCAN_FOUND_EXIT=3
 # The same setting as every other betterleaks scan of the framework.
 SCAN_REDACT="${TASK_BETTERLEAKS_REDACT:-$(dotenv_value TASK_BETTERLEAKS_REDACT)}"
 SCAN_REDACT="${SCAN_REDACT:-100}"
@@ -423,11 +429,15 @@ export_snapshot() {
 # Prefer an installed binary, fall back to the container, and say so when there
 # is neither: "no scanner" is not "no secret", so the publication stops there
 # unless a human has said otherwise.
+#
+# Four answers, and only the first one means no secret: 0 the scan read every
+# file and found nothing, 1 it found a secret, 2 the scanner did not finish,
+# 3 the scan is switched off and read nothing.
 scan_snapshot() {
   case "${SCAN_MODE}" in
   off)
     say "⚠️  Secret scan skipped (TASK_PUBLICATION_SCAN=off)."
-    return 0
+    return 3
     ;;
   required) ;;
   *) refuse "Invalid TASK_PUBLICATION_SCAN: use required or off." ;;
@@ -447,12 +457,14 @@ scan_snapshot() {
   if command -v betterleaks >/dev/null 2>&1; then
     _cfg=""
     [ -f "${SCAN_CONFIG}" ] && _cfg="$(cd "$(dirname "${SCAN_CONFIG}")" && pwd)/$(basename "${SCAN_CONFIG}")"
+    _rc=0
     if [ -n "${_cfg}" ]; then
-      (cd "${_snap}" && betterleaks dir . --config="${_cfg}" --redact="${SCAN_REDACT}" -v) >"${WORK}/scan.log" 2>&1 || return 1
+      (cd "${_snap}" && betterleaks dir . --config="${_cfg}" --redact="${SCAN_REDACT}" --exit-code="${SCAN_FOUND_EXIT}" -v) >"${WORK}/scan.log" 2>&1 || _rc=$?
     else
-      (cd "${_snap}" && betterleaks dir . --redact="${SCAN_REDACT}" -v) >"${WORK}/scan.log" 2>&1 || return 1
+      (cd "${_snap}" && betterleaks dir . --redact="${SCAN_REDACT}" --exit-code="${SCAN_FOUND_EXIT}" -v) >"${WORK}/scan.log" 2>&1 || _rc=$?
     fi
-    return 0
+    scan_answer "${_rc}"
+    return
   fi
 
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -460,7 +472,7 @@ scan_snapshot() {
     docker rm -f "${_name}" >/dev/null 2>&1 || true
     docker run --rm -d --name "${_name}" --entrypoint sleep "${SCAN_IMAGE}" infinity >/dev/null 2>&1 || {
       say "❌ Could not start ${SCAN_IMAGE}."
-      return 1
+      return 2
     }
     # Copied in rather than mounted: a bind mount hands the container the host's
     # ownership, and the framework's own betterleaks task learned that the hard
@@ -479,18 +491,44 @@ scan_snapshot() {
     fi
     # One stream, merged inside the container: docker carries stdout and stderr
     # apart, and the report could arrive with its summary above its findings.
+    _rc=0
     docker exec -w /snapshot "${_name}" sh -c 'exec betterleaks dir . "$@" 2>&1' sh "$@" \
-      --redact="${SCAN_REDACT}" -v >"${WORK}/scan.log" 2>&1
-    _rc=$?
+      --redact="${SCAN_REDACT}" --exit-code="${SCAN_FOUND_EXIT}" -v >"${WORK}/scan.log" 2>&1 || _rc=$?
     docker rm -f "${_name}" >/dev/null 2>&1 || true
-    return ${_rc}
+    scan_answer "${_rc}"
+    return
   fi
 
-  head_line
   refuse "The secret scan cannot run here: no betterleaks, no docker." \
     "What becomes public is scanned before it leaves, and a scanner that is" \
     "missing is not a scanner that passed." \
-    "Install docker, or set TASK_PUBLICATION_SCAN=off to publish without it."
+    "Install betterleaks or docker."
+}
+
+scan_answer() {
+  case "$1" in
+  0) return 0 ;;
+  "${SCAN_FOUND_EXIT}") return 1 ;;
+  *) return 2 ;;
+  esac
+}
+
+# What a scan that did not come back clean says, with the scanner's own output
+# when it ran. Never "no secret": only a scan that read every file knows that.
+scan_refusal() {
+  if [ "$1" -eq 3 ]; then
+    printf '\n'
+    refuse "Nothing was scanned, so nothing says whether these files hold a secret." \
+      "Set TASK_PUBLICATION_SCAN=required to scan them."
+  fi
+  sed -e 's/^/     /' "${WORK}/scan.log" 2>/dev/null | tail -n 30
+  printf '\n'
+  if [ "$1" -eq 1 ]; then
+    refuse "A secret was found in a file that was about to become public." \
+      "Nothing was published. Remove it, or exclude the file in ${DENYLIST}."
+  fi
+  refuse "The secret scan did not finish, so nobody knows whether these files hold a secret." \
+    "Nothing was published. The scanner says why above."
 }
 
 cmd_scan() {
@@ -499,7 +537,9 @@ cmd_scan() {
   say "Source      ${SOURCE_LABEL} ($(git rev-parse --short "${SOURCE_SHA}"))"
   say "Scanning    ${PUBLISHED_COUNT} $(plural "${PUBLISHED_COUNT}" file files) for secrets"
   printf '\n'
-  if scan_snapshot; then
+  _scan=0
+  scan_snapshot || _scan=$?
+  if [ "${_scan}" -eq 0 ]; then
     # The scanner's own summary, kept: "no secret found" over an empty directory
     # reads exactly like "no secret found" over the real thing.
     grep -E "scanned" "${WORK}/scan.log" 2>/dev/null | tail -n 1 | sed -e 's/^/     /'
@@ -507,10 +547,7 @@ cmd_scan() {
     printf '\n'
     return 0
   fi
-  sed -e 's/^/     /' "${WORK}/scan.log" 2>/dev/null | tail -n 30
-  printf '\n'
-  refuse "A secret was found in a file that was about to become public." \
-    "Nothing was published. Remove it, or exclude the file in ${DENYLIST}."
+  scan_refusal "${_scan}"
 }
 
 cmd_export() {
@@ -592,6 +629,13 @@ cmd_publish() {
     say "Publication waits for a tag pipeline (TASK_PUBLICATION_ON=tag)."
     return 0
   fi
+  # Switching the scan off is a person's call, made at their own keyboard. A
+  # pipeline has nobody there to make it, so it publishes only what it scanned.
+  if [ -n "${CI:-}" ] && [ "${SCAN_MODE}" = "off" ]; then
+    head_line
+    refuse "The secret scan is off (TASK_PUBLICATION_SCAN=off), and a pipeline publishes only what it scanned." \
+      "Nothing was published. Set TASK_PUBLICATION_SCAN=required."
+  fi
   require git
   # The ref, never the working copy: a laptop sitting on a feature branch with
   # the switch on would otherwise publish that branch.
@@ -636,12 +680,13 @@ cmd_publish() {
       "Run \`task publication:approve\` and let an owner answer the thread it opens."
   fi
 
-  if ! scan_snapshot; then
+  # Switched off, the scan only gets this far outside a pipeline: it said so
+  # above, and the publication goes on unscanned.
+  _scan=0
+  scan_snapshot || _scan=$?
+  if [ "${_scan}" -ne 0 ] && [ "${_scan}" -ne 3 ]; then
     printf '\n'
-    sed -e 's/^/     /' "${WORK}/scan.log" 2>/dev/null | tail -n 30
-    printf '\n'
-    refuse "A secret was found in a file that was about to become public." \
-      "Nothing was published. Remove it, or exclude the file in ${DENYLIST}."
+    scan_refusal "${_scan}"
   fi
 
   push_snapshot "${APPROVAL_SIGNER}"
@@ -1315,15 +1360,16 @@ cmd_init() {
     fi
   fi
 
-  # The one question that is not about a credential: what to do when the secret
-  # scan cannot run at all. Asked here because this is the moment somebody is
-  # deciding how strict the project is, not the moment a publication is refused.
+  # The one question that is not about a credential: whether what becomes public
+  # is scanned for secrets at all. Asked here because this is the moment somebody
+  # is deciding how strict the project is, not the moment a publication is refused.
   if [ -t 0 ]; then
-    _strict="$(ask_line "Refuse to publish when the secret scan cannot run? [Y/n]: ")"
+    _strict="$(ask_line "Scan what becomes public for secrets before each publication? [Y/n]: ")"
     case "${_strict}" in
     [nN]*)
       set_env_value "TASK_PUBLICATION_SCAN" "off"
-      say "⚠️  ${ENV_FILE} publishes without scanning. Turn it back on with TASK_PUBLICATION_SCAN=required."
+      say "⚠️  ${ENV_FILE} switches the secret scan off. A pipeline will not publish, and a publication run by hand goes out unscanned."
+      say "   Turn it back on with TASK_PUBLICATION_SCAN=required."
       ;;
     *)
       set_env_value "TASK_PUBLICATION_SCAN" "required"
