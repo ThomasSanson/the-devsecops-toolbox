@@ -219,6 +219,20 @@ storyboardStep(Given, 'an installed project with the framework already on its ma
   if (names.includes('README.md')) throw new Error('Expected no README.md on the main branch before the change')
 })
 
+// GitLab takes a new branch in on a background job. If a merge request from
+// that branch already exists when the job starts, the job adds "restored source
+// branch" to the merge request's activity. The job records the push event only
+// after it has made that choice, so once the event is there no merge request
+// opened later can get the note.
+async function waitBranchTakenIn () {
+  for (let i = 0; i < 30; i++) {
+    if (i) await I.wait(2)
+    const events = (await freshGet(projectApi('/events?action=pushed'), lambdaHeaders())).data || []
+    if (events.some(e => e.push_data && e.push_data.ref === BRANCH)) return
+  }
+  throw new Error(`GitLab never recorded the push event of the new branch ${BRANCH}`)
+}
+
 // Mirror the issue page's "Create merge request" button, as the developer (the
 // lambda user, never the admin): a branch named after the ticket, a merge
 // request that closes it, assigned to its author.
@@ -233,6 +247,7 @@ storyboardStep(When, 'the developer opens an issue and creates its merge request
   if (issue.data.state !== 'opened') throw new Error(`Expected the issue open, got state=${issue.data.state}`)
   const branch = await createRepositoryBranch(PROJECT_NAME, BRANCH, 'main', lambdaHeaders())
   if (branch.status >= 400) throw new Error(`Failed to create branch "${BRANCH}" (status ${branch.status}): ${JSON.stringify(branch.data)}`)
+  await waitBranchTakenIn()
   const mr = await createMergeRequest(
     PROJECT_NAME,
     {
