@@ -18,6 +18,9 @@ const {
   listProjectPipelines,
   listRepositoryTree
 } = require('../helpers/gitlabApi')
+const { stripAnsiEscapeSequences } = require('../helpers/docker')
+const { openLocalTerminal } = require('../helpers/localTerminal')
+const { terminalCard } = require('../terminal/capture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
@@ -76,6 +79,14 @@ const MATRIX_MAIN_COMMIT = 'render: every default Copier answer'
 // Directories the framework keeps out of a default render: the opt-in tooling
 // (Ansible, podman) and the publication kit.
 const MATRIX_OPT_IN_CONFIG = ['ansible', 'ansible-lint', 'podman', 'publication']
+// What moves between two runs of `task yamllint`: the render's temporary
+// folder in the prompt, and the yamllint and Python versions Renovate moves.
+const YAMLLINT_MASKS = [
+  [/\/tmp\/e2e-render-matrix-\w+/g, '/tmp/e2e-render-matrix-<tmp>'],
+  [/yamllint==[0-9][\w.]*/g, 'yamllint==<version>'],
+  [/--python [0-9][\w.]*/g, '--python <version>']
+]
+const YAMLLINT_VERDICT = 'All files correctly linted with yamllint!'
 let matrix = null
 
 Before(() => { matrix = null })
@@ -85,6 +96,7 @@ Before(() => { matrix = null })
 After(async () => {
   const done = matrix
   matrix = null
+  if (done && done.closeTerminal) done.closeTerminal()
   if (done && done.pub) await done.pub.teardown()
 })
 
@@ -107,6 +119,27 @@ function changeSet (compare) {
   }).sort()
 }
 
+// The render's YAML, checked by code (#93, #96): every Taskfile ends on
+// exactly one newline with no blank first line, and `task yamllint`, the
+// project's own rules over every YAML file, exits 0.
+function assertYamlClean (what) {
+  const problems = []
+  const taskfiles = fs.readdirSync(matrix.dir, { recursive: true })
+    .filter(f => !f.startsWith('.git/') && /^Taskfile.*\.ya?ml$/.test(path.basename(f)))
+  if (!taskfiles.length) throw new Error(`The ${what} render holds no Taskfile`)
+  for (const file of taskfiles) {
+    const text = matrixFile(file)
+    if (text.startsWith('\n')) problems.push(`${file} starts with a blank line`)
+    if (!text.endsWith('\n') || text.endsWith('\n\n')) problems.push(`${file} does not end with exactly one newline`)
+  }
+  try {
+    execFileSync('task', ['yamllint'], { cwd: matrix.dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    problems.push(`task yamllint fails:\n${stripAnsiEscapeSequences(String(error.stdout || '') + String(error.stderr || ''))}`)
+  }
+  if (problems.length) throw new Error(`Expected the ${what} render to pass its own YAML rules:\n${problems.join('\n')}`)
+}
+
 // The same work tree, rendered again from scratch with `answers` on a branch
 // cut from the main branch, committed and pushed. Returns GitLab's compare of
 // that branch against the main branch, checked against the exact change set.
@@ -116,6 +149,9 @@ async function renderAnswerBranch (branch, answers, expected) {
     if (entry !== '.git') fs.rmSync(path.join(matrix.dir, entry), { recursive: true, force: true })
   }
   renderProject(answers, { dst: matrix.dir })
+  // Whitespace control inside an answer's conditional is where a stray blank
+  // line hides: every answer's render passes the default render's YAML check.
+  assertYamlClean(branch)
   matrixGit(['add', '-A'])
   matrixGit(['commit', '--quiet', '-m', `render: ${Object.entries(answers).map(([k, v]) => `${k}=${v}`).join(' ')}`])
   matrix.pub.push(branch)
@@ -283,6 +319,19 @@ storyboardStep(Then, 'the storyboard engine folder on the main branch ships its 
   // Twin: the manual GitLab renders is the framework's, byte for byte.
   if (await getRepositoryFile(projectName, MATRIX_MANUAL, 'main', headers) !== fs.readFileSync(`/workspace/${MATRIX_MANUAL}`, 'utf8')) {
     throw new Error(`Expected ${MATRIX_MANUAL} on the main branch to be the framework's manual`)
+  }
+})
+
+storyboardStep(Then, 'every YAML file of the default project passes yamllint', async () => {
+  // Twin first, by code: it also warms uv's cache, so the terminal shows no
+  // download.
+  assertYamlClean('default')
+  const env = { ...process.env }
+  for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
+  matrix.closeTerminal = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7694, height: 600 })
+  const screen = await terminalCard(I, 'defaults-yamllint', 'task yamllint', { mask: YAMLLINT_MASKS })
+  if (!screen.includes(YAMLLINT_VERDICT) || screen.includes('Failed to run task')) {
+    throw new Error(`Expected task yamllint to end on "${YAMLLINT_VERDICT}":\n${screen}`)
   }
 })
 

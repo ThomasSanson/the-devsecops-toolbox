@@ -5,9 +5,10 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
   automerge, project mode, Gherkin language) to render the expected files
   So that a template bug in any answer, default or not, can never ship silently
 
-  # ONE story in two chapters, told on GitLab. Chapter 1 renders the
-  # working-branch template with every default answer and pushes it as the
-  # main branch of a throwaway GitLab project. Chapter 2 renders the SAME
+  # ONE story in three chapters. Chapter 1 renders the working-branch
+  # template with every default answer and pushes it as the main branch of a
+  # throwaway GitLab project. Chapter 2 runs the project's own yamllint on
+  # that render, in a terminal. Chapter 3 renders the SAME
   # project again once per non-default answer, pushes each render as its own
   # branch, and shows GitLab's compare page of that branch against the main
   # branch: every changed file in the Files panel, the telling ones unfolded.
@@ -17,7 +18,8 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
   # ONE sentence = ONE card = ONE pixel baseline, asserted inside the step
   # (tolerance: 0). Each card is twinned with the same fact checked by code:
   # the render on disk, GitLab's REST compare (the exact list of changed
-  # files), GitLab's CI lint of the main branch and of the self-hosted branch.
+  # files), GitLab's CI lint of the main branch and of the self-hosted branch,
+  # and yamllint with the project's own rules on every render.
   #
   # These are fresh renders, not updates: copier update keeps files a project
   # already has. The update path is the @toolbox-update story.
@@ -36,6 +38,12 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: This is the storyboard engine's manual, the same file as in the toolbox.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tree/main/.config/codeceptjs
     And the storyboard engine folder on the main branch ships its own manual
+    # Chapter: The default project passes its own YAML linter
+    # Note: A terminal in the default project, the same files GitLab holds on the main branch. task yamllint runs yamllint over every YAML file of the project, the Taskfiles included, with the project's own rules from .config/yamllint/config.yml.
+    # Note: Those rules refuse a blank first or last line, a missing --- at the top and a wrong indentation, and --strict fails on a warning too. The run ends on "All files correctly linted with yamllint!".
+    # Note: The temporary folder and the yamllint and Python versions are hidden, so the picture does not move when they are upgraded.
+    # Copy: task yamllint
+    Then every YAML file of the default project passes yamllint
     # Chapter: Each answer changes exactly what it promises, one branch per answer
     # Note: The same project rendered again with container_runtime: podman and pushed as the branch podman. GitLab's compare page shows what that branch changes against the main branch: the Files panel lists every changed file, the diffs unfold the telling ones.
     # Note: Ten files change: the docker-ce files leave (their .gitignore moves to the podman folder), the podman files arrive and project/docker-compose.yml is deleted. Taskfile.yml is unfolded: its docker-ce include goes, and a podman include arrives further down.
