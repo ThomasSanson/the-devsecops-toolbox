@@ -499,14 +499,21 @@ tasks:
               fi
             else
               echo "🦊 Applying merge request settings..."
-              glab api --method PUT "projects/$PROJECT_PATH_ENCODED" --hostname "$GITLAB_REMOTE_HOST" \
+              # GitLab answers with the whole project, its runner registration
+              # token included: print only the settings, or GitLab's reason.
+              if ! RESPONSE=$(glab api --method PUT "projects/$PROJECT_PATH_ENCODED" --hostname "$GITLAB_REMOTE_HOST" \
                 -f default_branch={{.TASK_GIT_DEFAULT_BRANCH}} \
                 -f merge_method={{.TASK_GLAB_MERGE_METHOD}} \
                 -f squash_option={{.TASK_GLAB_SQUASH_OPTION}} \
                 -f remove_source_branch_after_merge={{.TASK_GLAB_REMOVE_SOURCE_BRANCH}} \
                 -f only_allow_merge_if_pipeline_succeeds={{.TASK_GLAB_PIPELINE_MUST_SUCCEED}} \
                 -f only_allow_merge_if_all_discussions_are_resolved={{.TASK_GLAB_ALL_THREADS_RESOLVED}} \
-                -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}}
+                -f printing_merge_request_link_enabled={{.TASK_GLAB_MR_LINK_ENABLED}} 2>/dev/null); then
+                REASON=$(echo "$RESPONSE" | jq -r '.message // .error // empty' 2>/dev/null || true)
+                echo "❌ GitLab refused the merge request settings: ${REASON:-no answer from GitLab}"
+                exit 1
+              fi
+              echo "$RESPONSE" | jq -r '{default_branch, merge_method, squash_option, remove_source_branch_after_merge, only_allow_merge_if_pipeline_succeeds, only_allow_merge_if_all_discussions_are_resolved, printing_merge_request_link_enabled} | to_entries[] | "   \(.key) = \(.value)"'
               echo "✅ GitLab merge request settings configured"
             fi
           fi
