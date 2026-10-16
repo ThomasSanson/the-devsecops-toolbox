@@ -136,27 +136,25 @@ store_ci_variable() {
   return 1
 }
 
-# The CI/CD variable must hold THE project access token $2 (its id), not just
-# any token that signs in: another user's token, another project's, a revoked
-# or an expired one all fail here.
-verify_ci_variable_token() {
+# The id of the token the CI/CD variable signs in as, or nothing when it signs
+# in as none: missing, empty, revoked, expired or not a token at all.
+ci_variable_token_id() {
   local var_name="$1"
-  local token_id="$2"
-  local var_json hidden cred host self_id
+  local var_json hidden cred host
 
-  var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
-  echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
+  var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 0
+  echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 0
 
   # Hidden variables: GitLab does not expose their value through the API,
   # so we cannot prove sync with the active PAT. Force re-rotation rather
   # than silently trusting a possibly-stale value.
   hidden=$(echo "$var_json" | jq -r '.hidden // false')
   if [ "$hidden" = "true" ]; then
-    return 1
+    return 0
   fi
 
   cred=$(echo "$var_json" | jq -r '.value // empty')
-  [ -n "$cred" ] || return 1
+  [ -n "$cred" ] || return 0
 
   host="${GITLAB_HOST:-}"
   if [ -z "$host" ]; then
@@ -167,9 +165,17 @@ verify_ci_variable_token() {
   # Use the host's configured API protocol, exactly as the variable lookup did.
   # A failed HTTPS request must never send the credential again over HTTP.
   # GitLab answers which token it is, never its value.
-  self_id=$(GITLAB_TOKEN="$cred" glab api --hostname "$host" personal_access_tokens/self 2>/dev/null |
-    strip_glab_noise | jq -r '.id // empty') || return 1
-  [ -n "$self_id" ] && [ "$self_id" = "$token_id" ]
+  GITLAB_TOKEN="$cred" glab api --hostname "$host" personal_access_tokens/self 2>/dev/null |
+    strip_glab_noise | jq -r '.id // empty' 2>/dev/null || true
+}
+
+# The CI/CD variable must hold THE project access token $2 (its id), not just
+# any token that signs in: another user's token, another project's, a revoked
+# or an expired one all fail here.
+verify_ci_variable_token() {
+  local self_id
+  self_id=$(ci_variable_token_id "$1")
+  [ -n "$self_id" ] && [ "$self_id" = "$2" ]
 }
 
 # A variable holding the right token can still have lost its masking or its
@@ -200,6 +206,60 @@ repair_ci_variable_settings() {
   echo "   🔒 CI/CD variable '${var_name}' settings repaired (masked=true, protected=${protected})"
 }
 
+# Put a new token in place of token $1 (none when empty): create it, store it in
+# the CI/CD variable, check that the variable signs in as it, and only then
+# revoke the old one. Whichever step fails, the old token is still active; when
+# GitLab refuses to create or to store the new one, the CI/CD variable is left
+# as it was too. A run stopped halfway leaves at most one extra token, and the
+# next run revokes whichever one the CI/CD variable does not hold.
+replace_token() {
+  local old_id="$1"
+  local unchanged="nothing was changed"
+  local payload response new_id
+
+  [ -z "$old_id" ] || unchanged="token #${old_id} and the CI/CD variable '${TOKEN_NAME}' are unchanged"
+
+  payload=$(jq -n \
+    --arg name "$TOKEN_NAME" \
+    --argjson al "$REQUIRED_ACCESS_LEVEL" \
+    --arg exp "$EXPIRES_AT" \
+    --argjson scopes "$SCOPE_JSON" \
+    '{name: $name, scopes: $scopes, access_level: $al, expires_at: $exp}')
+  response=$(
+    echo "$payload" |
+      glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens" --input - \
+        -H "Content-Type: application/json" |
+      strip_glab_noise
+  ) || true
+  new_id=$(echo "$response" | jq -r 'select(.token) | .id // empty' 2>/dev/null) || true
+  if [ -z "$new_id" ]; then
+    echo "   ❌ GitLab refused to create the new token: ${unchanged}."
+    exit 1
+  fi
+
+  if ! echo "$response" | store_ci_variable "$TOKEN_NAME" "$TOKEN_PROTECTED"; then
+    if glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${new_id}" >/dev/null 2>&1; then
+      echo "   🗑️  Revoked the new token #${new_id}, which nothing holds: ${unchanged}."
+    else
+      echo "   ⚠️  Could not revoke the new token #${new_id} either, the next run will: ${unchanged}."
+    fi
+    exit 1
+  fi
+
+  if ! verify_ci_variable_token "$TOKEN_NAME" "$new_id"; then
+    echo "   ❌ CI/CD variable '${TOKEN_NAME}' was stored but does not sign in as the new token #${new_id}${old_id:+, so token #${old_id} is left active}. Run this command again to finish."
+    exit 1
+  fi
+  echo "   ✅ CI/CD variable '${TOKEN_NAME}' signs in as the new token #${new_id}"
+
+  [ -n "$old_id" ] || return 0
+  if glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${old_id}" >/dev/null 2>&1; then
+    echo "   🗑️  Revoked the old token #${old_id}"
+  else
+    echo "   ⚠️  Could not revoke the old token #${old_id}, the next run will: the CI/CD variable no longer holds it"
+  fi
+}
+
 check_permissions() {
   local perms project_lvl group_lvl
   perms=$(glab api "projects/${PROJECT_PATH_ENCODED}" 2>/dev/null | jq '.permissions')
@@ -225,19 +285,23 @@ COUNT=$(echo "$MATCHING" | jq 'length')
 
 if [ "$COUNT" -gt 1 ]; then
   echo "   ⚠️  Found $COUNT active tokens named '${TOKEN_NAME}'. Purging duplicates..."
-  NEWEST_ID=$(echo "$MATCHING" | jq -r 'sort_by(.created_at) | last | .id')
-  echo "$MATCHING" | jq -r ".[] | select(.id != ${NEWEST_ID}) | .id" | while read -r old_id; do
+  # Keep the one the CI/CD variable signs in as, the newest otherwise: a
+  # refresh stopped halfway leaves a newer token that nothing holds yet.
+  HELD_ID=$(ci_variable_token_id "$TOKEN_NAME")
+  KEEP_ID=$(echo "$MATCHING" | jq -r --arg held "$HELD_ID" \
+    '[(.[] | select((.id | tostring) == $held)), (sort_by(.created_at) | last)] | first | .id')
+  echo "$MATCHING" | jq -r ".[] | select(.id != ${KEEP_ID}) | .id" | while read -r old_id; do
     glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${old_id}" >/dev/null 2>&1 || true
     echo "      🗑️  Revoked duplicate token #${old_id}"
   done
-  MATCHING=$(echo "$MATCHING" | jq "[.[] | select(.id == ${NEWEST_ID})]")
+  MATCHING=$(echo "$MATCHING" | jq "[.[] | select(.id == ${KEEP_ID})]")
   COUNT=1
 fi
 
+REPLACE_ID=""
 if [ "$TOKEN_FORCE" = "true" ] && [ "$COUNT" -ge 1 ]; then
-  EXISTING_ID=$(echo "$MATCHING" | jq -r '.[0].id')
-  echo "   🔄 Force refresh: revoking existing token #${EXISTING_ID}..."
-  glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}" >/dev/null 2>&1 || true
+  REPLACE_ID=$(echo "$MATCHING" | jq -r '.[0].id')
+  echo "   🔄 Force refresh: revoking existing token #${REPLACE_ID} once its replacement is stored..."
   COUNT=0
 fi
 
@@ -251,8 +315,8 @@ if [ "$COUNT" -eq 1 ]; then
       echo "   ⚠️  Token has access_level=${EXISTING_ACCESS}, required access_level=${REQUIRED_ACCESS_LEVEL}"
     [ -z "$MISSING_SCOPES" ] ||
       echo "   ⚠️  Token is missing the scopes: ${MISSING_SCOPES}"
-    echo "      Revoking and recreating with the required access level and scopes..."
-    glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}" >/dev/null 2>&1
+    echo "      Recreating it with the required access level and scopes, revoked once its replacement is stored..."
+    REPLACE_ID="$EXISTING_ID"
     COUNT=0
   else
     if verify_ci_variable_token "$TOKEN_NAME" "$EXISTING_ID"; then
@@ -263,10 +327,7 @@ if [ "$COUNT" -eq 1 ]; then
     fi
 
     echo "   🔄 Token exists but CI/CD variable is missing or out of sync. Rotating..."
-    glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}/rotate" \
-      -f "expires_at=${EXPIRES_AT}" |
-      strip_glab_noise |
-      store_ci_variable "$TOKEN_NAME" "$TOKEN_PROTECTED"
+    replace_token "$EXISTING_ID"
     echo "   ✅ Token rotated and CI/CD variable '${TOKEN_NAME}' stored"
     echo "✅ Done! ${TOKEN_LABEL} is ready to use."
     exit 0
@@ -275,20 +336,7 @@ fi
 
 if [ "$COUNT" -eq 0 ]; then
   echo "   🔑 Creating new Project Access Token '${TOKEN_NAME}' (access_level=${REQUIRED_ACCESS_LEVEL}, expires ${EXPIRES_AT})..."
-  PAYLOAD=$(jq -n \
-    --arg name "$TOKEN_NAME" \
-    --argjson al "$REQUIRED_ACCESS_LEVEL" \
-    --arg exp "$EXPIRES_AT" \
-    --argjson scopes "$SCOPE_JSON" \
-    '{name: $name, scopes: $scopes, access_level: $al, expires_at: $exp}')
-  TOKEN_RESPONSE=$(
-    echo "$PAYLOAD" |
-      glab api --method POST "projects/${PROJECT_PATH_ENCODED}/access_tokens" --input - \
-        -H "Content-Type: application/json" |
-      strip_glab_noise
-  )
-  echo "$TOKEN_RESPONSE" |
-    store_ci_variable "$TOKEN_NAME" "$TOKEN_PROTECTED"
+  replace_token "$REPLACE_ID"
   echo "   ✅ Token created and CI/CD variable '${TOKEN_NAME}' stored"
 fi
 
