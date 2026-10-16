@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.6 (2026-10-16)
+
+### Fix
+
+- **no-cheat**: refuse a fractional tolerance
+
 ## 24.4.5 (2026-10-16)
 
 ### Fix
