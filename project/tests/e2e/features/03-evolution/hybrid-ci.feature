@@ -46,11 +46,12 @@ Feature: Choose a runner according to the work a job does
     And code:all now reports that every code check passed
     # Chapter: Containers keep their own runner
     # Note: The test job of the same pipeline. Its side panel says "Runner: Docker jobs" and "Tags: saas-linux-medium-amd64". Its log starts the web application with Docker Compose, checks it and prints "PASS: the Compose web application returns the expected HTTP response".
+    # Note: The side panel also reads "Test summary: 1": GitLab counted that check, as the next card shows.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<test job>
     And the Docker runner builds and tests the web application
     # Chapter: GitLab reads the test results
-    # Note: The same pipeline's Tests tab, open on the suite of the test job, "test". The health check of the card above also wrote its result as a JUnit report, project/tests/_output/junit/health.xml, and the test job handed that report to GitLab.
-    # Note: GitLab counts 1 tests, 0 failures and 0 errors, and lists the one check by its name, "the Compose web application returns the expected HTTP response", with a green tick.
+    # Note: The same pipeline's Tests tab, open on the suite GitLab names after the job, "test". The health check of the card above also wrote its result as a JUnit report, project/tests/_output/junit/health.xml, and the test job handed it to GitLab.
+    # Note: GitLab reads "1 tests", "0 failures", "0 errors" and "100% success rate", then lists the check by its name, "the Compose web application returns the expected HTTP response", with a green tick. The test job hands GitLab every JUnit file the tests leave in an _output/junit folder under project/.
     # Copy: http://gitlab/<lambda-user>/<project>/-/pipelines/<pipeline>/test_report
     And GitLab lists the web application's test on the pipeline's Tests tab
 

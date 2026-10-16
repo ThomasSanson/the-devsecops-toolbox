@@ -14,6 +14,12 @@ test:
     paths:
       - .diagnostics
       - project
+    reports:
+      # GitLab reads these for the pipeline's Tests tab and the merge request
+      # test summary; the archive above keeps them downloadable. A project
+      # whose tests write no JUnit only gets a warning, the job stays green.
+      junit:
+        - project/**/_output/junit/*.xml
     expire_in: 3 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
