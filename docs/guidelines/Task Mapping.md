@@ -12,10 +12,14 @@
 ## Environment Variables
 
 ### Loading Order
+
+`task` reads three files at the root of the project. The first file that sets a variable wins.
+For local work, edit .env.dev: there is nothing to copy. Only a deployed environment gets a .env file.
+
 ```txt
-1. .env (user-specific, gitignored)
-2. .env.dev (local/CI/test specific values)
-3. .env.dist (defaults for all services)
+1. .env       real values and secrets of a deployed environment, never versioned
+2. .env.dev   development values, versioned, ready to use
+3. .env.dist  defaults for every environment, versioned, no secrets
 ```
 
 ### Key Variables

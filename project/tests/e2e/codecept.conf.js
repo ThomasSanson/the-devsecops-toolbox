@@ -98,7 +98,8 @@ exports.config = {
       './support/steps/source-publication.js',
       './support/steps/publication-contracts.js',
       './support/steps/junit-control-characters.js',
-      './support/steps/publication-update.js'
+      './support/steps/publication-update.js',
+      './support/steps/env-layering.js'
     ]
   },
   plugins: {

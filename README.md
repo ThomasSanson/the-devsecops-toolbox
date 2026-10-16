@@ -255,13 +255,17 @@ task test     # Run tests
 
 ### Task Control
 
-The toolbox uses Task for operation control. Configuration is managed through environment variables defined in `.env` or `.env.dist` files.
+The toolbox uses Task for operation control. Its settings are environment variables that `task` reads from three files at the root of the project. The first file that sets a variable wins:
 
-Copy the template file and customize as needed:
-```bash
-cp .env.dist .env
-# Edit .env with your preferred settings
-```
+| File        | Versioned          | What goes in it                                                         |
+|-------------|--------------------|-------------------------------------------------------------------------|
+| `.env`      | No, git ignores it | Real values and secrets of a deployed environment (staging, production) |
+| `.env.dev`  | Yes                | Development values, and secrets that only work in development           |
+| `.env.dist` | Yes                | Defaults for every environment, no secrets                              |
+
+Local work needs no setup: `.env.dev` and `.env.dist` come with the project, so there is nothing to copy.
+To change a development value, edit `.env.dev`. To add a variable, give it a default in `.env.dist`, then a development value in `.env.dev` if it needs one.
+Create `.env` only on a deployed environment, where `.env.dev` is removed, and never commit it. AI agents never create it.
 
 Key environment variables are automatically loaded by Task. See [`.env.dist`](.env.dist) for the complete list of available variables including:
 
@@ -369,13 +373,7 @@ task commitlint         # Commit message validation
 ## Environment Variables
 
 ### Task Control Variables
-You can customize the behavior of the toolbox by setting environment variables in your `.env` file.
-
-**Setup:**
-```bash
-# Copy the template and customize
-cp .env.dist .env
-```
+You can customize the behavior of the toolbox with environment variables. For development, set them in `.env.dev`: [Task Control](#task-control) lists the three files and which one wins.
 
 **Available Variables:**
 All configuration variables are documented in [`.env.dist`](.env.dist). Key categories include:
