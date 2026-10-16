@@ -56,6 +56,24 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: The guard behind the test phase reads the working tree, and it stops on that line too. It names the file and the line, and says what the line does: "a picture check that accepts a difference: it stops proving anything".
     # Copy: git diff -- project/tests/e2e/codecept.conf.js && task devsecops:test:check:no-cheat BASE=HEAD
     And the guard refuses a picture check loosened to 0.1 just the same
+    # Chapter: A check that disappears
+    # Note: The tolerance goes back to 0, and the developer commits the test as it stands. The assistant then takes the quietest road of all: it adds nothing and deletes the scenario's only check, the Then line. The diff at the top shows that single red line.
+    # Note: A scenario with no step left has nothing that can fail. The guard reads the lines a change removes too, and stops on this one: it names the file and the line, quotes it, and says "a check removed, and none added in its place".
+    # Copy: git diff -- project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:check:no-cheat BASE=HEAD
+    Then the guard refuses a scenario that lost its only check
+    # Note: The Then line goes back, and the whole test file goes instead. git status lists it with a D, for deleted.
+    # Note: The guard reads what the deleted file held, and names the check that will never run again, line 5 of greeting.feature: "a test file deleted".
+    # Copy: git status --short && task devsecops:test:check:no-cheat BASE=HEAD
+    And the guard refuses a test file deleted whole
+    # Chapter: A test that moves, and a test that goes for a reason
+    # Note: Not every change to a test is a cheat. The test file comes back, and the developer gives it a better name: git status shows R, for renamed, from greeting.feature to hello.feature.
+    # Note: The check on line 5 did not go anywhere: it moved with its file. The guard pairs what a change removes with what it adds, and lets this one through: "Nothing in this change switches a check off or removes one."
+    # Copy: git status --short && task devsecops:test:check:no-cheat BASE=HEAD
+    Then the guard lets a renamed test through, its check moved with it
+    # Note: Sometimes a test really has to go. The greeting left the plans, so the developer deletes its test in a commit that says why, on a line starting with "No-cheat-exempt:". The top of the screen shows that commit: its message, then the file it deletes.
+    # Note: Asked about that commit, the guard lets it through in yellow, "a 'No-cheat-exempt:' trailer waives the gate", and still names the check that goes, greeting.feature:5. Without that line, the same commit is refused. The reason now sits in the history, for a reviewer to read.
+    # Copy: git show --stat --format=%B HEAD && task devsecops:test:check:no-cheat BASE=HEAD~1
+    And a deleted test goes through only with its reason written in the commit
 
 
   @generated-project-red

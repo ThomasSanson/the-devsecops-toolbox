@@ -274,6 +274,81 @@ storyboardStep(Then, 'the guard refuses a picture check loosened to 0.1 just the
   assert.notEqual(guard.code, 0, `The guard must refuse tolerance 0.1:\n${guard.output}`)
 })
 
+// ---------------------------------------------------------------------------
+// Chapter 5: a check that disappears
+// ---------------------------------------------------------------------------
+//
+// A check can go without a single line being added: a line deleted, a file
+// deleted. The guard reads what a change removes too, and pairs it with what
+// the change adds, so a check that only moved is not a check that went.
+
+const RENAMED = 'project/tests/e2e/features/02-daily-work/hello.feature'
+const THEN_LINE = '    Then the toolbox greets the developer by name'
+const EXEMPT = 'No-cheat-exempt: the greeting left the plans, so its test goes with it'
+// The guard on the last commit, where a trailer can be read.
+const GUARD_LAST_COMMIT = 'task devsecops:test:check:no-cheat BASE=HEAD~1'
+const git = (args) => execSync(`git ${args}`, { cwd: FIXTURE, env: tdd.env, encoding: 'utf8' }).trim()
+
+storyboardStep(Then, 'the guard refuses a scenario that lost its only check', async () => {
+  // The tolerance goes back to 0 and the developer commits the test as it
+  // stands: from here on, the guard compares the working tree with that commit.
+  const conf = path.join(FIXTURE, CONFIG)
+  fs.writeFileSync(conf, fs.readFileSync(conf, 'utf8').replace(/^(\s*)tolerance: 0\.1,$/m, '$1tolerance: 0,'))
+  git(`add ${FEATURE} ${STEPS} ${HELPER} ${CONFIG}`)
+  git('commit -qm "test: greet the developer by name"')
+  fs.writeFileSync(path.join(FIXTURE, FEATURE), FEATURE_BODY.replace(`${THEN_LINE}\n`, ''))
+  assert.deepEqual(git('diff --name-only HEAD').split('\n'), [FEATURE], 'Only the Then line is gone')
+
+  const screen = await card('guard-refuses-a-removed-check', `git diff -- ${FEATURE} && ${GUARD}`, DIFF_MASKS)
+  for (const said of [`-${THEN_LINE}`, `${FEATURE}:5`, 'a check removed, and none added in its place',
+    'Failed to run task "devsecops:test:check:no-cheat"']) {
+    assert.ok(screen.includes(said), `Expected the guard to refuse the removed check with "${said}":\n${screen}`)
+  }
+  const guard = tddRun(GUARD)
+  assert.notEqual(guard.code, 0, `The guard must refuse a removed check:\n${guard.output}`)
+})
+
+storyboardStep(Then, 'the guard refuses a test file deleted whole', async () => {
+  fs.rmSync(path.join(FIXTURE, FEATURE))
+  const screen = await card('guard-refuses-a-deleted-test', `git status --short && ${GUARD}`)
+  for (const said of [` D ${FEATURE}`, `${FEATURE}:5`, 'a test file deleted',
+    'Failed to run task "devsecops:test:check:no-cheat"']) {
+    assert.ok(screen.includes(said), `Expected the guard to refuse the deleted test with "${said}":\n${screen}`)
+  }
+  const guard = tddRun(GUARD)
+  assert.notEqual(guard.code, 0, `The guard must refuse a deleted test file:\n${guard.output}`)
+})
+
+storyboardStep(Then, 'the guard lets a renamed test through, its check moved with it', async () => {
+  // The guard's `git add -N .` recorded the deletion in the index: restore from
+  // the commit.
+  git(`checkout -q HEAD -- ${FEATURE}`)
+  git(`mv ${FEATURE} ${RENAMED}`)
+  const screen = await card('guard-lets-a-renamed-test-through', `git status --short && ${GUARD}`)
+  for (const said of [`R  ${FEATURE} -> ${RENAMED}`, 'Nothing in this change switches a check off or removes one.']) {
+    assert.ok(screen.includes(said), `Expected the guard to let the renamed test through with "${said}":\n${screen}`)
+  }
+  const guard = tddRun(GUARD)
+  assert.equal(guard.code, 0, `The guard must let a renamed test through:\n${guard.output}`)
+})
+
+storyboardStep(Then, 'a deleted test goes through only with its reason written in the commit', async () => {
+  git(`mv ${RENAMED} ${FEATURE}`)
+  git(`rm -q ${FEATURE}`)
+  // The twin first, off camera: the same commit without its reason is refused.
+  git('commit -qm "test: drop the greeting"')
+  const bare = tddRun(GUARD_LAST_COMMIT)
+  assert.notEqual(bare.code, 0, `Without its reason, the deletion must be refused:\n${bare.output}`)
+  git(`commit -q --amend -m "test: drop the greeting" -m "${EXEMPT}"`)
+
+  const screen = await card('deleted-test-goes-with-its-reason', `git show --stat --format=%B HEAD && ${GUARD_LAST_COMMIT}`)
+  for (const said of [EXEMPT, `${FEATURE} | 5 -----`, `${FEATURE}:5`, "a 'No-cheat-exempt:' trailer waives the gate"]) {
+    assert.ok(screen.includes(said), `Expected the waiver to name the deleted check with "${said}":\n${screen}`)
+  }
+  const guard = tddRun(GUARD_LAST_COMMIT)
+  assert.equal(guard.code, 0, `The reason in the commit must waive the gate:\n${guard.output}`)
+})
+
 // ===========================================================================
 // @worker-completion: a parallel run passes only when every selected scenario
 // finished.
