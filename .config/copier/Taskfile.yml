@@ -63,7 +63,11 @@ tasks:
         project's own evolution, this one puts the framework files back to what
         that release ships — the "reload" half of `task devsecops:reload`.
 
-        Files listed under `_skip_if_exists` in the template stay as they are.
+        Files listed under `_skip_if_exists` in the template stay as they are,
+        and so do the four files the toolbox writes a few lines of and the
+        project owns the rest of: `.env.dist`, `.env.dev`,
+        `.config/megalinter/config.yml` and `.config/trivy/trivyignore.yml`.
+        `update` still merges the toolbox's own lines into them.
 
       🔧 Variables:
         - TASK_COPIER_ANSWER_FILE: Path to the Copier answers file
@@ -80,7 +84,10 @@ tasks:
     cmds:
       - cmd: echo "♻️ Re-applying the template from {{.TASK_COPIER_ANSWER_FILE}}"
         silent: true
-      - "{{.TASK_COPIER_COMMAND}} recopy --trust --overwrite --defaults --skip-answered --skip-tasks --vcs-ref :current: {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
+      # --skip, not _skip_if_exists: listed there, these files would also be
+      # left out of every update, and the toolbox's own lines in them would
+      # never reach the project again.
+      - "{{.TASK_COPIER_COMMAND}} recopy --trust --overwrite --defaults --skip-answered --skip-tasks --vcs-ref :current: --skip .env.dist --skip .env.dev --skip .config/megalinter/config.yml --skip .config/trivy/trivyignore.yml {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
       - cmd: echo "🎉 Copier recopy completed successfully."
         silent: true
 

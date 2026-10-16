@@ -51,7 +51,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**betterleaks-redact-config**](02-daily-work/betterleaks-redact-config.svg): A made-up password reaches a merge request. The generated Betterleaks job fails and prints REDACTED in the shared CI log, and only the developer's own terminal shows more, on request.
   Chapters: Every scan hides the whole value unless told otherwise · The shared CI log never prints the value · The developer sees more in their own terminal only.
   Replay: `task project:test:e2e -- --grep "@betterleaks-redact-config"`
-- [**9. self-healing**](02-daily-work/self-healing.svg): init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed. One `task devsecops:reload` then puts a drifted project back (main branch protection, pipeline file, both tokens).
+- [**9. self-healing**](02-daily-work/self-healing.svg): init repairs its own GitLab connection: a revoked token, a tampered variable and a duplicate token are all fixed. One `task devsecops:reload` then puts a drifted project back (main branch protection, pipeline file, both tokens) and leaves the project's own settings where they are.
   Chapters: A revoked release token is rebuilt · A duplicate token and a tampered variable are repaired · A project that drifted is put back in one command.
   Replay: `task project:test:e2e -- --grep "@self-healing"`
 - [**10. release-window**](02-daily-work/release-window.svg): A release that fails leaves nothing broken behind: the main branch re-locks itself, and no tag is pushed for an image that was never published.
