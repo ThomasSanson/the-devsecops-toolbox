@@ -2,6 +2,23 @@
 
 # Changelog
 
+## 24.4.0 (2026-10-16)
+
+### Feat
+
+- **copier**: move a project's .agent files one by one on update
+- **agent**: link each skill from .claude/skills
+- **agent**: turn the eight workflows into skills
+
+### Fix
+
+- **install**: install the agent files in .agents/ again and bring an old .agent folder along
+
+### Refactor
+
+- **agent**: point every reference to the .agents folder
+- **agent**: rename the .agent folder to .agents
+
 ## 24.3.0 (2026-10-16)
 
 ### Feat
