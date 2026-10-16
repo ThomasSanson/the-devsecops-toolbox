@@ -8,8 +8,8 @@
  * What a command prints is a twin of its card, checked line by line, together
  * with REST on the same fact and a sign-in with each CI/CD variable's token.
  *
- * Chapters 1 and 2 share one project, set up through workspaceRepo (a clone, a
- * copy of /workspace and a first `task devsecops:init`). Chapter 3 renders its
+ * Chapters 1 to 5 share one project, set up through workspaceRepo (a clone, a
+ * copy of /workspace and a first `task devsecops:init`). Chapter 6 renders its
  * own project from the versioned template, so the reload has answers to read.
  */
 
@@ -44,14 +44,16 @@ const TOKEN = 'TASK_COMMITIZEN_TOKEN'
 const RENOVATE_TOKEN = 'TASK_RENOVATE_TOKEN'
 const TAMPERED_VALUE = 'tampered-by-e2e'
 
-// Per-scenario state. Both chapters' glab tokens and working trees are kept
-// for the After hook: chapter 3 moves projectName and glabToken on.
+// Per-scenario state. Both projects' glab tokens and working trees are kept
+// for the After hook: chapter 6 moves projectName and glabToken on.
 let projectName = null
 let glabToken = null
 let mintedPatIds = []
 let repoDirs = []
 let revokedTokenId = null
 let healedTokenId = null
+let weakTokenId = null
+let guardedTokenId = null
 let reloadTemplate = null
 let tokenIdsBeforeReload = null
 
@@ -66,6 +68,8 @@ Before(() => {
   repoDirs = []
   revokedTokenId = null
   healedTokenId = null
+  weakTokenId = null
+  guardedTokenId = null
   tokenIdsBeforeReload = null
 })
 
@@ -222,9 +226,11 @@ const SHIMMER = '.feature-library-shimmer::before'
 // The access-tokens page: "Active project access tokens" and, below, the
 // inactive ones GitLab keeps marked "Revoked". `rows` = [active, inactive], the
 // row counts the REST twin expects, waited for so a half-loaded table is never shot.
+// Each inactive row past the third makes the page 49 px taller, and the card
+// grows with it, so the last row stays in view.
 async function tokensFrame (frameName, [active, inactive]) {
   await gitlabFrame(I, frameName, gitlabUrl.accessTokens(projectName), {
-    height: 760,
+    height: 760 + 49 * Math.max(0, inactive - 3),
     waitText: 'Active project access tokens',
     hide: [SHIMMER],
     prepare: async () => {
@@ -407,9 +413,122 @@ storyboardStep(Then, 'the CI/CD variable holds a GitLab token again instead of t
 })
 
 // ===========================================================================
-// Chapter 3: a project that drifted the way a live one does, put back by ONE
+// Chapters 3 to 5, same project: each breaks one thing a sign-in alone would
+// miss. The variable holds a real token that is not the release token; the
+// release token cannot push; the variable is no longer masked, then no longer
+// protected. Every init run here is also checked for printing no token.
+// ===========================================================================
+
+// Masked keeps the value out of job logs, protected keeps it away from
+// pipelines on unprotected branches. GitLab's update takes the value along.
+async function setVariableGuards (guards) {
+  const res = await updateProjectVariable(projectName, TOKEN, { value: await variableValue(TOKEN), ...guards }, await getRootHeaders())
+  if (res.status >= 400) throw new Error(`Failed to change the settings of "${TOKEN}" (${res.status})`)
+}
+
+async function assertVariableGuards (expected) {
+  const { data } = await readProjectVariable(projectName, TOKEN, await getRootHeaders())
+  const actual = { masked: data.masked, protected: data.protected }
+  if (actual.masked !== expected.masked || actual.protected !== expected.protected) {
+    throw new Error(`Expected "${TOKEN}" to be ${JSON.stringify(expected)}, GitLab says ${JSON.stringify(actual)}`)
+  }
+}
+
+// init prints what it did and never a token: neither the value it found in the
+// variable nor the one it left there.
+async function runInitPrinting (lines) {
+  const found = await variableValue(TOKEN)
+  const output = runTask('task devsecops:init')
+  assertPrinted(output, lines)
+  for (const secret of [found, await variableValue(TOKEN), await variableValue(RENOVATE_TOKEN)]) {
+    if (output.includes(secret)) throw new Error('task devsecops:init printed a token value')
+  }
+}
+
+storyboardStep(When, "someone pastes the dependency robot's token into the release token's CI/CD variable", async () => {
+  const res = await updateProjectVariable(projectName, TOKEN, { value: await variableValue(RENOVATE_TOKEN) }, await getRootHeaders())
+  if (res.status >= 400) throw new Error(`Failed to paste the robot's token into "${TOKEN}" (${res.status})`)
+  // A real token, so it signs in, but as the robot's own token.
+  await assertVariableIsToken(TOKEN, (await automationTokenIds())[RENOVATE_TOKEN])
+  await assertVariableGuards({ masked: true, protected: true })
+  await variablesFrame('variables-wrong-token')
+})
+
+storyboardStep(When, 'the developer runs init again, it replaces the release token the variable did not sign in as', async () => {
+  const before = await automationTokenIds()
+  await runInitPrinting([`Token '${RENOVATE_TOKEN}' exists and is valid`, 'out of sync. Rotating', ...INIT_DONE])
+  await assertReleaseTokens(1, 4)
+  const after = await automationTokenIds()
+  if (after[TOKEN] === before[TOKEN]) throw new Error(`init kept the release token ${before[TOKEN]}, whose variable signed in as another token`)
+  if (after[RENOVATE_TOKEN] !== before[RENOVATE_TOKEN]) throw new Error(`init replaced the robot's token ${before[RENOVATE_TOKEN]}`)
+  for (const name of [TOKEN, RENOVATE_TOKEN]) await assertVariableIsToken(name, after[name])
+  await tokensFrame('tokens-wrong-token-replaced', [2, 4])
+})
+
+storyboardStep(When, 'someone swaps the release token for one that cannot push to the repository', async () => {
+  const headers = await getRootHeaders()
+  const { active } = await assertReleaseTokens(1, 4)
+  const revoked = await revokeProjectAccessToken(projectName, active[0].id, headers)
+  if (revoked.status >= 400) throw new Error(`Failed to revoke token ${active[0].id} (${revoked.status})`)
+  const expiresAt = new Date(Date.now() + 300 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const made = await createProjectAccessToken(projectName, {
+    name: TOKEN, scopes: ['api'], access_level: 40, expires_at: expiresAt
+  }, headers)
+  if (made.status >= 400) throw new Error(`Failed to make a token without write_repository (${made.status})`)
+  weakTokenId = made.data.id
+  const stored = await updateProjectVariable(projectName, TOKEN, { value: made.data.token }, headers)
+  if (stored.status >= 400) throw new Error(`Failed to store the hand-made token in "${TOKEN}" (${stored.status})`)
+  const { active: now } = await assertReleaseTokens(1, 5)
+  if (now[0].id !== weakTokenId || JSON.stringify(now[0].scopes) !== '["api"]') {
+    throw new Error(`Expected the active "${TOKEN}" to be ${weakTokenId} with scope api only, found ${now[0].id} ${JSON.stringify(now[0].scopes)}`)
+  }
+  await assertVariableIsToken(TOKEN, weakTokenId)
+  await tokensFrame('tokens-cannot-push', [2, 5])
+})
+
+storyboardStep(When, 'the developer runs init again, the release token can push to the repository again', async () => {
+  await runInitPrinting(['Token is missing the scopes: write_repository', `Token created and CI/CD variable '${TOKEN}' stored`, ...INIT_DONE])
+  const { active, revoked } = await assertReleaseTokens(1, 6)
+  if (!revoked.some(t => t.id === weakTokenId)) throw new Error(`init left the token ${weakTokenId}, which cannot push, active`)
+  if (JSON.stringify([...active[0].scopes].sort()) !== '["api","write_repository"]') {
+    throw new Error(`Expected the new "${TOKEN}" to have api and write_repository, found ${JSON.stringify(active[0].scopes)}`)
+  }
+  await assertVariableIsToken(TOKEN, active[0].id)
+  await tokensFrame('tokens-can-push-again', [2, 6])
+})
+
+storyboardStep(When, "someone turns masking off on the release token's CI/CD variable", async () => {
+  guardedTokenId = (await automationTokenIds())[TOKEN]
+  await setVariableGuards({ masked: false })
+  await assertVariableGuards({ masked: false, protected: true })
+  await variablesFrame('variables-unmasked')
+})
+
+storyboardStep(When, 'someone turns protection off on that variable as well', async () => {
+  await setVariableGuards({ protected: false })
+  await assertVariableGuards({ masked: false, protected: false })
+  await variablesFrame('variables-unprotected')
+})
+
+storyboardStep(When, 'the developer runs init again, the variable is masked and protected again', async () => {
+  await runInitPrinting([
+    `CI/CD variable '${TOKEN}' settings repaired (masked=true, protected=true)`, `Token '${TOKEN}' exists and is valid`, ...INIT_DONE
+  ])
+  await assertVariableGuards({ masked: true, protected: true })
+  await assertVariableIsToken(TOKEN, guardedTokenId)
+  await variablesFrame('variables-guarded')
+})
+
+storyboardStep(Then, 'GitLab still lists the same release token, because init replaced nothing', async () => {
+  const { active } = await assertReleaseTokens(1, 6)
+  if (active[0].id !== guardedTokenId) throw new Error(`init replaced the release token ${guardedTokenId} with ${active[0].id}`)
+  await tokensFrame('tokens-kept', [2, 6])
+})
+
+// ===========================================================================
+// Chapter 6: a project that drifted the way a live one does, put back by ONE
 // `task devsecops:reload`, which replaces tokens that still worked: exactly what
-// init must NOT do (chapter 1).
+// init must NOT do (chapters 1 and 5).
 // ===========================================================================
 
 const RELOAD_PROJECT = 'e2e-framework-reload'

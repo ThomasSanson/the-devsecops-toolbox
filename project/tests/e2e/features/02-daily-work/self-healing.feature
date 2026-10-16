@@ -7,8 +7,8 @@ Feature: the framework repairs its own GitLab setup when something breaks it
   its own answers describe
   So that one command always leaves a working setup in place.
 
-  # ONE story in three chapters. Chapters 1 and 2 share one project, set up by a
-  # first `task devsecops:init`. Chapter 3 has its own project, generated from
+  # ONE story in six chapters. Chapters 1 to 5 share one project, set up by a
+  # first `task devsecops:init`. Chapter 6 has its own project, generated from
   # the template so the reload has answers to read. ONE Gherkin sentence = ONE
   # card = ONE pixel baseline, asserted inside the step (tolerance: 0), and every
   # card is a real GitLab page: the access tokens, the CI/CD variables, the
@@ -25,13 +25,17 @@ Feature: the framework repairs its own GitLab setup when something breaks it
   #
   # Chapter 1: init rebuilds a revoked release token, and a second init changes
   # nothing. Chapter 2: one more init repairs a planted duplicate and a tampered
-  # variable. Chapter 3: a project that drifted the way a live one does is put
-  # back by one `task devsecops:reload`, which also replaces both tokens even
-  # though they still worked, and leaves the project's own settings alone. init
-  # leaves a working token alone, as chapter 1 shows: that is the difference
-  # between the two commands.
+  # variable. Chapters 3 to 5 each break one more thing a page check would miss:
+  # the variable holds a real token, but not the release token; the release
+  # token cannot push; the variable is no longer masked, then no longer
+  # protected. init repairs each one, and in chapter 5 it keeps the token,
+  # because the token itself was right. Chapter 6: a project that drifted the
+  # way a live one does is put back by one `task devsecops:reload`, which also
+  # replaces both tokens even though they still worked, and leaves the
+  # project's own settings alone. init leaves a working token alone, as
+  # chapters 1 and 5 show: that is the difference between the two commands.
   @self-healing
-  Scenario: init heals a revoked token, a tampered variable and a duplicate token, and reload puts a drifted project back
+  Scenario: init heals a revoked, duplicate, wrong or weakened token and an unguarded variable, and reload puts a drifted project back
     # Chapter: A revoked release token is rebuilt
     # Note: GitLab's access-tokens page of a project after its first `task devsecops:init`. That run created two tokens, the release token TASK_COMMITIZEN_TOKEN and the dependency robot's TASK_RENOVATE_TOKEN.
     # Note: Someone has since revoked the release token in GitLab. "Active project access tokens" lists only TASK_RENOVATE_TOKEN, and the release token sits under "Inactive project access tokens", marked "Revoked". Dates, last use and expiry change on every run, so they are blanked.
@@ -59,6 +63,37 @@ Feature: the framework repairs its own GitLab setup when something breaks it
     # Note: The same CI/CD settings page, values revealed. TASK_COMMITIZEN_TOKEN holds a GitLab token again, "glpat-" with its secret part masked, where it held "tampered-by-e2e". The test checks that this value signs in to GitLab as the new release token.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     Then the CI/CD variable holds a GitLab token again instead of the bad value
+    # Chapter: A variable that signs in as another token is fixed
+    # Note: The same CI/CD settings, values revealed. Someone pasted the dependency robot's token into the release token's variable, so TASK_COMMITIZEN_TOKEN and TASK_RENOVATE_TOKEN now hold the same value.
+    # Note: Nothing on this page gives it away. Both read "glpat-*****" and both keep their "Protected" and "Masked" badges, because the value is a real token that signs in to GitLab. The test checks that it signs in as the dependency robot's token, not as the release token.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    When someone pastes the dependency robot's token into the release token's CI/CD variable
+    # Note: One more `task devsecops:init`. It asks GitLab which token the variable signs in as. The answer is not the release token, so init replaced the release token with a new one and stored that one in the variable.
+    # Note: "Inactive project access tokens" now counts 4: the replaced release token joined the three from chapters 1 and 2. TASK_RENOVATE_TOKEN is still the same token, and the test checks that each variable signs in as its own token again.
+    # Copy: task devsecops:init
+    When the developer runs init again, it replaces the release token the variable did not sign in as
+    # Chapter: A release token that cannot push is rebuilt
+    # Note: Someone revoked the release token, made a new TASK_COMMITIZEN_TOKEN by hand and stored it in the variable. Its "Scopes" column reads only "api". It lacks "write_repository", the right to push to the repository, which the release job needs.
+    # Note: "Inactive project access tokens" counts 5 with the token revoked by hand. The new token signs in and the variable holds it, so only its scopes give it away.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
+    When someone swaps the release token for one that cannot push to the repository
+    # Note: One more `task devsecops:init`. It compared the token's scopes with the ones it needs, revoked the hand-made token and created a new one. The active TASK_COMMITIZEN_TOKEN reads "api, write_repository" again, and "Inactive project access tokens" counts 6, with the hand-made token, the row that reads only "api", among them.
+    # Note: The same run stored the new token in the CI/CD variable. The test checks that the variable signs in as it.
+    # Copy: task devsecops:init
+    When the developer runs init again, the release token can push to the repository again
+    # Chapter: A variable that lost its guards gets them back, with the same token
+    # Note: The CI/CD settings again. Someone turned masking off on TASK_COMMITIZEN_TOKEN. Under its name the "Masked" badge is gone, and only "Protected" and "Expanded" are left. Masked means GitLab hides the value in every job log.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    When someone turns masking off on the release token's CI/CD variable
+    # Note: Someone also turned protection off. Only "Expanded" is left under TASK_COMMITIZEN_TOKEN. Protected means only pipelines on protected branches, such as the main branch, can read the value.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    And someone turns protection off on that variable as well
+    # Note: One more `task devsecops:init`. TASK_COMMITIZEN_TOKEN shows "Protected" and "Masked" again, like TASK_RENOVATE_TOKEN below it. Its value still reads "glpat-*****", and the test checks that it is the very same token as before.
+    # Copy: task devsecops:init
+    When the developer runs init again, the variable is masked and protected again
+    # Note: The access-tokens page after that run looks exactly as it did at the end of the previous chapter: one active release token, and "Inactive project access tokens" still counts 6. The token was right, so init fixed the variable's settings and replaced nothing.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
+    Then GitLab still lists the same release token, because init replaced nothing
     # Chapter: A project that drifted is put back in one command
     # Note: A new project, generated from the toolbox and set up on install day. Its repository settings, "Protected branches": the main branch says "Allowed to push and merge: Maintainers".
     # Note: The toolbox sets that to "No one", so every change reaches the main branch through a merge request. Someone loosened it by hand.
@@ -72,7 +107,7 @@ Feature: the framework repairs its own GitLab setup when something breaks it
     # Copy: git commit -am "chore: tweak the pipeline by hand" && git push origin main
     And someone pushed a hand edit of the pipeline file straight to the main branch
     # Note: The developer runs `task devsecops:reload`. It re-applies the project's own answers to the framework files, then redoes the GitLab setup. On the access-tokens page both tokens are active, and both install-day tokens sit under "Inactive project access tokens", marked "Revoked".
-    # Note: The reload replaced them even though they still worked, and stored each new token in its CI/CD variable. `task devsecops:init` never replaces a working token, as chapter 1 showed.
+    # Note: The reload replaced them even though they still worked, and stored each new token in its CI/CD variable. `task devsecops:init` never replaces a working token, as chapters 1 and 5 showed.
     # Copy: task devsecops:reload
     When the developer reloads the framework, both automation tokens are revoked and replaced by new ones
     # Note: The same "Protected branches" settings as before the reload. The main branch says "Allowed to push and merge: No one" again, and "Allowed to merge: Maintainers": a change now reaches the main branch only through a merge request.
