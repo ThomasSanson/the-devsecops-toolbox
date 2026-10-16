@@ -10,7 +10,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
-const { spawnSync, execFileSync } = require('child_process')
+const { spawn, spawnSync, execFileSync } = require('child_process')
 const { renderProject, removeRendered } = require('../helpers/copierRender')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { screenText, maskText, terminalOutputFrame } = require('../helpers/terminalRender')
@@ -83,7 +83,8 @@ function display (result) {
   return maskText(screenText(result.raw), [
     [literal(result.project.dir), '<project>'],
     [literal(binDir), '<bin-dir>'],
-    [/betterleaks-redaction-[0-9a-f]+/g, '<scan-container>'],
+    [/betterleaks-redaction-[0-9a-f-]+/g, '<scan-container>'],
+    [/\b(betterleaks-container-)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/g, '$1<id>'],
     [/betterleaks \d+(?:\.\d+)+/g, 'betterleaks <version>'],
     [/\b[0-9a-f]{7,64}\b/g, '<sha>'],
     [/\d{4}-\d{2}-\d{2}T[^\s]+/g, '<date>'],
@@ -139,6 +140,86 @@ function scanAllBlocked () {
   }
   if (failures.length) throw new Error(failures.join('\n'))
 }
+
+// @concurrent-scans — one project with the default answers, so the Docker
+// scanner, and each scan started twice at the same time (issue #243). No
+// container name is passed: the Taskfile's own naming is what is on trial.
+const VERDICTS = { full: 'in your code!', staged: 'in your staged files!', branch: 'in your branch commits!' }
+
+function scanTogether (project, task) {
+  return Promise.all([1, 2].map(() => new Promise((resolve, reject) => {
+    const child = spawn('task', [task], { cwd: project.dir, stdio: ['ignore', 'pipe', 'pipe'], timeout: 300000 })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', data => { stdout += data })
+    child.stderr.on('data', data => { stderr += data })
+    child.on('error', reject)
+    child.on('close', (exit, signal) => resolve({ project, exit, signal, stdout, stderr, raw: stdout + stderr }))
+  })))
+}
+
+// Both scans finish with their own verdict on the password, from two
+// different containers, and leave neither container behind.
+function checkTogether (scope, pair) {
+  const outputs = pair.map(result => stripAnsiEscapeSequences(result.raw))
+  const names = outputs.map(output => (output.match(/docker run --rm -d --name (\S+)/) || [])[1])
+  const failures = []
+  pair.forEach((result, i) => [
+    [result.exit !== 0 && !result.signal, 'must finish and fail'],
+    [outputs[i].includes(`Betterleaks detected secrets ${VERDICTS[scope]}`), 'must block the password'],
+    [outputs[i].includes('generic-password'), 'must name the rule'],
+    [!result.raw.includes(SECRET), 'must redact the detected value'],
+    [names[i] && spawnSync('docker', ['container', 'inspect', names[i]], { stdio: 'ignore' }).status !== 0, 'must remove its own container']
+  ].forEach(([ok, message]) => { if (!ok) failures.push(`${scope} scan ${i + 1}: ${message}`) }))
+  if (names[0] === names[1]) failures.push(`${scope}: both scans used the container ${names[0]}`)
+  if (failures.length) throw new Error(`${failures.join('\n')}\n${outputs.join('\n----\n')}`)
+}
+
+storyboardStep(Given, 'a project that scans in Docker holds a synthetic password, committed and staged', async () => {
+  binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redaction-bin-'))
+  const project = { mode: 'docker', dir: renderProject() }
+  projects.push(project)
+  if (/^TASK_BETTERLEAKS_MODE=/m.test(fs.readFileSync(path.join(project.dir, '.env.dist'), 'utf8'))) {
+    throw new Error('The default answers must keep the Docker scanner')
+  }
+  git(project, 'init', '--quiet', '--initial-branch=main')
+  git(project, 'config', 'user.name', 'E2E')
+  git(project, 'config', 'user.email', 'e2e@test.local')
+  git(project, 'add', '-A')
+  git(project, 'commit', '--quiet', '--no-verify', '-m', 'chore: render project')
+  git(project, 'update-ref', 'refs/remotes/origin/main', 'main')
+  git(project, 'switch', '--quiet', '-c', 'feature/scan')
+  fs.mkdirSync(path.join(project.dir, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(project.dir, 'src/service.js'), `const password = "${SECRET}";\n`)
+  git(project, 'add', 'src/service.js')
+  git(project, 'commit', '--quiet', '--no-verify', '-m', 'test: commit synthetic password')
+  fs.appendFileSync(path.join(project.dir, 'src/service.js'), `const secondPassword = "${SECRET}";\n`)
+  git(project, 'add', 'src/service.js')
+  // Off camera, as in the scenario below: a cold machine pulls the image first.
+  const taskfile = '.config/betterleaks/Taskfile.yml'
+  const image = fs.readFileSync(path.join(project.dir, taskfile), 'utf8').match(/TASK_BETTERLEAKS_IMAGE \| default "([^"]+)"/)[1]
+  execFileSync('docker', ['pull', '--quiet', image], { stdio: 'pipe' })
+  await terminalOutputFrame(I, 'docker-password',
+    `$ grep TASK_BETTERLEAKS_MODE ${taskfile}\n` +
+    execFileSync('grep', ['TASK_BETTERLEAKS_MODE', taskfile], { cwd: project.dir, encoding: 'utf8' }) +
+    '$ git diff origin/main HEAD -- src/service.js\n' +
+    git(project, '-c', 'color.ui=always', 'diff', 'origin/main', 'HEAD', '--', 'src/service.js') +
+    '$ git diff --cached -- src/service.js\n' +
+    git(project, '-c', 'color.ui=always', 'diff', '--cached', '--', 'src/service.js').trimEnd())
+})
+
+storyboardStep(Then, 'two full scans started at the same time both block the password, each from its own container', async () => {
+  const pairs = {}
+  for (const scope of Object.keys(TASKS)) {
+    pairs[scope] = await scanTogether(projects[0], `betterleaks:${TASKS[scope]}`)
+    pairs[scope].forEach((result, i) => saveOutput(`${scope}-together-${i + 1}`, 'blocked', result))
+    checkTogether(scope, pairs[scope])
+  }
+  await terminalOutputFrame(I, 'full-together', pairs.full.map((result, i) => ({
+    title: `Scan ${i + 1}`,
+    text: `$ task betterleaks:scan-full\n${display(result)}`
+  })))
+})
 
 storyboardStep(Given, 'clean framework projects use Docker and binary scanners from their install answers', async () => {
   binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redaction-bin-'))

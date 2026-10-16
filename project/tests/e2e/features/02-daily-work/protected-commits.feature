@@ -85,6 +85,22 @@ Feature: the framework guards what reaches the repository: clean commits and no 
     # Copy: http://gitlab/lambda/e2e-commit-hooks/-/merge_requests/2
     And GitLab refuses to merge it, so the key never reaches the main branch
 
+  # Two scans of the same project, started at the same time on the same Docker
+  # daemon, as when two terminals or two repositories share a machine (issue
+  # #243). The project keeps the default answers, so every scan runs in a
+  # container. The scans used to share one container name and remove it
+  # before and after their run, so each could stop the other's scanner.
+  @concurrent-scans
+  Scenario: two secret scans started at the same time each block the password from a container of their own
+    # Note: A project generated with the default answers. Its .config/betterleaks/Taskfile.yml keeps TASK_BETTERLEAKS_MODE at "docker", so every scan starts a container.
+    # Note: Since the main branch, a commit adds src/service.js with a synthetic password on line 1. A second line with the same password is staged.
+    # Copy: grep TASK_BETTERLEAKS_MODE .config/betterleaks/Taskfile.yml && git diff origin/main HEAD -- src/service.js && git diff --cached -- src/service.js
+    Given a project that scans in Docker holds a synthetic password, committed and staged
+    # Note: Two full scans start together. Each one runs betterleaks in a container named betterleaks-container followed by an id of its own, and removes only that container when it ends.
+    # Note: Both find the two lines, print "REDACTED" where the password was, and fail with "❌ Betterleaks detected secrets in your code!". The test also starts two staged scans and two branch scans together, and each of them blocks the password too.
+    # Copy: task betterleaks:scan-full & task betterleaks:scan-full; wait
+    Then two full scans started at the same time both block the password, each from its own container
+
   # Both scan modes side by side, on the three entry points a developer runs:
   # scan-full (every file), protect (the staged files) and scan-branch (the
   # commits since the main branch). Each card shows the Docker project on the
