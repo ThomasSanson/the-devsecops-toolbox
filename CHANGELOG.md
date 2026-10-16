@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.8 (2026-10-16)
+
+### Fix
+
+- **ci**: stop code:all from passing when a check failed
+
 ## 24.4.7 (2026-10-16)
 
 ### Fix
