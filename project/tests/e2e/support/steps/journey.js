@@ -1467,6 +1467,42 @@ storyboardStep(When, 'the developer answers the ten setup questions, keeping eve
   if (changed.length) throw new Error(`Expected every default in the answers file, missing ${JSON.stringify(changed)}:\n${answers}`)
 })
 
+// GitLab answers the merge request settings with the whole project, its runner
+// registration token included. The twins read that token as the admin and look
+// for it in the complete session log, then run the same step again with a
+// merge method GitLab refuses: it must fail on GitLab's reason, still without
+// the token. The card pages back to the block, which scrolled away long before
+// the prompt came back; go-task's script dump above it also says "Applying
+// merge request settings...", so the first setting is the anchor.
+const MERGE_SETTINGS_LINES = [
+  'default_branch = main',
+  'merge_method = ff',
+  'squash_option = default_off',
+  'remove_source_branch_after_merge = true',
+  'only_allow_merge_if_pipeline_succeeds = true',
+  'only_allow_merge_if_all_discussions_are_resolved = true',
+  'printing_merge_request_link_enabled = true'
+]
+const MERGE_SETTINGS_DONE = '✅ GitLab merge request settings configured'
+storyboardStep(Then, "the installer prints only the merge request settings it gave GitLab, never the project's runner token", async () => {
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const token = ((await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, await getRootHeaders())).data || {}).runners_token
+  if (!token) throw new Error('Expected GitLab to hold a runner registration token for the project: without one, looking for it proves nothing')
+  const problems = []
+  const log = readInstallLog()
+  if (log.includes(token)) problems.push('the session log holds the runner registration token')
+  const missing = MERGE_SETTINGS_LINES.filter(line => !log.includes(line))
+  if (missing.length) problems.push(`the session log lacks the settings ${JSON.stringify(missing)}`)
+  const refused = onMachine(`cd ${PROJECT_DIR} && task glab:merge-settings TASK_GLAB_MERGE_METHOD=not-a-method`)
+  const said = stripAnsiEscapeSequences(refused.output || '')
+  if (refused.exitCode === 0) problems.push('the step exits 0 on a merge method GitLab refuses')
+  if (!said.includes('merge_method does not have a valid value')) problems.push("the refused step does not print GitLab's reason")
+  if (new RegExp(`^${MERGE_SETTINGS_DONE}`, 'm').test(said)) problems.push('the refused step still says the settings are configured')
+  if (said.includes(token)) problems.push('the refused step prints the runner registration token')
+  if (problems.length) throw new Error(`Expected the merge request settings step to keep the runner registration token out of its output, but ${problems.join('; ')} (refused run, exit ${refused.exitCode}, tail):\n${said.split(token).join('<runners_token>').slice(-1500)}`)
+  await scrollbackFrame('terminal-merge-settings', { from: MERGE_SETTINGS_LINES[0], before: 1, to: MERGE_SETTINGS_DONE })
+})
+
 // The installer pushed the framework branch and opened the merge request: its
 // page, the merge widget hidden while the pipeline waits for a runner. Then,
 // off camera, the runner scoped to this project, so the pipeline runs while
