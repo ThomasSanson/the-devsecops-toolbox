@@ -217,3 +217,55 @@ storyboardStep(Then, 'full scans block the secret and redact its value in both m
 })
 storyboardStep(Then, 'staged scans block the secret and redact its value in both modes', () => frame('staged-blocked', ['staged'], blocked))
 storyboardStep(Then, 'branch scans block the secret and redact its value in both modes', () => frame('branch-blocked', ['branch'], blocked))
+
+// @vendor-allowlist — one project with the default answers, so the Docker
+// scanner: the same made-up password in the project's own code and in a
+// library a package manager put under vendor/. betterleaks dir reads both, so
+// only the allowlist of .config/betterleaks/config.toml tells them apart.
+const OWN_FILE = 'src/mailer.php'
+const VENDOR_FILE = 'vendor/acme/mailer/tests/config.php'
+const BETTERLEAKS_CONFIG = '.config/betterleaks/config.toml'
+
+storyboardStep(Given, 'a generated project holds the same made-up password in its own src/ and in a library under vendor/', async () => {
+  binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redaction-bin-'))
+  const project = { mode: 'docker', dir: renderProject() }
+  projects.push(project)
+  for (const file of [OWN_FILE, VENDOR_FILE]) {
+    fs.mkdirSync(path.join(project.dir, path.dirname(file)), { recursive: true })
+    fs.writeFileSync(path.join(project.dir, file), `<?php\n$password = "${SECRET}";\n`)
+  }
+  // Off camera, as in the scenario above: a cold machine pulls the image first.
+  const taskfile = fs.readFileSync(path.join(project.dir, '.config/betterleaks/Taskfile.yml'), 'utf8')
+  execFileSync('docker', ['pull', '--quiet', taskfile.match(/TASK_BETTERLEAKS_IMAGE \| default "([^"]+)"/)[1]], { stdio: 'pipe' })
+  const grep = execFileSync('grep', ['-rn', '--color=always', 'password', 'src', 'vendor'], { cwd: project.dir, encoding: 'utf8' })
+  const plain = stripAnsiEscapeSequences(grep)
+  if (!plain.includes(`${OWN_FILE}:2:`) || !plain.includes(`${VENDOR_FILE}:2:`)) throw new Error(`Both files must hold the password line:\n${plain}`)
+  await terminalOutputFrame(I, 'vendor-files', `$ grep -rn password src vendor\n${screenText(grep)}`)
+})
+
+storyboardStep(When, 'the developer runs the full secret scan, it blocks src/mailer.php and skips vendor/', async () => {
+  const result = runTask(projects[0], 'betterleaks:scan-full')
+  saveOutput('vendor', 'blocked', result)
+  const output = stripAnsiEscapeSequences(result.raw)
+  const failures = [
+    [result.exit !== 0, 'must fail'],
+    [new RegExp(`path\\s*\\.+\\s*/path/${OWN_FILE.replace('.', '\\.')}`).test(output), `must name ${OWN_FILE}`],
+    [!output.includes('vendor/'), 'must skip vendor/'],
+    [/leaks found: 1\b/.test(output), 'must find exactly one leak'],
+    [!result.raw.includes(SECRET), 'must redact the detected value']
+  ].filter(([ok]) => !ok).map(([, message]) => `scan-full: ${message}`)
+  if (failures.length) throw new Error(`${failures.join('\n')}\n${output}`)
+  await terminalOutputFrame(I, 'vendor-scan', `$ task betterleaks:scan-full\n${display(result)}`)
+})
+
+storyboardStep(Then, 'the scan\'s config lists vendor/ and tells a project allowlist to stand on its own, never to extend it', async () => {
+  const config = fs.readFileSync(path.join(projects[0].dir, BETTERLEAKS_CONFIG), 'utf8')
+  const allowlist = config.slice(config.indexOf('paths = ['))
+  const failures = [
+    [/^\s*'''\(\^\|\/\)vendor\/''',?$/m.test(allowlist), 'the allowlist must name vendor/'],
+    [config.includes('Never point `[extend] path` at this file'), 'must forbid extending this file'],
+    [/TASK_BETTERLEAKS_CONFIG\b/.test(config) && config.includes('REPOSITORY_BETTERLEAKS_CONFIG_FILE'), 'must name both settings a copy is pointed with']
+  ].filter(([ok]) => !ok).map(([, message]) => `${BETTERLEAKS_CONFIG}: ${message}`)
+  if (failures.length) throw new Error(failures.join('\n'))
+  await terminalOutputFrame(I, 'vendor-config', `$ cat ${BETTERLEAKS_CONFIG}\n${config.trimEnd()}`)
+})
