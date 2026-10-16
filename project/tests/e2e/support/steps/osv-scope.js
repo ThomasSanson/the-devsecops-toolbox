@@ -1,14 +1,17 @@
 /* global inject Given When Then Before After */
 const assert = require('assert/strict')
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
 const { Worker } = require('worker_threads')
 const {
-  COPIER, prepareVersionedTemplate, renderProjectFromTemplate, removeRendered
+  COPIER, prepareVersionedTemplate, renderProject, renderProjectFromTemplate, removeRendered
 } = require('../helpers/copierRender')
 const { runTask } = require('../helpers/taskProcess')
 const { OsvCiEvidence } = require('../helpers/osvCiEvidence')
+const { openLocalTerminal } = require('../helpers/localTerminal')
+const { terminalCard } = require('../terminal/capture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I, GitLabUserPage } = inject()
 
@@ -32,7 +35,11 @@ let sequence = 0
 Before(() => { state = { dirs: [] } })
 After(async () => {
   const finished = state
-  try { if (finished.ci) await finished.ci.close() } finally { finished.dirs.forEach(removeRendered) }
+  try {
+    if (finished.closeTerminal) finished.closeTerminal()
+    if (finished.hostCopy) removeHostCopy(finished.hostCopy)
+    if (finished.ci) await finished.ci.close()
+  } finally { finished.dirs.forEach(removeRendered) }
 })
 
 function ciEvidence (name = 'e2e-osv-scope') {
@@ -308,4 +315,87 @@ storyboardStep(Then, "the toolbox's own OSV scan reads the lockfile or requireme
   assert.ok(result.report.includes('No issues found'), 'OSV must report its native clean verdict')
   // A Renovate bump changes how many packages a lockfile holds, not what the card shows.
   await state.ci.osvLogFrame('framework-dependencies-clean', { verdict: 'No issues found', masks: [[/found \d+ packages?/, 'found <count> packages']] })
+})
+
+// @megalinter-config (issue #268): the project names its own MegaLinter
+// settings in TASK_MEGALINTER_CONFIG, and each local MegaLinter task must load
+// that file. The cards are a real terminal in this container, which has
+// Docker; MegaLinter's own [config] line names the file it loaded, and the
+// twin reads the same lines off the screen.
+const SETTINGS = 'project/megalinter.yml'
+const SETTINGS_BODY = `---
+# The project's own MegaLinter settings. The toolbox does not ship this file,
+# so a framework update never touches it.
+EXTENDS: .config/megalinter/config.yml
+# Only ShellCheck, so that a run takes seconds.
+ENABLE_LINTERS: [BASH_SHELLCHECK]
+# ShellCheck needs none of the spelling dictionaries the toolbox installs first.
+PRE_COMMANDS: []
+`
+const LOADED = `[config] /tmp/lint/${SETTINGS} + Environment variables`
+const PNPM = '/tmp/e2e-pnpm'
+// The project's folder in the prompt is new each run, and so is a linter's time.
+const CARD_MASKS = [[/\/tmp\/e2e-render-[0-9a-f]+/g, '/tmp/<project>'], [/ - \(\d+(\.\d+)?s\)/g, ' - (<duration>)']]
+const lintRun = task => `task ${task} 2>&1 | grep -E '\\[config\\]|Linted|linted'`
+const megalinterImage = () => 'ghcr.io/oxsecurity/megalinter:v' +
+  JSON.parse(fs.readFileSync(path.join(state.project, '.config/megalinter/package.json'), 'utf8')).dependencies['mega-linter-runner']
+
+function assertProjectSettingsLoaded (screen) {
+  assert.ok(screen.includes(LOADED), `MegaLinter must load ${SETTINGS}:\n${screen}`)
+  assert.deepEqual(screen.match(/Linted \[\w+\] files with \[\w+\]/g), ['Linted [BASH] files with [shellcheck]'],
+    `Only the linter ${SETTINGS} enables may run:\n${screen}`)
+  assert.ok(screen.includes('All files correctly linted with megalinter!'), screen)
+}
+
+// mega-linter-runner asks Docker to mount the project folder by its path, and
+// the Docker daemon looks that path up on its own machine, not in this
+// container. On a developer's machine the two are one; here the project is
+// first copied to the same path on the daemon's side.
+function copyToDockerHost () {
+  state.hostCopy = { dir: state.project, image: megalinterImage() }
+  run('sh', ['-c', `tar -cf - . | docker run --rm -i -v ${state.project}:${state.project} --entrypoint tar ${state.hostCopy.image} -xf - -C ${state.project}`])
+}
+
+function removeHostCopy ({ dir, image }) {
+  try {
+    execFileSync('docker', ['run', '--rm', '-v', `${path.dirname(dir)}:/host`, '--entrypoint', 'rm', image, '-rf', `/host/${path.basename(dir)}`], { stdio: 'pipe', timeout: 120000 })
+  } catch (_) {
+    // Best-effort cleanup.
+  }
+}
+
+// Off camera: a freshly generated project, its own settings file and the line
+// of .env.dist that names it, committed; then a terminal in that project, with
+// a container name of its own for task megalinter and pnpm on its PATH.
+storyboardStep(Given, 'the project names its own MegaLinter settings file in TASK_MEGALINTER_CONFIG', async () => {
+  state.project = renderProject()
+  state.dirs.push(state.project)
+  fs.writeFileSync(path.join(state.project, SETTINGS), SETTINGS_BODY)
+  fs.appendFileSync(path.join(state.project, '.env.dist'), `TASK_MEGALINTER_CONFIG=${SETTINGS}\n`)
+  run('sh', ['-c', 'git init -q && git add -A && git -c user.email=e2e@test.local -c user.name=E2E commit -qm "chore: initial render"'])
+  state.env = {
+    ...process.env,
+    PATH: `${PNPM}:${process.env.PATH}`,
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+    COREPACK_DEFAULT_TO_LATEST: '0',
+    TASK_MEGALINTER_CONTAINER_NAME: 'megalinter-config-' + crypto.randomBytes(4).toString('hex')
+  }
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: state.env, port: 7694 })
+  const screen = await terminalCard(I, 'project-settings-file', `cat ${SETTINGS} && grep TASK_MEGALINTER_CONFIG .env.dist`, { mask: CARD_MASKS })
+  assert.ok(screen.includes('ENABLE_LINTERS: [BASH_SHELLCHECK]'), screen)
+  assert.ok(screen.includes(`TASK_MEGALINTER_CONFIG=${SETTINGS}`), screen)
+})
+
+storyboardStep(Then, "task megalinter loads the project's settings file", async () => {
+  assertProjectSettingsLoaded(await terminalCard(I, 'task-megalinter-loads-project-settings', lintRun('megalinter'), { mask: CARD_MASKS }))
+})
+
+// Off camera: pnpm, as Node's corepack provides it, and the copy of the project
+// on the Docker daemon's side.
+storyboardStep(Then, 'task megalinter:pnpm:dlx loads the same settings file', async () => {
+  fs.mkdirSync(PNPM, { recursive: true })
+  execFileSync('corepack', ['enable', 'pnpm', '--install-directory', PNPM], { env: state.env, stdio: 'pipe' })
+  execFileSync(`${PNPM}/pnpm`, ['--version'], { cwd: state.project, env: state.env, stdio: 'pipe', timeout: 120000 })
+  copyToDockerHost()
+  assertProjectSettingsLoaded(await terminalCard(I, 'pnpm-dlx-loads-project-settings', lintRun('megalinter:pnpm:dlx'), { mask: CARD_MASKS }))
 })

@@ -80,3 +80,17 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The update ends with "Nothing to commit on update-framework-devsecops.": nothing is pushed, and the merge request stays as it was.
     # Copy: task devsecops:update
     And asking for the update a second time leaves nothing to change
+
+  @megalinter-config
+  Scenario: every local MegaLinter task reads the settings file the project chose
+    # Note: The project keeps its own MegaLinter settings in project/megalinter.yml. The toolbox does not ship that file, so a framework update never touches it. It builds on the toolbox's own file, .config/megalinter/config.yml, and keeps only ShellCheck, so that a run takes seconds.
+    # Note: The last line comes from .env.dist: TASK_MEGALINTER_CONFIG=project/megalinter.yml tells the MegaLinter tasks which file to read.
+    # Copy: cat project/megalinter.yml && grep TASK_MEGALINTER_CONFIG .env.dist
+    Given the project names its own MegaLinter settings file in TASK_MEGALINTER_CONFIG
+    # Note: task megalinter, the usual way to run MegaLinter on a machine, starts it in Docker, where the project sits in /tmp/lint. MegaLinter's own [config] line names the file it loaded: /tmp/lint/project/megalinter.yml, the project's file. The next line shows that file builds on .config/megalinter/config.yml.
+    # Note: Only ShellCheck runs, as that file asks, and the task ends on "All files correctly linted with megalinter!".
+    # Copy: task megalinter 2>&1 | grep -E '\[config\]|Linted|linted'
+    Then task megalinter loads the project's settings file
+    # Note: task megalinter:pnpm:dlx starts MegaLinter another way: pnpm downloads mega-linter-runner, and the runner starts MegaLinter's image. MegaLinter's [config] line names the same file, and the same single check runs with the same verdict.
+    # Copy: task megalinter:pnpm:dlx 2>&1 | grep -E '\[config\]|Linted|linted'
+    And task megalinter:pnpm:dlx loads the same settings file
