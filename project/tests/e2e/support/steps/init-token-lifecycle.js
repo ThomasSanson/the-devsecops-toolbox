@@ -37,7 +37,7 @@ const {
 const { bootstrapWorkspaceRepo, runTaskInRepoCaptured } = require('../helpers/workspaceRepo')
 const { freshGet, freshPost, freshDelete } = require('../helpers/http')
 const { prepareVersionedTemplate, renderProjectFromTemplate } = require('../helpers/copierRender')
-const { gitlabUrl, gitlabFrame } = require('../helpers/gitlabCard')
+const { gitlabUrl, gitlabFrame, settlePage } = require('../helpers/gitlabCard')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const TOKEN = 'TASK_COMMITIZEN_TOKEN'
@@ -299,19 +299,40 @@ async function protectedBranchFrame (frameName) {
 // tab itself only exists once GitLab has created the commit's pipeline, so the
 // card waits for it. The sidebar goes back to its top, where "Commits" still
 // fits, instead of the half-cut item GitLab's own scroll leaves on top.
-async function commitFrame (frameName, sha, { waitText, prepare = null }) {
+async function commitFrame (frameName, sha, { waitText, prepare = null, height = 660, scrollTo = null }) {
   const headers = await getRootHeaders()
   await waitFor(`a pipeline for commit ${sha}`, async () =>
     ((await listProjectPipelines(projectName, headers, `?sha=${sha}`)).data || []).length)
   await gitlabFrame(I, frameName, gitlabUrl.commit(projectName, sha), {
-    height: 660,
+    height,
     waitText,
     prepare: async () => {
       if (prepare) await prepare()
       await I.executeScript(() => { document.querySelector('#super-sidebar .gl-scroll-scrim').scrollTop = 0 })
     },
-    hide: ['.well-segment:has([data-testid="pipeline-path"])', '.js-pipelines-mr-count', SHIMMER]
+    hide: ['.well-segment:has([data-testid="pipeline-path"])', '.js-pipelines-mr-count', SHIMMER],
+    scrollTo
   })
+}
+
+// A commit of four files is taller than a card: the page scrolls up by the row
+// above the commit title, which stays at the top, so the last diff fits. Each
+// file name sits in a sticky header that Chromium sometimes paints on a layer
+// of its own, half a pixel off: the headers stay in the page flow.
+async function scrollToCommitTitle () {
+  await I.executeScript(() => {
+    document.querySelectorAll('.rd-diff-file-header-sticky').forEach(header => { header.style.position = 'static' })
+    const panel = document.querySelector('.js-static-panel-inner')
+    const title = panel && panel.querySelector('h1')
+    const files = document.querySelectorAll('diff-file')
+    if (!title || !files.length) throw new Error('The commit page shows no title or no diff')
+    panel.scrollTop = 0
+    panel.scrollTop = title.closest('header').getBoundingClientRect().top - panel.getBoundingClientRect().top - 16
+    if (files[files.length - 1].getBoundingClientRect().bottom > panel.getBoundingClientRect().bottom) {
+      throw new Error('The last diff of the commit does not fit the card')
+    }
+  })
+  await settlePage(I, { quietMs: 300 })
 }
 
 // ===========================================================================
@@ -395,6 +416,16 @@ const RELOAD_PROJECT = 'e2e-framework-reload'
 const PIPELINE_FILE = '.gitlab-ci.yml'
 const HAND_EDIT = '# a hand-edited line the toolbox never wrote'
 const HAND_EDIT_TITLE = 'chore: tweak the pipeline by hand'
+// The four files the toolbox writes a few lines of and the project owns the
+// rest of: one line of the project's own at the end of each, which a reload
+// must leave where it is.
+const PROJECT_LINES = {
+  '.env.dist': 'APP_URL=https://app.example.org',
+  '.env.dev': 'APP_URL=http://localhost:3000',
+  '.config/megalinter/config.yml': 'SHOW_ELAPSED_TIME: true',
+  '.config/trivy/trivyignore.yml': '    - project/legacy'
+}
+const PROJECT_LINES_TITLE = "chore: add the project's own settings"
 const RESTORE_BRANCH = 'reload-framework'
 const RESTORE_TITLE = 'chore: put the framework files back'
 
@@ -490,6 +521,25 @@ storyboardStep(Given, 'a project the framework set up, whose main branch someone
   await protectedBranchFrame('reload-branch-loosened')
 })
 
+storyboardStep(Given, 'the project added its own settings to .env.dist, .env.dev, the MegaLinter settings and the Trivy ignore list', async () => {
+  for (const [file, line] of Object.entries(PROJECT_LINES)) {
+    fs.appendFileSync(`${repoDirFor(projectName)}/${file}`, `${line}\n`)
+  }
+  git(`git commit --quiet --no-verify -am "${PROJECT_LINES_TITLE}" && git push -q --no-verify origin main`)
+  const sha = git('git rev-parse HEAD')
+  const headers = await getRootHeaders()
+  const head = (await listCommits(projectName, 'main', headers))[0]
+  if (head.id !== sha || head.title !== PROJECT_LINES_TITLE) {
+    throw new Error(`Expected "${PROJECT_LINES_TITLE}" (${sha}) on top of main, found "${head.title}" (${head.id})`)
+  }
+  for (const [file, line] of Object.entries(PROJECT_LINES)) {
+    if (!(await getRepositoryFile(projectName, file, 'main', headers)).includes(line)) {
+      throw new Error(`${file} on main does not carry the project's line "${line}"`)
+    }
+  }
+  await commitFrame('reload-project-lines', sha, { waitText: PROJECT_LINES['.env.dist'], height: 1100, scrollTo: scrollToCommitTitle })
+})
+
 storyboardStep(Given, 'someone pushed a hand edit of the pipeline file straight to the main branch', async () => {
   fs.appendFileSync(`${repoDirFor(projectName)}/${PIPELINE_FILE}`, `${HAND_EDIT}\n`)
   // The push goes through only because the main branch was loosened.
@@ -532,6 +582,13 @@ storyboardStep(Then, 'the main branch is locked down again', async () => {
 })
 
 storyboardStep(Then, 'the developer sends the restored pipeline file back through a merge request', async () => {
+  // The project's own lines are still in the four files it shares with the
+  // toolbox: the reload put back the toolbox's files, not the project's.
+  for (const [file, line] of Object.entries(PROJECT_LINES)) {
+    if (!fs.readFileSync(`${repoDirFor(projectName)}/${file}`, 'utf8').includes(line)) {
+      throw new Error(`Expected the reload to keep the project's line "${line.trim()}" in ${file}, it is gone`)
+    }
+  }
   // reload touched exactly one file: the pipeline file, without the hand edit.
   const changed = git('git status --porcelain')
   if (changed !== `M ${PIPELINE_FILE}`) throw new Error(`Expected reload to change only ${PIPELINE_FILE}, git status says:\n${changed}`)
