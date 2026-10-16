@@ -1000,6 +1000,66 @@ storyboardStep(When, 'the same scan, run in Docker on a machine without betterle
   ].join('\n'))
 })
 
+// The cards below run more scans on the same machine. Each command is typed,
+// then what it printed, in the order the developer's terminal shows them.
+function developerCommands (commands) {
+  return commands.map(command => ({ command, ...developerRun(command) }))
+}
+
+async function developerFrame (frameName, runs) {
+  await terminalOutputFrame(I, frameName, runs.map(({ command, raw }) =>
+    `$ ${command}\n${maskText(screenText(raw), [...TERMINAL_MASKS, ...JOB_MASKS])}`).join('\n\n'))
+}
+
+// The two verdicts a scan can give about the files. One that did not read them
+// gives neither.
+const SCAN_VERDICTS = ['No secret found', 'A secret was found']
+
+function mustFailWithout (run, needles, what) {
+  const output = stripAnsiEscapeSequences(run.raw)
+  if (run.exit === 0) throw new Error(`${what}: \`${run.command}\` must fail:\n${output}`)
+  mustContain(output, needles, what)
+  mustNotContain(output, SCAN_VERDICTS, `${what}, without a verdict on the files`)
+}
+
+storyboardStep(When, 'a scan that is switched off fails instead of passing, and a pipeline refuses to publish without it', async () => {
+  const [scan, publish] = developerCommands([
+    'TASK_PUBLICATION_SCAN=off task publication:scan',
+    'CI=true TASK_PUBLICATION_SCAN=off task publication:publish'
+  ])
+  mustFailWithout(scan, ['Secret scan skipped (TASK_PUBLICATION_SCAN=off).', 'Nothing was scanned'],
+    'a scan that is switched off must say it scanned nothing')
+  mustFailWithout(publish, ['a pipeline publishes only what it scanned', 'Nothing was published.'],
+    'a pipeline must refuse to publish without a scan')
+  mustNotContain(publish.raw, ['Pushed'], 'a pipeline must not publish without a scan')
+  await developerFrame('publication-scan-off', [scan, publish])
+})
+
+// A configuration a project could really break: its closing bracket is missing.
+const BROKEN_CONFIG = 'broken.toml'
+
+storyboardStep(When, 'a scan whose scanner cannot run, or stops on an error, fails and says so', async () => {
+  writeFixtureFile(global.pubRendered, BROKEN_CONFIG, '[allowlist]\npaths = ["^tmp/"\n')
+  const [unreachable, shown, broken] = developerCommands([
+    'DOCKER_HOST=unix:///run/no-docker.sock task publication:scan',
+    `cat ${BROKEN_CONFIG}`,
+    `TASK_PUBLICATION_SCAN_CONFIG=${BROKEN_CONFIG} task publication:scan`
+  ])
+  mustFailWithout(unreachable, ['The secret scan cannot run here'], 'a scan with no scanner must say it cannot run')
+  mustFailWithout(broken, ['unable to load config', 'The secret scan did not finish'],
+    'a scan whose scanner stopped must say it did not finish')
+  await developerFrame('publication-scan-error', [unreachable, shown, broken])
+})
+
+storyboardStep(Then, 'only a scan that read every file to the end says no secret was found, here on release 1.4.0', async () => {
+  const [scan] = developerCommands([`TASK_PUBLICATION_SOURCE_REF=${FIXTURE_TAG} task publication:scan`])
+  const output = stripAnsiEscapeSequences(scan.raw)
+  if (scan.exit !== 0) throw new Error(`The scan of release ${FIXTURE_TAG} must pass:\n${output}`)
+  mustContain(output, [`Source      ${FIXTURE_TAG} (`, `Scanning    ${PUBLISHED.length} files for secrets`,
+    'scanned ~', 'No secret found in what would become public.'], 'a clean scan must say what it read')
+  await developerFrame('publication-scan-clean', [scan])
+})
+
 storyboardStep(Then, 'the public project still holds the first release, without the new file or the password', async () => {
   await storyFrame('publication-public-unchanged', gitlabUrl.file(global.pubPublic, 'main', LEAKED_FILE), {
     waitText: 'serve(process.env.PORT', height: 520, prepare: () => unfoldFileTree(I, ['server'])
@@ -1267,9 +1327,8 @@ storyboardStep(When, 'the developer says where the source goes and hands over th
   I.type(global.pubLambdaToken)
   I.pressKey('Enter')
 
-  // The one question that is not a credential: enter keeps the strict answer,
-  // which is that a publication stops when the secret scan cannot run.
-  await waitForTerminalText(I, 'Refuse to publish when the secret scan', COMMAND_TIMEOUT_MS)
+  // The one question that is not a credential: enter keeps the secret scan on.
+  await waitForTerminalText(I, 'Scan what becomes public for secrets before each publication?', COMMAND_TIMEOUT_MS)
   I.pressKey('Enter')
 
   await ttyCapture.waitForPromptReturn(I, INSTALLER_LINE, 300000)

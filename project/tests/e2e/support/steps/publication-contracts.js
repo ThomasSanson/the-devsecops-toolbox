@@ -32,7 +32,7 @@ const {
 const { I } = inject()
 
 const PROMPT_ROW = /^bootstrap@workspace:\S*\$ ?(.*)$/
-const INIT_QUESTIONS = ['A token that may push to it', 'Refuse to publish when the secret scan cannot run?']
+const INIT_QUESTIONS = ['A token that may push to it', 'Scan what becomes public for secrets before each publication?']
 const FAILED = 'task: Failed to run task'
 // Tall enough for the evidence on both GitLab cards, with no empty band below.
 const PAGE_HEIGHT = 560
@@ -282,6 +282,7 @@ storyboardStep(Then, 'setup keeps the working token and CI variables when the fo
   assert.equal(requests('DELETE', '/access_tokens/42').length, 0, 'Setup revoked the working token before its replacement was stored')
   assert.equal(requests('DELETE', '/variables').length, 0, 'Setup deleted a working CI variable')
   assert.ok(!fileIn('setup/.env.dist').includes('TASK_PUBLICATION_ENABLED=true'), 'Incomplete setup switched publication on')
+  assert.match(fileIn('setup/.env.dist'), /^TASK_PUBLICATION_SCAN=required$/m, 'Answering yes to the scan question did not keep the scan on')
   assert.ok(!log.includes('DELETE'), 'The request log shows a deletion')
 })
 

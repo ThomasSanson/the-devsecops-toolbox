@@ -97,7 +97,7 @@ Feature: Publishing the source of a private project, without the parts that must
   # This story is told the way a team lives it: on GitLab. A real private
   # project, a real public one, a project-scoped runner, and the real pipeline
   # doing the publishing. Every card is a whole GitLab page or job log a
-  # reviewer can open for themselves, except one: the same secret scan run on a
+  # reviewer can open for themselves, except four: the same secret scan run on a
   # developer's machine, where it runs in Docker instead of on the runner.
   # ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0), and
   # every card is twinned with a check of the same fact.
@@ -171,6 +171,18 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: It stops on the same finding, rule generic-password, path src/app.js, line 7, and prints "REDACTED" there too. The scan still fails, so nothing can be published from this machine either.
     # Copy: task publication:scan
     And the same scan, run in Docker on a machine without betterleaks, stops on the same password and prints REDACTED too
+    # Note: The developer then switches the scan off for one run, with TASK_PUBLICATION_SCAN=off. The scan says it was skipped and fails: nothing was scanned, so it cannot say that no secret was found.
+    # Note: The second command starts the publication the way a pipeline does: CI=true is what GitLab sets in every job. It refuses at once, because a pipeline publishes only what it scanned.
+    # Copy: TASK_PUBLICATION_SCAN=off task publication:scan
+    And a scan that is switched off fails instead of passing, and a pipeline refuses to publish without it
+    # Note: Two more scans that never get to the files. In the first, Docker is installed but cannot be reached: DOCKER_HOST points at a socket that does not exist. The scan says it cannot run here.
+    # Note: The second reads its rules from broken.toml, a scanner configuration missing its closing bracket. betterleaks stops on it with "unable to load config", and the scan says it did not finish. Both fail, and neither one says that a secret was found, or that none was.
+    # Copy: TASK_PUBLICATION_SCAN_CONFIG=broken.toml task publication:scan
+    And a scan whose scanner cannot run, or stops on an error, fails and says so
+    # Note: Last, the same scan of release 1.4.0, the three files the public project holds today: TASK_PUBLICATION_SOURCE_REF names the tag. betterleaks reads them to the end, "scanned ~<n> bytes", and finds nothing.
+    # Note: This is the only run on this machine that says "No secret found in what would become public", and the only one that passes.
+    # Copy: TASK_PUBLICATION_SOURCE_REF=1.4.0 task publication:scan
+    And only a scan that read every file to the end says no secret was found, here on release 1.4.0
     # Note: The public project's src/app.js, as anyone on the internet would open it. It is still the three lines of release 1.4.0: no mailer and no password. In the Files panel, server/ holds only http.js, so token-store.js never arrived either.
     # Note: The last commit is still "publish 1.4.0". What gets published is what an owner approved, file by file, and what the scan let through, never what a pattern happened to match.
     # Copy: http://gitlab/<lambda-user>/<project>-public/-/blob/main/src/app.js
