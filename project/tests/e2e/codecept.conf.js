@@ -81,6 +81,7 @@ exports.config = {
       './support/steps/release-toggle.js',
       './support/steps/retired-linters.js',
       './support/steps/osv-scope.js',
+      './support/steps/report-permissions.js',
       './support/steps/daily-contribution.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',

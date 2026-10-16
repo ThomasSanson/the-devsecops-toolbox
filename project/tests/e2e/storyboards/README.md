@@ -37,6 +37,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@retired-linters"`
 - [**framework-dependencies**](02-daily-work/framework-dependencies.svg): The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
   Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
+- [**report-permissions**](02-daily-work/report-permissions.svg): MegaLinter's reports belong to the developer who ran it, through Docker or through npx, and nobody else can read or change them. The developer can still delete them.
+  Replay: `task project:test:e2e -- --grep "@report-permissions"`
 - [**task-progress**](02-daily-work/task-progress.svg): Workers report actual task output while preserving failed exit codes.
   Replay: `task project:test:e2e -- --grep "@task-progress"`
 - [**osv-scope**](02-daily-work/osv-scope.svg): OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.

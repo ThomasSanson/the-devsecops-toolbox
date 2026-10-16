@@ -86,4 +86,4 @@ async function openLocalTerminal (I, { cwd, env, port, height = 1200, width = 14
   return close
 }
 
-module.exports = { ENGINE_MASKS, openLocalTerminal }
+module.exports = { ENGINE_MASKS, PS1, TTYD, ensureTtyd, openLocalTerminal }
