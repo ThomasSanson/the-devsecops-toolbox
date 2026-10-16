@@ -123,7 +123,6 @@ POST_COMMANDS:
   - command: test ! -d /tmp/lint/.cache || chown -R 1000:1000 /tmp/lint/.cache
   - command: test ! -d /tmp/lint/.php-cs-fixer.cache || chown -R 1000:1000 /tmp/lint/.php-cs-fixer.cache
   - command: test ! -d /tmp/lint/.phplint.cache || chown -R 1000:1000 /tmp/lint/.phplint.cache
-  - command: test ! -d /tmp/lint/megalinter-reports || chmod -R 777 /tmp/lint/megalinter-reports
   - command: test ! -d /tmp/lint/megalinter-reports || chown -R 1000:1000 /tmp/lint/megalinter-reports
 
 # Ignore only import errors E0401

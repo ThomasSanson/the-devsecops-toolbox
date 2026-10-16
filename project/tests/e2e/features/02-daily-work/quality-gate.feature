@@ -61,18 +61,18 @@ Feature: a freshly generated project passes its own quality gate
   # cspell:ignore drwx -- how find prints the rights of a folder
   @report-permissions
   Scenario: MegaLinter's reports belong to the developer who ran it, and to no one else
-    # Note: The developer is bootstrap, an ordinary user without administrator rights. The end of the project's MegaLinter settings keeps one check, yamllint, on the MegaLinter settings files, so that a run takes seconds. PRE_COMMANDS: [] skips the spelling dictionaries MegaLinter would install first.
+    # Note: The developer is bootstrap, an ordinary user without administrator rights. The last lines of the project's MegaLinter settings keep one check, yamllint, on the MegaLinter settings files only, so that a run takes seconds. PRE_COMMANDS: [] skips the spelling dictionaries MegaLinter would install first.
     # Note: ls finds no megalinter-reports folder yet: every report on the next cards comes from the run shown there.
     # Copy: whoami && tail -n 4 .config/megalinter/config.yml && ls megalinter-reports
     Given a generated project where MegaLinter runs only yamllint on its own settings
-    # Note: task megalinter:npx is the run behind task devsecops:code. MegaLinter runs as root in its own container and writes its reports straight into the project.
-    # Note: find lists each report with its rights, its owner and its group. Every line reads bootstrap bootstrap, with drwx------ or -rw-------: only bootstrap can open, read or change them.
+    # Note: task megalinter:npx is the run behind task devsecops:code. MegaLinter runs as root in its own container and writes its reports straight into the project. The task's last step, in green, gives them to the user who ran it with chown, then takes every right away from everyone else with chmod -R go-rwx.
+    # Note: find lists each report with its rights, its owner and its group. Every line reads bootstrap bootstrap. In drwx------ and -rw-------, the letters are bootstrap's own rights to open, read and change, and the dashes after them mean nothing for anyone else.
     # Copy: task megalinter:npx 2>&1 | tail -n 3; find megalinter-reports -printf '%M %u %g %p\n' | sort -k 4
     Then task megalinter:npx leaves reports only the developer can read or change
-    # Note: rm -r removes the folder and every report in it with bootstrap's own rights, and ls confirms it is gone.
+    # Note: rm -r removes the folder and every report in it with bootstrap's own rights, without sudo, and ls confirms it is gone.
     # Copy: rm -r megalinter-reports && ls megalinter-reports
     And the developer can delete those reports without administrator rights
-    # Note: task megalinter, the usual way to run MegaLinter on a computer, runs it in Docker on a copy of the project, then copies the reports back.
+    # Note: task megalinter, the usual way to run MegaLinter on a computer, runs it in Docker on a copy of the project, then copies the reports back as bootstrap. Its last step, in green, is chmod -R go-rwx megalinter-reports.
     # Note: find shows the same rights as after task megalinter:npx: bootstrap bootstrap on every line, and nothing for anyone else.
     # Copy: task megalinter 2>&1 | tail -n 5; find megalinter-reports -printf '%M %u %g %p\n' | sort -k 4
     Then task megalinter leaves its reports to the developer alone too

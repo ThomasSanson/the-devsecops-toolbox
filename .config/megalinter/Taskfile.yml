@@ -89,6 +89,8 @@ tasks:
         silent: true
       - docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - rm -rf ./megalinter-reports
+      # Deferred steps run last first: this one runs after the copy below, and leaves the reports to the user who ran it alone.
+      - defer: chmod -R go-rwx megalinter-reports 2>/dev/null || true
       - defer: (docker cp {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint/megalinter-reports ./megalinter-reports && chown -R $(id -u):$(id -g) megalinter-reports) || true; docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='{{.TASK_MEGALINTER_CONFIG}}' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE}} infinity
       - docker cp {{.USER_WORKING_DIR}} {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint
@@ -158,7 +160,8 @@ tasks:
     cmds:
       - cmd: echo "🔄 Running MegaLinter via npx (v{{.TASK_MEGALINTER_VERSION}})"
         silent: true
-      - defer: docker run --rm -v {{.USER_WORKING_DIR}}/megalinter-reports:/reports alpine chmod -R 777 /reports 2>/dev/null || true
+      # MegaLinter writes the reports as root: they go to the user who ran it, and to no one else.
+      - defer: docker run --rm -v {{.USER_WORKING_DIR}}/megalinter-reports:/reports alpine sh -c "chown -R $(id -u):$(id -g) /reports && chmod -R go-rwx /reports" 2>/dev/null || true
       - cmd: >-
           npx -y -p mega-linter-runner@{{.TASK_MEGALINTER_VERSION}} mega-linter-runner
           --release v{{.TASK_MEGALINTER_VERSION}}
