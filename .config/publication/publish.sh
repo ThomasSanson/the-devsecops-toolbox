@@ -50,6 +50,8 @@
 #                                     the snapshot is scanned for secrets first
 #   TASK_PUBLICATION_SCAN_IMAGE       default: ghcr.io/betterleaks/betterleaks:latest
 #   TASK_PUBLICATION_SCAN_CONFIG      default: .config/betterleaks/config.toml
+#   TASK_BETTERLEAKS_REDACT           default: 100, the share of a secret the
+#                                     scan report hides, in percent
 #
 # EXIT CODES:
 #   0  published, or nothing to do
@@ -100,6 +102,9 @@ SCAN_MODE="${TASK_PUBLICATION_SCAN:-$(dotenv_value TASK_PUBLICATION_SCAN)}"
 SCAN_MODE="${SCAN_MODE:-required}"
 SCAN_IMAGE="${TASK_PUBLICATION_SCAN_IMAGE:-ghcr.io/betterleaks/betterleaks:latest}"
 SCAN_CONFIG="${TASK_PUBLICATION_SCAN_CONFIG:-.config/betterleaks/config.toml}"
+# The same setting as every other betterleaks scan of the framework.
+SCAN_REDACT="${TASK_BETTERLEAKS_REDACT:-$(dotenv_value TASK_BETTERLEAKS_REDACT)}"
+SCAN_REDACT="${SCAN_REDACT:-100}"
 TOKEN="${TASK_PUBLICATION_TOKEN:-}"
 TOKEN_USERNAME="${TASK_PUBLICATION_TOKEN_USERNAME:-oauth2}"
 SOURCE_TOKEN="${TASK_PUBLICATION_SOURCE_TOKEN:-${GITLAB_TOKEN:-${TASK_COMMITIZEN_TOKEN:-}}}"
@@ -437,14 +442,15 @@ scan_snapshot() {
   # since a temporary directory lives under /tmp — and a scan that skips
   # everything reports no secret at all.
   # -v so the report names the file and the line: a verdict nobody can act on is
-  # not a verdict.
+  # not a verdict. --redact so it does not print the secret itself: everyone who
+  # can read the job log would read it there.
   if command -v betterleaks >/dev/null 2>&1; then
     _cfg=""
     [ -f "${SCAN_CONFIG}" ] && _cfg="$(cd "$(dirname "${SCAN_CONFIG}")" && pwd)/$(basename "${SCAN_CONFIG}")"
     if [ -n "${_cfg}" ]; then
-      (cd "${_snap}" && betterleaks dir . --config="${_cfg}" -v) >"${WORK}/scan.log" 2>&1 || return 1
+      (cd "${_snap}" && betterleaks dir . --config="${_cfg}" --redact="${SCAN_REDACT}" -v) >"${WORK}/scan.log" 2>&1 || return 1
     else
-      (cd "${_snap}" && betterleaks dir . -v) >"${WORK}/scan.log" 2>&1 || return 1
+      (cd "${_snap}" && betterleaks dir . --redact="${SCAN_REDACT}" -v) >"${WORK}/scan.log" 2>&1 || return 1
     fi
     return 0
   fi
@@ -471,7 +477,7 @@ scan_snapshot() {
       fi
       set -- --config=/betterleaks.toml
     fi
-    docker exec -w /snapshot "${_name}" betterleaks dir . "$@" -v >"${WORK}/scan.log" 2>&1
+    docker exec -w /snapshot "${_name}" betterleaks dir . "$@" --redact="${SCAN_REDACT}" -v >"${WORK}/scan.log" 2>&1
     _rc=$?
     docker rm -f "${_name}" >/dev/null 2>&1 || true
     return ${_rc}

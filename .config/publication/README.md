@@ -197,6 +197,11 @@ proof for a later publication: `TASK_PUBLICATION_SCAN=done` is not supported.
 Both jobs use `task`. Locally, scanning uses an installed `betterleaks` binary
 or the configured container image.
 
+A finding names the rule, the file and the line, and prints `REDACTED` where the
+secret was: everyone who can read the job log would read it there.
+`TASK_BETTERLEAKS_REDACT`, the setting every betterleaks scan of the framework
+reads, can show part of it on your own machine.
+
 With neither, the publication **stops**: a scanner that is missing is not a
 scanner that passed. The only modes are `required` and `off`. Setting
 `TASK_PUBLICATION_SCAN=off` explicitly disables the scan altogether, even when a
@@ -320,6 +325,7 @@ next publication from carrying it.
 | `TASK_PUBLICATION_ON`              | `release`              | `release`, `tag` or `manual`.                      |
 | `TASK_PUBLICATION_SCAN`            | `required`             | `required` or explicit `off`; no prior-job bypass. |
 | `TASK_PUBLICATION_SCAN_IMAGE`      | betterleaks image      | The scanner, when no binary is installed.          |
+| `TASK_BETTERLEAKS_REDACT`          | `100`                  | Percentage of a found secret the report hides.     |
 | `TASK_PUBLICATION_SCHEDULE_CRON`   | `0 4 * * *`            | When the nightly check for a new release runs.     |
 
 The two tokens authorize operations on different projects. Keep them as
