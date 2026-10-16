@@ -116,8 +116,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@publication-update"`
 - [**publication-ci-version**](03-evolution/publication-ci-version.svg): A toolbox version bump moves the full pipeline and the publication update job to the new toolbox image, in the same commit as VERSION.
   Replay: `task project:test:e2e -- --grep "@publication-ci-version"`
-- [**19. hybrid-ci**](03-evolution/hybrid-ci.svg): A self-hosted project runs its file checks on an unprivileged runner and its Docker jobs on a tagged runner, and keeps its own settings through a Copier update. It also guards #162: the project's own spelling words survive that update.
-  Chapters: Choose the Docker runners · Add the application · Run the checks on real runners · Keep the project settings through an update · Containers keep their own runner.
+- [**19. hybrid-ci**](03-evolution/hybrid-ci.svg): A self-hosted project runs its file checks on an unprivileged runner and its Docker jobs on a tagged runner, and keeps its own settings through a Copier update. It also guards #162: the project's own spelling words survive that update. And #248: GitLab lists the project's test results from the JUnit report of its test job.
+  Chapters: Choose the Docker runners · Add the application · Run the checks on real runners · Keep the project settings through an update · Containers keep their own runner · GitLab reads the test results.
   Replay: `task project:test:e2e -- --grep "@hybrid-ci"`
 - [**Runner cleanup**](03-evolution/runner-cleanup.svg): This story checks the test suite's own runner setup, not a toolbox feature: registering another project runner keeps the stopped checkout helper of a running job, and GitLab still accepts that job's artifact.
   Replay: `task project:test:e2e -- --grep "@runner-cleanup"`

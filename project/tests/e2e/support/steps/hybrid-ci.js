@@ -9,7 +9,7 @@ const { prepareVersionedTemplate, renderProjectFromTemplate, updateProject, remo
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const {
   getRootHeaders, lintProjectCi, createProjectRunner, deleteRunner, createMergeRequest,
-  listPipelineJobs, listProjectPipelines, getPipeline, getJobTrace, getJobArtifact, getRepositoryFile, getRunnerCard, BASE_URL
+  listPipelineJobs, listProjectPipelines, getPipeline, getJobTrace, getJobArtifact, getRepositoryFile, getRunnerCard, getPipelineTestReport, BASE_URL
 } = require('../helpers/gitlabApi')
 const { gitlabFrame, gitlabUrl, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
 const { publishToGitLab } = require('../helpers/gitlabProject')
@@ -33,6 +33,9 @@ const FILE_CHECKS = ['code:commitlint', 'code:commitizen-check', 'code:commitize
   'code:lizard', 'code:renovate-validate', 'code:betterleaks', 'code:megalinter', 'code:all', 'no-cheat']
 const PROJECT_JOBS = ['code:project', 'plan', 'build', 'test', 'release', 'deploy', 'operate', 'monitor', 'feedback']
 const OWNER_LABEL = 'io.digital-commons.e2e.run'
+// The JUnit report the fixture's health check writes, and its one case.
+const JUNIT_REPORT = 'project/tests/_output/junit/health.xml'
+const HEALTH_CASE = 'the Compose web application returns the expected HTTP response'
 // The web application's plumbing above the README diff on the Changes tab.
 const PLUMBING = ['project/code/check-runtime.sh', 'project/tests/health.sh', 'project/web/Dockerfile', 'project/web/index.html']
 // The runner's own sections, folded the way a reader skips them.
@@ -622,5 +625,31 @@ storyboardStep(Then, 'the Docker runner builds and tests the web application', a
     from: 'Image project-web Built',
     masks: [[/\b\d+(?:\.\d+)?s\b/g, '<duration>']],
     focus: verdict
+  })
+})
+
+storyboardStep(Then, 'GitLab lists the web application\'s test on the pipeline\'s Tests tab', async () => {
+  // Issue #248: the job archives the report whether GitLab reads it or not.
+  const archived = await getJobArtifact(state.projectName, job('test').id, JUNIT_REPORT, state.headers)
+  assert.ok(String(archived).includes(HEALTH_CASE), `The test job must archive ${JUNIT_REPORT}`)
+  // Twin of the Tests tab: GitLab's own reading of that report, through its API.
+  let report
+  for (let i = 0; i < 30 && !report?.total_count; i++) {
+    if (i) await I.wait(2)
+    report = await getPipelineTestReport(state.projectName, state.pipelineId, state.headers)
+  }
+  assert.equal(report.total_count, 1, `GitLab must read the test job's JUnit report: ${JSON.stringify(report)}`)
+  assert.equal(report.success_count, 1, JSON.stringify(report))
+  assert.deepEqual(report.test_suites.map(suite => suite.name), ['test'])
+  assert.deepEqual(report.test_suites[0].test_cases.map(testCase => testCase.name), [HEALTH_CASE])
+  await gitlabFrame(I, 'gitlab-test-results', `${gitlabUrl.pipeline(state.projectName, state.pipelineId)}/test_report`, {
+    waitText: 'success rate',
+    height: 600,
+    textMasks: [[/\b\d+(\.\d+)?\s?(ms|s)\b/g, '']],
+    // The summary lists one suite per job: open the test job's, to list its case.
+    prepare: async () => {
+      await I.click('.js-suite-row')
+      await I.waitForElement('[data-testid="test-case-row"]', 30)
+    }
   })
 })
