@@ -1,6 +1,15 @@
 title = "Betterleaks Configuration"
 
 # Extend the default configuration
+#
+# Never point `[extend] path` at this file. MegaLinter already wraps it in a
+# config of its own that extends it, and betterleaks follows two extends at
+# most, without a warning. MegaLinter's config -> a project file -> this file
+# is already two, so the default rules this file asks for are never loaded:
+# the scan finds nothing and passes (issue #228). A project that needs paths
+# of its own copies this file whole, `useDefault = true` included, adds them
+# to the copy, and points TASK_BETTERLEAKS_CONFIG (.env.dist) and
+# REPOSITORY_BETTERLEAKS_CONFIG_FILE (.config/megalinter/config.yml) at it.
 [extend]
 useDefault = true
 
@@ -24,6 +33,7 @@ paths = [
   '''(^|/)\.diagnostics/''',
   '''(^|/)megalinter-reports/''',
   '''(^|/)node_modules/''',
+  '''(^|/)vendor/''',
   '''(^|/)venv/''',
   # The publication story plants fake credentials on purpose: its whole point is
   # that the scan catches them before they become public. The file that CARRIES

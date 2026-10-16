@@ -48,6 +48,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**scanner-log-redaction**](02-daily-work/scanner-log-redaction.svg): Full, staged and branch scans pass ordinary work and block a made-up password, with the Docker scanner and with the pinned binary, without copying its value into the scan log.
   Chapters: Ordinary work passes in both modes · A detected value stays out of the log.
   Replay: `task project:test:e2e -- --grep "@scanner-log-redaction"`
+- [**vendor-allowlist**](02-daily-work/vendor-allowlist.svg): The full scan skips a library under vendor/ and still blocks the same made-up password in the project's own src/. The scan's config tells a project that needs its own allowlist to copy it, never to extend it.
+  Replay: `task project:test:e2e -- --grep "@vendor-allowlist"`
 - [**betterleaks-redact-config**](02-daily-work/betterleaks-redact-config.svg): A made-up password reaches a merge request. The generated Betterleaks job fails and prints REDACTED in the shared CI log, and only the developer's own terminal shows more, on request.
   Chapters: Every scan hides the whole value unless told otherwise · The shared CI log never prints the value · The developer sees more in their own terminal only.
   Replay: `task project:test:e2e -- --grep "@betterleaks-redact-config"`
