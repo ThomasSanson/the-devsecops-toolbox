@@ -445,24 +445,27 @@ storyboardStep(When, 'the project gets an unprivileged runner for file checks an
   assert.ok((await trace(commitlint)).includes('$ task commitlint'))
   assert.ok((await trace(job('code:megalinter'))).includes('$ task megalinter:ci'))
   await assertNativeJob('code:commitlint')
-  // Only MegaLinter fails, and each runner took exactly its own half of the jobs.
+  // Only MegaLinter fails, code:all waits for it and never starts, and each
+  // runner took exactly its own half of the jobs that ran.
+  const expected = { 'code:megalinter': 'failed', 'code:all': 'skipped' }
   for (const current of state.jobs) {
     const native = FILE_CHECKS.includes(current.name)
-    assert.equal(current.status, current.name === 'code:megalinter' ? 'failed' : 'success', current.name)
+    assert.equal(current.status, expected[current.name] || 'success', current.name)
+    if (current.status === 'skipped') continue
     assert.equal(current.runner.id, native ? state.nativeRunner.id : state.dockerRunner.id, current.name)
   }
   assert.equal(state.jobs.length, FILE_CHECKS.length + PROJECT_JOBS.length)
   // Twin of the runners card: one untagged runner, one tagged Docker runner.
-  for (const [runner, description, tags, untagged] of [
-    [state.nativeRunner, 'Unprivileged file checks', [], true],
-    [state.dockerRunner, 'Docker jobs', [DOCKER_TAG], false]
+  for (const [runner, description, tags, untagged, jobCount] of [
+    [state.nativeRunner, 'Unprivileged file checks', [], true, FILE_CHECKS.length - 1],
+    [state.dockerRunner, 'Docker jobs', [DOCKER_TAG], false, PROJECT_JOBS.length]
   ]) {
     const response = await freshGet(`${BASE_URL}/api/v4/runners/${runner.id}`, await getRootHeaders())
     assert.equal(response.data.description, description)
     assert.deepEqual(response.data.tag_list, tags)
     assert.equal(response.data.run_untagged, untagged)
-    // As the card shows it: online, with its half of the pipeline's jobs.
-    assert.deepEqual(await getRunnerCard(runner.id, await getRootHeaders()), { status: 'ONLINE', jobCount: 9 })
+    // As the card shows it: online, with its half of the jobs that ran.
+    assert.deepEqual(await getRunnerCard(runner.id, await getRootHeaders()), { status: 'ONLINE', jobCount })
   }
   await runnersFrame(I, 'project-runners', state.projectName, { waitText: 'Unprivileged file checks', height: 540 })
 })
@@ -493,6 +496,17 @@ storyboardStep(Then, 'MegaLinter rejects the misspelled word and the insecure UR
   const security = await lintReport(mega, 'REPOSITORY_DEVSKIM')
   assert.ok(security.includes('Insecure URL') && security.includes(SECURITY_FILE), 'The security report must point at the insecure URL')
   await lintSectionsFrame('megalinter-rejects-mistake', mega, 'warning: 1 warnings emitted')
+})
+
+storyboardStep(Then, 'code:all does not claim the checks passed while MegaLinter is red', async () => {
+  assert.equal(job('code:megalinter').status, 'failed')
+  const current = job('code:all')
+  assert.equal(current.status, 'skipped', 'code:all must not run while a check it waits for has failed')
+  assert.ok(!(await trace(current)).includes('All code checks passed.'), 'A skipped code:all must print no verdict')
+  // A skipped job never ran: its page has no log to frame, only its status.
+  await gitlabFrame(I, 'code-all-skipped-while-megalinter-fails', gitlabUrl.job(state.projectName, current.id), {
+    waitText: 'This job has been skipped', height: 1000
+  })
 })
 
 storyboardStep(When, 'I update the project through Copier and correct both mistakes in the same merge request', async () => {
@@ -562,6 +576,17 @@ storyboardStep(Then, 'MegaLinter passes on the unprivileged runner and accepts b
     assert.equal(current.runner.id, native ? state.nativeRunner.id : state.dockerRunner.id, current.name)
   }
   await lintSectionsFrame('megalinter-passes-directly', mega, 'files with [trivy]')
+})
+
+storyboardStep(Then, 'code:all now reports that every code check passed', async () => {
+  const current = job('code:all')
+  assert.equal(current.status, 'success')
+  assert.ok((await trace(current)).includes('All code checks passed.'), 'The code:all log must carry its verdict')
+  // Folded too: the artifacts it downloads from code:megalinter carry that
+  // job's per-run id.
+  await jobLogFrame(I, 'code-all-passes-once-every-check-passed', state.projectName, current.id, {
+    waitText: 'Job succeeded', height: 1000, fold: [...RUNNER_SECTIONS, 'Downloading artifacts']
+  })
 })
 
 storyboardStep(Then, 'the Docker runner builds and tests the web application', async () => {

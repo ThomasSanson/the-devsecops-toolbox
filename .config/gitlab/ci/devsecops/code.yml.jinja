@@ -135,4 +135,13 @@ code:all:
     - code:renovate-validate
   script:
     - echo "✅ All code checks passed."
-  <<: *code_rules
+  # Not *code_rules: their `when: always` would start this job after a check
+  # it waits for has failed, and it would still say they all passed.
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^staging$/
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^production$/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    - when: on_success
