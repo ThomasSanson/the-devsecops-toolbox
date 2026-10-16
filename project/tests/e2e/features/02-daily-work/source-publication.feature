@@ -97,9 +97,10 @@ Feature: Publishing the source of a private project, without the parts that must
   # This story is told the way a team lives it: on GitLab. A real private
   # project, a real public one, a project-scoped runner, and the real pipeline
   # doing the publishing. Every card is a whole GitLab page or job log a
-  # reviewer can open for themselves. ONE Gherkin sentence = ONE card = ONE
-  # pixel baseline (tolerance: 0), and every card is twinned with a REST check
-  # of the same fact.
+  # reviewer can open for themselves, except one: the same secret scan run on a
+  # developer's machine, where it runs in Docker instead of on the runner.
+  # ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0), and
+  # every card is twinned with a check of the same fact.
   @source-publication
   Scenario: The source reaches the public project only after an owner approved the exact list of files
     # Chapter: What would leave the private project
@@ -162,10 +163,14 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: The publish-source job still refuses, names that one file and opens merge request !2 to ask the owners. A file that lands in a folder that is already public waits for its own yes.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
     When a developer pushes a new file into a published folder, and the pipeline asks the owners again
-    # Note: Next, a developer commits staging mailer credentials into src/app.js, a file that has been public since the first release. The pipeline's first job, publication:scan, reads what would become public and finds the password: rule generic-password, path src/app.js, line 7.
+    # Note: Next, a developer commits staging mailer credentials into src/app.js, a file that has been public since the first release. The pipeline's first job, publication:scan, reads what would become public and finds the password: rule generic-password, path src/app.js, line 7. The log prints "REDACTED" where the password and the user name were, because everyone on the private project can read it.
     # Note: Under Related jobs on the right, publish-source never started: it waits on the scan. The approval answers "may this file be public", the scan answers "is there a secret in it", and both have to say yes.
     # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
-    And a secret committed into a published file is stopped by the scan before the publication starts
+    And a secret committed into a published file is stopped by the scan before the publication starts, and its log prints REDACTED instead of the password
+    # Note: The developer runs the same scan in their copy of the project, on a machine where betterleaks is not installed: the first command says so. The publication then runs the scanner from its Docker image instead.
+    # Note: It stops on the same finding, rule generic-password, path src/app.js, line 7, and prints "REDACTED" there too. The scan still fails, so nothing can be published from this machine either.
+    # Copy: task publication:scan
+    And the same scan, run in Docker on a machine without betterleaks, stops on the same password and prints REDACTED too
     # Note: The public project's src/app.js, as anyone on the internet would open it. It is still the three lines of release 1.4.0: no mailer and no password. In the Files panel, server/ holds only http.js, so token-store.js never arrived either.
     # Note: The last commit is still "publish 1.4.0". What gets published is what an owner approved, file by file, and what the scan let through, never what a pattern happened to match.
     # Copy: http://gitlab/<lambda-user>/<project>-public/-/blob/main/src/app.js

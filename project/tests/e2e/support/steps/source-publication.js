@@ -23,7 +23,7 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const { I, GitLabUserPage } = inject()
 const {
   shellEscape,
@@ -54,6 +54,7 @@ const {
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshPut } = require('../helpers/http')
 const { gitlabUrl, gitlabFrame, jobLogFrame, unfoldFileTree } = require('../helpers/gitlabCard')
+const { screenText, maskText, terminalOutputFrame } = require('../helpers/terminalRender')
 const {
   registerScopedRunner,
   teardownScopedRunner,
@@ -135,6 +136,8 @@ const LEAKED_SECRET = [
   'serve(process.env.PORT || 8080, mailer)',
   ''
 ].join('\n')
+// The value itself, read back from the line above rather than written twice.
+const LEAKED_PASSWORD = LEAKED_SECRET.match(/password: '([^']+)'/)[1]
 
 // The one line the installer writes into a project that has no pipeline. The
 // feedback job travels in the same shipped file and is switched off here: it
@@ -935,7 +938,7 @@ storyboardStep(When, 'a developer pushes a new file into a published folder, and
   await publicationJobFrame('publication-ci-late-arrival', job.id, 'publication:publish')
 })
 
-storyboardStep(When, 'a secret committed into a published file is stopped by the scan before the publication starts', async () => {
+storyboardStep(When, 'a secret committed into a published file is stopped by the scan before the publication starts, and its log prints REDACTED instead of the password', async () => {
   syncSource(global.pubLambdaToken)
   writeFixtureFile(global.pubRendered, LEAKED_FILE, LEAKED_SECRET)
   inSource(`git add ${LEAKED_FILE}`)
@@ -950,6 +953,10 @@ storyboardStep(When, 'a secret committed into a published file is stopped by the
     throw new Error(`The pipeline must stop on the secret, it was "${status}"`)
   }
   mustContain(trace, [LEAKED_FILE, 'generic-password'], 'the scan must name the file it found the secret in')
+  // The whole trace, not only the lines the card keeps: every member of the
+  // private project can read it.
+  mustNotContain(trace, [LEAKED_PASSWORD], 'the job log must not print the password')
+  mustContain(trace, ["password: 'REDACTED'"], 'the job log must show where the password was')
   const publish = (jobs || []).find(j => j.name === 'publish-source')
   if (!publish || publish.status === 'success') {
     throw new Error(`The publication must not run after a failed scan, publish-source: ${JSON.stringify(publish && publish.status)}`)
@@ -957,6 +964,40 @@ storyboardStep(When, 'a secret committed into a published file is stopped by the
   // Taller: the scanner's finding, the file and the line, and the related jobs
   // where publish-source never started.
   await publicationJobFrame('publication-ci-secret', job.id, 'publication:scan', 900)
+  // The page the card was taken from: what GitLab drew there.
+  mustNotContain(await I.grabTextFrom('[data-testid="job-log-content"]'), [LEAKED_PASSWORD],
+    'the job page must not show the password')
+})
+
+// The same scan on a developer's machine: Docker, and no betterleaks binary, so
+// the publication starts the scanner image. No CI variable either, as on a
+// laptop: the publication would read the commit it scans from them.
+function developerRun (script) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'CI' && !key.startsWith('CI_')))
+  const result = spawnSync('sh', ['-c', script], {
+    cwd: global.pubRendered, env, encoding: 'utf8', timeout: 300000, maxBuffer: 10 * 1024 * 1024
+  })
+  if (result.error || result.status === null) throw new Error(`\`${script}\` did not finish: ${result.error || result.signal}`)
+  return { exit: result.status, raw: result.stdout + result.stderr }
+}
+
+storyboardStep(When, 'the same scan, run in Docker on a machine without betterleaks, stops on the same password and prints REDACTED too', async () => {
+  const where = developerRun('command -v betterleaks || echo "betterleaks is not installed"')
+  if (where.raw.trim() !== 'betterleaks is not installed') {
+    throw new Error(`This scan must run where betterleaks is not installed, found: ${where.raw}`)
+  }
+  const scan = developerRun('task publication:scan')
+  const output = stripAnsiEscapeSequences(scan.raw)
+  if (scan.exit === 0) throw new Error(`The scan must fail on the password:\n${output}`)
+  // Only the real scanner prints its banner: with no binary, that is the image.
+  mustContain(output, ['betterleaks', 'generic-password', LEAKED_FILE, "password: 'REDACTED'",
+    'A secret was found in a file that was about to become public.'], 'the Docker scan must report the finding')
+  if (!/│\s*7\s*│/.test(output)) throw new Error(`The Docker scan must name line 7:\n${output}`)
+  mustNotContain(scan.raw, [LEAKED_PASSWORD], 'the Docker scan must not print the password')
+  await terminalOutputFrame(I, 'publication-docker-secret', [
+    '$ command -v betterleaks || echo "betterleaks is not installed"', where.raw.trimEnd(), '',
+    '$ task publication:scan', maskText(screenText(scan.raw), [...TERMINAL_MASKS, ...JOB_MASKS])
+  ].join('\n'))
 })
 
 storyboardStep(Then, 'the public project still holds the first release, without the new file or the password', async () => {
