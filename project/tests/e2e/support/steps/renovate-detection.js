@@ -1,4 +1,4 @@
-/* global inject When Then After */
+/* global inject Given When Then After */
 /**
  * Storyboard for @renovate-flow (features/03-evolution/renovate.feature).
  *
@@ -6,8 +6,11 @@
  * job runs it: `task renovate TASK_RENOVATE_PLATFORM=gitlab`, with copier on
  * the PATH because the feedback job installs it first.
  *   1. On a project generated from an older release of a toolbox copy: the bot
- *      must open the toolbox update and the project's own update, nothing for
+ *      must open the toolbox update and the toml update, nothing for
  *      the framework-owned tools, and the toolbox update must carry the release.
+ *      Nothing either for the project's own image, pinned one release behind in
+ *      a deployment manifest: bumping it with a fix commit made a release, whose
+ *      image Renovate bumped again, in a loop (issue #234).
  *   2. On that toolbox copy itself, five dependencies pinned back: one merge
  *      request per dependency, each moving every place the dependency is pinned.
  * Every card is a GitLab page (a merge request list, a Changes tab), twinned
@@ -17,6 +20,7 @@
  */
 const crypto = require('crypto')
 const fs = require('fs')
+const http = require('http')
 const path = require('path')
 const { spawn, execFileSync } = require('child_process')
 const { REPO, toolboxRepository } = require('../helpers/frameworkCopy')
@@ -44,7 +48,20 @@ const RELEASES = {
 // The developer's own dependency: toml stopped at 0.10.2 in 2020, so the
 // update Renovate proposes never moves either.
 const OWN_DEPENDENCY = { file: 'project/requirements.txt', pin: 'toml==0.10.0' }
-const DOWNSTREAM_FILES = [ANSWERS, OWN_DEPENDENCY.file]
+// The project's own image, deployed from a Kustomize overlay as EOS does, one
+// release behind its registry. The test GitLab runs no container registry: a
+// stand-in in this container lists the image's two tags, and plain HTTP is
+// the run's only test setting.
+const OWN_IMAGE = {
+  overlay: 'project/kustomize/overlays/staging/kustomization.yaml',
+  port: 5050,
+  tags: ['0.2.0', '0.2.1'],
+  pinned: '0.2.0'
+}
+const DOWNSTREAM_RUN_ENV = {
+  RENOVATE_CONFIG: JSON.stringify({ hostRules: [{ hostType: 'docker', matchHost: 'localhost', insecureRegistry: true }] })
+}
+const DOWNSTREAM_FILES = [ANSWERS, OWN_IMAGE.overlay, OWN_DEPENDENCY.file]
 const TOOLBOX_UPDATE_FILES = [ANSWERS, ...Object.keys(RELEASES['1.0.1'])].sort()
 
 // The commit on the toolbox's main branch after both releases: five
@@ -118,8 +135,9 @@ let story = null
 
 After(async () => {
   if (!story) return
-  const { pubs, dirs } = story
+  const { pubs, dirs, registry } = story
   story = null
+  if (registry) await new Promise(resolve => registry.server.close(resolve))
   for (const pub of pubs) await pub.teardown()
   for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true })
 })
@@ -162,6 +180,22 @@ function buildToolbox () {
   git(dir, 'add', '-A')
   git(dir, 'commit', '--quiet', '-m', 'chore: pin five dependencies back')
   return dir
+}
+
+// The project's registry: the image's tags, and every request Renovate makes.
+async function startRegistry (repository) {
+  const registry = { requests: [] }
+  registry.server = http.createServer((request, response) => {
+    registry.requests.push(request.url)
+    const tags = request.url.startsWith(`/v2/${repository}/tags/list`)
+    response.writeHead(tags || request.url === '/v2/' ? 200 : 404, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify(tags ? { name: repository, tags: OWN_IMAGE.tags } : {}))
+  })
+  await new Promise((resolve, reject) => {
+    registry.server.once('error', reject)
+    registry.server.listen(OWN_IMAGE.port, resolve)
+  })
+  return registry
 }
 
 function pushTags (dir, pub) {
@@ -311,7 +345,7 @@ async function mergeRequestListFrame (frameName, project, waitText, { projectNam
 // Chapter 1: a generated project only receives the toolbox update
 // ---------------------------------------------------------------------------
 
-storyboardStep(When, "Renovate runs on a project generated from an older toolbox release, it opens only the toolbox update and the project's own update", async () => {
+storyboardStep(Given, 'the project deploys its own image, pinned at 0.2.0 in its staging manifest', async () => {
   story = { pubs: [], dirs: [] }
   const suffix = crypto.randomBytes(4).toString('hex')
   story.toolboxDir = buildToolbox()
@@ -319,17 +353,42 @@ storyboardStep(When, "Renovate runs on a project generated from an older toolbox
   story.pubs.push(story.toolbox)
   pushTags(story.toolboxDir, story.toolbox)
 
-  const dir = renderProjectFromTemplate(`${BASE_URL}/${projectPath(story.toolbox.projectName)}.git`, '1.0.0')
+  const dir = story.projectDir = renderProjectFromTemplate(`${BASE_URL}/${projectPath(story.toolbox.projectName)}.git`, '1.0.0')
   story.dirs.push(dir)
   fs.writeFileSync(path.join(dir, OWN_DEPENDENCY.file), `${OWN_DEPENDENCY.pin}\n`)
   git(dir, 'add', '-A')
   git(dir, 'commit', '--quiet', '--no-verify', '-m', 'feat: depend on toml')
-  story.project = await publishToGitLab(dir, { name: `e2e-renovate-project-${suffix}`, project: { jobs_enabled: false } })
+  const name = `e2e-renovate-project-${suffix}`
+  const image = `localhost:${OWN_IMAGE.port}/${projectPath(name)}`
+  fs.mkdirSync(path.dirname(path.join(dir, OWN_IMAGE.overlay)), { recursive: true })
+  fs.writeFileSync(path.join(dir, OWN_IMAGE.overlay), [
+    'apiVersion: kustomize.config.k8s.io/v1beta1',
+    'kind: Kustomization',
+    'images:',
+    `  - name: ${image}`,
+    `    newTag: ${OWN_IMAGE.pinned}`,
+    ''
+  ].join('\n'))
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '--quiet', '--no-verify', '-m', `feat: deploy ${OWN_IMAGE.pinned} to staging`)
+  story.project = await publishToGitLab(dir, { name, project: { jobs_enabled: false } })
   story.pubs.push(story.project)
   await forbidMerges(story.project.projectName, story.project.headers)
   await forbidMerges(story.toolbox.projectName, story.toolbox.headers)
+  story.registry = await startRegistry(projectPath(story.project.projectName))
 
-  const entries = story.projectLog = await runRenovate(dir, story.project.projectName, story.project.token)
+  // The size GitLab prints after the file's name moves by a fraction of a
+  // pixel from one load to the next, and says nothing the card is about.
+  await gitlabFrame(I, 'downstream-own-image', gitlabUrl.file(story.project.projectName, 'main', OWN_IMAGE.overlay), {
+    waitText: 'newTag', height: 600, hide: ['.file-header-content small']
+  })
+  // Twin: the main branch deploys the image at 0.2.0, one release behind.
+  const overlay = await getRepositoryFile(story.project.projectName, OWN_IMAGE.overlay, 'main', story.project.headers)
+  if (!overlay.includes(`  - name: ${image}\n    newTag: ${OWN_IMAGE.pinned}\n`)) throw new Error(`The staging overlay must pin ${image} at ${OWN_IMAGE.pinned}:\n${overlay}`)
+})
+
+storyboardStep(When, 'Renovate runs on a project generated from an older toolbox release, it opens only the toolbox update and the toml update', async () => {
+  const entries = story.projectLog = await runRenovate(story.projectDir, story.project.projectName, story.project.token, DOWNSTREAM_RUN_ENV)
   story.projectMrs = await openMergeRequests(story.project.projectName, story.project.headers)
   await mergeRequestListFrame('downstream-merge-requests', story.project.projectName, 'update dependency toml', { height: 440 })
 
@@ -345,6 +404,8 @@ storyboardStep(When, "Renovate runs on a project generated from an older toolbox
     const failed = (Array.isArray(statuses) ? statuses : []).filter(status => status.status === 'failed').map(status => status.name)
     if (failed.length) throw new Error(`"${mr.title}" carries a failed check: ${failed.join(', ')}`)
   }
+  // Twin: Renovate never even looked the project's own image up.
+  if (story.registry.requests.length) throw new Error(`Renovate looked up the project's own image in its deployment manifest: ${story.registry.requests.join(', ')}`)
 })
 
 storyboardStep(Then, 'the toolbox update brings the newer tool pins with it, and no stray VERSION file', async () => {

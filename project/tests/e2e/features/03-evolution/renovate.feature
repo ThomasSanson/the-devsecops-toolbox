@@ -17,9 +17,13 @@ Feature: Dependency updates flow through the framework, not around it
   Scenario: A generated project gets its tool updates inside the toolbox update, and the toolbox updates each tool on its own
     # Chapter: A generated project only receives the toolbox update
     # Note: Off camera, the test GitLab holds a copy of the toolbox with two releases. Release 1.0.0 pins node 22.0.0 and glab 1.40.0, and release 1.0.1 moves them to 22.1.0 and 1.41.0. Next to it sits a project generated from release 1.0.0, whose developer added one dependency of their own: toml 0.10.0 in project/requirements.txt.
+    # Note: The project also deploys its own image. GitLab shows project/kustomize/overlays/staging/kustomization.yaml, the file that says which version runs in staging: it pins that image at 0.2.0. The project's registry already holds 0.2.1. For the test, that registry is a small stand-in at localhost:5050 that knows these two versions.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/project/kustomize/overlays/staging/kustomization.yaml
+    Given the project deploys its own image, pinned at 0.2.0 in its staging manifest
     # Note: Renovate runs on that project. GitLab's list of open merge requests shows two of them, "update dependency toml to v0.10.2" and "update devsecops toolbox to v1.0.1", and neither carries a red failed check. There is none for node or glab, although the project still pins them old: those tools belong to the toolbox.
+    # Note: There is none for the project's own image either, and Renovate never asks the registry about it. A Renovate bump of that image was a fix commit, so it made a release, the release published a new image, and Renovate bumped it again, in a loop. A version reaches staging through a merge request a person opens.
     # Copy: task renovate TASK_RENOVATE_PLATFORM=gitlab
-    When Renovate runs on a project generated from an older toolbox release, it opens only the toolbox update and the project's own update
+    When Renovate runs on a project generated from an older toolbox release, it opens only the toolbox update and the toml update
     # Note: The Changes tab of the toolbox update. Renovate ran the toolbox's own update command for it, from the project root and without a shell. The merge request holds what that command changed: the answers file now names release 1.0.1, and node and glab move to the pins release 1.0.1 carries.
     # Note: No .config/devsecops/VERSION is among the files. That stray file is what Renovate's own Copier run used to leave, working from the folder of the answers file.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/<iid>/diffs
