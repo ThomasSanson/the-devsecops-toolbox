@@ -20,8 +20,8 @@
 const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
-const { execSync } = require('child_process')
-const { copyFrameworkWithEngine, engineCommand } = require('../helpers/frameworkCopy')
+const { execSync, execFileSync, spawnSync } = require('child_process')
+const { copyFrameworkWithEngine, engineCommand, toolboxRepository } = require('../helpers/frameworkCopy')
 const { renderProject } = require('../helpers/copierRender')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { ENGINE_MASKS, openLocalTerminal } = require('../helpers/localTerminal')
@@ -633,4 +633,183 @@ storyboardStep(Then, "the generated project's own check accepts that failure as 
   }
   // Throws on any exit code but 0.
   execSync(GATE, { cwd: GENERATED, env: generated.env, stdio: 'pipe' })
+})
+
+// ===========================================================================
+// @agent-run: one entry point runs a task for an assistant, from the root of
+// the repository, and keeps the task's own verdict in a file of its own that
+// nothing typed after the run can rewrite.
+// ===========================================================================
+
+const AGENT = '/tmp/e2e-agent-run'
+const RUNNER = 'task -x devsecops:agent:run --'
+const LATEST = 'tmp/agent-runs/latest'
+const UNIT_GREETING = 'project/tests/unit/greeting.test.js'
+const UNIT_SERVICE = 'project/tests/unit/service.test.js'
+const NO_CHEAT = 'devsecops:test:check:no-cheat BASE=HEAD'
+
+// The developer's own task, appended to project/Taskfile.yml: what a project
+// built on the toolbox adds for its own tests.
+const UNIT_TASK = `
+  project:test:unit:
+    desc: Run the unit tests with Node's built-in test runner
+    cmds:
+      - node --test {{.CLI_ARGS}}
+`
+const GREETING_TEST = `const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { greeting } = require('../../src/greeting')
+
+test('greets the developer by name', () => {
+  assert.equal(greeting('Lambda'), 'Hello, Lambda')
+})
+`
+// The code exists, so the test reaches its own check and fails there: a
+// missing module would be a crash, not a RED (see @tdd-cycle).
+const GREETING_CODE = `// Not written yet: the test comes first.
+module.exports.greeting = () => ''
+`
+const SERVICE_TEST = `const { test } = require('node:test')
+
+test('the greeting service answers', async () => {
+  // The service never answers: this waits for an hour.
+  await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000))
+})
+`
+
+// Each run's folder is named after its start time and process id; Node's test
+// runner times every test, and its stack trace numbers Node's own lines.
+const RUN_MASKS = [
+  [/tmp\/agent-runs\/\d{8}T\d{6}Z-\d+/g, 'tmp/agent-runs/<run>'],
+  [/\(\d+(\.\d+)?ms\)/g, '(<duration>)'],
+  [/duration_ms \d+(\.\d+)?/g, 'duration_ms <duration>'],
+  [/(node:[\w/]+):\d+:\d+/g, '$1:<line>']
+]
+
+let agentRun = null
+
+After((test) => {
+  if (!owns(test, '@agent-run')) return
+  if (agentRun && agentRun.closeTerminal) agentRun.closeTerminal()
+  try { execFileSync('pkill', ['-f', `node --test ${UNIT_SERVICE}`]) } catch (_) {}
+  fs.rmSync(AGENT, { recursive: true, force: true })
+  agentRun = null
+})
+
+// The status file of the latest run, as { task, state, exit_code, log }.
+function agentStatus () {
+  const file = path.join(AGENT, LATEST, 'status')
+  assert.ok(fs.existsSync(file), `The runner left no status file at ${LATEST}/status`)
+  return Object.fromEntries(fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(row => {
+    const [, key, value] = row.match(/^(\w+):\s?(.*)$/)
+    return [key, value]
+  }))
+}
+
+// The twin of every run card, off camera: the same line run by bash alone, so
+// its exit code is the process's own, not text read off a screen. Returns the
+// run's status file and its log, read without the colours the tools print.
+function agentRunTwin (line, { code, ...expected }, env = {}) {
+  const run = spawnSync('bash', ['-c', line], { cwd: AGENT, env: { ...agentRun.env, ...env }, encoding: 'utf8', timeout: 120000 })
+  const said = `${run.stdout}${run.stderr}`
+  assert.equal(run.status, code, `"${line}" must exit ${code}, got ${run.status}:\n${said}`)
+  const status = agentStatus()
+  for (const [key, value] of Object.entries(expected)) {
+    assert.equal(status[key], value, `The status file must say ${key}: ${value}:\n${JSON.stringify(status)}`)
+  }
+  const log = path.join(AGENT, status.log)
+  assert.ok(fs.existsSync(log), `The status file must point at the run's log, got ${status.log}`)
+  return { status, log: stripAnsiEscapeSequences(fs.readFileSync(log, 'utf8')) }
+}
+
+const assertScreen = (screen, said) => {
+  for (const line of said) assert.ok(screen.includes(line), `Expected the card to show "${line}":\n${screen}`)
+}
+
+// ---------------------------------------------------------------------------
+// Chapter 1: one entry point, the task's own exit code
+// ---------------------------------------------------------------------------
+
+storyboardStep(Given, 'a project has a unit test task, one test still waiting for its code and one test that never ends', async () => {
+  fs.rmSync(AGENT, { recursive: true, force: true })
+  fs.mkdirSync(AGENT)
+  toolboxRepository(AGENT)
+  agentRun = { env: nestedEnv() }
+  execSync('git add -A && git commit -qm "the toolbox as it stands"', { cwd: AGENT, env: agentRun.env })
+
+  fs.appendFileSync(path.join(AGENT, 'project/Taskfile.yml'), UNIT_TASK)
+  fs.mkdirSync(path.join(AGENT, 'project/src'))
+  fs.mkdirSync(path.join(AGENT, 'project/tests/unit'))
+  fs.writeFileSync(path.join(AGENT, 'project/src/greeting.js'), GREETING_CODE)
+  fs.writeFileSync(path.join(AGENT, UNIT_GREETING), GREETING_TEST)
+  fs.writeFileSync(path.join(AGENT, UNIT_SERVICE), SERVICE_TEST)
+
+  agentRun.closeTerminal = await openLocalTerminal(I, { cwd: AGENT, env: agentRun.env, port: 7694, height: 1000 })
+  const screen = await card('agent-run-setup', 'git add -N . && git diff', DIFF_MASKS)
+  assertScreen(screen, ['+  project:test:unit:', '+      - node --test {{.CLI_ARGS}}', "+module.exports.greeting = () => ''",
+    "+  assert.equal(greeting('Lambda'), 'Hello, Lambda')", '+  await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000))'])
+  const changed = execSync('git diff --name-only', { cwd: AGENT, env: agentRun.env, encoding: 'utf8' }).trim().split('\n')
+  assert.deepEqual(changed, ['project/Taskfile.yml', 'project/src/greeting.js', UNIT_GREETING, UNIT_SERVICE])
+})
+
+storyboardStep(When, 'the assistant runs a passing check through the runner, and the status file and the shell both say 0', async () => {
+  const { log } = agentRunTwin(`${RUNNER} ${NO_CHEAT}`, { code: 0, task: NO_CHEAT, state: 'finished', exit_code: '0' })
+  assert.match(log, /No-cheat check completed successfully/, `The log must hold the check's own output:\n${log}`)
+  const screen = await card('agent-run-success', `${RUNNER} ${NO_CHEAT}; echo "exit code $?"; cat ${LATEST}/output.log`, RUN_MASKS)
+  assertScreen(screen, ['state: finished', 'exit_code: 0', 'exit code 0', 'No-cheat check completed successfully'])
+})
+
+storyboardStep(Then, 'the expected RED comes back with the test\'s own exit code, 1', async () => {
+  const line = `${RUNNER} project:test:unit -- ${UNIT_GREETING}`
+  const { log } = agentRunTwin(line, { code: 1, task: `project:test:unit -- ${UNIT_GREETING}`, state: 'finished', exit_code: '1' })
+  for (const said of ['✖ greets the developer by name', "expected: 'Hello, Lambda'", "actual: ''"]) {
+    assert.ok(log.includes(said), `The log must say why the test failed, with "${said}":\n${log}`)
+  }
+  const screen = await card('agent-run-red', `${line}; echo "exit code $?"; cat ${LATEST}/output.log`, RUN_MASKS)
+  assertScreen(screen, ['state: finished', 'exit_code: 1', 'exit code 1', '✖ greets the developer by name'])
+})
+
+// ---------------------------------------------------------------------------
+// Chapter 2: nothing typed after the run can change its verdict
+// ---------------------------------------------------------------------------
+
+storyboardStep(Then, 'a refused check stays 1 in the status file, even when a pipe hands the shell a 0', async () => {
+  // The cheapest road to green: switch the failing test off.
+  fs.writeFileSync(path.join(AGENT, UNIT_GREETING), GREETING_TEST.replace("test('greets", "test.skip('greets"))
+  const piped = `${RUNNER} ${NO_CHEAT} | tail -n 2`
+  const { log } = agentRunTwin(piped, { code: 0, task: NO_CHEAT, state: 'finished', exit_code: '1' })
+  assert.match(log, /a skipped test/, `The log must hold the check's refusal:\n${log}`)
+  const screen = await card('agent-run-pipe',
+    `grep -n "test.skip" ${UNIT_GREETING} && ${piped}; echo "exit code $?"; cat ${LATEST}/status`, RUN_MASKS)
+  assertScreen(screen, ["5:test.skip('greets the developer by name'", 'exit code 0', 'exit_code: 1'])
+})
+
+storyboardStep(Then, 'a test that never ends is stopped at the time limit and comes back 124, never 0', async () => {
+  const line = `${RUNNER} project:test:unit -- ${UNIT_SERVICE}`
+  const limit = { TASK_DEVSECOPS_AGENT_RUN_TIMEOUT: '3' }
+  agentRunTwin(line, { code: 124, task: `project:test:unit -- ${UNIT_SERVICE}`, state: 'timed-out', exit_code: '124' }, limit)
+  let left = ''
+  try { left = execFileSync('pgrep', ['-af', `node --test ${UNIT_SERVICE}`], { encoding: 'utf8' }) } catch (_) {}
+  assert.equal(left, '', `The runner must stop the test it timed out, still running:\n${left}`)
+
+  // On camera, the status file is watched while the run is on: it must say so,
+  // with no exit code yet, because a run that never comes back must not read
+  // as a success.
+  const seen = []
+  const watch = setInterval(() => {
+    try {
+      const status = agentStatus()
+      if (status.task.includes(UNIT_SERVICE)) seen.push(status)
+    } catch (_) {}
+  }, 100)
+  let screen
+  try {
+    screen = await card('agent-run-timeout',
+      `TASK_DEVSECOPS_AGENT_RUN_TIMEOUT=3 ${line}; echo "exit code $?"; cat ${LATEST}/output.log`, RUN_MASKS)
+  } finally {
+    clearInterval(watch)
+  }
+  assertScreen(screen, ['state: timed-out', 'exit_code: 124', 'exit code 124'])
+  assert.ok(seen.some(status => status.state === 'running' && status.exit_code === ''),
+    `While the test ran, the status file must have said "state: running" with no exit code:\n${JSON.stringify(seen)}`)
 })

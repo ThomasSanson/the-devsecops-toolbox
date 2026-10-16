@@ -102,3 +102,28 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: That is the only road for a new reference: rewritten on a developer's machine, then looked at by a person before it reaches the main branch.
     # Copy: http://gitlab/<user>/<project>/-/merge_requests/1/diffs
     Then the merge request shows each old reference next to its new pixels, for a reviewer to accept
+
+  @agent-run
+  Scenario: An assistant runs its tasks through one entry point that keeps each task's own verdict
+    # Chapter: One entry point, the task's own exit code
+    # Note: A developer's project, as git sees it. project/Taskfile.yml gains a task of its own, project:test:unit, which hands its arguments to Node's built-in test runner.
+    # Note: Two tests come with it. greeting.test.js expects "Hello, Lambda" from src/greeting.js, which still returns nothing: the code is not written yet. service.test.js waits an hour for an answer that never comes.
+    # Copy: git add -N . && git diff
+    Given a project has a unit test task, one test still waiting for its code and one test that never ends
+    # Note: The assistant hands the task to task devsecops:agent:run, with -x so the task's exit code comes through. The runner starts it from the root of the repository and sends everything it prints to a log of its own, under tmp/agent-runs.
+    # Note: Then it prints the status file of the run: the task, "state: finished", "exit_code: 0" and the path of the log. The shell agrees, exit code 0, and the log holds the check's own output.
+    # Copy: task -x devsecops:agent:run -- devsecops:test:check:no-cheat BASE=HEAD; echo "exit code $?"; cat tmp/agent-runs/latest/output.log
+    When the assistant runs a passing check through the runner, and the status file and the shell both say 0
+    # Note: Same runner, now the expected RED: the greeting test, which fails until the code is written. Node's test runner exits with 1, and that 1 comes back as it is, in the status file and in the shell.
+    # Note: The log says why: the test "greets the developer by name" expected 'Hello, Lambda' and got ''.
+    # Copy: task -x devsecops:agent:run -- project:test:unit -- project/tests/unit/greeting.test.js; echo "exit code $?"; cat tmp/agent-runs/latest/output.log
+    Then the expected RED comes back with the test's own exit code, 1
+    # Chapter: Nothing typed after the run can change its verdict
+    # Note: The assistant switches the greeting test off: test.skip, on line 5. The same check now refuses the change, and the line ends in a pipe into tail, the habit that used to hide failures.
+    # Note: The shell prints exit code 0, the exit code of tail. The status file of the run, printed last, still says "exit_code: 1": the pipe changed what the shell saw, not the verdict.
+    # Copy: grep -n "test.skip" project/tests/unit/greeting.test.js && task -x devsecops:agent:run -- devsecops:test:check:no-cheat BASE=HEAD | tail -n 2; echo "exit code $?"; cat tmp/agent-runs/latest/status
+    Then a refused check stays 1 in the status file, even when a pipe hands the shell a 0
+    # Note: The last test never ends. With the time limit set to 3 seconds, the runner stops it and says so: "state: timed-out" and "exit_code: 124". The shell sees 124 too, never 0.
+    # Note: While the test still ran, the status file said "state: running" with no exit code yet. A run that never comes back does not read as a success either.
+    # Copy: TASK_DEVSECOPS_AGENT_RUN_TIMEOUT=3 task -x devsecops:agent:run -- project:test:unit -- project/tests/unit/service.test.js; echo "exit code $?"; cat tmp/agent-runs/latest/output.log
+    Then a test that never ends is stopped at the time limit and comes back 124, never 0
