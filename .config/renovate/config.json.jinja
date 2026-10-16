@@ -22,6 +22,12 @@
   fail there, which marks the merge request red. skipArtifactsUpdate avoids that
   first run; the post-upgrade task still applies the release and its recorded
   scope, from the project root.
+
+  Deployment manifests are switched off by a package rule, not ignorePaths:
+  Renovate does not merge ignorePaths, so setting it here would drop the
+  node_modules/vendor/tests paths of config:recommended, and a project
+  renovate.json that extends config:recommended would wipe it. Package rules
+  add up. Proven by the same feature (@renovate-flow, issue #234).
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -71,6 +77,11 @@
       "automergeType": "pr",
       "automergeStrategy": "fast-forward",
       "prCreation": "immediate"
+    },
+    {
+      "description": "Deployment manifests: an image tag there says what is deployed, not a dependency to keep up. A fix commit that bumped the project's own image made a release, whose new image Renovate bumped again, in a loop. A version reaches an environment through a merge request someone opens.",
+      "matchFileNames": ["project/kustomize/**", "project/*/kustomize/**", "project/argocd/**"],
+      "enabled": false
     }
   ]
 }

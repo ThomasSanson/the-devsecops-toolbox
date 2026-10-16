@@ -180,6 +180,7 @@
     "kics",
     "kubeconfig",
     "kubeseal",
+    "kustomization",
     "labelledby",
     "lastname",
     "lefthook",
