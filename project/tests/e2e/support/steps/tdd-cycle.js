@@ -817,3 +817,81 @@ storyboardStep(Then, 'a test that never ends is stopped at the time limit and co
   assert.ok(seen.some(status => status.state === 'running' && status.exit_code === ''),
     `While the test ran, the status file must have said "state: running" with no exit code:\n${JSON.stringify(seen)}`)
 })
+
+// ===========================================================================
+// @own-gitlab: the suite only ever uses the GitLab of its own Compose project.
+// ===========================================================================
+
+// Stand-ins, not real stacks: containers of the suite's own image, with the two
+// labels Docker Compose puts on every container it starts. The names are on
+// the cards, so they are fixed; the run label lists them on camera and removes
+// them afterwards, and leaves every other container of the machine alone.
+const OWN_RUN = 'io.digital-commons.e2e.run=own-gitlab'
+const OWN_SUITE = 'e2e-ours-codeceptjs-1'
+const OWN_GITLAB = 'e2e-ours-gitlab-1'
+const NEIGHBOUR_GITLAB = 'e2e-neighbour-gitlab-1'
+const OWN_LIST = `docker ps --filter label=${OWN_RUN} --format 'table {{.Names}}\\t{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}'`
+const ownAsk = (suite) => `docker exec ${suite} node -e "const { composeService } = require('./project/tests/e2e/support/helpers/docker'); ` +
+  'try { console.log(composeService(\'gitlab\')) } catch (error) { console.log(error.message) }"'
+const OWN_REFUSAL = 'No "gitlab" service is running in the Compose project "e2e-ours".'
+const ownSh = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
+let ownTerminal = null
+
+function removeOwnGitlabFixture () {
+  ownSh(`docker ps -aq --filter label=${OWN_RUN} | xargs -r docker rm -f`)
+}
+
+// A container of the suite's own image in `project`, as Compose would label
+// it. A suite stand-in also gets the Docker socket and the helper under test.
+function startStandIn (project, service, suite = false) {
+  const image = ownSh('docker inspect --format \'{{.Config.Image}}\' "$(hostname)"').trim()
+  const name = `${project || 'e2e-unlabelled'}-${service}-1`
+  ownSh(`docker run -d --init --network none --name ${name} --label ${OWN_RUN} ` +
+    `--label com.docker.compose.project=${project} --label com.docker.compose.service=${service} ` +
+    `${suite ? '-v /var/run/docker.sock:/var/run/docker.sock ' : ''}-w /app ${image} sleep infinity`)
+  if (suite) {
+    ownSh(`docker exec ${name} mkdir -p /app/project/tests/e2e/support/helpers`)
+    ownSh(`docker cp ${path.join(__dirname, '../helpers/docker.js')} ${name}:/app/project/tests/e2e/support/helpers/docker.js`)
+  }
+  return name
+}
+
+After((test) => {
+  if (!owns(test, '@own-gitlab')) return
+  if (ownTerminal) ownTerminal()
+  ownTerminal = null
+  removeOwnGitlabFixture()
+})
+
+storyboardStep(Given, 'two Docker Compose projects on the same machine each run a service called gitlab', async () => {
+  removeOwnGitlabFixture()
+  startStandIn('e2e-ours', 'gitlab')
+  startStandIn('e2e-neighbour', 'gitlab')
+  startStandIn('e2e-ours', 'codeceptjs', true)
+  ownTerminal = await openLocalTerminal(I, { cwd: '/app', env: nestedEnv(), port: 7694, height: 600 })
+  const screen = await card('own-gitlab-two-projects', OWN_LIST)
+  const listed = ownSh(OWN_LIST).trim().split('\n').slice(1).map(row => row.trim().split(/\s+/))
+  assert.deepEqual(listed, [[OWN_SUITE, 'e2e-ours', 'codeceptjs'], [NEIGHBOUR_GITLAB, 'e2e-neighbour', 'gitlab'],
+    [OWN_GITLAB, 'e2e-ours', 'gitlab']], `Expected two gitlab services in two projects:\n${listed.join('\n')}`)
+  for (const name of [OWN_SUITE, NEIGHBOUR_GITLAB, OWN_GITLAB]) {
+    assert.ok(screen.includes(name), `Expected ${name} on the card:\n${screen}`)
+  }
+})
+
+storyboardStep(When, 'the test suite asks for its GitLab, it gets the one of its own project', async () => {
+  const screen = await card('own-gitlab-found', ownAsk(OWN_SUITE))
+  assert.equal(ownSh(ownAsk(OWN_SUITE)).trim(), OWN_GITLAB, 'The suite must get the GitLab of its own project')
+  assert.ok(screen.split('\n').some(row => row.trim() === OWN_GITLAB), `Expected ${OWN_GITLAB} as the answer on the card:\n${screen}`)
+})
+
+storyboardStep(Then, 'with its own GitLab stopped, the test suite refuses to use the neighbour\'s', async () => {
+  const screen = await card('own-gitlab-refused', `docker stop ${OWN_GITLAB} && ${ownAsk(OWN_SUITE)}`)
+  assert.equal(ownSh(ownAsk(OWN_SUITE)).trim(), OWN_REFUSAL, 'With its own GitLab stopped, the suite must refuse')
+  assert.ok(screen.includes(OWN_REFUSAL), `Expected the refusal on the card:\n${screen}`)
+  assert.ok(!screen.includes(NEIGHBOUR_GITLAB), `The neighbour's GitLab must not be named on the card:\n${screen}`)
+  // Off camera: a suite container whose project label is empty cannot tell its
+  // own project, and is refused rather than handed any gitlab at all.
+  const unlabelled = startStandIn('', 'codeceptjs', true)
+  const answer = ownSh(ownAsk(unlabelled)).trim()
+  assert.match(answer, /^Cannot tell the Compose project of this suite/, `An unlabelled suite must be refused:\n${answer}`)
+})

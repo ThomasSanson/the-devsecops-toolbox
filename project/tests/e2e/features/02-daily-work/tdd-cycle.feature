@@ -128,3 +128,21 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: Off camera, the status file is read while the test still runs. It says "state: running" with no exit code: a run that never comes back never reads as a success.
     # Copy: TASK_DEVSECOPS_AGENT_RUN_TIMEOUT=3 task -x devsecops:agent:run -- project:test:unit -- project/tests/unit/service.test.js; echo "exit code $?"; grep -A2 "Interrupted while running" tmp/agent-runs/latest/output.log
     Then a test that never ends is stopped at the time limit and comes back 124, never 0
+
+  @own-gitlab
+  Scenario: The test suite works only with the GitLab of its own project, and stops when that GitLab is missing
+    # Chapter: Two GitLabs on one machine
+    # Note: One machine can run several Docker Compose projects at once: this toolbox, a project made from it, or an unrelated one. Docker Compose labels each container with its project and its service, and two projects can both have a service called gitlab.
+    # Note: Three throwaway containers set that scene. e2e-ours-gitlab-1 and e2e-neighbour-gitlab-1 stand in for the GitLabs of two projects. e2e-ours-codeceptjs-1 stands in for the container that runs the test suite, in the project e2e-ours.
+    # Copy: docker ps --filter label=io.digital-commons.e2e.run=own-gitlab --format 'table {{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
+    Given two Docker Compose projects on the same machine each run a service called gitlab
+    # Note: The test suite finds its GitLab with one helper, composeService, in project/tests/e2e/support/helpers/docker.js. The helper reads the project of its own container, then asks Docker for the gitlab service of that project only.
+    # Note: Run in the suite's container, it answers e2e-ours-gitlab-1: the GitLab of its own project, not the neighbour's.
+    # Copy: docker exec e2e-ours-codeceptjs-1 node -e "const { composeService } = require('./project/tests/e2e/support/helpers/docker'); try { console.log(composeService('gitlab')) } catch (error) { console.log(error.message) }"
+    When the test suite asks for its GitLab, it gets the one of its own project
+    # Chapter: No GitLab of its own, no GitLab at all
+    # Note: docker stop prints the name of our GitLab, e2e-ours-gitlab-1, and only the neighbour's is still running. The same question now gets a refusal instead of a name, in the helper's words: No "gitlab" service is running in the Compose project "e2e-ours".
+    # Note: Stopping is the safe answer. The suite creates an admin token and registers runners on the GitLab it is given, so the neighbour's would get them.
+    # Note: Off camera, a suite container whose project label is empty is refused too: the helper cannot tell which project is its own, and it does not guess.
+    # Copy: docker stop e2e-ours-gitlab-1 && docker exec e2e-ours-codeceptjs-1 node -e "const { composeService } = require('./project/tests/e2e/support/helpers/docker'); try { console.log(composeService('gitlab')) } catch (error) { console.log(error.message) }"
+    Then with its own GitLab stopped, the test suite refuses to use the neighbour's
