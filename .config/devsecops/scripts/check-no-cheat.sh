@@ -28,8 +28,18 @@
 #   a string or a document therefore trips nothing, which is what lets this file
 #   and the documents that describe it name what they hunt.
 #
-#   Deleted lines are out of scope: switching a check off is something a change
-#   ADDS. And each pattern is read only where it can mean cheating — a
+#   A check can also go without a word being added: an assertion deleted, a
+#   whole test file deleted. So the guard reads the lines the change REMOVES
+#   from the tests as well, and refuses a check that leaves with nothing in its
+#   place:
+#
+#     assert / expect        an assertion, in the languages the skip rule reads
+#     Then                   a Gherkin check
+#     a deleted test file    every check it held
+#
+#   What a change removes is paired with what it adds, the same text first: a
+#   renamed test, or an assertion moved elsewhere in the change, removed
+#   nothing. Each pattern is read only where it can mean cheating — a
 #   `allow_failure: true` belongs to a pipeline file, a skipped scenario to the
 #   tests.
 #
@@ -51,8 +61,8 @@
 #   CI_PATHS     Where this project's pipeline lives (default: the framework's).
 #
 # EXIT CODES:
-#   0  Nothing switched off (or nothing relevant changed, or exempted)
-#   1  The change switches a check off, with no exemption
+#   0  Nothing switched off or removed (or nothing relevant changed, or exempted)
+#   1  The change switches a check off or removes one, with no exemption
 #
 # ============================================================================
 
@@ -146,6 +156,14 @@ add_rule tests "${CI_PATHS}" '^[[:space:]]*allow_failure:[[:space:]]*true' \
 add_rule linter "${TEST_PATHS}" '(eslint-disable|shellcheck disable|# ?noqa|# ?nosec)' \
   'a linter silenced inside the tests' modified_only
 
+# A check, one line each: an assertion (node assert, chai and jest expect,
+# Python assert and self.assert*, JUnit assert*, Go t.Error/t.Fatal and testify
+# require), a CodeceptJS I.see, or a Gherkin Then (Alors in French). Read on the lines a change
+# REMOVES, and on the ones it adds to pair them with.
+CHECK_RE='^[[:space:]]*((await[[:space:]]+)?(([[:alnum:]_]+\.)*(assert|expect)|I\.(see|dontSee))|t\.(Error|Fatal)|require\.[A-Z]|(Then|Alors)[[:space:]])'
+read_removed=false
+if [ -z "${ONLY}" ] || [ "${ONLY}" = tests ]; then read_removed=true; fi
+
 BASE="$(resolve_diff_base)"
 
 echo -e "${BLUE}🕵 No-cheat gate (base: ${BASE}${ONLY:+, ${ONLY} only})...${NC}"
@@ -164,7 +182,9 @@ if [ "${BASE}" = "HEAD" ]; then
   # records their existence without staging a single line of content.
   git add -N . >/dev/null 2>&1 || true
 fi
-if ! diff_output="$(git diff --unified=0 --diff-filter=ACMR "${diff_range[@]}")"; then
+# -M: a renamed file shows the lines it changed, not a deletion and a creation.
+# D: a deleted file shows every line it held, and its checks with them.
+if ! diff_output="$(git diff --unified=0 -M --diff-filter=ACMRD "${diff_range[@]}")"; then
   echo -e "${RED}❌ Cannot compute the diff against ${BASE} — refusing to pass silently.${NC}" >&2
   exit 1
 fi
@@ -174,19 +194,57 @@ fi
 added_files="$(git diff --name-status --diff-filter=A "${diff_range[@]}" | cut -f2 | tr '\n' ' ')"
 
 findings=()
+removed=()          # file:line|content|what it does, one per check removed
+declare -A added=() # each check line the change adds, by its text
+added_count=0
 file=''
+old_file=''
+deleted=false
+in_header=false
 lineno=0
+old_lineno=0
 while IFS= read -r line; do
+  # A file's header runs from `diff --git` to its first hunk: only there is a
+  # `--- a/` or `+++ b/` line a path rather than a removed or added line.
   case "${line}" in
-  '+++ b/'*)
-    file="${line#+++ b/}"
+  'diff --git '*)
+    in_header=true file='' old_file='' deleted=false
     continue
     ;;
   '@@'*)
-    # @@ -old,count +new,count @@ — the added lines of this hunk start at `new`.
+    # @@ -old,count +new,count @@ — this hunk's lines start at `old` and `new`.
+    in_header=false
+    hunk="${line#@@ -}"
+    old_lineno="${hunk%%[ ,]*}"
     hunk="${line#*+}"
     hunk="${hunk%% *}"
     lineno="${hunk%%,*}"
+    continue
+    ;;
+  esac
+  if [ "${in_header}" = true ]; then
+    case "${line}" in
+    '--- a/'*) old_file="${line#--- a/}" ;;
+    '+++ b/'*) file="${line#+++ b/}" ;;
+    '+++ /dev/null') deleted=true ;;
+    esac
+    continue
+  fi
+  case "${line}" in
+  '-'*)
+    content="${line#-}"
+    # The framework's own engine under .config/ is not a test of this project:
+    # a framework upgrade rewrites it, and must not read as checks removed.
+    if [ "${read_removed}" = true ] && [[ "${old_file}" =~ ${TEST_PATHS} ]] && [[ "${old_file}" != .config/* ]] &&
+      [[ "${content}" =~ ${CHECK_RE} ]]; then
+      if [ "${deleted}" = true ]; then
+        says='a test file deleted: the check it held never runs again'
+      else
+        says='a check removed, and none added in its place: the suite stops checking it'
+      fi
+      removed+=("${old_file}:${old_lineno}|${content}|${says}")
+    fi
+    old_lineno=$((old_lineno + 1))
     continue
     ;;
   '+'*) ;;
@@ -194,6 +252,11 @@ while IFS= read -r line; do
   esac
   [ -n "${file}" ] || continue
   content="${line#+}"
+  if [[ "${file}" =~ ${TEST_PATHS} ]] && [[ "${content}" =~ ${CHECK_RE} ]]; then
+    key="${content#"${content%%[![:space:]]*}"}"
+    added["${key}"]=$((${added["${key}"]:-0} + 1))
+    added_count=$((added_count + 1))
+  fi
   for i in "${!RULE_RE[@]}"; do
     if [ "${RULE_SCOPE[$i]}" = "modified_only" ] && [[ " ${added_files} " == *" ${file} "* ]]; then continue; fi
     if [[ "${file}" =~ ${RULE_PATHS[$i]} ]] && [[ "${content}" =~ ${RULE_RE[$i]} ]]; then
@@ -203,16 +266,32 @@ while IFS= read -r line; do
   lineno=$((lineno + 1))
 done <<<"${diff_output}"
 
+# A change that adds as many checks as it removes moved them; one that adds
+# fewer lost some. Name every removed check that did not come back word for
+# word: a moved one did, an edited one did not, and review sees which is which.
+if [ "${#removed[@]}" -gt "${added_count}" ]; then
+  for finding in "${removed[@]}"; do
+    content="${finding#*|}"
+    content="${content%|*}"
+    key="${content#"${content%%[![:space:]]*}"}"
+    if [ "${added["${key}"]:-0}" -gt 0 ]; then
+      added["${key}"]=$((${added["${key}"]} - 1))
+      continue
+    fi
+    findings+=("${finding}")
+  done
+fi
+
 if [ "${#findings[@]}" -eq 0 ]; then
   case "${ONLY}" in
   linter) echo -e "${GREEN}✅ Nothing in this change silences a linter.${NC}" ;;
-  *) echo -e "${GREEN}✅ Nothing in this change switches a check off.${NC}" ;;
+  *) echo -e "${GREEN}✅ Nothing in this change switches a check off or removes one.${NC}" ;;
   esac
   exit 0
 fi
 
 if has_exempt_trailer No-cheat "${BASE}"; then
-  echo -e "${YELLOW}⚠️  A check is switched off, but a 'No-cheat-exempt:' trailer waives the gate.${NC}"
+  echo -e "${YELLOW}⚠️  A check is switched off or removed, but a 'No-cheat-exempt:' trailer waives the gate.${NC}"
   printf "   ${YELLOW}~${NC} %s\n" "${findings[@]%%|*}"
   exit 0
 fi
@@ -222,8 +301,10 @@ for finding in "${findings[@]}"; do
   where="${finding%%|*}"
   rest="${finding#*|}"
   echo -e "   ${RED}~${NC} ${where}"
-  echo "       ${rest%%|*}"
-  echo "       → ${rest#*|}"
+  # The quoted line may hold a `|` of its own (`expect(a || b)`): the reason is
+  # what follows the LAST one.
+  echo "       ${rest%|*}"
+  echo "       → ${rest##*|}"
 done
 cat >&2 <<'MSG'
 
@@ -231,8 +312,8 @@ A test suite has one job: to fail when the code is wrong. A check that was
 switched off cannot do it, and the pipeline reports success while proving
 nothing. Do ONE of:
   - fix the code the check caught, and leave the check alone;
-  - if the check is genuinely obsolete, remove it and say so in review;
-  - if this really is the honest thing to do, add a commit trailer:
+  - if the check is genuinely obsolete, or switching it off really is the
+    honest thing to do, say why in a commit trailer that review reads:
         No-cheat-exempt: <why switching this off is right>
 See .agents/rules/tests-integrity.md.
 MSG

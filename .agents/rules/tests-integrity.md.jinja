@@ -35,7 +35,11 @@ two guards read the facts themselves.
   and a non-zero `tolerance:` anywhere under a test path — plus the word your own
   language uses for the same thing (`@pytest.mark.skip`, `t.Skip(`, `it.skip(`,
   `@Disabled`) — and `allow_failure: true` or a silenced linter in files the
-  change MODIFIES, because a file that arrives whole turned nothing off. A test
+  change MODIFIES, because a file that arrives whole turned nothing off. It
+  reads what the change REMOVES from the tests too: an assertion (`assert`,
+  `expect`, a Gherkin `Then`) or a whole test file deleted with nothing in its
+  place is refused, while a renamed test or an assertion moved elsewhere in the
+  change passes. A test
   path means, under `project/`, any `tests/`, `test/`, `spec/` or `specs/`
   directory and any file named `*_test.*`, `*_spec.*`, `*.test.*` or `*.spec.*`;
   set `TEST_PATHS` if this project marks its tests some other way. It runs as the

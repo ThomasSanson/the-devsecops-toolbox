@@ -67,8 +67,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**Publication refusal and recovery contracts**](02-daily-work/publication-contracts.svg): Publication keeps its safety promises, typed in a live terminal on throwaway repositories against fixture-forge, a stand-in for GitLab's API, then a release chapter published to a real public project on GitLab.
   Chapters: Exactly the committed files, or nothing · Publication runs only when asked, and only after a real scan · Approval names the exact list · Tokens and setup failures stay safe · Releases on a real public project on GitLab.
   Replay: `task project:test:e2e -- --grep "@publication-contracts"`
-- [**12. tdd-cycle**](02-daily-work/tdd-cycle.svg): The toolbox tells a real failure apart from a run that died on its way to the test, refuses yesterday's failure as today's proof, and the phase refuses to certify work where a check was switched off.
-  Chapters: A failure that proves nothing · A failure that proves something · Yesterday's proof does not count · The phase refuses to certify itself.
+- [**12. tdd-cycle**](02-daily-work/tdd-cycle.svg): The toolbox tells a real failure apart from a run that died on its way to the test, refuses yesterday's failure as today's proof, and the phase refuses to certify work where a check was switched off or deleted, while a renamed test, or one deleted with its reason in the commit, goes through.
+  Chapters: A failure that proves nothing · A failure that proves something · Yesterday's proof does not count · The phase refuses to certify itself · A check that disappears · A test that moves, and a test that goes for a reason.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
 - [**baseline-mode**](02-daily-work/baseline-mode.svg): Only the value 1, on a developer's machine, rewrites a reference. CI refuses it, and a merge request shows each rewritten reference for a reviewer to accept.
   Chapters: A visible difference must fail · A developer rewrites the references, a reviewer accepts them.

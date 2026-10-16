@@ -62,7 +62,8 @@ For ANY feature, bug fix, or modification, run the nine steps of the table in
 - ❌ Skipping any step
 - ❌ Modifying the test to make it pass
 - ❌ Switching a check off to make the pipeline green (`@skip`, `.only(`, a
-  non-zero `tolerance:`, `allow_failure: true`). The `no-cheat` merge-request job
-  reads the lines a change adds and refuses them; the only waiver is a visible
-  `No-cheat-exempt: <why>` commit trailer.
+  non-zero `tolerance:`, `allow_failure: true`), or by deleting it. The
+  `no-cheat` merge-request job reads the lines a change adds and refuses them,
+  and refuses a test file or an assertion it removes with nothing in its place;
+  the only waiver is a visible `No-cheat-exempt: <why>` commit trailer.
 - ❌ Stopping at a plan when asked to implement

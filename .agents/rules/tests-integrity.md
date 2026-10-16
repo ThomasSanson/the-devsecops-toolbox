@@ -50,11 +50,14 @@ anyone in a hurry steps over.
   `@Disabled`), because this framework is handed to projects of any language —
   and `allow_failure: true` or a silenced linter in files the change MODIFIES,
   because a file that arrives whole (installing the framework, adding a
-  pipeline) turned nothing off. Every pattern is anchored at the head of its
-  line, so quoting one in a sentence or a string trips nothing. It runs as the
-  `no-cheat` merge-request job, and locally against `origin/main` — or against
-  the working tree (`BASE=HEAD`), which is what the cycle's phases use before
-  you commit.
+  pipeline) turned nothing off. It reads what the change REMOVES from the tests
+  too: an assertion (`assert`, `expect`, a Gherkin `Then`) or a whole test file
+  deleted with nothing in its place is refused, while a renamed test or an
+  assertion moved elsewhere in the change passes. Every pattern is anchored at
+  the head of its line, so quoting one in a sentence or a string trips nothing.
+  It runs as the `no-cheat` merge-request job, and locally against
+  `origin/main` — or against the working tree (`BASE=HEAD`), which is what the
+  cycle's phases use before you commit.
 - **A test path** means, under `project/`, any `tests/`, `test/`, `spec/` or
   `specs/` directory at any depth, and any file named `*_test.*`, `*_spec.*`,
   `*.test.*` or `*.spec.*`. Both, because Go's tests sit beside the code they
@@ -65,8 +68,9 @@ anyone in a hurry steps over.
   `No-cheat-exempt: <why>` commit trailer.
 - **Both gates prove themselves:** `@tdd-cycle`
   (`project/tests/e2e/features/02-daily-work/tdd-cycle.feature`) runs a real
-  crash and a real failure and shows the first gate telling them apart;
-  `@test-discipline` pushes a real `@skip` to a real merge request and shows the
+  crash and a real failure and shows the first gate telling them apart, then
+  the second refusing a deleted check and a deleted test file while it lets a
+  renamed test through; `@test-discipline` pushes a real `@skip` to a real merge request and shows the
   picture gate staying green while the second one stops it.
 
 ## Visual Regression

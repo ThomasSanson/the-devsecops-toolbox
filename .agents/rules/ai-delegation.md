@@ -55,7 +55,9 @@ for the phase you are in; run both before you say the work is done.
   next commit, because it destroys the only thing anyone was relying on.
 
 The first two are checked by the phase commands and the `no-cheat` job (a
-silenced linter only in test files). A deleted test or assertion is left to review.
+silenced linter only in test files), and so is a deleted test: a test file or an
+assertion removed with nothing in its place is refused, a renamed or moved one
+passes. A weakened test is left to review.
 
 ## If you are the orchestrator
 
