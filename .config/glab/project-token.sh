@@ -136,9 +136,13 @@ store_ci_variable() {
   return 1
 }
 
+# The CI/CD variable must hold THE project access token $2 (its id), not just
+# any token that signs in: another user's token, another project's, a revoked
+# or an expired one all fail here.
 verify_ci_variable_token() {
   local var_name="$1"
-  local var_json hidden cred host
+  local token_id="$2"
+  local var_json hidden cred host self_id
 
   var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
   echo "$var_json" | jq -e '.key' >/dev/null 2>&1 || return 1
@@ -162,7 +166,38 @@ verify_ci_variable_token() {
 
   # Use the host's configured API protocol, exactly as the variable lookup did.
   # A failed HTTPS request must never send the credential again over HTTP.
-  GITLAB_TOKEN="$cred" glab api --hostname "$host" user >/dev/null 2>&1
+  # GitLab answers which token it is, never its value.
+  self_id=$(GITLAB_TOKEN="$cred" glab api --hostname "$host" personal_access_tokens/self 2>/dev/null |
+    strip_glab_noise | jq -r '.id // empty') || return 1
+  [ -n "$self_id" ] && [ "$self_id" = "$token_id" ]
+}
+
+# A variable holding the right token can still have lost its masking or its
+# protection: put both back, value untouched, so the token is not rotated.
+repair_ci_variable_settings() {
+  local var_name="$1"
+  local protected="$2"
+  local var_json result
+
+  var_json=$(glab api "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" 2>/dev/null | strip_glab_noise) || return 1
+  if echo "$var_json" | jq -e --arg prot "$protected" '.masked == true and (.protected | tostring) == $prot' >/dev/null; then
+    return 0
+  fi
+
+  # The value goes from GitLab's answer straight back into the update: it is
+  # never on a command line nor printed.
+  result=$(
+    echo "$var_json" |
+      jq --arg prot "$protected" '{value, masked: "true", protected: $prot}' |
+      glab api --method PUT "projects/${PROJECT_PATH_ENCODED}/variables/${var_name}" \
+        --input - -H "Content-Type: application/json" 2>/dev/null |
+      strip_glab_noise
+  ) || true
+  if ! echo "$result" | jq -e '.key' >/dev/null 2>&1; then
+    echo "   ❌ Failed to repair the settings of CI/CD variable '${var_name}'"
+    return 1
+  fi
+  echo "   🔒 CI/CD variable '${var_name}' settings repaired (masked=true, protected=${protected})"
 }
 
 check_permissions() {
@@ -209,15 +244,19 @@ fi
 if [ "$COUNT" -eq 1 ]; then
   EXISTING_ID=$(echo "$MATCHING" | jq -r '.[0].id')
   EXISTING_ACCESS=$(echo "$MATCHING" | jq -r '.[0].access_level')
+  MISSING_SCOPES=$(echo "$MATCHING" | jq -r --argjson want "$SCOPE_JSON" '$want - .[0].scopes | join(",")')
 
-  if [ "$EXISTING_ACCESS" -lt "$REQUIRED_ACCESS_LEVEL" ]; then
-    echo "   ⚠️  Token has access_level=${EXISTING_ACCESS}, required access_level=${REQUIRED_ACCESS_LEVEL}"
-    echo "      Revoking and recreating with correct access level..."
+  if [ "$EXISTING_ACCESS" -lt "$REQUIRED_ACCESS_LEVEL" ] || [ -n "$MISSING_SCOPES" ]; then
+    [ "$EXISTING_ACCESS" -ge "$REQUIRED_ACCESS_LEVEL" ] ||
+      echo "   ⚠️  Token has access_level=${EXISTING_ACCESS}, required access_level=${REQUIRED_ACCESS_LEVEL}"
+    [ -z "$MISSING_SCOPES" ] ||
+      echo "   ⚠️  Token is missing the scopes: ${MISSING_SCOPES}"
+    echo "      Revoking and recreating with the required access level and scopes..."
     glab api --method DELETE "projects/${PROJECT_PATH_ENCODED}/access_tokens/${EXISTING_ID}" >/dev/null 2>&1
     COUNT=0
   else
-    if glab api "projects/${PROJECT_PATH_ENCODED}/variables/${TOKEN_NAME}" >/dev/null 2>&1 &&
-      verify_ci_variable_token "$TOKEN_NAME"; then
+    if verify_ci_variable_token "$TOKEN_NAME" "$EXISTING_ID"; then
+      repair_ci_variable_settings "$TOKEN_NAME" "$TOKEN_PROTECTED" || exit 1
       echo "   ✅ Token '${TOKEN_NAME}' exists and is valid (access_level=${EXISTING_ACCESS})"
       echo "✅ Done! ${TOKEN_LABEL} is ready to use."
       exit 0
