@@ -301,8 +301,9 @@ const JOB_LOG_MASKS = [
  *   - sortScannerLines: re-order the lines concurrent scanners print in any
  *     order (OSV's "Scanned … packages" lines, MegaLinter's reporter lines);
  *   - focus: a log text to bring into view instead of the top of the page.
- * The gutter (line numbers, timestamps, section durations) and the runner's
- * cleanup line ("…runner-<token>… disconnected from network") always go, and
+ * The gutter (line numbers, timestamps, section durations), the runner's
+ * cleanup line ("…runner-<token>… disconnected from network") and git's
+ * "warning: redirecting to" (CI runners print it, local ones do not) always go, and
  * projectNames (default: the project's path segment) are replaced inside the
  * log before the SHA mask runs. The masks are applied across spans once, then
  * kept by maskGitLabPage's observer, text node by text node, should GitLab
@@ -354,7 +355,7 @@ async function jobLogFrame (I, frameName, project, jobId, {
           if (start === -1) throw new Error(`jobLogFrame: no log line matches ${args.from.source || args.from.text}`)
           lines.slice(0, Math.max(0, start - args.lead)).forEach(l => l.setAttribute('data-e2e-mask', ''))
         }
-        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container/i
+        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container|warning: redirecting to /i
         lines.forEach(l => { if (CLEANUP.test(l.textContent)) l.setAttribute('data-e2e-mask', '') })
         // Line numbers are blanked, not removed: a section's chevron sits in
         // their column and would cover the section's first letter.
