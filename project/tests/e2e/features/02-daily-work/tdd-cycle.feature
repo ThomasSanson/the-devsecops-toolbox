@@ -56,8 +56,12 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: The guard behind the test phase reads the working tree, and it stops on that line too. It names the file and the line, and says what the line does: "a picture check that accepts a difference: it stops proving anything".
     # Copy: git diff -- project/tests/e2e/codecept.conf.js && task devsecops:test:check:no-cheat BASE=HEAD
     And the guard refuses a picture check loosened to 0.1 just the same
+    # Note: The tolerance goes back to 0. Many projects write their unit tests for node:test, the test runner built into Node. The assistant writes the greeting check that way, in greeting.test.js, and switches it off with one option on line 4: { skip: true }. node:test then reports the test as skipped and never runs it.
+    # Note: The guard stops on that line as well. It names project/tests/unit/greeting.test.js:4 and says what the line does: "a skipped or todo test: its failure no longer fails the suite". Off camera, it refuses the other forms node:test offers, { todo: true }, test.todo( and t.skip( among them, and lets a skip through when its value is a condition a reviewer can read.
+    # Copy: cat project/tests/unit/greeting.test.js && task devsecops:test:check:no-cheat BASE=HEAD
+    And the guard refuses a node:test unit test switched off with { skip: true }
     # Chapter: A check that disappears
-    # Note: The tolerance goes back to 0, and the developer commits the test as it stands. The assistant then takes the quietest road of all: it adds nothing and deletes the scenario's only check, the Then line. The diff at the top shows that single red line.
+    # Note: The developer commits the test as it stands. The assistant then takes the quietest road of all: it adds nothing and deletes the scenario's only check, the Then line. The diff at the top shows that single red line.
     # Note: A scenario with no step left has nothing that can fail. The guard reads the lines a change removes too, and stops on this one: it names the file and the line, quotes it, and says "a check removed, and none added in its place".
     # Copy: git diff -- project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:check:no-cheat BASE=HEAD
     Then the guard refuses a scenario that lost its only check

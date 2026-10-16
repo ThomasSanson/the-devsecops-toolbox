@@ -274,6 +274,58 @@ storyboardStep(Then, 'the guard refuses a picture check loosened to 0.1 just the
   assert.notEqual(guard.code, 0, `The guard must refuse tolerance 0.1:\n${guard.output}`)
 })
 
+// node:test, the runner built into Node, switches a test off from its options
+// or from inside it. The card shows the first form, the twin reads the others.
+// No blank line in the file: the card drops blank rows, and the reader counts
+// down to the line the guard names.
+const NODE_TEST = 'project/tests/unit/greeting.test.js'
+const NODE_TEST_LINE = "test('greets the developer by name', { skip: true }, () => {"
+const NODE_TEST_BODY = `const test = require('node:test')
+const assert = require('node:assert/strict')
+const { greeting } = require('../e2e/support/helpers/greeting')
+${NODE_TEST_LINE}
+  assert.equal(greeting('Lambda'), 'Hello, Lambda')
+})
+`
+const NODE_TEST_REFUSED = [
+  "test('greets the developer by name', { skip: 'later' }, () => {",
+  "test('greets the developer by name', { todo: true }, () => {",
+  "it('greets the developer by name', { skip: true }, () => {",
+  "describe('greets the developer by name', { todo: 'later' }, () => {",
+  "test.todo('greets the developer by name', () => {",
+  "it.todo('greets the developer by name', () => {",
+  "test('greets the developer by name', (t) => {\n  t.skip()",
+  "test('greets the developer by name', (t) => {\n  t.todo()"
+]
+// A condition a reviewer can read, as @pytest.mark.skipif states one.
+const NODE_TEST_CONDITIONAL = "test('greets the developer by name', { skip: process.platform === 'win32' }, () => {"
+
+storyboardStep(Then, 'the guard refuses a node:test unit test switched off with { skip: true }', async () => {
+  // The tolerance goes back to 0, so the only cheat left is the new test.
+  const conf = path.join(FIXTURE, CONFIG)
+  fs.writeFileSync(conf, fs.readFileSync(conf, 'utf8').replace(/^(\s*)tolerance: 0\.1,$/m, '$1tolerance: 0,'))
+  const unit = path.join(FIXTURE, NODE_TEST)
+  fs.mkdirSync(path.dirname(unit), { recursive: true })
+  fs.writeFileSync(unit, NODE_TEST_BODY)
+
+  const screen = await card('guard-refuses-a-skipped-node-test', `cat ${NODE_TEST} && ${GUARD}`)
+  for (const said of [NODE_TEST_LINE, `${NODE_TEST}:4`, 'a skipped or todo test: its failure no longer fails the suite',
+    'Failed to run task "devsecops:test:check:no-cheat"']) {
+    assert.ok(screen.includes(said), `Expected the guard to refuse { skip: true } with "${said}":\n${screen}`)
+  }
+
+  for (const line of NODE_TEST_REFUSED) {
+    fs.writeFileSync(unit, NODE_TEST_BODY.replace(NODE_TEST_LINE, line))
+    const guard = tddRun(GUARD)
+    assert.ok(guard.code !== 0 && guard.output.includes(`${NODE_TEST}:`), `The guard must refuse ${line}:\n${guard.output}`)
+  }
+  fs.writeFileSync(unit, NODE_TEST_BODY.replace(NODE_TEST_LINE, NODE_TEST_CONDITIONAL))
+  const conditional = tddRun(GUARD)
+  assert.equal(conditional.code, 0, `A skip that states its condition must go through:\n${conditional.output}`)
+  // The working tree goes back to the test as it stands, for any card after.
+  fs.rmSync(unit)
+})
+
 // ---------------------------------------------------------------------------
 // Chapter 5: a check that disappears
 // ---------------------------------------------------------------------------
@@ -290,8 +342,8 @@ const GUARD_LAST_COMMIT = 'task devsecops:test:check:no-cheat BASE=HEAD~1'
 const git = (args) => execSync(`git ${args}`, { cwd: FIXTURE, env: tdd.env, encoding: 'utf8' }).trim()
 
 storyboardStep(Then, 'the guard refuses a scenario that lost its only check', async () => {
-  // The tolerance goes back to 0 and the developer commits the test as it
-  // stands: from here on, the guard compares the working tree with that commit.
+  // The developer commits the test as it stands, the tolerance back at 0:
+  // from here on, the guard compares the working tree with that commit.
   const conf = path.join(FIXTURE, CONFIG)
   fs.writeFileSync(conf, fs.readFileSync(conf, 'utf8').replace(/^(\s*)tolerance: 0\.1,$/m, '$1tolerance: 0,'))
   git(`add ${FEATURE} ${STEPS} ${HELPER} ${CONFIG}`)
