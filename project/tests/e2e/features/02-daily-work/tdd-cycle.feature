@@ -153,7 +153,7 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: A scratch copy of that file sits in project/tmp. git status marks the new service "??", a file git does not track yet, and the scratch copy "!!", a file git ignores: the repository's .gitignore holds the line tmp/.
     # Copy: pwd && git status --short --ignored --untracked-files=all project/web project/tmp
     Given a repository under /tmp adds a web service with no build task, and keeps a scratch copy in a tmp folder
-    # Note: The build check, one of the checks task test runs first, lists every Docker Compose file of the project, then looks for the task that builds each one. The toolbox's own files all have theirs, project:build:gitlab for instance.
+    # Note: The build check is one of the checks task test runs first. It prints "6 Docker Compose file(s) found": the five the toolbox already had, each with the task that builds it, project:build:gitlab for instance, and the new web service.
     # Note: The web service has none: "Missing task: project:build:web", and the check fails with the exit code 201, the code Task gives a failed command. The scratch copy in project/tmp is not in the list.
     # Note: The check reads each .gitignore line against paths inside the repository only. The line tmp/ leaves out project/tmp, and never the /tmp folder the repository sits in.
     # Copy: task devsecops:test:check:build-coverage; echo "exit code $?"

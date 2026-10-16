@@ -97,6 +97,16 @@ if [ -f "$GITIGNORE_FILE" ]; then
   done <"$GITIGNORE_FILE"
 fi
 
+# Search from the repository root, on paths relative to it: a .gitignore line
+# describes the repository, never the folders above it. Matched against the
+# full path, the line tmp/ hid every file of a repository cloned under /tmp.
+cd "$PROJECT_ROOT"
+case "$SCAN_DIR" in
+"$PROJECT_ROOT") SCAN_DIR=. ;;
+"$PROJECT_ROOT"/*) SCAN_DIR="./${SCAN_DIR#"$PROJECT_ROOT"/}" ;;
+esac
+PROJECT_ROOT=.
+
 echo -e "${BLUE}🔍 Scanning for Docker Compose files in ${SCAN_DIR#"$PROJECT_ROOT"/}...${NC}"
 
 if [ ! -d "$SCAN_DIR" ]; then
