@@ -1,5 +1,5 @@
 /* global inject Given When Then After */
-// cspell:ignore greting
+// cspell:ignore greting pgrep
 /**
  * Storyboards of features/02-daily-work/tdd-cycle.feature and
  * tdd-cycle-reports.feature: the toolbox checks the proof its method asks for,
@@ -787,14 +787,17 @@ storyboardStep(Then, 'a refused check stays 1 in the status file, even when a pi
 storyboardStep(Then, 'a test that never ends is stopped at the time limit and comes back 124, never 0', async () => {
   const line = `${RUNNER} project:test:unit -- ${UNIT_SERVICE}`
   const limit = { TASK_DEVSECOPS_AGENT_RUN_TIMEOUT: '3' }
-  agentRunTwin(line, { code: 124, task: `project:test:unit -- ${UNIT_SERVICE}`, state: 'timed-out', exit_code: '124' }, limit)
+  const { log } = agentRunTwin(line, { code: 124, task: `project:test:unit -- ${UNIT_SERVICE}`, state: 'timed-out', exit_code: '124' }, limit)
+  assert.match(log, /Interrupted while running/, `The log must show the test stopped by the runner:\n${log}`)
   let left = ''
   try { left = execFileSync('pgrep', ['-af', `node --test ${UNIT_SERVICE}`], { encoding: 'utf8' }) } catch (_) {}
   assert.equal(left, '', `The runner must stop the test it timed out, still running:\n${left}`)
 
   // On camera, the status file is watched while the run is on: it must say so,
   // with no exit code yet, because a run that never comes back must not read
-  // as a success.
+  // as a success. The card shows Node's own report of the stop, not the whole
+  // log: GNU timeout signals the task twice, and Task prints "Signal received"
+  // once or twice depending on how the kernel merges the two.
   const seen = []
   const watch = setInterval(() => {
     try {
@@ -805,11 +808,11 @@ storyboardStep(Then, 'a test that never ends is stopped at the time limit and co
   let screen
   try {
     screen = await card('agent-run-timeout',
-      `TASK_DEVSECOPS_AGENT_RUN_TIMEOUT=3 ${line}; echo "exit code $?"; cat ${LATEST}/output.log`, RUN_MASKS)
+      `TASK_DEVSECOPS_AGENT_RUN_TIMEOUT=3 ${line}; echo "exit code $?"; grep -A2 "Interrupted while running" ${LATEST}/output.log`, RUN_MASKS)
   } finally {
     clearInterval(watch)
   }
-  assertScreen(screen, ['state: timed-out', 'exit_code: 124', 'exit code 124'])
+  assertScreen(screen, ['state: timed-out', 'exit_code: 124', 'exit code 124', 'Interrupted while running', `⚠ ${UNIT_SERVICE}`])
   assert.ok(seen.some(status => status.state === 'running' && status.exit_code === ''),
     `While the test ran, the status file must have said "state: running" with no exit code:\n${JSON.stringify(seen)}`)
 })
