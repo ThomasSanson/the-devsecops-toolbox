@@ -895,3 +895,56 @@ storyboardStep(Then, 'with its own GitLab stopped, the test suite refuses to use
   const answer = ownSh(ownAsk(unlabelled)).trim()
   assert.match(answer, /^Cannot tell the Compose project of this suite/, `An unlabelled suite must be refused:\n${answer}`)
 })
+
+// ===========================================================================
+// @build-coverage-under-tmp: the build check reads .gitignore against paths
+// inside the repository, wherever the repository sits (issue #240).
+// ===========================================================================
+
+// Under /tmp on purpose: the .gitignore line `tmp/` must not hide a repository
+// that sits there. Fixed, because the prompt of both cards prints it.
+const BUILD_ROOT = '/tmp/e2e-build-coverage'
+const BUILD_CHECK = 'task devsecops:test:check:build-coverage'
+const WEB_SERVICE = '---\nservices:\n  web:\n    build: .\n'
+let closeBuildTerminal = null
+
+After((test) => {
+  if (!owns(test, '@build-coverage-under-tmp')) return
+  if (closeBuildTerminal) closeBuildTerminal()
+  closeBuildTerminal = null
+  fs.rmSync(BUILD_ROOT, { recursive: true, force: true })
+})
+
+storyboardStep(Given, 'a repository under /tmp adds a web service with no build task, and keeps a scratch copy in a tmp folder', async () => {
+  fs.rmSync(BUILD_ROOT, { recursive: true, force: true })
+  fs.mkdirSync(BUILD_ROOT)
+  toolboxRepository(BUILD_ROOT)
+  for (const dir of ['project/web', 'project/tmp']) {
+    fs.mkdirSync(path.join(BUILD_ROOT, dir))
+    fs.writeFileSync(path.join(BUILD_ROOT, dir, 'docker-compose.yml'), WEB_SERVICE)
+  }
+  const ignored = (file) => spawnSync('git', ['check-ignore', '-q', file], { cwd: BUILD_ROOT }).status === 0
+  assert.equal(ignored('project/tmp/docker-compose.yml'), true, 'git must ignore the scratch copy in project/tmp')
+  assert.equal(ignored('project/web/docker-compose.yml'), false, 'git must see the new web service')
+
+  closeBuildTerminal = await openLocalTerminal(I, { cwd: BUILD_ROOT, env: nestedEnv(), port: 7694 })
+  const screen = await card('build-coverage-under-tmp-setup', 'pwd && git status --short --ignored --untracked-files=all project/web project/tmp')
+  for (const said of [BUILD_ROOT, '?? project/web/docker-compose.yml', '!! project/tmp/docker-compose.yml']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the setup card:\n${screen}`)
+  }
+})
+
+storyboardStep(Then, 'the build check finds the web service, refuses it without its build task, and leaves the scratch copy out', async () => {
+  // The twin first, off camera: the same check, read as plain text.
+  const run = spawnSync('sh', ['-c', `${BUILD_CHECK} 2>&1`], { cwd: BUILD_ROOT, env: nestedEnv(), encoding: 'utf8', timeout: 120000 })
+  const output = stripAnsiEscapeSequences(String(run.stdout))
+  assert.ok(output.includes('Missing task: project:build:web'), `The check must refuse the web service under ${BUILD_ROOT}:\n${output}`)
+  assert.equal(output.includes('project/tmp/'), false, `The check must leave the scratch copy in project/tmp out:\n${output}`)
+  assert.notEqual(run.status, 0, `The check must fail:\n${output}`)
+
+  const screen = await card('build-coverage-under-tmp-verdict', `${BUILD_CHECK}; echo "exit code $?"`)
+  for (const said of ['Task found: project:build:gitlab', '✗ project/web/docker-compose.yml', 'Missing task: project:build:web', 'exit code 201']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the verdict card:\n${screen}`)
+  }
+  assert.equal(screen.includes('project/tmp/'), false, `The scratch copy must not be on the verdict card:\n${screen}`)
+})
