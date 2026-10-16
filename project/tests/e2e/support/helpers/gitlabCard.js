@@ -57,6 +57,7 @@ const gitlabUrl = {
   pipeline: (p, id) => `${base(p)}/-/pipelines/${id}`,
   job: (p, id) => `${base(p)}/-/jobs/${id}`,
   ciEditor: (p, ref = 'main') => `${base(p)}/-/ci/editor?branch_name=${encodeURIComponent(ref)}`,
+  generalSettings: (p) => `${base(p)}/edit`,
   ciSettings: (p) => `${base(p)}/-/settings/ci_cd`,
   repoSettings: (p) => `${base(p)}/-/settings/repository`,
   mergeSettings: (p) => `${base(p)}/-/settings/merge_requests`,

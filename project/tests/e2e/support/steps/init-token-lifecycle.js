@@ -8,8 +8,8 @@
  * What a command prints is a twin of its card, checked line by line, together
  * with REST on the same fact and a sign-in with each CI/CD variable's token.
  *
- * Chapters 1 to 5 share one project, set up through workspaceRepo (a clone, a
- * copy of /workspace and a first `task devsecops:init`). Chapter 6 renders its
+ * Chapters 1 to 7 share one project, set up through workspaceRepo (a clone, a
+ * copy of /workspace and a first `task devsecops:init`). Chapter 8 renders its
  * own project from the versioned template, so the reload has answers to read.
  */
 
@@ -29,6 +29,7 @@ const {
   revokeProjectAccessToken,
   readProjectVariable,
   updateProjectVariable,
+  updateProjectSettings,
   listProjectMergeRequests,
   listProjectPipelines,
   getRepositoryFile,
@@ -45,7 +46,7 @@ const RENOVATE_TOKEN = 'TASK_RENOVATE_TOKEN'
 const TAMPERED_VALUE = 'tampered-by-e2e'
 
 // Per-scenario state. Both projects' glab tokens and working trees are kept
-// for the After hook: chapter 6 moves projectName and glabToken on.
+// for the After hook: chapter 8 moves projectName and glabToken on.
 let projectName = null
 let glabToken = null
 let mintedPatIds = []
@@ -54,6 +55,8 @@ let revokedTokenId = null
 let healedTokenId = null
 let weakTokenId = null
 let guardedTokenId = null
+let workingToken = null
+let leftoverTokenId = null
 let reloadTemplate = null
 let tokenIdsBeforeReload = null
 
@@ -70,6 +73,8 @@ Before(() => {
   healedTokenId = null
   weakTokenId = null
   guardedTokenId = null
+  workingToken = null
+  leftoverTokenId = null
   tokenIdsBeforeReload = null
 })
 
@@ -200,10 +205,14 @@ async function variableValue (name) {
 // token, still active. A clone would prove nothing: the projects are public, so
 // git never even sends the credentials.
 async function assertVariableIsToken (name, expectedId) {
-  const res = await freshGet(`${BASE_URL}/api/v4/personal_access_tokens/self`, { 'PRIVATE-TOKEN': await variableValue(name) })
+  await assertSignsInAs(await variableValue(name), expectedId, `CI/CD variable "${name}"`)
+}
+
+async function assertSignsInAs (value, expectedId, what) {
+  const res = await freshGet(`${BASE_URL}/api/v4/personal_access_tokens/self`, { 'PRIVATE-TOKEN': value })
   const self = res.data || {}
   if (res.status !== 200 || self.id !== expectedId || !self.active || self.revoked) {
-    throw new Error(`CI/CD variable "${name}" should sign in as token ${expectedId}, GitLab answered ${res.status} ` +
+    throw new Error(`${what} should sign in as token ${expectedId}, GitLab answered ${res.status} ` +
       JSON.stringify({ id: self.id, active: self.active, revoked: self.revoked }))
   }
 }
@@ -226,11 +235,12 @@ const SHIMMER = '.feature-library-shimmer::before'
 // The access-tokens page: "Active project access tokens" and, below, the
 // inactive ones GitLab keeps marked "Revoked". `rows` = [active, inactive], the
 // row counts the REST twin expects, waited for so a half-loaded table is never shot.
-// Each inactive row past the third makes the page 49 px taller, and the card
-// grows with it, so the last row stays in view.
+// Two active rows and three inactive ones fit in 760 px. Each inactive row past
+// the third makes the page 49 px taller, each active row past the second 81 px,
+// and the card grows with it, so the last row stays in view.
 async function tokensFrame (frameName, [active, inactive]) {
   await gitlabFrame(I, frameName, gitlabUrl.accessTokens(projectName), {
-    height: 760 + 49 * Math.max(0, inactive - 3),
+    height: Math.max(760, 760 + 49 * (inactive - 3) + 81 * (active - 2)),
     waitText: 'Active project access tokens',
     hide: [SHIMMER],
     prepare: async () => {
@@ -526,7 +536,136 @@ storyboardStep(Then, 'GitLab still lists the same release token, because init re
 })
 
 // ===========================================================================
-// Chapter 6: a project that drifted the way a live one does, put back by ONE
+// Chapters 6 and 7, same project: a forced refresh of the release token, the
+// one `task devsecops:reload` runs, that fails. GitLab refuses to make the new
+// token, then to store it, and the old token must still work each time; the
+// third try replaces it. Then the leftover of a refresh that stopped halfway,
+// which init must clear without touching the token the variable holds.
+// ===========================================================================
+
+const REFRESH = 'task glab:commitizen-token TASK_GLAB_COMMITIZEN_TOKEN_FORCE=true'
+
+// A run GitLab stops halfway: it must fail, and its output is the card's twin.
+function runTaskExpectingFailure (command, extraEnv = {}) {
+  const result = runTaskInRepoCaptured(command, repoDirFor(projectName), glabToken, { timeout: 600000, extraEnv })
+  if (result.exitCode === 0) throw new Error(`${command} was expected to fail, it succeeded:\n${result.output}`)
+  return result.output
+}
+
+function assertNoTokenPrinted (output, secrets) {
+  if (secrets.some(secret => output.includes(secret))) throw new Error('The refresh printed a token value')
+}
+
+// The release token from before the refresh is still the only active one, and
+// its value, read from the CI/CD variable before the refresh, still signs in.
+async function assertWorkingTokenKept (revokedCount) {
+  const { active } = await assertReleaseTokens(1, revokedCount)
+  if (active[0].id !== workingToken.id) throw new Error(`The refresh replaced the release token ${workingToken.id} with ${active[0].id}`)
+  await assertSignsInAs(workingToken.value, workingToken.id, 'The release token from before the refresh')
+}
+
+// "CI/CD" in the project's features: 'enabled' or 'disabled'.
+async function setCiCd (level) {
+  const headers = await getRootHeaders()
+  const res = await updateProjectSettings(projectName, { builds_access_level: level }, headers)
+  if (res.status >= 400) throw new Error(`Failed to set CI/CD to ${level} (${res.status})`)
+  const project = await freshGet(`${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}`, headers)
+  if ((project.data || {}).builds_access_level !== level) {
+    throw new Error(`Expected CI/CD to be ${level}, GitLab says ${(project.data || {}).builds_access_level}`)
+  }
+}
+
+// General settings, "Visibility, project features, permissions" open, the
+// CI/CD switch in the middle of the card. Its URL has no "/-/", so the
+// project's name is passed for the mask.
+async function ciCdSettingsFrame (frameName) {
+  const section = '#js-shared-permissions'
+  const row = 'label[for="builds_access_level"]'
+  await gitlabFrame(I, frameName, gitlabUrl.generalSettings(projectName), {
+    height: 760,
+    projectNames: [projectName],
+    hide: [SHIMMER],
+    prepare: async () => {
+      if (!await I.grabNumberOfVisibleElements(`${section}.expanded`)) await I.click('Expand', section)
+      await I.waitForElement(`${section}.expanded`, 30)
+      await I.waitForVisible(row, 30)
+    },
+    scrollTo: row
+  })
+}
+
+storyboardStep(When, "someone forces a new release token while signed in with the robot's token, GitLab refuses to make it and the old one stays active", async () => {
+  workingToken = { id: (await automationTokenIds())[TOKEN], value: await variableValue(TOKEN) }
+  const robot = await variableValue(RENOVATE_TOKEN)
+  const output = runTaskExpectingFailure(REFRESH, { GITLAB_TOKEN: robot })
+  await assertWorkingTokenKept(6)
+  await assertVariableIsToken(TOKEN, workingToken.id)
+  assertPrinted(output, [`GitLab refused to create the new token: token #${workingToken.id} and the CI/CD variable '${TOKEN}' are unchanged`])
+  assertNoTokenPrinted(output, [workingToken.value, robot])
+  await tokensFrame('tokens-refresh-refused', [2, 6])
+})
+
+storyboardStep(When, "someone turns CI/CD off in the project's settings", async () => {
+  await setCiCd('disabled')
+  await ciCdSettingsFrame('settings-ci-cd-off')
+})
+
+storyboardStep(When, 'the developer forces a new release token again, GitLab refuses to store it, and the refresh revokes the new token', async () => {
+  const output = runTaskExpectingFailure(REFRESH)
+  // The one revoked row more is the new token: the old one is still active.
+  await assertWorkingTokenKept(7)
+  assertPrinted(output, [
+    'Failed to store CI/CD variable',
+    'Revoked the new token #',
+    `token #${workingToken.id} and the CI/CD variable '${TOKEN}' are unchanged`
+  ])
+  assertNoTokenPrinted(output, [workingToken.value])
+  await tokensFrame('tokens-store-refused', [2, 7])
+})
+
+storyboardStep(When, 'CI/CD is back on, the same refresh replaces the release token and revokes the old one last', async () => {
+  await setCiCd('enabled')
+  // The CI/CD variable still holds the token the two failed runs left alone.
+  await assertVariableIsToken(TOKEN, workingToken.id)
+  const output = runTask(REFRESH)
+  const { active, revoked } = await assertReleaseTokens(1, 8)
+  const newId = active[0].id
+  if (newId === workingToken.id) throw new Error(`The refresh kept the release token ${workingToken.id}`)
+  if (!revoked.some(t => t.id === workingToken.id)) throw new Error(`The refresh left the old release token ${workingToken.id} active`)
+  await assertVariableIsToken(TOKEN, newId)
+  const stored = `CI/CD variable '${TOKEN}' signs in as the new token #${newId}`
+  const retired = `Revoked the old token #${workingToken.id}`
+  assertPrinted(output, [`Force refresh: revoking existing token #${workingToken.id}`, stored, retired, `Token created and CI/CD variable '${TOKEN}' stored`])
+  if (output.indexOf(retired) < output.indexOf(stored)) throw new Error('The refresh revoked the old token before the new one was stored and checked')
+  assertNoTokenPrinted(output, [workingToken.value, await variableValue(TOKEN)])
+  await tokensFrame('tokens-refresh-done', [2, 8])
+})
+
+storyboardStep(When, 'a forced refresh stops right after GitLab makes its new token', async () => {
+  workingToken = { id: (await automationTokenIds())[TOKEN], value: await variableValue(TOKEN) }
+  // What the refresh asks GitLab for first: same name, scopes, role and lifetime.
+  const expiresAt = new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const made = await createProjectAccessToken(projectName, {
+    name: TOKEN, scopes: ['api', 'write_repository'], access_level: 40, expires_at: expiresAt
+  }, await getRootHeaders())
+  if (made.status >= 400) throw new Error(`Failed to make the leftover token (${made.status})`)
+  leftoverTokenId = made.data.id
+  await assertReleaseTokens(2, 8)
+  await assertVariableIsToken(TOKEN, workingToken.id)
+  await tokensFrame('tokens-refresh-cut-short', [3, 8])
+})
+
+storyboardStep(When, 'the developer runs init again, it keeps the release token the CI/CD variable holds and revokes the other', async () => {
+  await runInitPrinting(['Purging duplicates', `Revoked duplicate token #${leftoverTokenId}`, `Token '${TOKEN}' exists and is valid`, ...INIT_DONE])
+  const { revoked } = await assertReleaseTokens(1, 9)
+  if (!revoked.some(t => t.id === leftoverTokenId)) throw new Error(`init left the leftover token ${leftoverTokenId} active`)
+  await assertWorkingTokenKept(9)
+  await assertVariableIsToken(TOKEN, workingToken.id)
+  await tokensFrame('tokens-leftover-revoked', [2, 9])
+})
+
+// ===========================================================================
+// Chapter 8: a project that drifted the way a live one does, put back by ONE
 // `task devsecops:reload`, which replaces tokens that still worked: exactly what
 // init must NOT do (chapters 1 and 5).
 // ===========================================================================

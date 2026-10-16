@@ -7,12 +7,12 @@ Feature: the framework repairs its own GitLab setup when something breaks it
   its own answers describe
   So that one command always leaves a working setup in place.
 
-  # ONE story in six chapters. Chapters 1 to 5 share one project, set up by a
-  # first `task devsecops:init`. Chapter 6 has its own project, generated from
+  # ONE story in eight chapters. Chapters 1 to 7 share one project, set up by a
+  # first `task devsecops:init`. Chapter 8 has its own project, generated from
   # the template so the reload has answers to read. ONE Gherkin sentence = ONE
   # card = ONE pixel baseline, asserted inside the step (tolerance: 0), and every
   # card is a real GitLab page: the access tokens, the CI/CD variables, the
-  # protected branches or a commit.
+  # general settings, the protected branches or a commit.
   #
   # The release token is TASK_COMMITIZEN_TOKEN, the token the release job pushes
   # with. The other token on the access-tokens page, TASK_RENOVATE_TOKEN, belongs
@@ -29,7 +29,11 @@ Feature: the framework repairs its own GitLab setup when something breaks it
   # the variable holds a real token, but not the release token; the release
   # token cannot push; the variable is no longer masked, then no longer
   # protected. init repairs each one, and in chapter 5 it keeps the token,
-  # because the token itself was right. Chapter 6: a project that drifted the
+  # because the token itself was right. Chapter 6: a forced refresh of the
+  # release token fails twice, GitLab refusing first to make the new token, then
+  # to store it, and the old token keeps working each time until the third try
+  # replaces it. Chapter 7: init finishes a refresh that stopped halfway and
+  # keeps the token the variable holds. Chapter 8: a project that drifted the
   # way a live one does is put back by one `task devsecops:reload`, which also
   # replaces both tokens even though they still worked, and leaves the
   # project's own settings alone. init leaves a working token alone, as
@@ -94,6 +98,31 @@ Feature: the framework repairs its own GitLab setup when something breaks it
     # Note: The access-tokens page after that run looks exactly as it did at the end of the previous chapter: one active release token, and "Inactive project access tokens" still counts 6. The token was right, so init fixed the variable's settings and replaced nothing.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
     Then GitLab still lists the same release token, because init replaced nothing
+    # Chapter: A refresh that fails keeps the release token that works
+    # Note: `task glab:commitizen-token TASK_GLAB_COMMITIZEN_TOKEN_FORCE=true` replaces the release token even when it works, as `task devsecops:reload` does. This run is signed in to GitLab with TASK_RENOVATE_TOKEN, the dependency robot's token, and GitLab never lets a project access token make another one.
+    # Note: The refresh asks GitLab for the new token before it revokes anything, so the refusal changes nothing. The release token is still under "Active project access tokens", and "Inactive project access tokens" still counts 6. The test checks that the old token still signs in to GitLab.
+    # Copy: task glab:commitizen-token TASK_GLAB_COMMITIZEN_TOKEN_FORCE=true
+    When someone forces a new release token while signed in with the robot's token, GitLab refuses to make it and the old one stays active
+    # Note: The project's general settings, in its list of features. Someone switched "CI/CD" off: its switch is grey, and "Build" has gone from the menu on the left, like "CI/CD" under "Settings".
+    # Note: While CI/CD is off, GitLab refuses every change to the project's CI/CD variables, where the pipeline finds the release token.
+    # Copy: http://gitlab/<lambda-user>/<project>/edit
+    When someone turns CI/CD off in the project's settings
+    # Note: The same command, signed in as the developer this time. GitLab makes the new token, then refuses to store it in the CI/CD variable, because CI/CD is off. The refresh revokes that new token at once: it is the row added under "Inactive project access tokens", which now counts 7.
+    # Note: The release token under "Active project access tokens" is still the old one, and the test checks that it still signs in to GitLab. The menu on the left still has no "Build", because CI/CD is still off.
+    # Copy: task glab:commitizen-token TASK_GLAB_COMMITIZEN_TOKEN_FORCE=true
+    And the developer forces a new release token again, GitLab refuses to store it, and the refresh revokes the new token
+    # Note: CI/CD is switched back on, "Build" is back in the menu on the left, and the developer runs the same command. The active release token is a new one, and "Inactive project access tokens" counts 8 with the old one. The refresh revoked it last, once the new token was stored in the CI/CD variable and signed in to GitLab from there.
+    # Note: A job that was already running had read the old token when it started. It works until the old token is revoked, a few seconds after the new one is stored. A job that starts later reads the new one.
+    # Copy: task glab:commitizen-token TASK_GLAB_COMMITIZEN_TOKEN_FORCE=true
+    When CI/CD is back on, the same refresh replaces the release token and revokes the old one last
+    # Chapter: A refresh cut short is finished by the next init
+    # Note: A refresh that stops right after GitLab made its new token, because the terminal was closed or the connection dropped, leaves a second release token that no CI/CD variable holds. The test makes that token the way the refresh does.
+    # Note: "Active project access tokens" lists TASK_COMMITIZEN_TOKEN twice. The CI/CD variable still holds the first one, and the test checks that it still signs in to GitLab.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/access_tokens
+    When a forced refresh stops right after GitLab makes its new token
+    # Note: One more `task devsecops:init`. It found two release tokens and asked GitLab which one the CI/CD variable signs in as. It kept that one and revoked the leftover, so "Inactive project access tokens" counts 9. The test checks that the variable still signs in as the same token.
+    # Copy: task devsecops:init
+    When the developer runs init again, it keeps the release token the CI/CD variable holds and revokes the other
     # Chapter: A project that drifted is put back in one command
     # Note: A new project, generated from the toolbox and set up on install day. Its repository settings, "Protected branches": the main branch says "Allowed to push and merge: Maintainers".
     # Note: The toolbox sets that to "No one", so every change reaches the main branch through a merge request. Someone loosened it by hand.
