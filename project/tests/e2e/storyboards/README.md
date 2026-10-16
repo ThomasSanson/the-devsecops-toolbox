@@ -42,6 +42,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**osv-scope**](02-daily-work/osv-scope.svg): OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
   Chapters: The toolbox answers for its own tools · The project answers for its own dependencies · Without vulnerable dependencies of its own, the project passes.
   Replay: `task project:test:e2e -- --grep "@osv-scope"`
+- [**megalinter-config**](02-daily-work/megalinter-config.svg): A project names its own MegaLinter settings file in `TASK_MEGALINTER_CONFIG`, and `task megalinter` and `task megalinter:pnpm:dlx` both load that file and run only the check it keeps.
+  Replay: `task project:test:e2e -- --grep "@megalinter-config"`
 - [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
   Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`

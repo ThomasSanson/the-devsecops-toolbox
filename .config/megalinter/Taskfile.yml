@@ -90,7 +90,7 @@ tasks:
       - docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
       - rm -rf ./megalinter-reports
       - defer: (docker cp {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint/megalinter-reports ./megalinter-reports && chown -R $(id -u):$(id -g) megalinter-reports) || true; docker rm -f {{.TASK_MEGALINTER_CONTAINER_NAME}}
-      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='.config/megalinter/config.yml' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE}} infinity
+      - docker run --rm -d --name {{.TASK_MEGALINTER_CONTAINER_NAME}} -e MEGALINTER_CONFIG='{{.TASK_MEGALINTER_CONFIG}}' {{.TASK_MEGALINTER_PROXY_DOCKER_ARGS}} -v /var/run/docker.sock:/var/run/docker.sock:rw --entrypoint sleep {{.TASK_MEGALINTER_IMAGE}} infinity
       - docker cp {{.USER_WORKING_DIR}} {{.TASK_MEGALINTER_CONTAINER_NAME}}:/tmp/lint
       - docker exec {{.TASK_MEGALINTER_CONTAINER_NAME}} /bin/bash /entrypoint.sh
       - cmd: echo "🎉 All files correctly linted with megalinter!"
@@ -111,7 +111,14 @@ tasks:
     cmds:
       - cmd: echo "🔄 Running pnpm dlx megalinter (v{{.TASK_MEGALINTER_VERSION}})..."
         silent: true
-      - MEGALINTER_CONFIG=.config/megalinter/config.yml pnpm dlx --package mega-linter-runner@{{.TASK_MEGALINTER_VERSION}} mega-linter-runner
+      # The runner hands the container only what --env names: a variable in
+      # its own environment never reached MegaLinter. Without --release and
+      # --image it ran the latest MegaLinter, not the pinned one.
+      - cmd: >-
+          pnpm dlx --package mega-linter-runner@{{.TASK_MEGALINTER_VERSION}} mega-linter-runner
+          --release v{{.TASK_MEGALINTER_VERSION}}
+          --image {{.TASK_MEGALINTER_IMAGE}}
+          --env 'MEGALINTER_CONFIG={{.TASK_MEGALINTER_CONFIG}}'
       - cmd: echo "🎉 All files correctly linted with megalinter!"
         silent: true
 
