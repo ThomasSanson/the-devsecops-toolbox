@@ -1,5 +1,13 @@
 ---
+# A new push on a merge request cancels the previous pipeline of that merge
+# request. Other pipelines (default branch, tags, web, schedules) never get
+# cancelled, so a release or a deployment is never cut in the middle.
+default:
+  interruptible: true
+
 workflow:
+  auto_cancel:
+    on_new_commit: none
   rules:
     # Rule 1: Highest priority. Always run a pipeline for the 'staging' tag,
     # regardless of the commit message.
@@ -20,4 +28,6 @@ workflow:
 
     # Rule 3: Default catch-all for normal development.
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      auto_cancel:
+        on_new_commit: interruptible
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
