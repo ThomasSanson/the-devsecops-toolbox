@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.1 (2026-10-16)
+
+### Fix
+
+- **deps**: update dependency codeceptjs to v4.2.1
+
 ## 24.4.0 (2026-10-16)
 
 ### Feat
