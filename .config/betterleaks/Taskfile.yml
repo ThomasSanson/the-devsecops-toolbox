@@ -28,6 +28,12 @@ vars:
   # `docker exec` happens to get, which is not the one betterleaks reads.
   SAFE_DIR_ENV: "-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/path"
 
+  # One container per scan (issue #243): its name is
+  # TASK_BETTERLEAKS_CONTAINER_NAME followed by an id drawn for this scan, and
+  # only this scan removes it, so two scans sharing a Docker daemon never stop
+  # each other's.
+  CONTAINER: '{{.TASK_BETTERLEAKS_CONTAINER_NAME}}-{{uuid}}'
+
   # Proxy forwarding (transparent: only set if proxy env vars exist)
   TASK_BETTERLEAKS_PROXY_ARGS:
     sh: |
@@ -111,13 +117,12 @@ tasks:
       YELLOW: '\033[1;33m'
       NC: '\033[0m' # No Color
     cmds:
-      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
-      - docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} mkdir -p /path
-      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+      - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
+      - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - docker exec {{.CONTAINER}} mkdir -p /path
+      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
       - cmd: |
-          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.CONTAINER}} \
             betterleaks dir "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --redact="{{.TASK_BETTERLEAKS_REDACT}}" \
@@ -191,13 +196,12 @@ tasks:
       YELLOW: '\033[1;33m'
       NC: '\033[0m' # No Color
     cmds:
-      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
-      - docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} mkdir -p /path
-      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+      - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
+      - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - docker exec {{.CONTAINER}} mkdir -p /path
+      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
       - cmd: |
-          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.CONTAINER}} \
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --staged \
@@ -290,22 +294,21 @@ tasks:
       YELLOW: '\033[1;33m'
       NC: '\033[0m' # No Color
     cmds:
-      - docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - defer: docker rm -f {{.TASK_BETTERLEAKS_CONTAINER_NAME}} 2>/dev/null || true
-      - docker run --rm -d --name {{.TASK_BETTERLEAKS_CONTAINER_NAME}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
+      - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
+      - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
       - cmd: |
-          docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} mkdir -p /path
+          docker exec {{.CONTAINER}} mkdir -p /path
           (
             env printf '.git\0'
             git ls-files -z --cached --others --exclude-standard
-          ) | COPYFILE_DISABLE=1 tar --no-xattrs --null -T - -cf - | docker cp - {{.TASK_BETTERLEAKS_CONTAINER_NAME}}:/path
+          ) | COPYFILE_DISABLE=1 tar --no-xattrs --null -T - -cf - | docker cp - {{.CONTAINER}}:/path
         silent: true
       # Find merge-base and scan only branch commits
       - cmd: |
-          MERGE_BASE=$(docker exec {{.TASK_BETTERLEAKS_CONTAINER_NAME}} git merge-base origin/{{.BASE_BRANCH}} HEAD 2>/dev/null || echo "origin/{{.BASE_BRANCH}}")
+          MERGE_BASE=$(docker exec {{.CONTAINER}} git merge-base origin/{{.BASE_BRANCH}} HEAD 2>/dev/null || echo "origin/{{.BASE_BRANCH}}")
           echo "🔍 Scanning commits from ${MERGE_BASE} to HEAD"
 
-          if ! docker exec {{.SAFE_DIR_ENV}} {{.TASK_BETTERLEAKS_CONTAINER_NAME}} \
+          if ! docker exec {{.SAFE_DIR_ENV}} {{.CONTAINER}} \
             betterleaks git "/path" \
             --config="/path/{{.TASK_BETTERLEAKS_CONFIG}}" \
             --log-opts="${MERGE_BASE}..HEAD" \

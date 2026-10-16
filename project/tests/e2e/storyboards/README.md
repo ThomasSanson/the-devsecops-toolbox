@@ -45,6 +45,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
   Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`
+- [**concurrent-scans**](02-daily-work/concurrent-scans.svg): Two secret scans of the same project, started at the same time on one Docker daemon, each block a made-up password from a container of their own and remove only that one.
+  Replay: `task project:test:e2e -- --grep "@concurrent-scans"`
 - [**scanner-log-redaction**](02-daily-work/scanner-log-redaction.svg): Full, staged and branch scans pass ordinary work and block a made-up password, with the Docker scanner and with the pinned binary, without copying its value into the scan log.
   Chapters: Ordinary work passes in both modes · A detected value stays out of the log.
   Replay: `task project:test:e2e -- --grep "@scanner-log-redaction"`
