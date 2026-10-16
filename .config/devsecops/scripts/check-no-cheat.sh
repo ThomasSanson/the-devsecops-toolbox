@@ -132,6 +132,13 @@ add_rule tests "${TEST_PATHS}" '^[[:space:]]*@(skip|wip)([[:space:]]|$)' \
 # a reviewer can read ("not on Windows"); a bare skip states nothing.
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*(@pytest\.mark\.skip[[:space:]]*(\(|$)|@unittest\.skip[[:space:]]*(\(|$)|@Disabled|@Ignore|t\.Skip(f)?\(|(describe|context|it|test)\.skip[[:space:]]*\()' \
   'a skipped test: the suite reports it without ever running it'
+# node:test also switches a test off from its options, { skip: true } or
+# { todo: 'later' }, and from inside it, t.skip(). A value that is a condition,
+# { skip: process.platform === 'win32' }, stays allowed for the reason above.
+add_rule tests "${TEST_PATHS}" "^[[:space:]]*(describe|it|test)[[:space:]]*\\(.*[{,][[:space:]]*(skip|todo)[[:space:]]*:[[:space:]]*(true|[\"'\`])" \
+  'a skipped or todo test: its failure no longer fails the suite'
+add_rule tests "${TEST_PATHS}" '^[[:space:]]*((describe|it|test)\.todo[[:space:]]*\(|t\.(skip|todo)[[:space:]]*\()' \
+  'a skipped or todo test: its failure no longer fails the suite'
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*(Scenario|Feature|Data|describe|context|it|test)\.only[[:space:]]*\(' \
   'only this one runs: every other scenario is silently dropped'
 add_rule tests "${TEST_PATHS}" '^[[:space:]]*x(Scenario|Feature|Describe|It)[[:space:]]*\(' \
