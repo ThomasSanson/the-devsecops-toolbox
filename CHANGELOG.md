@@ -2,6 +2,42 @@
 
 # Changelog
 
+## 24.3.0 (2026-10-16)
+
+### Feat
+
+- **storyboard**: give wide frames a full row
+
+### Fix
+
+- **glab**: wait until GitLab knows the pushed branch before opening the merge request
+- **protected-commits**: keep the demo job log in the order its lines were written
+- **e2e**: let the runner stories clean up after themselves
+- **red-is-real**: quote a tab or a carriage return as a space
+- **e2e**: give GitLab the failure message as text in the JUnit report
+- **e2e**: tell the test container it runs in CI when the regeneration flag goes with it
+- **renovate**: let the post-upgrade task apply every toolbox release
+- **glab**: carry an update conflict to its merge request instead of dying
+- **installer**: take Copier's defaults when no terminal can answer
+- **installer**: call the component choice by one name, without dashes
+- **e2e**: keep published projects in the lambda namespace
+- **e2e**: unfold job log sections before waiting, keep the log masks alive, take card names from the URL
+- **storyboard**: judge a wide frame at its shown size, centre a lone card, drop dashes from the board chrome
+- **installer**: show the scope card rendered, not as markdown source
+- **e2e**: draw terminal cards in the terminal's own font
+- **e2e**: make the API twins and publishToGitLab safe to build on
+- **e2e**: mask GitLab cards without empty bands, dashes or hidden authors
+- **storyboard**: show a page at its real size, keep output strips two per row
+- **e2e**: keep job log sections readable and mask their per-run ids
+- **e2e**: mask only GitLab's session row, open folded settings sections
+
+### Refactor
+
+- **e2e**: drop the four page objects no story uses any more
+- **e2e**: start the runner stories' own runner service from one helper
+- **e2e**: drop the captured-output verdict helpers nobody calls any more
+- **e2e**: drop page-object methods nobody calls
+
 ## 24.2.27 (2026-10-15)
 
 ### Fix
