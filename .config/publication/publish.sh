@@ -477,7 +477,10 @@ scan_snapshot() {
       fi
       set -- --config=/betterleaks.toml
     fi
-    docker exec -w /snapshot "${_name}" betterleaks dir . "$@" --redact="${SCAN_REDACT}" -v >"${WORK}/scan.log" 2>&1
+    # One stream, merged inside the container: docker carries stdout and stderr
+    # apart, and the report could arrive with its summary above its findings.
+    docker exec -w /snapshot "${_name}" sh -c 'exec betterleaks dir . "$@" 2>&1' sh "$@" \
+      --redact="${SCAN_REDACT}" -v >"${WORK}/scan.log" 2>&1
     _rc=$?
     docker rm -f "${_name}" >/dev/null 2>&1 || true
     return ${_rc}
