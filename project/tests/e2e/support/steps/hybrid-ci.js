@@ -9,7 +9,7 @@ const { prepareVersionedTemplate, renderProjectFromTemplate, updateProject, remo
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const {
   getRootHeaders, lintProjectCi, createProjectRunner, deleteRunner, createMergeRequest,
-  listPipelineJobs, getPipeline, getJobTrace, getJobArtifact, getRepositoryFile, getRunnerCard, BASE_URL
+  listPipelineJobs, listProjectPipelines, getPipeline, getJobTrace, getJobArtifact, getRepositoryFile, getRunnerCard, BASE_URL
 } = require('../helpers/gitlabApi')
 const { gitlabFrame, gitlabUrl, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
 const { publishToGitLab } = require('../helpers/gitlabProject')
@@ -342,9 +342,22 @@ storyboardStep(Given, 'I generate a self-hosted project using the saas-linux-med
     'MegaLinter needs only Task to preserve the project environment settings')
   assert.ok(config['code:megalinter'].artifacts.paths.includes('megalinter-reports/'))
 
+  // GitLab records the ci.skip push as a skipped pipeline on a background job.
+  // The card waits for it, on the API then on the page, so the last commit
+  // always carries its grey status icon.
+  const sha = git('rev-parse', 'HEAD').trim()
+  let pipelines = []
+  for (const deadline = Date.now() + 60000; !pipelines.length && Date.now() < deadline;) {
+    pipelines = (await listProjectPipelines(state.projectName, state.headers, `?sha=${sha}`)).data || []
+    if (!pipelines.length) await I.wait(2)
+  }
+  assert.deepEqual(pipelines.map(pipeline => pipeline.status), ['skipped'], 'The ci.skip push must record one skipped pipeline')
+
   await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
   await gitlabFrame(I, 'docker-runner-selection', gitlabUrl.file(state.projectName, 'main', TAGS_FILE), {
-    waitText: DOCKER_TAG, height: 620
+    waitText: DOCKER_TAG,
+    height: 620,
+    prepare: () => I.waitForElement('[data-testid="ci-icon"]', 30)
   })
 })
 
