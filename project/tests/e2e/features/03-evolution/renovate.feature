@@ -2,17 +2,19 @@
 Feature: Dependency updates flow through the framework, not around it
   As a maintainer of the DevSecOps Toolbox and of every project it generates
   I want a generated project to receive its tool updates inside the toolbox
-  update only, and the toolbox to update each of its own tools on its own
-  So that a project never fights the framework over a tool version, and one
-  broken dependency never holds the others back
+  update only and its own minor and patch updates in one merge request, and
+  the toolbox to update each of its own tools on its own
+  So that a project never fights the framework over a tool version, never
+  pays one pipeline per small update, and one broken tool never holds the
+  others back
 
   # Renovate is the bot that opens dependency-update merge requests. The story
-  # runs the real bot twice against the test GitLab, the way the scheduled job
-  # runs it: first on a generated project, then on the toolbox itself. Every
-  # card is the GitLab page a maintainer opens, and every card is twinned with
-  # the bot's own log and the GitLab API, so a regression fails loud even
-  # without eyes. Both projects run no CI and their main branch accepts no
-  # merge, so what Renovate opened stays open for the cards.
+  # runs the real bot three times against the test GitLab, the way the
+  # scheduled job runs it: twice on a generated project, then on the toolbox
+  # itself. Every card is the GitLab page a maintainer opens, and every card
+  # is twinned with the bot's own log and the GitLab API, so a regression
+  # fails loud even without eyes. Both projects run no CI and their main
+  # branch accepts no merge, so what Renovate opened stays open for the cards.
   @renovate-flow
   Scenario: A generated project gets its tool updates inside the toolbox update, and the toolbox updates each tool on its own
     # Chapter: A generated project only receives the toolbox update
@@ -28,6 +30,19 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: No .config/devsecops/VERSION is among the files. That stray file is what Renovate's own Copier run used to leave, working from the folder of the answers file.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/<iid>/diffs
     Then the toolbox update brings the newer tool pins with it, and no stray VERSION file
+    # Chapter: A generated project's own minor and patch updates share one merge request
+    # Note: Off camera, the developer pushes one more commit to the main branch of the same project. GitLab shows project/requirements.txt: toml is still pinned at 0.10.0, and two dependencies joined it.
+    # Note: nose 1.2.1 has a minor update waiting, to 1.3.7. oauth2client 3.0.0 has a major update waiting, to 4.1.3. A major update is the kind that can break the code.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/blob/main/project/requirements.txt
+    Given the developer adds nose 1.2.1 and oauth2client 3.0.0 to the project's own dependencies
+    # Note: Renovate runs on the project a second time. GitLab's list of open merge requests shows three: "update dependency oauth2client to v4", "update project dependencies", which holds toml and nose, and "update devsecops toolbox to v1.0.1". The toml merge request of the first run, !1, became the project dependencies one.
+    # Note: The main branch only takes a merge request that sits right on top of it, so each merge makes Renovate rebase every other open one, and each rebase runs a full pipeline again. On a real project, ten merge requests cost ten pipelines of twenty jobs for a single merge. Minor and patch updates rarely break anything, so they ride together. A major update can, so it still comes alone, like the toolbox update.
+    # Copy: task renovate TASK_RENOVATE_PLATFORM=gitlab
+    When Renovate runs on the project again, the minor and patch updates of toml and nose share one merge request, and the major update of oauth2client gets its own
+    # Note: The Changes tab of the project dependencies merge request, opened from the branch renovate/project-dependencies. In project/requirements.txt, toml moves from 0.10.0 to 0.10.2 and nose from 1.2.1 to 1.3.7, in one change.
+    # Note: The oauth2client line does not move here. Its own merge request takes it to 4.1.3.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/<iid>/diffs
+    Then the project dependencies merge request moves toml and nose together, and leaves oauth2client to its own merge request
     # Chapter: The toolbox updates its own tools, one merge request each
     # Note: Off camera, the toolbox's main branch gets one more commit after both releases. It pins five dependencies back to old versions: copier and ansible-core from Python, playwright from npm, the Playwright test image from the Microsoft registry, and MegaLinter, whose number is a Docker tag.
     # Note: Renovate runs on the toolbox itself. For the test, a setting limits it to these five and holds each one to a single newer release, so the picture never moves. GitLab lists five merge requests, one per dependency: when twenty updates ride in one merge request, one broken package holds the nineteen others back.

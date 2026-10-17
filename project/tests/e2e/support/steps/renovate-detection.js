@@ -11,6 +11,10 @@
  *      Nothing either for the project's own image, pinned one release behind in
  *      a deployment manifest: bumping it with a fix commit made a release, whose
  *      image Renovate bumped again, in a loop (issue #234).
+ *      Then the developer pins two more dependencies and the bot runs again:
+ *      the minor and patch updates of project/ share one merge request, the
+ *      major update keeps its own. With fast-forward merges, every open merge
+ *      request is rebased, and its pipeline rerun, after each merge.
  *   2. On that toolbox copy itself, five dependencies pinned back: one merge
  *      request per dependency, each moving every place the dependency is pinned.
  * Every card is a GitLab page (a merge request list, a Changes tab), twinned
@@ -62,6 +66,27 @@ const DOWNSTREAM_RUN_ENV = {
   RENOVATE_CONFIG: JSON.stringify({ hostRules: [{ hostType: 'docker', matchHost: 'localhost', insecureRegistry: true }] }) // DevSkim: ignore DS162092 -- The suite's own test registry on the local network; never a deployed endpoint.
 }
 const DOWNSTREAM_FILES = [ANSWERS, OWN_IMAGE.overlay, OWN_DEPENDENCY.file]
+// The developer's next two dependencies. nose stopped at 1.3.7 in 2015, a
+// minor update away; oauth2client stopped at 4.1.3 in 2018, and its 3 line
+// never got a second release, so only a major update is waiting. Every update
+// Renovate proposes is final, so titles and diffs are fixtures too.
+const MORE_DEPENDENCIES = ['nose==1.2.1', 'oauth2client==3.0.0']
+const GROUP = {
+  title: 'fix(deps): update project dependencies',
+  added: ['+toml==0.10.2', '+nose==1.3.7'],
+  removed: ['-toml==0.10.0', '-nose==1.2.1']
+}
+const MAJOR = {
+  title: 'fix(deps): update dependency oauth2client to v4',
+  added: ['+oauth2client==4.1.3'],
+  removed: ['-oauth2client==3.0.0']
+}
+// The second run comes minutes after the first, where the scheduled job waits
+// a day: Renovate's limit of two new merge requests an hour would hold the
+// second run's back, or not, depending on the clock.
+const DOWNSTREAM_RERUN_ENV = {
+  RENOVATE_CONFIG: JSON.stringify({ ...JSON.parse(DOWNSTREAM_RUN_ENV.RENOVATE_CONFIG), prHourlyLimit: 0 })
+}
 const TOOLBOX_UPDATE_FILES = [ANSWERS, ...Object.keys(RELEASES['1.0.1'])].sort()
 
 // The commit on the toolbox's main branch after both releases: five
@@ -429,7 +454,76 @@ storyboardStep(Then, 'the toolbox update brings the newer tool pins with it, and
 })
 
 // ---------------------------------------------------------------------------
-// Chapter 2: the toolbox updates its own tools, one merge request each
+// Chapter 2: a generated project's own minor and patch updates share one
+// merge request
+// ---------------------------------------------------------------------------
+
+storyboardStep(Given, "the developer adds nose 1.2.1 and oauth2client 3.0.0 to the project's own dependencies", async () => {
+  const { projectName, headers } = story.project
+  const pins = [OWN_DEPENDENCY.pin, ...MORE_DEPENDENCIES]
+  fs.writeFileSync(path.join(story.projectDir, OWN_DEPENDENCY.file), `${pins.join('\n')}\n`)
+  git(story.projectDir, 'add', OWN_DEPENDENCY.file)
+  git(story.projectDir, 'commit', '--quiet', '--no-verify', '-m', 'feat: depend on nose and oauth2client')
+  story.project.push()
+
+  await gitlabFrame(I, 'downstream-more-dependencies', gitlabUrl.file(projectName, 'main', OWN_DEPENDENCY.file), {
+    waitText: 'oauth2client', height: 500, hide: ['.file-header-content small']
+  })
+  // Twin: the main branch pins the three dependencies.
+  const shown = await getRepositoryFile(projectName, OWN_DEPENDENCY.file, 'main', headers)
+  if (shown !== `${pins.join('\n')}\n`) throw new Error(`${OWN_DEPENDENCY.file} on the main branch must pin ${pins.join(', ')}:\n${shown}`)
+})
+
+// The one update branch Renovate's log gives a dependency.
+function updateBranch (deps, name) {
+  const branches = (deps[name] || { branches: new Set() }).branches
+  if (branches.size !== 1) throw new Error(`${name} must get exactly one update branch, got ${JSON.stringify([...branches])}`)
+  return [...branches][0]
+}
+
+storyboardStep(When, 'Renovate runs on the project again, the minor and patch updates of toml and nose share one merge request, and the major update of oauth2client gets its own', async () => {
+  const { projectName, token, headers } = story.project
+  const entries = await runRenovate(story.projectDir, projectName, token, DOWNSTREAM_RERUN_ENV)
+  const mrs = await openMergeRequests(projectName, headers)
+  await mergeRequestListFrame('downstream-grouped-merge-requests', projectName, 'oauth2client', { height: 440 })
+
+  // Twins: three merge requests, the toolbox update still on its own; toml
+  // and nose on one branch, oauth2client on another; each merge request
+  // opened from the branch Renovate's log names.
+  assertSameList('Merge requests on the generated project after its second Renovate run', mrs.map(mr => mr.title), [
+    GROUP.title,
+    MAJOR.title,
+    'fix(devsecops): update devsecops toolbox to v1.0.1'
+  ])
+  const deps = dependencies(packageFilesOf(entries))
+  const group = updateBranch(deps, 'toml')
+  if (updateBranch(deps, 'nose') !== group) throw new Error(`toml and nose must share one branch, got ${group} and ${updateBranch(deps, 'nose')}`)
+  const major = updateBranch(deps, 'oauth2client')
+  if (major === group) throw new Error(`The major update of oauth2client must not ride in ${group}`)
+  story.groupMr = mrs.find(mr => mr.title === GROUP.title)
+  story.majorMr = mrs.find(mr => mr.title === MAJOR.title)
+  if (story.groupMr.source_branch !== group) throw new Error(`"${GROUP.title}" must come from ${group}, it comes from ${story.groupMr.source_branch}`)
+  if (story.majorMr.source_branch !== major) throw new Error(`"${MAJOR.title}" must come from ${major}, it comes from ${story.majorMr.source_branch}`)
+})
+
+// Twins of a merge request on project/requirements.txt: that file only, and
+// exactly these lines in and out.
+async function assertRequirementsMove (mr, { added, removed }) {
+  const changes = await mergeRequestChanges(story.project.projectName, mr.iid, story.project.headers)
+  assertSameList(`Files "${mr.title}" changes`, changes.map(change => change.new_path), [OWN_DEPENDENCY.file])
+  const lines = changes[0].diff.split('\n')
+  assertSameList(`Lines "${mr.title}" adds`, lines.filter(line => line.startsWith('+')), added)
+  assertSameList(`Lines "${mr.title}" removes`, lines.filter(line => line.startsWith('-')), removed)
+}
+
+storyboardStep(Then, 'the project dependencies merge request moves toml and nose together, and leaves oauth2client to its own merge request', async () => {
+  await changesFrame('downstream-project-dependencies', story.project.projectName, story.groupMr.iid, OWN_DEPENDENCY.file, { height: 440 })
+  await assertRequirementsMove(story.groupMr, GROUP)
+  await assertRequirementsMove(story.majorMr, MAJOR)
+})
+
+// ---------------------------------------------------------------------------
+// Chapter 3: the toolbox updates its own tools, one merge request each
 // ---------------------------------------------------------------------------
 
 storyboardStep(When, "the toolbox's own Renovate runs, it opens one merge request per dependency", async () => {
