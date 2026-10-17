@@ -1,4 +1,4 @@
-# cspell:ignore greting
+# cspell:ignore greting ECONNREFUSED
 @e2e
 Feature: The toolbox checks the test really failed first, instead of taking anyone's word for it
   As a maintainer whose repository is written by people and by AI assistants alike
@@ -158,3 +158,29 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: The check reads each .gitignore line against paths inside the repository only. The line tmp/ leaves out project/tmp, and never the /tmp folder the repository sits in.
     # Copy: task devsecops:test:check:build-coverage; echo "exit code $?"
     Then the build check finds the web service, refuses it without its build task, and leaves the scratch copy out
+
+  @red-evidence
+  Scenario: The RED gate counts only a failure that reached the test's own check
+    # Chapter: A refused connection is not a failing test
+    # Note: A developer writes two tests for one greeting and tags both @greeting. The first asks a greeting service at 127.0.0.1:9 for the text, but nobody started that service. The second checks the greeting the toolbox gives, and nobody has written that greeting yet.
+    # Note: Only the second test can show that code is missing. The first one fails whatever the code does, because the service it needs is not there.
+    # Copy: cat project/tests/e2e/features/greeting.feature project/tests/e2e/support/steps/greeting.js
+    Given a developer writes one test that needs a service nobody started, and one that checks a greeting nobody wrote
+    # Note: One run of both tests, with the line task project:test:e2e runs inside its test container. The first test stops on "connect ECONNREFUSED 127.0.0.1:9": nothing answered at that address. The second fails on its own check: "expected 'Hello, Lambda', got ''".
+    # Note: The run exits with the code 1 and leaves results-1.xml in the report folder, with both failures in it. From the exit code alone, nobody can tell the two failures apart.
+    # Copy: TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/greeting.feature task project:test:e2e; echo "exit code $?"; ls project/tests/e2e/_output/junit
+    When both tests run and fail, one on the refused connection and one on its own check
+    # Note: The RED gate reads that report for @greeting-service. It finds the failure, sees a refused connection in it, and refuses it: the test stopped before it checked anything.
+    # Copy: task devsecops:test:check:red-is-real -- @greeting-service
+    Then the toolbox refuses the failure caused by the refused connection
+    # Note: The same command for @greeting-text, on the same report. This test ran up to its check and failed there, so the gate accepts the failure and quotes that check.
+    # Copy: task devsecops:test:check:red-is-real -- @greeting-text
+    And the toolbox accepts the failure on the test's own check
+    # Chapter: One scenario, in one whole report
+    # Note: The tag @greeting is on both tests. The gate cannot know which of the two the developer means, so it refuses and lists them. Each test already has a tag of its own for that.
+    # Copy: task devsecops:test:check:red-is-real -- @greeting
+    Then a tag that names both tests is refused
+    # Note: A run killed while it writes its report leaves the file cut in the middle. truncate removes the last 20 bytes of results-1.xml, and tail shows its last three lines: the failure of @greeting-text is still there, word for word, but the file now ends in the middle of a tag.
+    # Note: The gate refuses it anyway. A report that does not close is not the record of a whole run.
+    # Copy: truncate -s -20 project/tests/e2e/_output/junit/results-1.xml && tail -n 3 project/tests/e2e/_output/junit/results-1.xml; echo; task devsecops:test:check:red-is-real -- @greeting-text
+    And a report cut short is refused, even though the failure is still in it

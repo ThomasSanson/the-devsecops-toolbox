@@ -114,13 +114,15 @@ module.exports.greeting = (name) => {
 
 let tdd = null
 
-function tddRun (cmd) {
+function runIn (cwd, env, cmd) {
   try {
-    return { output: execSync(`${cmd} 2>&1`, { cwd: FIXTURE, env: tdd.env, encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 }), code: 0 }
+    return { output: execSync(`${cmd} 2>&1`, { cwd, env, encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 }), code: 0 }
   } catch (e) {
     return { output: String(e.stdout || ''), code: e.status == null ? 1 : e.status }
   }
 }
+
+const tddRun = (cmd) => runIn(FIXTURE, tdd.env, cmd)
 
 // The same line on the refused and the accepted card, so the reader compares
 // two pictures of one thing: what git sees, the run, its exit code, the report
@@ -947,4 +949,142 @@ storyboardStep(Then, 'the build check finds the web service, refuses it without 
     assert.ok(screen.includes(said), `Expected "${said}" on the verdict card:\n${screen}`)
   }
   assert.equal(screen.includes('project/tmp/'), false, `The scratch copy must not be on the verdict card:\n${screen}`)
+})
+
+// ===========================================================================
+// @red-evidence: the RED gate counts a failure only when the test reached its
+// own check, the tag names one scenario, and the report is whole.
+// ===========================================================================
+//
+// Two real failures from one real run of the toolbox's engine and JUnit
+// reporter: one on a refused connection, one on the test's own check. The
+// gate is then asked about each, about a tag both tests carry, and about the
+// same report cut short.
+
+// Fixed path, not a mkdtemp: the prompt and the report path print it.
+const EVIDENCE = '/tmp/e2e-red-evidence'
+const EVIDENCE_FEATURE = 'project/tests/e2e/features/greeting.feature'
+const EVIDENCE_STEPS = 'project/tests/e2e/support/steps/greeting.js'
+const EVIDENCE_REPORT = `${JUNIT_DIR}/results-1.xml`
+const REFUSED = 'connect ECONNREFUSED 127.0.0.1:9'
+const UNWRITTEN = "expected 'Hello, Lambda', got ''"
+const redGate = (tag) => `task devsecops:test:check:red-is-real -- ${tag}`
+// Node prints the line numbers of its own modules (node:net) in a stack
+// trace: they move with Node, never with the behaviour a card is about.
+const NODE_MASKS = [[/\b(node:[a-z_]+):\d+:\d+/g, '$1:<line>']]
+
+const EVIDENCE_FEATURE_BODY = `Feature: A toolbox that says hello
+  @greeting @greeting-service
+  Scenario: it asks the greeting service for the text
+    Then the greeting service answers
+  @greeting @greeting-text
+  Scenario: it greets the developer by name
+    Then the toolbox greets the developer by name
+`
+
+// Port 9 is the "discard" port: nothing listens there, in any container.
+const EVIDENCE_STEPS_BODY = `/* global Then */
+const http = require('http')
+
+// The greeting service the toolbox will ask. Nobody has started it.
+const SERVICE = 'http://127.0.0.1:9/greeting'
+// The greeting itself. Nobody has written it yet.
+const greeting = (name) => ''
+
+Then('the greeting service answers', () => new Promise((resolve, reject) => {
+  http.get(SERVICE, (answer) => { answer.resume(); resolve() }).on('error', reject)
+}))
+
+Then('the toolbox greets the developer by name', () => {
+  const actual = greeting('Lambda')
+  if (actual !== 'Hello, Lambda') throw new Error(\`expected 'Hello, Lambda', got '\${actual}'\`)
+})
+`
+
+let evidence = null
+
+const evidenceRun = (cmd) => runIn(EVIDENCE, evidence.env, cmd)
+// The gate's verdict line, for an assertion message that quotes nothing else.
+const verdict = (output) => stripAnsiEscapeSequences(output).split('\n').find(line => /[✅❌]/.test(line)) || '(no verdict)'
+
+After((test) => {
+  if (!owns(test, '@red-evidence')) return
+  if (evidence && evidence.closeTerminal) evidence.closeTerminal()
+  fs.rmSync(EVIDENCE, { recursive: true, force: true })
+  evidence = null
+})
+
+storyboardStep(Given, 'a developer writes one test that needs a service nobody started, and one that checks a greeting nobody wrote', async () => {
+  copyFrameworkWithEngine(EVIDENCE)
+  // The real engine and the repository's JUnit reporter; no browser, and only
+  // the probe's steps, so no other story's hook runs in the nested launch.
+  fs.appendFileSync(path.join(EVIDENCE, CONFIG), '\nexports.config.helpers = {}\nexports.config.include = {}\n' +
+    "exports.config.gherkin.steps = ['./support/steps/greeting.js']\n" +
+    "exports.config.plugins = { junit: { require: './support/junit-reporter.js', enabled: true } }\n")
+  fs.writeFileSync(path.join(EVIDENCE, EVIDENCE_FEATURE), EVIDENCE_FEATURE_BODY)
+  fs.writeFileSync(path.join(EVIDENCE, EVIDENCE_STEPS), EVIDENCE_STEPS_BODY)
+  evidence = { env: nestedEnv() }
+  evidence.run = `TASK_CODECEPTJS_FEATURES=./features/greeting.feature ${engineCommand(EVIDENCE, evidence.env)}`
+
+  evidence.closeTerminal = await openLocalTerminal(I, { cwd: EVIDENCE, env: evidence.env, port: 7695, height: 1500 })
+  const screen = await card('red-evidence-two-tests', `cat ${EVIDENCE_FEATURE} ${EVIDENCE_STEPS}`)
+  for (const said of ['@greeting @greeting-service', '@greeting @greeting-text', "const SERVICE = 'http://127.0.0.1:9/greeting'", "const greeting = (name) => ''"]) {
+    assert.ok(screen.includes(said), `Expected the two tests on screen, with "${said}":\n${screen}`)
+  }
+})
+
+storyboardStep(When, 'both tests run and fail, one on the refused connection and one on its own check', async () => {
+  const screen = await card('red-evidence-both-fail', `${evidence.run}; echo "exit code $?"; ls ${JUNIT_DIR}`, NODE_MASKS)
+  for (const said of [REFUSED, UNWRITTEN, 'exit code 1', 'results-1.xml']) {
+    assert.ok(screen.includes(said), `Expected both failures and the report on screen, with "${said}":\n${screen}`)
+  }
+  const xml = fs.readFileSync(path.join(EVIDENCE, EVIDENCE_REPORT), 'utf8')
+  for (const message of [REFUSED, UNWRITTEN]) {
+    assert.ok(xml.includes(`<failure message="${message}"`), `The report must record the failure "${message}":\n${xml}`)
+  }
+})
+
+storyboardStep(Then, 'the toolbox refuses the failure caused by the refused connection', async () => {
+  // The twin first, off camera: a wrong verdict fails here, before any card
+  // can record it as the reference.
+  const gate = evidenceRun(redGate('@greeting-service'))
+  assert.notEqual(gate.code, 0, `The gate must refuse a failure caused by a refused connection; verdict: ${verdict(gate.output)}`)
+  assert.match(gate.output, /stopped before its own check/)
+  const screen = await card('red-evidence-connection-refused', redGate('@greeting-service'))
+  for (const said of ['stopped before its own check', REFUSED, 'Failed to run task "devsecops:test:check:red-is-real"']) {
+    assert.ok(screen.includes(said), `Expected the gate to refuse the refused connection, with "${said}":\n${screen}`)
+  }
+})
+
+storyboardStep(Then, "the toolbox accepts the failure on the test's own check", async () => {
+  const gate = evidenceRun(redGate('@greeting-text'))
+  assert.equal(gate.code, 0, `The gate must accept the failure on the test's own check; verdict: ${verdict(gate.output)}`)
+  const screen = await card('red-evidence-own-check', redGate('@greeting-text'))
+  for (const said of ['The failure is real: the scenario ran and failed on its own check.', UNWRITTEN]) {
+    assert.ok(screen.includes(said), `Expected the gate to accept the failure, with "${said}":\n${screen}`)
+  }
+})
+
+storyboardStep(Then, 'a tag that names both tests is refused', async () => {
+  const gate = evidenceRun(redGate('@greeting'))
+  assert.notEqual(gate.code, 0, `The gate must refuse a tag that names two scenarios; verdict: ${verdict(gate.output)}`)
+  assert.match(gate.output, /names 2 scenarios/)
+  const screen = await card('red-evidence-ambiguous-tag', redGate('@greeting'))
+  for (const said of ['The tag @greeting names 2 scenarios', 'it asks the greeting service for the text @greeting @greeting-service',
+    'it greets the developer by name @greeting @greeting-text']) {
+    assert.ok(screen.includes(said), `Expected the gate to list both scenarios, with "${said}":\n${screen}`)
+  }
+})
+
+storyboardStep(Then, 'a report cut short is refused, even though the failure is still in it', async () => {
+  const screen = await card('red-evidence-report-cut-short',
+    `truncate -s -20 ${EVIDENCE_REPORT} && tail -n 3 ${EVIDENCE_REPORT}; echo; ${redGate('@greeting-text')}`)
+  const xml = fs.readFileSync(path.join(EVIDENCE, EVIDENCE_REPORT), 'utf8')
+  assert.ok(xml.includes(`<failure message="${UNWRITTEN}"`), `The cut report must still hold the failure:\n${xml}`)
+  assert.equal(xml.trimEnd().endsWith('</testsuites>'), false, `The report must be cut short:\n${xml}`)
+  for (const said of [UNWRITTEN, 'is not a whole JUnit report', 'Failed to run task "devsecops:test:check:red-is-real"']) {
+    assert.ok(screen.includes(said), `Expected the gate to refuse the cut report, with "${said}":\n${screen}`)
+  }
+  const gate = evidenceRun(redGate('@greeting-text'))
+  assert.notEqual(gate.code, 0, `The gate must refuse a report cut short; verdict: ${verdict(gate.output)}`)
 })
