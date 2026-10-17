@@ -111,7 +111,7 @@ storyboardStep(Then, 'a project without Renovate installed gets the pinned valid
 
 storyboardStep(Then, 'when the npm registry cannot be reached, the task says the configuration was not checked, and the retry validates it once the registry answers', async () => {
   const version = pinnedVersion()
-  const unreachable = 'npm_config_registry=http://registry.invalid/ npm_config_cache=$(mktemp -d) task renovate:validate'
+  const unreachable = 'npm_config_registry=http://registry.invalid/ npm_config_cache=$(mktemp -d) task renovate:validate' // DevSkim: ignore DS137138 -- A registry under .invalid, which never resolves, to prove a failed download.
   // Off camera, on the first run only: npm retries a failed download for
   // about a minute, and the card would only wait longer.
   const session = [
