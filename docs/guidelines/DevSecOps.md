@@ -372,6 +372,17 @@ Notes:
 - **Objective:** Automate the build process for the project.
 - **Automation:** All build steps must be executed through the `task build` file without manual intervention.
 - **Parameterisation:** Ensure that build commands utilise variables for options and file paths.
+- **Build coverage:** `task test` starts with a build check, `task devsecops:test:check:build-coverage`: every Docker Compose file under `project/` needs a task that builds it. `project/docker-compose.yml` needs `project:build`, and `project/frontend/docker-compose.yml` needs `project:build:frontend` (or `project:frontend:build`). When a task is missing, the check prints it, ready to paste into `project/Taskfile.yml`:
+
+  ```yaml
+  # project/Taskfile.yml
+  tasks:
+    project:build:frontend:
+      cmds:
+        - docker compose -f project/frontend/docker-compose.yml build
+  ```
+
+  The task keeps the full name written in `project/Taskfile.yml`, because the main Taskfile includes it with `flatten: true`. The Compose path starts with `project/`, because every task runs from the repository root.
 
 ## 7. Task: Test
 

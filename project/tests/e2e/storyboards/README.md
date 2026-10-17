@@ -126,6 +126,9 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@red-evidence"`
 - [**team-compose-task**](02-daily-work/team-compose-task.svg): A new project's Taskfile names its Docker Compose command at the top, in PROJECT_DOCKER_COMPOSE, and a task the team adds runs Compose on the project's own compose file through it.
   Replay: `task project:test:e2e -- --grep "@team-compose-task"`
+- [**build-coverage-example**](02-daily-work/build-coverage-example.svg): A generated project adds a frontend service with no build task. The build check refuses it and prints the task it is missing, and that task, pasted as printed into project/Taskfile.yml, satisfies the check.
+  Chapters: A new service without its build task.
+  Replay: `task project:test:e2e -- --grep "@build-coverage-example"`
 
 ## Act 3 — Evolution (`03-evolution`)
 

@@ -44,19 +44,17 @@
 #   TASK_DEVSECOPS_TEST_BUILD_COVERAGE_ENABLED=false task devsecops:test:check:build-coverage
 #
 # EXPECTED TASK NAMING:
-#   With namespace "project:" defined in main Taskfile.yml:
+#   The main Taskfile includes project/Taskfile.yml with flatten: true, so a
+#   task keeps the exact name written there, and runs from the repository root.
 #
 #   project/docker-compose.yml           → expects: project:build
-#                                           create in project/Taskfile.yml: "build:"
-#
 #   project/backend/docker-compose.yml   → expects: project:build:backend
-#                                           create in project/Taskfile.yml: "build:backend:" or "backend:build:"
+#                                           (or project:backend:build)
 #
-#   project/frontend/docker-compose.yml  → expects: project:build:frontend
-#                                           create in project/Taskfile.yml: "build:frontend:" or "frontend:build:"
-#
-#   Note: The "project:" prefix comes from the namespace in the main Taskfile,
-#         not from the task name itself!
+#   For project/backend/docker-compose.yml, add to project/Taskfile.yml:
+#     project:build:backend:
+#       cmds:
+#         - docker compose -f project/backend/docker-compose.yml build
 #
 # ============================================================================
 
@@ -84,6 +82,9 @@ NC='\033[0m'
 # Counters
 total_compose_files=0
 missing_build_tasks=0
+# The task each refused Compose file needs, and that file's path from the root
+missing_tasks=()
+missing_files=()
 
 # Build find exclusions from .gitignore
 find_excludes=()
@@ -301,6 +302,8 @@ for compose_file in "${compose_files[@]}"; do
     echo -e "${RED}✗${NC} $relative_path"
     echo -e "  ${RED}→ Missing task: ${expected_tasks[0]}${NC}\n"
     ((missing_build_tasks++)) || true
+    missing_tasks+=("${expected_tasks[0]}")
+    missing_files+=("$relative_path")
   fi
 done
 
@@ -324,11 +327,15 @@ else
 
   if [ -f "$taskfile_path" ]; then
     echo -e "${YELLOW}📝 Quick Fix:${NC} Add tasks to ${BLUE}${scan_dir_name}/Taskfile.yml${NC}"
-    echo ""
-    echo -e "${YELLOW}Example for backend:${NC}"
-    echo -e "${GREEN}  ${TASK_BUILD_KEYWORD}:backend:${NC}"
-    echo -e "${GREEN}    cmds:${NC}"
-    echo -e "${GREEN}      - docker compose -f backend/docker-compose.yml build${NC}"
+    # The full task name and the path from the repository root: the include
+    # is flattened, and its tasks run from the root.
+    for i in "${!missing_tasks[@]}"; do
+      echo ""
+      echo -e "${YELLOW}Example for ${missing_files[$i]}:${NC}"
+      echo -e "${GREEN}  ${missing_tasks[$i]}:${NC}"
+      echo -e "${GREEN}    cmds:${NC}"
+      echo -e "${GREEN}      - docker compose -f ${missing_files[$i]} build${NC}"
+    done
   else
     echo -e "${YELLOW}💡 Tip: Create tasks in your Taskfiles${NC}"
     echo -e "${YELLOW}    Expected: ${TASK_PREFIX}:${TASK_BUILD_KEYWORD}:component or ${TASK_PREFIX}:component:${TASK_BUILD_KEYWORD}${NC}"
