@@ -13,9 +13,7 @@ The repository must follow a standardised structure as outlined below. This stru
 /
 ├── iac/
 │   ├── helm/
-│   ├── opentofu/
-│   └── environment/
-│       └── staging/
+│   └── opentofu/
 ├── .config/
 │   ├── node/
 │   └── megalinter/
@@ -25,6 +23,8 @@ The repository must follow a standardised structure as outlined below. This stru
 │   └── e2e/
 ├── project/
 │   └── Taskfile.yml
+├── .env.dist
+├── .env.dev
 └── Taskfile.yml
 ```
 
@@ -32,6 +32,7 @@ The repository must follow a standardised structure as outlined below. This stru
 - **Configuration Files:** All technology-specific configurations must be placed under `.config/<technology>/` (e.g. `.config/node/`, `.config/megalinter/`).
 - **Tests:** All test cases and scripts are to be maintained within the `tests/` directory, organised by test type (unit, integration, end-to-end).
 - **Tasks:** All DevOps tasks must be implemented in the existing `project/Taskfile.yml` file, which provides the basic structure for all phases of the DevOps loop.
+- **Settings:** `.env.dist` and `.env.dev` at the root hold the settings `task` reads (see section 12).
 
 ## 2. Language Standards
 
@@ -466,10 +467,9 @@ TDD lifecycle sequence:
 - **Kubernetes:** All deployment operations must use Kubernetes exclusively.
   - **Infrastructure Testing:** Use `kind` for local Kubernetes cluster testing.
   - **Environment Management:**
-    - All Kubernetes configurations MUST be environment-specific and stored in `iac/environment/<environment>/`.
-    - Each environment MUST have its own `kubeconfig.yaml` file stored in `iac/environment/<environment>/kubeconfig.yaml`.
-    - All `kubectl` commands MUST use the `--kubeconfig` flag or the `KUBECONFIG` environment variable pointing to the appropriate environment file.
-    - Example: `kubectl --kubeconfig=iac/environment/staging/kubeconfig.yaml apply -f manifest.yaml`
+    - Each environment MUST have its own kubeconfig file, never shared with another environment.
+    - All `kubectl` commands MUST use the `--kubeconfig` flag or the `KUBECONFIG` environment variable, so that each command names the cluster it targets.
+    - Settings that differ between environments are variables, read from the files described in section 12.
   - **Commands:** Kubernetes commands must be fully parameterised (e.g. `kubectl apply $OPTIONS`).
 - **Helm and Sealed Secrets:**
   - Deployments should be managed via Helm.
@@ -494,89 +494,44 @@ TDD lifecycle sequence:
 
 ## 12. Environment Management
 
-### 12.1. Environment Structure
+### 12.1. Settings Files
 
-The `iac/environment/` directory is a critical component of the infrastructure and MUST be structured as follows:
+`task` reads its settings from three files at the root of the repository, listed in the root `Taskfile.yml`:
 
 ```yaml
-iac/
-└── environment/
-    ├── development/
-    │   ├── kubeconfig.yaml    # Development cluster configuration
-    │   └── values.yaml        # Environment-specific Helm values
-    ├── staging/
-    │   ├── kubeconfig.yaml    # Staging cluster configuration
-    │   └── values.yaml        # Environment-specific Helm values
-    └── production/
-        ├── kubeconfig.yaml    # Production cluster configuration
-        └── values.yaml        # Environment-specific Helm values
+dotenv: [".env", ".env.dev", ".env.dist"]
 ```
 
-### 12.2. Kubernetes Configuration Management
+The first file that sets a variable wins: `.env` over `.env.dev`, and `.env.dev` over `.env.dist`.
 
-1. **Kubeconfig Files:**
-- Each environment MUST have its own `kubeconfig.yaml` file
-- NEVER share kubeconfig files between environments
-- Store kubeconfig files in `iac/environment/<environment>/kubeconfig.yaml`
+| File        | Versioned          | Secrets          | Purpose                                                |
+|-------------|--------------------|------------------|--------------------------------------------------------|
+| `.env`      | No, git ignores it | Yes, real ones   | Values of a deployed environment (staging, production) |
+| `.env.dev`  | Yes                | Development only | Development values, ready to use                       |
+| `.env.dist` | Yes                | Never            | Defaults for every environment                         |
 
-2. **Kubernetes Commands:**
-- ALL Kubernetes operations MUST specify the kubeconfig file explicitly
-- Use either:
-  ```bash
-  # Option 1: --kubeconfig flag
-  kubectl --kubeconfig=iac/environment/staging/kubeconfig.yaml get pods
+### 12.2. Per Environment
 
-  # Option 2: KUBECONFIG environment variable
-  export KUBECONFIG=iac/environment/staging/kubeconfig.yaml
-  kubectl get pods
-  ```
+- **Development:** `.env.dev` and `.env.dist` come with the repository. There is nothing to copy or create.
+- **Deployed environment (staging, production):** remove `.env.dev` and create `.env` with the real values. `.env.dist` still provides the defaults.
 
-3. **Task Implementation:**
-- In `project/Taskfile.yml`, define the kubeconfig path as a variable:
-  ```yaml
-  vars:
-    ENVIRONMENT: '{{.ENVIRONMENT | default "development"}}'
-    KUBECONFIG: 'iac/environment/{{.ENVIRONMENT}}/kubeconfig.yaml'
-  ```
-- Use this variable in all Kubernetes-related tasks:
-  ```yaml
-  tasks:
-    deploy:
-      cmds:
-        - kubectl --kubeconfig={{.KUBECONFIG}} apply -f {{.MANIFEST}}
-  ```
+### 12.3. Adding a Variable
 
-4. **Local Development:**
-- When using `kind` for local testing:
-  ```bash
-  # Create cluster with specific kubeconfig
-  kind create cluster --name dev --kubeconfig iac/environment/development/kubeconfig.yaml
-
-  # Use the environment-specific kubeconfig for all operations
-  kubectl --kubeconfig=iac/environment/development/kubeconfig.yaml apply -f manifest.yaml
-  ```
-
-### 12.3. Environment Variables
-
-Always use environment-specific variables in your tasks:
+1. Give it a default in `.env.dist`, without any secret. Its name starts with `TASK_` (see section 3.4).
+2. Add a development value to `.env.dev` if development needs a different one.
+3. Read it in the Taskfile through `vars:`, with the same default:
 
 ```yaml
-# project/Taskfile.yml
-version: '3'
 vars:
-  ENVIRONMENT: '{{.ENVIRONMENT | default "development"}}'
-  KUBECONFIG: 'iac/environment/{{.ENVIRONMENT}}/kubeconfig.yaml'
-  HELM_VALUES: 'iac/environment/{{.ENVIRONMENT}}/values.yaml'
-  HELM_CHART_DIR: 'iac/helm/{{.CHART_NAME}}'
-
-tasks:
-  deploy:
-    desc: Deploy to the specified environment
-    cmds:
-      - helm upgrade --install {{.RELEASE_NAME}} {{.HELM_CHART_DIR}}
-        --values {{.HELM_VALUES}}
-        --kubeconfig {{.KUBECONFIG}}
+  TASK_APP_URL: '{{ default "https://app.example.com" .TASK_APP_URL }}'
 ```
+
+### 12.4. Rules
+
+- These files live at the root of the repository only, never in `project/` or in another subdirectory.
+- `.env` is never committed.
+- Secrets that only work in development may go in `.env.dev`. Real secrets go in `.env` only, never in `.env.dev` or `.env.dist`.
+- A secret is never hard-coded in a Taskfile or a script.
 
 ## 13. General Guidelines and Best Practices
 
@@ -599,7 +554,7 @@ Each modification must score at least 4.7/5 on these criteria:
 1. **Repository Structure** (Weight: 1.0)
 - Correct directory structure (`iac/`, `tests/`, etc.)
 - Proper file organisation
-- Environment separation in `iac/environment/`
+- Settings in the root `.env` files (see section 12)
 
 2. **Task Management** (Weight: 1.0)
 - All operations in `project/Taskfile.yml`
@@ -908,9 +863,7 @@ All modifications or customisations must align with the principles detailed abov
 /
 ├── iac/
 │   ├── helm/           (Helm charts)
-│   ├── opentofu/       (Infrastructure as Code)
-│   └── environment/    (Environment-specific configurations)
-│       └── staging/
+│   └── opentofu/       (Infrastructure as Code)
 ├── .config/
 │   ├── node/           (Node.js configurations)
 │   └── megalinter/     (Linter configurations)
@@ -919,6 +872,8 @@ All modifications or customisations must align with the principles detailed abov
 │       └── verify/         (Verification scripts)
 ├── project/
 │   └── Taskfile.yml    (Task definitions)
+├── .env.dist           (Default settings, no secrets)
+├── .env.dev            (Development settings)
 └── Taskfile.yml       (Task definitions)
 ```
 
@@ -967,7 +922,6 @@ Each phase must be implemented via task files:
 version: '3'
 vars:
   ENVIRONMENT: '{{.ENVIRONMENT | default "development"}}'
-  KUBECONFIG: 'iac/environment/{{.ENVIRONMENT}}/kubeconfig.yaml'
   HELM_CHART_DIR: 'iac/helm/{{.CHART_NAME}}'
 
 tasks:
@@ -1001,11 +955,12 @@ This guide ensures a consistent, secure, and efficient development lifecycle thr
 
 1. **Repository Structure**
 - [ ] Verify the presence of main directories:
-  - [ ] `/iac/` with subdirectories helm/, opentofu/, environment/
+  - [ ] `/iac/` with subdirectories helm/, opentofu/
   - [ ] `/.config/` with specific configurations
   - [ ] `/tests/` with unit/, integration/, e2e/
   - [ ] `/project/` with Taskfile.yml
 - [ ] Confirm the presence of Taskfile.yml at root level
+- [ ] Confirm `.env.dist` and `.env.dev` at root level, and no `.env` committed
 
 2. **Language Standards**
 - [ ] Verify the use of British English in:
