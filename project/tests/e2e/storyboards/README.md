@@ -30,6 +30,10 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@merge-request-safety"`
 - [**go-install-zsh**](01-install/go-install-zsh.svg): Without sudo, the Go installer writes GOROOT and GOPATH to the startup file of the developer's login shell, here ~/.zshrc, and a second run does not add them twice.
   Replay: `task project:test:e2e -- --grep "@go-install-zsh"`
+- [**copier-gherkin-language**](01-install/copier-gherkin-language.svg): Copier refuses a Gherkin language it does not know, francais, before it writes a single file, and takes its code, fr.
+  Replay: `task project:test:e2e -- --grep "@copier-gherkin-language"`
+- [**copier-docker-answers**](01-install/copier-docker-answers.svg): Copier refuses a malformed Docker answer for a project on its own runners, and an address with a stray space still gives a CI file that yamllint accepts.
+  Replay: `task project:test:e2e -- --grep "@copier-docker-answers"`
 
 ## Act 2 — Daily work (`02-daily-work`)
 

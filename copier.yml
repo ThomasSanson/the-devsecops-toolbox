@@ -106,6 +106,7 @@ gitlab_docker_runner_tags:
     Every runner tag must be a non-empty string.
     {% endif %}
 
+# cspell:ignore npipe overlayfs btrfs Scouse
 gitlab_docker_host:
   type: str
   help: |
@@ -113,6 +114,10 @@ gitlab_docker_host:
     Leave empty to use the runner's default context (shell executor or injected DOCKER_HOST).
   default: ""
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
+  validator: >-
+    {% if gitlab_docker_host and not gitlab_docker_host.startswith(("tcp://", "unix://", "ssh://", "npipe://")) %}
+    Start the address with tcp://, unix://, ssh:// or npipe://, as in tcp://docker:2376.
+    {% endif %}
 
 gitlab_docker_tls_certdir:
   type: str
@@ -121,10 +126,20 @@ gitlab_docker_tls_certdir:
     Set to "" to disable TLS. GitLab SaaS uses "/certs" by default.
   default: ""
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
+  validator: >-
+    {% if gitlab_docker_tls_certdir and not gitlab_docker_tls_certdir.startswith("/") %}
+    Give a full path such as /certs, or leave it empty to turn TLS off.
+    {% endif %}
 
 gitlab_docker_driver:
   type: str
   help: Storage driver for Docker-in-Docker on your self-hosted CI runners.
+  choices:
+    - overlay2
+    - fuse-overlayfs
+    - btrfs
+    - zfs
+    - vfs
   default: overlay2
   when: "{{ ci_platform == 'gitlab_self_hosted' }}"
 
@@ -183,6 +198,21 @@ gherkin_language:
   type: str
   help: "Language for Gherkin test specifications (ISO 639-1 code: en, fr, de, es, ...)"
   default: en
+  # The language codes of the Gherkin parser (@cucumber/gherkin) that the test
+  # engine reads a feature file's `# language:` line with.
+  validator: >-
+    {% if gherkin_language not in [
+    "af", "am", "amh", "an", "ar", "ast", "az", "be", "bg", "bm", "bs", "ca",
+    "cs", "cy-GB", "da", "de", "el", "em", "en", "en-Scouse", "en-au",
+    "en-lol", "en-old", "en-pirate", "en-tx", "eo", "es", "et", "fa", "fi",
+    "fr", "ga", "gj", "gl", "he", "hi", "hr", "ht", "hu", "id", "is", "it",
+    "ja", "jv", "ka", "kn", "ko", "lt", "lu", "lv", "mk-Cyrl", "mk-Latn", "ml",
+    "mn", "mr", "ne", "nl", "no", "pa", "pl", "pt", "ro", "ru", "sk", "sl",
+    "sr-Cyrl", "sr-Latn", "sv", "ta", "te", "th", "tlh", "tr", "tt", "uk",
+    "ur", "uz", "vi", "zh-CN", "zh-TW"
+    ] %}
+    "{{ gherkin_language }}" is not a language Gherkin knows. Use its code, such as en, fr, de or es.
+    {% endif %}
 
 # Internal
 # Which scope the installer rendered at. Never asked: the installer passes it

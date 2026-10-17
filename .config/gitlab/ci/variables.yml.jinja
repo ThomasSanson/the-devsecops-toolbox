@@ -41,7 +41,7 @@ variables:
     {%- if ci_platform == 'gitlab_saas' %}
     DOCKER_HOST: tcp://docker:2376
     {%- elif gitlab_docker_host %}
-    DOCKER_HOST: {{ gitlab_docker_host }}
+    DOCKER_HOST: {{ gitlab_docker_host | tojson }}
     {%- endif %}
     #
     # The 'docker' hostname is the alias of the service container as described at
@@ -64,7 +64,7 @@ variables:
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
     DOCKER_DRIVER: overlay2
     {%- else %}
-    DOCKER_TLS_CERTDIR: "{{ gitlab_docker_tls_certdir }}"
+    DOCKER_TLS_CERTDIR: {{ gitlab_docker_tls_certdir | tojson }}
       {%- if gitlab_docker_tls_certdir %}
     DOCKER_TLS_VERIFY: 1
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
