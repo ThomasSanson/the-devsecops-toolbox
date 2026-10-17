@@ -17,13 +17,17 @@ APPLY_FIXES:
   - JSON_PRETTIER
   - YAML_PRETTIER
   - MARKDOWN_MARKDOWNLINT
-  - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 DISABLE_LINTERS:
   - JSON_V8R
   - YAML_V8R
   - COPYPASTE_JSCPD
   - ANSIBLE_ANSIBLE_LINT
+  # markdownlint's MD060 lines table pipes up by screen columns, where an
+  # emoji takes two; markdown-table-formatter pads by characters, so it
+  # rewrote such a table into one MD060 then flagged. markdownlint alone
+  # owns table layout.
+  - MARKDOWN_MARKDOWN_TABLE_FORMATTER
 
 # IMPORTANT: EXCLUDED_DIRECTORIES does NOT work for linters in "project" mode
 # Use FILTER_REGEX_EXCLUDE for linters in file/list_of_files mode

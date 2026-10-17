@@ -57,6 +57,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@task-progress"`
 - [**dictionary-timeout**](02-daily-work/dictionary-timeout.svg): MegaLinter installs its spelling dictionaries with npm before its checks. Against a registry that never answers, that install stops after 120 seconds and MegaLinter says why, instead of holding the run for more than an hour.
   Replay: `task project:test:e2e -- --grep "@dictionary-timeout"`
+- [**markdown-tables**](02-daily-work/markdown-tables.svg): MegaLinter leaves a table with emoji as it is, run after run, and markdownlint accepts it when its pipes line up on screen. A copy padded by character count is still flagged with MD060.
+  Replay: `task project:test:e2e -- --grep "@markdown-tables"`
 - [**osv-scope**](02-daily-work/osv-scope.svg): OSV scans inherited tools in the toolbox and project dependencies in the project, including custom tools under `.config/`.
   Chapters: The toolbox answers for its own tools · The project answers for its own dependencies · Without vulnerable dependencies of its own, the project passes.
   Replay: `task project:test:e2e -- --grep "@osv-scope"`
