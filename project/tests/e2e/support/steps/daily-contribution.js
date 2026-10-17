@@ -425,10 +425,14 @@ storyboardStep(When, "the merge request's pipeline passes and the developer merg
   await mergeAndWaitForBranchDeletion(rootHeaders)
   await assertMainPipelineGreen(rootHeaders, svc)
 
+  // The test job exposes its artifacts (expose_as): each pipeline box shows
+  // "Loading artifacts" and asks again every 3 s until a GitLab background
+  // job has listed them. The card waits for that answer, as a reader would.
   await gitlabFrame(I, 'merged-into-main', gitlabUrl.mr(PROJECT_NAME, global.dailyMrIid), {
     waitText: 'Deleted the source branch',
     hide: ['ul.main-notes-list'],
-    textMasks: [ISSUE_REF_KEEP]
+    textMasks: [ISSUE_REF_KEEP],
+    prepare: () => I.waitForFunction(() => !document.body.innerText.includes('Loading artifacts'), 30)
   })
   // Twins: the change is on the main branch and the issue is closed.
   const readme = String(await getRepositoryFile(PROJECT_NAME, 'README.md', 'main', rootHeaders)).trim()
