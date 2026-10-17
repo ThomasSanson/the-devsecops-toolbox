@@ -1,5 +1,6 @@
 """Remove obsolete MegaLinter references without rewriting project settings."""
 
+import sys
 from pathlib import Path
 
 import yaml
@@ -127,7 +128,7 @@ def cleaned(text):
     return result
 
 
-def main():
+def validated_updates():
     """Validate every candidate before writing any inherited configuration."""
     updates = []
     root = Path.cwd().resolve()
@@ -137,10 +138,28 @@ def main():
                 "Refusing to migrate linked or external MegaLinter configuration: "
                 + str(file)
             )
+        # Parsed from the file itself, a syntax error names the file.
+        with file.open() as stream:
+            yaml.compose(stream, Loader=yaml.SafeLoader)
         original = file.read_text()
-        result = cleaned(original)
+        try:
+            result = cleaned(original)
+        except ValueError as error:
+            raise ValueError(f"{error}: {file}") from None
         if result != original:
             updates.append((file, result))
+    return updates
+
+
+def main():
+    """Name the file that stops the migration and how to repair it."""
+    try:
+        updates = validated_updates()
+    except (ValueError, yaml.YAMLError) as error:
+        sys.exit(
+            f"{error}\n[megalinter migration] No settings file was changed. "
+            "Fix the file named above, then ask for the update again."
+        )
     for file, result in updates:
         file.write_text(result)
         print(f"[megalinter migration] removed retired references from {file}")
