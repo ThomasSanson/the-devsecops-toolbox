@@ -37,7 +37,7 @@ const {
   BASE_URL,
   encodedProjectPath,
   getRootHeaders,
-  createMergeRequest,
+  createMergeRequestWhenBranchExists,
   getMergeRequest,
   updateProjectSettings,
   getPipeline,
@@ -311,7 +311,7 @@ storyboardStep(Given, 'the merge request changes one framework file and brings n
   fs.appendFileSync(`${FIXTURE_DIR}/${PRODUCT_FILE}`, '\n# The cleanup above runs whatever the release job does, pass or fail.\n')
   sh(`git checkout --quiet -b ${BRANCH}`)
   push([PRODUCT_FILE], 'ci(release): say why the cleanup runs on every outcome')
-  const mr = await createMergeRequest(gate.pub.projectName, {
+  const mr = await createMergeRequestWhenBranchExists(gate.pub.projectName, {
     source_branch: BRANCH,
     target_branch: 'main',
     title: 'ci(release): say why the cleanup runs on every outcome',
