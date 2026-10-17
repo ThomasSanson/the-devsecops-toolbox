@@ -18,9 +18,10 @@ set -eu
 
 # ---------------------------------------------------------------------------
 # Pinned versions — update these when upgrading the toolchain.
-# The `# renovate:` annotations let Renovate bump these bootstrap pins in
-# lockstep with the canonical .config/<tool>/version files (same datasource),
-# so install.sh can never drift from the framework. See .config/renovate/.
+# In the toolbox repository, the `# renovate:` annotations let Renovate bump
+# these bootstrap pins together with the .config/<tool>/version files. A
+# generated project's Renovate leaves them alone: this file changes there only
+# through task copier:update, with the rest of the framework.
 # ---------------------------------------------------------------------------
 # renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.*)$
 TASK_VERSION="3.49.1"
