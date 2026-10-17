@@ -66,6 +66,7 @@ const {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
+  setupNoSudoMachineTerminal,
   setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
@@ -2077,4 +2078,45 @@ storyboardStep(Then, 'on a machine with no terminal at all, as in a CI job, the 
     if (!files.includes(file)) throw new Error(`Expected the complete framework in ~/ci, missing "${file}": ${JSON.stringify(files)}`)
   }
   if (onMachine('command -v gum glow').exitCode !== 0) throw new Error('Expected gum and glow back on the machine')
+})
+
+// ============================================
+// @task-install-without-sudo: the task installer (.config/task/install.sh) on
+// a bare machine where the developer has no sudo rights. One terminal, two
+// cards: the setup, then the install and the shell finding task. Each card is
+// twinned with the machine itself, checked before the picture is taken.
+// ============================================
+const NO_SUDO_SETUP = "sudo -n true; stat -c '%A %U %n' /usr/local/bin; type task"
+const TASK_INSTALL = 'sh .config/task/install.sh; echo "exit code: $?"; command -v task; task --version'
+const USER_TASK = '/home/bootstrap/.local/bin/task'
+// What moves between two runs: the download's temporary folder, curl's
+// progress row (sizes, speed and time) and the versions Renovate bumps.
+const TASK_INSTALL_MASKS = [
+  [/\/tmp\/tmp\.\w+/g, '/tmp/tmp.<random>'],
+  [/^\s*100\s+\d+\s+100\s+\d+\s.*$/, '<download progress>'],
+  [/\d+\.\d+\.\d+/g, '<version>']
+]
+
+storyboardStep(Given, 'a fresh machine where the developer has no sudo rights and task is not installed', async () => {
+  global.journeyContainer = setupNoSudoMachineTerminal()
+  if (onMachine('sudo -n true').exitCode === 0) throw new Error('Expected the developer to have no passwordless sudo')
+  if (onMachine('test -w /usr/local/bin').exitCode === 0) throw new Error('Expected /usr/local/bin not to be writable')
+  if (onMachine('command -v task').exitCode === 0) throw new Error('Expected task not to be installed')
+  await openTerminal(I, global.journeyContainer, { height: 900, width: 1440 })
+  const screen = await terminalCard(I, 'no-sudo', NO_SUDO_SETUP)
+  assertLogSays(screen, ['sudo: a password is required', 'root /usr/local/bin', 'bash: type: task: not found'])
+})
+
+storyboardStep(Then, 'the task installer puts task in ~/.local/bin, says that folder must be on the PATH, and task runs from there', async () => {
+  await clearTerminal(I)
+  await typeCommandAndWait(I, TASK_INSTALL)
+  const screen = await terminalScreenText(I)
+  assertLogSays(screen, ['exit code: 0', `installed ${USER_TASK}`, 'must be on your PATH', USER_TASK])
+  const pinned = fs.readFileSync(path.join(CONTAINER_WORKDIR, '.config/task/version'), 'utf8').trim()
+  const installed = onMachine(`${USER_TASK} --version`)
+  if (installed.exitCode !== 0 || !installed.output.includes(pinned)) {
+    throw new Error(`Expected task ${pinned} in ~/.local/bin:\n${installed.output}`)
+  }
+  if (onMachine('test -e /usr/local/bin/task').exitCode === 0) throw new Error('Expected nothing written to /usr/local/bin')
+  await addStoryboardFrame(I, await captureTerminalFrame(I, 'task-in-home', { fromMarker: TASK_INSTALL.slice(0, 40), mask: TASK_INSTALL_MASKS }))
 })

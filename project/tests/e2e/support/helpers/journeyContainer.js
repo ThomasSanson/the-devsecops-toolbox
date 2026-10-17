@@ -359,6 +359,41 @@ function setupBareMachineTerminal () {
   return name
 }
 
+/**
+ * A brand-new machine for the @task-install-without-sudo story: the compose
+ * `ubuntu` image with the developer's passwordless sudo taken away, the
+ * working-branch task installer in PROJECT_DIR/.config/task, and a live
+ * terminal in that folder. Returns the container name (caller tears it down).
+ */
+function setupNoSudoMachineTerminal () {
+  const name = containerName()
+  runCommand(
+    `cd ${CONTAINER_WORKDIR}/project && docker compose run -d --name ${shellEscape(name)} ubuntu`,
+    { timeout: SETUP_TIMEOUT }
+  )
+  runCommand(`docker cp ${shellEscape(`${CONTAINER_WORKDIR}/.config/task`)} ${shellEscape(`${name}:/tmp/task`)}`)
+  const prepared = execInContainer(name, [
+    'rm /etc/sudoers.d/bootstrap',
+    `install -d -o bootstrap -g bootstrap ${PROJECT_DIR} ${PROJECT_DIR}/.config`,
+    `cp -r /tmp/task ${PROJECT_DIR}/.config/task`,
+    `chown -R bootstrap:bootstrap ${PROJECT_DIR}`
+  ].join(' && '), { user: 'root' })
+  if (prepared.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to prepare the machine without sudo:\n${prepared.output}`)
+  }
+  const ttydStart = execInContainerAsUser(name, 'bootstrap', [
+    `cd ${PROJECT_DIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
+    'sleep 1'
+  ].join('\n'))
+  if (ttydStart.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to start ttyd on the machine without sudo:\n${ttydStart.output}`)
+  }
+  waitForTtyd(name, TTYD_READY_TIMEOUT)
+  return name
+}
+
 function teardownJourneyTerminal (name) {
   if (!name) return
   removeContainer(name)
@@ -373,6 +408,7 @@ module.exports = {
   WRAPPER_PATH,
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
+  setupNoSudoMachineTerminal,
   setupManualUpdateTerminal,
   setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,

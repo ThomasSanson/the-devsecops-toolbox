@@ -51,3 +51,18 @@ Feature: Trusting the installer on a fresh machine
     # Note: Nobody answers anything and everything goes to /tmp/ci.log. The run ends with exit code 0, and the log ends on "Installation complete!" and "Run 'task' to see available commands."
     # Copy: TASK_GLAB_ENABLED=false setsid -w bash /tmp/install.sh </dev/null >/tmp/ci.log 2>&1; echo "exit code: $?"; tail -n 3 /tmp/ci.log
     Then on a machine with no terminal at all, as in a CI job, the same installer asks nothing and installs the complete framework
+
+  # .config/task/install.sh is the script Copier and the CI jobs run to get
+  # task. Without write access to /usr/local/bin and without passwordless sudo,
+  # it used to print "Trying anyway..." and fail on /usr/local/bin (issue #138).
+  # The bare machine of the story above, with its sudo rights taken away: one
+  # terminal, the setup on the first card and the install on the second.
+  @task-install-without-sudo
+  Scenario: Without sudo rights, the task installer puts task in the developer's own folder
+    # Note: A brand-new Ubuntu machine where the developer has no sudo rights, with the toolbox's task installer in .config/task. One typed line: sudo asks for a password, /usr/local/bin belongs to root, and task is not installed.
+    # Copy: sudo -n true; stat -c '%A %U %n' /usr/local/bin; type task
+    Given a fresh machine where the developer has no sudo rights and task is not installed
+    # Note: The developer runs the task installer. It cannot write to /usr/local/bin and has no sudo, so it says it installs into /home/bootstrap/.local/bin instead, the developer's own folder. The lines after it come from task's official install script, which ends on "installed /home/bootstrap/.local/bin/task".
+    # Note: The installer then says where task is and that this folder must be on the PATH. The run ends with exit code 0, and the shell finds task in /home/bootstrap/.local/bin. Versions show as <version>, the download progress and the temporary folder as placeholders: they change with each run or update.
+    # Copy: sh .config/task/install.sh; echo "exit code: $?"; command -v task; task --version
+    Then the task installer puts task in ~/.local/bin, says that folder must be on the PATH, and task runs from there
