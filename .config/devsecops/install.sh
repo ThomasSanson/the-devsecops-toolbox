@@ -263,6 +263,19 @@ preflight() {
   fi
 }
 
+# The framework's own tasks (task code, task build, task test) run their tools
+# in containers. Nothing this installer does needs one, and a CI job brings its
+# own, so a machine without one still gets the framework: it is told what is
+# missing now, instead of by the first task that starts a container.
+check_container_engine() {
+  docker info >/dev/null 2>&1 && return 0
+  podman info >/dev/null 2>&1 && return 0
+  echo ""
+  echo "  ⚠️  Docker does not answer on this machine: it is missing, or not running."
+  log_info "task code, task build and task test run their tools in containers."
+  log_info "Install Docker and start it before you run them: https://docs.docker.com/engine/install/"
+}
+
 # ---------------------------------------------------------------------------
 # Install task
 # ---------------------------------------------------------------------------
@@ -920,6 +933,8 @@ main() {
     echo ""
     return 0
   fi
+
+  check_container_engine
 
   echo ""
   echo "📋 Setting up project..."
