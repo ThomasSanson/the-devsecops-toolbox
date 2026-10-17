@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.4 (2026-10-17)
+
+### Fix
+
+- **megalinter**: leave local reports to the user who ran MegaLinter
+
 ## 24.5.3 (2026-10-17)
 
 ### Fix
