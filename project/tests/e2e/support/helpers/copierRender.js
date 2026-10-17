@@ -216,12 +216,44 @@ function prepareAgentsMoveTemplate () {
   return tpl
 }
 
+const LYCHEE_CONFIG = '.config/lychee/config.toml'
+// The release before the toolbox's lychee settings had an accept list of their
+// own, and the release that brings it (the working tree).
+const LYCHEE_RELEASE_BEFORE = '23.0.43'
+const LYCHEE_RELEASE = '24.4.10'
+
+/**
+ * Build a versioned template whose LYCHEE_RELEASE_BEFORE ends its lychee
+ * settings on the exclude_path list, as every release did before the toolbox
+ * accepted status codes of its own, and whose LYCHEE_RELEASE is the working
+ * tree, accept list included. A project that wrote its own accept list in that
+ * file sees the release add a second one.
+ */
+function prepareLycheeAcceptTemplate () {
+  const tpl = tmpDir('e2e-lychee-accept')
+  run(`mkdir -p ${tpl} && cp -a ${TEMPLATE_SRC}/. ${tpl} && chown -R "$(id -u):$(id -g)" ${tpl}`)
+  const file = `${tpl}/${LYCHEE_CONFIG}`
+  const current = fs.readFileSync(file, 'utf8')
+  const before = current.match(/^[\s\S]*?^exclude_path = \[[\s\S]*?^\]\n/m)
+  if (!before || !/^accept = /m.test(current.slice(before[0].length))) {
+    throw new Error(`Fixture setup: no accept list after exclude_path in ${file}`)
+  }
+  fs.writeFileSync(file, before[0])
+  run('git init --quiet --initial-branch=main', tpl)
+  run('git config user.email "e2e@test.local" && git config user.name "E2E"', tpl)
+  run(`git add -A && git commit --quiet --no-verify -m "chore: template release ${LYCHEE_RELEASE_BEFORE}"`, tpl)
+  run(`git tag ${LYCHEE_RELEASE_BEFORE}`, tpl)
+  fs.writeFileSync(file, current)
+  run(`git add -A && git commit --quiet --no-verify -m "chore: template release ${LYCHEE_RELEASE} (accept list)"`, tpl)
+  run(`git tag ${LYCHEE_RELEASE}`, tpl)
+  return tpl
+}
+
 /**
  * Generate a project from a versioned template at the given release, and make
  * the destination a clean git repo (a copier update prerequisite).
  */
-function renderProjectFromTemplate (tpl, vcsRef, data = {}) {
-  const dst = tmpDir('e2e-project')
+function renderProjectFromTemplate (tpl, vcsRef, data = {}, { dst = tmpDir('e2e-project') } = {}) {
   run(`${COPIER} copy --defaults --skip-tasks --overwrite --vcs-ref ${vcsRef} ${dataArgs(data)} ${tpl} ${dst}`)
   run('git init --quiet --initial-branch=main', dst)
   run('git config user.email "e2e@test.local" && git config user.name "E2E"', dst)
@@ -264,11 +296,15 @@ module.exports = {
   TASKFILE_LINE_RELEASED,
   OLD_WORKFLOWS,
   AGENTS_MOVE_RELEASE_LINE,
+  LYCHEE_CONFIG,
+  LYCHEE_RELEASE_BEFORE,
+  LYCHEE_RELEASE,
   renderProject,
   prepareVersionedTemplate,
   prepareCspellMigrationTemplate,
   prepareConflictTemplate,
   prepareAgentsMoveTemplate,
+  prepareLycheeAcceptTemplate,
   renderProjectFromTemplate,
   updateProject,
   removeRendered

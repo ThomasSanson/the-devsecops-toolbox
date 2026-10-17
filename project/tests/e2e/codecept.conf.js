@@ -99,7 +99,8 @@ exports.config = {
       './support/steps/publication-contracts.js',
       './support/steps/junit-control-characters.js',
       './support/steps/publication-update.js',
-      './support/steps/env-layering.js'
+      './support/steps/env-layering.js',
+      './support/steps/lychee-settings.js'
     ]
   },
   plugins: {
