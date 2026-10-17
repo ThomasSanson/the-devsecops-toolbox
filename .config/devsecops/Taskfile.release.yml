@@ -204,8 +204,7 @@ tasks:
           echo "🔓 Temporarily opening push access for Maintainers..."
           set_branch_protection 40
 
-          echo "🔐 Configuring ${REMOTE_PROTOCOL^^} remote with Commitizen token..."
-          git remote set-url origin "${REMOTE_PROTOCOL}://oauth2:${TOKEN}@${HOST}/${PROJECT_PATH}.git"
+          echo "🔐 Using the Commitizen token for this ${REMOTE_PROTOCOL^^} push only, never in the remote URL..."
 
           # ONE atomic push for the version commit and the tag commitizen put
           # on it, named after the version (tag_format: $version). A remote that
@@ -219,7 +218,17 @@ tasks:
             set -- "$@" "refs/tags/${TAG}"
           fi
           echo "Pushing tags and the version commit to ${BRANCH}..."
-          git push --atomic origin "$@"
+          # The token goes neither into the remote URL, where .git/config would
+          # keep it after the release, nor into an argument `ps` shows: git
+          # asks a one-shot credential helper, which reads it from the
+          # environment of this one command. The empty helper first drops every
+          # helper configured elsewhere, so none of them stores the token. The
+          # helper names the user too: git does not reuse the one in the URL,
+          # which is only there so no url.insteadOf rule rewrites this push.
+          RELEASE_PUSH_TOKEN="${TOKEN}" git \
+            -c credential.helper= \
+            -c credential.helper='!f() { if [ "$1" = get ]; then echo username=oauth2; echo "password=${RELEASE_PUSH_TOKEN}"; fi; }; f' \
+            push --atomic "${REMOTE_PROTOCOL}://oauth2@${HOST}/${PROJECT_PATH}.git" "$@"
         silent: true
       - cmd: echo "🎉 Release push completed successfully"
         silent: true
