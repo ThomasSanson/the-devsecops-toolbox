@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.18 (2026-10-17)
+
+### Fix
+
+- **renovate**: leave the deployment manifests of a project alone
+
 ## 24.4.17 (2026-10-17)
 
 ### Fix
