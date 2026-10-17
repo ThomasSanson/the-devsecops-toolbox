@@ -45,6 +45,7 @@ const {
   listProjectAccessTokens,
   listPipelineSchedules,
   createProjectVariable,
+  updateProjectVariable,
   listPipelineJobs,
   getPipeline,
   triggerProjectPipeline,
@@ -53,7 +54,7 @@ const {
   listCommits
 } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshPut } = require('../helpers/http')
-const { gitlabUrl, gitlabFrame, jobLogFrame, unfoldFileTree } = require('../helpers/gitlabCard')
+const { gitlabUrl, gitlabFrame, jobLogFrame, unfoldFileTree, ciVariablesFrame } = require('../helpers/gitlabCard')
 const { screenText, maskText, terminalOutputFrame } = require('../helpers/terminalRender')
 const {
   registerScopedRunner,
@@ -972,8 +973,11 @@ storyboardStep(When, 'a secret committed into a published file is stopped by the
 // The same scan on a developer's machine: Docker, and no betterleaks binary, so
 // the publication starts the scanner image. No CI variable either, as on a
 // laptop: the publication would read the commit it scans from them.
-function developerRun (script) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'CI' && !key.startsWith('CI_')))
+function developerRun (script, extraEnv = {}) {
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'CI' && !key.startsWith('CI_'))),
+    ...extraEnv
+  }
   const result = spawnSync('sh', ['-c', script], {
     cwd: global.pubRendered, env, encoding: 'utf8', timeout: 300000, maxBuffer: 10 * 1024 * 1024
   })
@@ -1072,6 +1076,123 @@ storyboardStep(Then, 'the public project still holds the first release, without 
   if (commits.length !== 1) {
     throw new Error(`The public history must still hold the one release commit, found ${commits.length}`)
   }
+})
+
+// ===========================================================================
+// Chapter 5 — The doctor says whether the project is ready
+//
+// The doctor runs on the developer's machine, like the scans above, and reads
+// GitLab with the developer's own token. The variables of the first chapter
+// were stored neither masked nor protected, which is exactly what it has to
+// notice instead of reporting them as fine.
+// ===========================================================================
+
+// The two variables that hold a token. TASK_PUBLICATION_TOKEN_USERNAME is a
+// plain setting and stays as it is.
+const TOKEN_VARIABLES = ['TASK_PUBLICATION_SOURCE_TOKEN', 'TASK_PUBLICATION_TOKEN']
+
+// The developer's own token, in the environment and never on a card. No other
+// variable may hand the doctor one, whatever the machine running the test has.
+function doctorEnv () {
+  return { GITLAB_TOKEN: '', TASK_COMMITIZEN_TOKEN: '', TASK_PUBLICATION_SOURCE_TOKEN: global.pubLambdaToken }
+}
+
+async function tokenVariableFlags () {
+  const flags = {}
+  for (const key of TOKEN_VARIABLES) {
+    const res = await readProjectVariable(global.pubPrivate, key, lambdaHeaders())
+    if (res.status !== 200) throw new Error(`${key} must exist on the private project, got HTTP ${res.status}`)
+    flags[key] = { masked: res.data.masked, protected: res.data.protected }
+  }
+  return flags
+}
+
+storyboardStep(When, "the developer opens the project's CI/CD variables, where both tokens are stored, neither masked nor protected", async () => {
+  // What a developer's clone has and this tree lacks: the address of the
+  // project, which is how the doctor finds GitLab.
+  inSource(`git remote add origin ${shellEscape(new URL(`/${lambdaUser()}/${global.pubPrivate}.git`, BASE_URL).href)}`)
+  // The nightly schedule task publication:init would create, so that the two
+  // tokens are the only thing left to settle.
+  const schedule = await freshPost(
+    `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}/pipeline_schedules`,
+    { description: 'Source publication — check for toolbox releases', ref: 'main', cron: '0 4 * * *' },
+    lambdaHeaders()
+  )
+  if (schedule.status >= 400) throw new Error(`Could not create the nightly schedule: ${schedule.status} ${JSON.stringify(schedule.data)}`)
+
+  const flags = await tokenVariableFlags()
+  for (const key of TOKEN_VARIABLES) {
+    if (flags[key].masked !== false || flags[key].protected !== false) {
+      throw new Error(`${key} must start neither masked nor protected, got ${JSON.stringify(flags[key])}`)
+    }
+  }
+  await ciVariablesFrame(I, 'publication-doctor-variables-open', global.pubPrivate, {
+    projectNames: [global.pubPrivate], hide: PAGE_HIDE
+  })
+})
+
+storyboardStep(Then, 'the doctor names both tokens and fails', async () => {
+  const run = { command: 'task publication:doctor', ...developerRun('task publication:doctor', doctorEnv()) }
+  const output = stripAnsiEscapeSequences(run.raw)
+  if (run.exit === 0) throw new Error(`The doctor must fail while the tokens are neither masked nor protected:\n${output}`)
+  mustContain(output, [
+    '❌ A token that may push to it is stored, masked and protected',
+    'TASK_PUBLICATION_TOKEN is stored, but neither masked nor protected.',
+    "❌ A token that may read this repository's merge requests is stored, masked and protected",
+    'TASK_PUBLICATION_SOURCE_TOKEN is stored, but neither masked nor protected.',
+    '✅ A nightly check looks for the next toolbox release',
+    '2 things to settle.',
+    'exit status 1'
+  ], 'the doctor must name each token GitLab does not mask or protect, and fail')
+  mustNotContain(output, ['Nothing missing', '✅ A token'], 'the doctor must not report an unprotected token as fine')
+  mustNotContain(run.raw, [global.pubLambdaToken], 'the doctor must not print the token it was given')
+  // The doctor reads, it changes nothing.
+  const flags = await tokenVariableFlags()
+  if (TOKEN_VARIABLES.some(key => flags[key].masked || flags[key].protected)) {
+    throw new Error(`The doctor must leave the variables as they were, got ${JSON.stringify(flags)}`)
+  }
+  await developerFrame('publication-doctor-not-ready', [run])
+})
+
+storyboardStep(When, 'the developer marks both tokens masked and protected', async () => {
+  for (const key of TOKEN_VARIABLES) {
+    const res = await updateProjectVariable(global.pubPrivate, key, { masked: true, protected: true }, lambdaHeaders())
+    if (res.status >= 400) throw new Error(`Could not mask and protect ${key}: ${res.status} ${JSON.stringify(res.data)}`)
+  }
+  const flags = await tokenVariableFlags()
+  for (const key of TOKEN_VARIABLES) {
+    if (flags[key].masked !== true || flags[key].protected !== true) {
+      throw new Error(`${key} must now be masked and protected, got ${JSON.stringify(flags[key])}`)
+    }
+  }
+  await ciVariablesFrame(I, 'publication-doctor-variables-guarded', global.pubPrivate, {
+    projectNames: [global.pubPrivate], hide: PAGE_HIDE
+  })
+})
+
+storyboardStep(Then, 'the doctor finds nothing missing and passes, and without a token it fails on what it could not check', async () => {
+  const [ready, blind] = ['task publication:doctor', 'TASK_PUBLICATION_SOURCE_TOKEN= task publication:doctor']
+    .map(command => ({ command, ...developerRun(command, doctorEnv()) }))
+  const readyOutput = stripAnsiEscapeSequences(ready.raw)
+  if (ready.exit !== 0) throw new Error(`The doctor must pass once both tokens are masked and protected:\n${readyOutput}`)
+  mustContain(readyOutput, [
+    '✅ A token that may push to it is stored, masked and protected',
+    "✅ A token that may read this repository's merge requests is stored, masked and protected",
+    '✅ A nightly check looks for the next toolbox release',
+    'Nothing missing.'
+  ], 'a ready project must pass every check')
+  mustNotContain(readyOutput, ['❌', '⏭️'], 'a ready project must have nothing missing and nothing skipped')
+
+  const blindOutput = stripAnsiEscapeSequences(blind.raw)
+  if (blind.exit === 0) throw new Error(`The doctor must not pass a check it could not run:\n${blindOutput}`)
+  mustContain(blindOutput, ['⏭️', 'GitLab was not asked', 'exit status 3'],
+    'a doctor without a token must say what it skipped, with an exit status of its own')
+  mustNotContain(blindOutput, ['Nothing missing', '✅ A token', '✅ A nightly check'],
+    'a doctor without a token must not claim the checks it skipped')
+  for (const run of [ready, blind]) {
+    mustNotContain(run.raw, [global.pubLambdaToken], 'the doctor must not print the token it was given')
+  }
+  await developerFrame('publication-doctor-ready', [ready, blind])
 })
 
 // ===========================================================================

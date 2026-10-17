@@ -21,8 +21,9 @@ Feature: Publishing the source of a private project, without the parts that must
   # This story is told the way a team lives it: on GitLab. A real private
   # project, a real public one, a project-scoped runner, and the real pipeline
   # doing the publishing. Every card is a whole GitLab page or job log a
-  # reviewer can open for themselves, except four: the same secret scan run on a
-  # developer's machine, where it runs in Docker instead of on the runner.
+  # reviewer can open for themselves, except six: the same secret scan run on a
+  # developer's machine, where it runs in Docker instead of on the runner, and
+  # the doctor that says whether the project is ready, run there too.
   # ONE Gherkin sentence = ONE card = ONE pixel baseline (tolerance: 0), and
   # every card is twinned with a check of the same fact.
   @source-publication
@@ -111,3 +112,19 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: The last commit is still "publish 1.4.0". What gets published is what an owner approved, file by file, and what the scan let through, never what a pattern happened to match.
     # Copy: http://gitlab/<lambda-user>/<project>-public/-/blob/main/src/app.js
     Then the public project still holds the first release, without the new file or the password
+    # Chapter: The doctor says whether the project is ready
+    # Note: The private project's CI/CD variables, in GitLab's settings. TASK_PUBLICATION_TOKEN and TASK_PUBLICATION_SOURCE_TOKEN have held the two tokens since the first chapter, and every pipeline of this story used them. Each one carries only the Expanded label: neither Masked nor Protected.
+    # Note: Without Masked, GitLab does not hide the value when a job log prints it. Without Protected, a pipeline on any branch receives the token, not only the pipelines of the main branch.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    When the developer opens the project's CI/CD variables, where both tokens are stored, neither masked nor protected
+    # Note: The developer runs task publication:doctor, the command that checks the setup, with their own GitLab token in the environment. It reads both variables on GitLab and says what is wrong with each one: "is stored, but neither masked nor protected".
+    # Note: Everything else is in place, the nightly schedule included. The doctor counts "2 things to settle", and task ends on "exit status 1": a script that runs the doctor stops here as well.
+    # Copy: task publication:doctor
+    Then the doctor names both tokens and fails
+    # Note: The same settings page after the developer edited both variables and ticked Masked and Protected on each one. Both now carry the two labels, and their values did not change.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
+    When the developer marks both tokens masked and protected
+    # Note: The doctor again. Every line is a ✅ and the run ends on "Nothing missing", with no exit status: it passed.
+    # Note: The second run empties TASK_PUBLICATION_SOURCE_TOKEN, so the doctor has no token for GitLab. It says "GitLab was not asked about the two tokens and the nightly check", and ends on "exit status 3" instead of a yes: it cannot know.
+    # Copy: TASK_PUBLICATION_SOURCE_TOKEN= task publication:doctor
+    Then the doctor finds nothing missing and passes, and without a token it fails on what it could not check

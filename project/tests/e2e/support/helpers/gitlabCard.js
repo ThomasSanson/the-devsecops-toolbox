@@ -444,11 +444,12 @@ async function ciEditorFrame (I, frameName, project, { ref = 'main', tab = 'Visu
 }
 
 /** CI/CD settings, its Variables section open and its table in view: keys and their masked/protected flags. Needs a logged-in maintainer. */
-async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, projectNames = null } = {}) {
+async function ciVariablesFrame (I, frameName, project, { height = CARD_HEIGHT, projectNames = null, hide = [] } = {}) {
   const table = '[data-testid="ci-variable-table"]'
   await gitlabFrame(I, frameName, gitlabUrl.ciSettings(project), {
     height,
     projectNames,
+    hide,
     prepare: async () => {
       // A folded section still lays its table out, so ask the section itself.
       const open = '#js-cicd-variables-settings.expanded'
