@@ -47,6 +47,27 @@ function ciEvidence (name = 'e2e-osv-scope') {
   return state.ci
 }
 
+// A scanner MegaLinter runs, taken from the project's own MegaLinter image, the
+// one `task megalinter` starts: the terminal runs the version the project uses.
+// Returns the shell environment that finds it first.
+function scannerEnv (binary) {
+  const directory = '/tmp/e2e-scanners'
+  const target = path.join(directory, binary)
+  if (!fs.existsSync(target)) {
+    const pin = JSON.parse(fs.readFileSync(path.join(state.project, '.config/megalinter/package.json'), 'utf8'))
+    const image = `ghcr.io/oxsecurity/megalinter:v${pin.dependencies['mega-linter-runner']}`
+    // Two workers may race here: each writes its own file, the rename is atomic.
+    const part = `${target}.${process.pid}`
+    fs.mkdirSync(directory, { recursive: true })
+    execFileSync('sh', ['-c', `docker run --rm --entrypoint cat ${image} /usr/local/bin/${binary} > ${part}`], { stdio: ['ignore', 'ignore', 'pipe'], timeout: 1800000 })
+    fs.chmodSync(part, 0o755)
+    fs.renameSync(part, target)
+  }
+  const env = { ...process.env, PATH: `${directory}:${process.env.PATH}` }
+  delete env.TASK_E2E_UPDATE_BASELINES
+  return env
+}
+
 function run (command, args = []) {
   return execFileSync(command, args, {
     cwd: state.project,
@@ -227,6 +248,56 @@ storyboardStep(Then, "the project's OSV scan leaves the framework tools to the t
   assert.ok(result.report.includes('No issues found'), 'OSV must return its native clean verdict for an empty scan')
   assertFrameworkLeftToToolbox(result)
   await state.ci.osvLogFrame('empty-project-scan', { verdict: 'No issues found' })
+})
+
+// @grype-excludes: Grype as MegaLinter runs it, the binary of the project's
+// MegaLinter image reading the settings file MegaLinter hands it, without the
+// folders MegaLinter adds on its own. An API keeps its own lockfile next to
+// three folders that hold none of its code, one level below the root: only
+// the exclude list Grype reads tells them apart.
+const GRYPE_PROJECT = '/tmp/acme-app'
+const GRYPE_CONFIG = '.config/grype/config.yml'
+const GRYPE_REPORT = '/tmp/grype.json'
+const API_LOCK = 'project/api/package-lock.json'
+const API_LOCKS = [
+  'project/api/.cache/acme/package-lock.json',
+  API_LOCK,
+  'project/api/vendor/acme/widget/package-lock.json',
+  'project/api/venv/lib/acme/package-lock.json'
+]
+const SKIPPED = /\/(\.cache|vendor|venv)\//
+// The JSON goes to stdout, redirected: printing to the terminal itself, Grype
+// would first ask the terminal for its colours.
+const GRYPE_SCAN = `grype dir:. -q --config ${GRYPE_CONFIG} -o json > ${GRYPE_REPORT} && jq -r '.matches[].artifact.locations[].path' ${GRYPE_REPORT} | sort -u`
+
+storyboardStep(Given, "a generated project's API holds the same vulnerable lockfile in its own folder and in its .cache, vendor and venv folders", async () => {
+  removeRendered(GRYPE_PROJECT)
+  state.project = renderProject({}, { dst: GRYPE_PROJECT })
+  state.dirs.push(state.project, GRYPE_REPORT)
+  API_LOCKS.forEach(writeLock)
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('grype'), port: 7698, height: 900 })
+  const screen = await terminalCard(I, 'grype-lockfiles', 'grep -H -A1 \'"node_modules/lodash"\' $(find project -name package-lock.json | sort)')
+  for (const file of API_LOCKS) assert.ok(screen.includes(`${file}-      "version": "4.17.20"`), `${file} must pin lodash 4.17.20:\n${screen}`)
+})
+
+storyboardStep(When, "the developer scans the project with Grype's settings, it reports the API's own lockfile only", async () => {
+  const screen = await terminalCard(I, 'grype-scan', GRYPE_SCAN)
+  const matches = JSON.parse(fs.readFileSync(GRYPE_REPORT, 'utf8')).matches || []
+  const reported = [...new Set(matches.flatMap(match => match.artifact.locations.map(location => location.path)))].sort()
+  assert.ok(matches.some(match => match.artifact.name === 'lodash' && match.artifact.version === '4.17.20' &&
+    match.artifact.locations.some(location => location.path === `/${API_LOCK}`)), `Grype must report lodash 4.17.20 in ${API_LOCK}. It reported: ${reported.join(', ')}`)
+  assert.deepEqual(reported.filter(file => SKIPPED.test(file)), [], 'Grype must skip .cache, vendor and venv one level below the root')
+  assert.ok(screen.includes(`/${API_LOCK}`) && !SKIPPED.test(screen), `The card must list the API's own lockfile only:\n${screen}`)
+})
+
+storyboardStep(Then, "Grype's settings file skips every folder of its list at any depth", async () => {
+  const screen = await terminalCard(I, 'grype-settings', `cat ${GRYPE_CONFIG}`)
+  const config = fs.readFileSync(path.join(state.project, GRYPE_CONFIG), 'utf8')
+  for (const folder of ['.cache', '.git', 'megalinter-reports', 'node_modules', 'vendor', 'venv']) {
+    assert.ok(config.includes(`  - "**/${folder}/**"\n`), `${GRYPE_CONFIG} must skip ${folder} at any depth:\n${config}`)
+  }
+  assert.doesNotMatch(config, /^ {2}- "\.\//m, `No pattern of ${GRYPE_CONFIG} may be anchored at the root`)
+  assert.ok(screen.includes('"**/vendor/**"'), `The card must show the exclude list:\n${screen}`)
 })
 
 storyboardStep(Given, 'a task emits real output before failing', async () => {

@@ -5,6 +5,27 @@ Feature: a freshly generated project passes its own quality gate
   So that a vulnerable dependency stops my pipeline where I can fix it,
   while the toolbox answers for the tools it ships.
 
+  # Grype, another scanner MegaLinter runs, takes its settings from
+  # .config/grype/config.yml. Its exclude list names the folders that hold no
+  # code of the project's own. A pattern that starts with ./ only matches at
+  # the root of the project, so the same folder one level down was scanned
+  # (issue #171). MegaLinter also passes Grype the folders of its own
+  # EXCLUDED_DIRECTORIES setting, so the terminal runs the grype binary of the
+  # project's MegaLinter image with the settings file alone.
+  @grype-excludes
+  Scenario: Grype skips the folders its settings list at any depth and still reports the project's own dependencies
+    # Note: A project generated from the toolbox, with an API under project/api. Its own lockfile, project/api/package-lock.json, pins lodash 4.17.20, a version with a known vulnerability.
+    # Note: The same lockfile sits in three folders of the API that hold none of its code: .cache, where package managers keep their downloads, and vendor and venv, where they install libraries.
+    # Copy: grep -H -A1 '"node_modules/lodash"' $(find project -name package-lock.json | sort)
+    Given a generated project's API holds the same vulnerable lockfile in its own folder and in its .cache, vendor and venv folders
+    # Note: Grype scans the project with its settings file and saves what it finds as JSON. jq, a JSON reader, then lists the files those findings come from.
+    # Note: There is one: /project/api/package-lock.json, the API's own lockfile. Nothing comes from .cache, vendor or venv.
+    # Copy: grype dir:. -q --config .config/grype/config.yml -o json > /tmp/grype.json && jq -r '.matches[].artifact.locations[].path' /tmp/grype.json | sort -u
+    When the developer scans the project with Grype's settings, it reports the API's own lockfile only
+    # Note: The settings file MegaLinter hands Grype. Every folder of its exclude list starts with **/ and ends with /**, like the node_modules line: Grype skips that folder wherever it sits, at the root or deeper.
+    # Copy: cat .config/grype/config.yml
+    Then Grype's settings file skips every folder of its list at any depth
+
   @task-progress
   Scenario: a worker reports real task progress and preserves failures
     # Note: GitLab shows the disposable Taskfile.yml: its probe task prints "native task output", then exits with code 7.
