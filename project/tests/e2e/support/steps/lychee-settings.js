@@ -34,7 +34,7 @@ const ANSWERS = '.config/devsecops/.copier-answers.yml'
 const MEGALINTER_CONFIG = '.config/megalinter/config.yml'
 const IGNORE_FILE = '.lycheeignore'
 const PAGE = 'docs/services.md'
-const DEAD_LINK = 'http://127.0.0.2:9/status'
+const DEAD_LINK = 'http://127.0.0.2:9/status' // DevSkim: ignore DS137138 -- Links a test project's lychee checks; nothing serves them.
 const LYCHEE_REPORT = 'megalinter-reports/linters_logs/SPELL_LYCHEE-ERROR.log'
 
 // Off camera: MegaLinter runs lychee alone, on the one page of this story. The
@@ -53,8 +53,8 @@ const LINKS_ONLY = [
 // the toolbox accepted 429 itself, the address of a local service in the file
 // lychee reads from the repository root, and a page linking to both.
 const OWN_ACCEPT = 'accept = [\n  200,\n  206,\n  403,\n  429\n]\n\n'
-const OWN_IGNORE = '^http://storage(:[0-9]+)?/\n'
-const OWN_PAGE = `# Services\n\n- [Storage console](http://storage:9000/)\n- [Old status page](${DEAD_LINK})\n`
+const OWN_IGNORE = '^http://storage(:[0-9]+)?/\n' // DevSkim: ignore DS137138 -- Links a test project's lychee checks; nothing serves them.
+const OWN_PAGE = `# Services\n\n- [Storage console](http://storage:9000/)\n- [Old status page](${DEAD_LINK})\n` // DevSkim: ignore DS137138 -- Links a test project's lychee checks; nothing serves them.
 const OWN_COMMIT = 'docs: link our local services'
 
 const SHOW = 'git show --format=%s'

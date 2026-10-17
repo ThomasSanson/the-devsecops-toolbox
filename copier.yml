@@ -80,7 +80,7 @@ _migrations:
   # in a file of its own that lychee reads, and no update touches. The version
   # is the release that ships this migration: every project below it, broken
   # since 23.0.44 or not, runs it once on its next update.
-  - version: "24.4.99"
+  - version: "24.8.6"
     command: "'{{ _copier_python }}' '{{ _copier_conf.src_path }}/.config/copier/merge-lychee-keys.py'"
 
 # Questions — CI/CD platform
