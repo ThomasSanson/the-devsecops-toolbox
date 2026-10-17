@@ -8,7 +8,7 @@ const { I, GitLabUserPage } = inject()
 const { prepareVersionedTemplate, renderProjectFromTemplate, updateProject, removeRendered, UPDATE_MARKER, UPDATE_MARKER_FILE } = require('../helpers/copierRender')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const {
-  getRootHeaders, lintProjectCi, createProjectRunner, deleteRunner, createMergeRequest,
+  getRootHeaders, lintProjectCi, createProjectRunner, deleteRunner, createMergeRequestWhenBranchExists,
   listPipelineJobs, listProjectPipelines, getPipeline, getJobTrace, getJobArtifact, getRepositoryFile, getRunnerCard, getPipelineTestReport, BASE_URL
 } = require('../helpers/gitlabApi')
 const { gitlabFrame, gitlabUrl, jobLogFrame, settlePage } = require('../helpers/gitlabCard')
@@ -128,24 +128,6 @@ async function waitForPushedBranch () {
     await I.wait(2)
   }
   throw new Error(`GitLab never exposed ${BRANCH} at ${expected}; got ${observed}`)
-}
-
-async function createPushedMergeRequest (payload) {
-  const deadline = Date.now() + 60000
-  let response
-  do {
-    await waitForPushedBranch()
-    response = await createMergeRequest(state.projectName, payload, state.headers)
-    // GitLab 19.4 can still report a missing branch here after the branch API
-    // returns its exact pushed SHA. Retry only that inconsistent response.
-    const errors = response.data?.message
-    const missingSource = response.status === 400 && Object.keys(errors || {}).length === 1 &&
-      Array.isArray(errors.source_branch) && errors.source_branch.length === 1 &&
-      errors.source_branch[0] === 'does not exist'
-    if (!missingSource) return response
-    await I.wait(2)
-  } while (Date.now() < deadline)
-  return response
 }
 
 async function mergeRequestPipelines () {
@@ -382,11 +364,11 @@ storyboardStep(When, 'I open a merge request that adds the web application, its 
   git('commit', '--quiet', '-m', 'feat: demonstrate separate runners for checks and containers')
   const changed = git('diff', '--name-only', 'main', 'HEAD').trim().split('\n').sort()
   push()
-  const mr = await createPushedMergeRequest({
+  const mr = await createMergeRequestWhenBranchExists(state.projectName, {
     source_branch: BRANCH,
     target_branch: 'main',
     title: 'Run file checks and the web application on separate runners'
-  })
+  }, state.headers)
   assert.ok(mr.status < 400, `Merge request creation returned ${mr.status}: ${JSON.stringify(mr.data?.message || mr.data?.error)}`)
   state.mr = mr.data.iid
   state.reviewedSha = git('rev-parse', 'HEAD').trim()
