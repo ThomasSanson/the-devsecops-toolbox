@@ -4,7 +4,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
-const { Worker } = require('worker_threads')
+const { Worker, threadId } = require('worker_threads')
 const {
   COPIER, prepareVersionedTemplate, renderProject, renderProjectFromTemplate, removeRendered
 } = require('../helpers/copierRender')
@@ -97,7 +97,7 @@ function configureScanner () {
 
 async function localScan () {
   const { raw: output, exitCode } = await runTask(state.project,
-    ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=ml-osv-${process.pid}-${sequence++}`], { timeout: 300000 })
+    ['megalinter', `TASK_MEGALINTER_CONTAINER_NAME=ml-osv-${process.pid}-${threadId}-${sequence++}`], { timeout: 300000 })
   const file = `${REPORTS}/REPOSITORY_OSV_SCANNER-${exitCode === 0 ? 'SUCCESS' : 'ERROR'}.log`
   assert.ok(fs.existsSync(path.join(state.project, file)), `OSV must run and produce its report:\n${output}`)
   const report = run('cat', [file])

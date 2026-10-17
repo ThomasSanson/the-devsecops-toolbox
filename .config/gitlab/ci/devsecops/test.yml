@@ -20,8 +20,8 @@ test:
   parallel: 14
   # Per-shard ceiling: setup (~6m cold) + the heaviest shard (~22m: the
   # install story alone, which waits on the generated project's own
-  # pipelines; the shards of several files hold ~5m) + in-scenario retries.
-  # retry:1 bounds the worst case.
+  # pipelines; the shards of several files hold ~5m). retry:1 bounds the
+  # worst case.
   timeout: 45m
   variables:
     # 2 workers per shard: enough to overlap a shard's scenarios while
