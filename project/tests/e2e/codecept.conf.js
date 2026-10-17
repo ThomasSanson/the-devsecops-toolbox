@@ -90,6 +90,7 @@ exports.config = {
       './support/steps/betterleaks-redact-config.js',
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
+      './support/steps/dictionary-timeout.js',
       './support/steps/renovate-detection.js',
       './support/steps/renovate-runtime.js',
       './support/steps/hybrid-ci.js',

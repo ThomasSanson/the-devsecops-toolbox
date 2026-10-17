@@ -25,6 +25,19 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The settings file MegaLinter hands Grype. Every folder of its exclude list starts with **/ and ends with /**, like the node_modules line: Grype skips that folder wherever it sits, at the root or deeper.
     # Copy: cat .config/grype/config.yml
     Then Grype's settings file skips every folder of its list at any depth
+  # MegaLinter starts by installing the spelling dictionaries with npm. This
+  # story runs it on the developer's computer against a registry that never
+  # answers, and times how long that install holds the run.
+  @dictionary-timeout
+  Scenario: MegaLinter stops waiting for the spelling dictionaries after two minutes
+    # Note: The last lines of the project's MegaLinter settings keep one check, CSpell, on the MegaLinter settings files only, so that the run stays short. NPM_CONFIG_REGISTRY sends npm to a test server that accepts the connection and never answers. Its address changes with every run.
+    # Note: MegaLinter passes its settings as environment variables to the commands it runs before the checks, so the npm install of the spelling dictionaries asks that server.
+    # Copy: tail -n 4 .config/megalinter/config.yml
+    Given a generated project whose MegaLinter settings send npm to a registry that never answers
+    # Note: task megalinter runs MegaLinter in Docker, and sed keeps the part of its log about the command it runs first: timeout 120 npm install -g, with the five spelling dictionaries.
+    # Note: After 120 seconds, timeout stops npm. MegaLinter prints "[Pre] error:" and the reason: "npm could not install the CSpell dictionaries within 120 seconds." The test also checks that the whole run took less than five minutes.
+    # Copy: task megalinter 2>&1 | sed -n '/^\[Pre\] run/,/^$/p'
+    Then task megalinter stops the dictionary install after 120 seconds and says why
 
   @task-progress
   Scenario: a worker reports real task progress and preserves failures
