@@ -57,7 +57,7 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Copy: git diff -- project/tests/e2e/codecept.conf.js && task devsecops:test:check:no-cheat BASE=HEAD
     And the guard refuses a picture check loosened to 0.1 just the same
     # Note: The tolerance goes back to 0. Many projects write their unit tests for node:test, the test runner built into Node. The assistant writes the greeting check that way, in greeting.test.js, and switches it off with one option on line 4: { skip: true }. node:test then reports the test as skipped and never runs it.
-    # Note: The guard stops on that line as well. It names project/tests/unit/greeting.test.js:4 and says what the line does: "a skipped or todo test: its failure no longer fails the suite". Off camera, it refuses the other forms node:test offers, { todo: true }, test.todo( and t.skip( among them, and lets a skip through when its value is a condition a reviewer can read.
+    # Note: The guard stops on that line as well. It names project/tests/unit/greeting.test.js:4 and says what the line does: "a skipped or todo test: its failure no longer fails the suite". Off camera, it also refuses { todo: true }, test.todo(, and t.skip( or t.todo( whether on a line of their own or on the test( line, and lets a skip through when its value is a condition a reviewer can read.
     # Copy: cat project/tests/unit/greeting.test.js && task devsecops:test:check:no-cheat BASE=HEAD
     And the guard refuses a node:test unit test switched off with { skip: true }
     # Chapter: A check that disappears

@@ -295,7 +295,9 @@ const NODE_TEST_REFUSED = [
   "test.todo('greets the developer by name', () => {",
   "it.todo('greets the developer by name', () => {",
   "test('greets the developer by name', (t) => {\n  t.skip()",
-  "test('greets the developer by name', (t) => {\n  t.todo()"
+  "test('greets the developer by name', (t) => {\n  t.todo()",
+  "test('greets the developer by name', (t) => { t.skip()",
+  "test('greets the developer by name', (t) => { t.todo()"
 ]
 // A condition a reviewer can read, as @pytest.mark.skipif states one.
 const NODE_TEST_CONDITIONAL = "test('greets the developer by name', { skip: process.platform === 'win32' }, () => {"
