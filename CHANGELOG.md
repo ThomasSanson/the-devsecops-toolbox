@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.5 (2026-10-17)
+
+### Fix
+
+- **ci**: publish the generated test job's JUnit reports to GitLab
+
 ## 24.5.4 (2026-10-17)
 
 ### Fix
