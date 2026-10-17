@@ -966,7 +966,7 @@ const EVIDENCE = '/tmp/e2e-red-evidence'
 const EVIDENCE_FEATURE = 'project/tests/e2e/features/greeting.feature'
 const EVIDENCE_STEPS = 'project/tests/e2e/support/steps/greeting.js'
 const EVIDENCE_REPORT = `${JUNIT_DIR}/results-1.xml`
-const REFUSED = 'connect ECONNREFUSED 127.0.0.1:9'
+const REFUSED = 'connect ECONNREFUSED 127.0.0.1:9' // DevSkim: ignore DS162092 -- Port 9 on loopback, picked because nothing listens there.
 const UNWRITTEN = "expected 'Hello, Lambda', got ''"
 const redGate = (tag) => `task devsecops:test:check:red-is-real -- ${tag}`
 // Node prints the line numbers of its own modules (node:net) in a stack
@@ -987,7 +987,7 @@ const EVIDENCE_STEPS_BODY = `/* global Then */
 const http = require('http')
 
 // The greeting service the toolbox will ask. Nobody has started it.
-const SERVICE = 'http://127.0.0.1:9/greeting'
+const SERVICE = 'http://127.0.0.1:9/greeting' // DevSkim: ignore DS162092 -- Port 9 on loopback, picked because nothing listens there.
 // The greeting itself. Nobody has written it yet.
 const greeting = (name) => ''
 
@@ -1028,7 +1028,7 @@ storyboardStep(Given, 'a developer writes one test that needs a service nobody s
 
   evidence.closeTerminal = await openLocalTerminal(I, { cwd: EVIDENCE, env: evidence.env, port: 7695, height: 1500 })
   const screen = await card('red-evidence-two-tests', `cat ${EVIDENCE_FEATURE} ${EVIDENCE_STEPS}`)
-  for (const said of ['@greeting @greeting-service', '@greeting @greeting-text', "const SERVICE = 'http://127.0.0.1:9/greeting'", "const greeting = (name) => ''"]) {
+  for (const said of ['@greeting @greeting-service', '@greeting @greeting-text', "const SERVICE = 'http://127.0.0.1:9/greeting'", "const greeting = (name) => ''"]) { // DevSkim: ignore DS162092 -- Port 9 on loopback, picked because nothing listens there.
     assert.ok(screen.includes(said), `Expected the two tests on screen, with "${said}":\n${screen}`)
   }
 })
