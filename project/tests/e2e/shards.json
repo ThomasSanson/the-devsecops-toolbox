@@ -1,12 +1,17 @@
 {
-  "comment": "CI shard map for the e2e job (parallel: 9). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Balanced on measured CI durations: the long single stories ride alone (1, 2) and bound the pipeline wall-clock; the MegaLinter-hungry quality-gate stories share shard 7 so its image pull is paid once. Runner-driven stories register a project-scoped runner on the shard's OWN gitlab-runner service (each CI shard boots its own compose stack), so they need not share a shard \u2014 they are spread instead: shard 9 keeps @daily-contribution and @release-window (~18 min together), shard 5 takes @test-discipline. Grouping all three cost 11 extra minutes of wall-clock, because one runner slot serialised their pipelines. A LOCAL full-suite run ignores this map and shares one runner service, which is why the teardown stays surgical.",
-  "1": "./features/01-install/first-run-help.feature",
-  "2": "./features/01-install/merge-request-safety.feature",
-  "3": "./features/01-install/fresh-machine.feature,./features/03-evolution/version-pins.feature,./features/02-daily-work/tdd-cycle.feature,./features/02-daily-work/tdd-cycle-reports.feature,./features/02-daily-work/storyboard-layout.feature,./features/03-evolution/publication-update.feature",
-  "4": "./features/01-install/install.feature",
-  "5": "./features/03-evolution/update.feature,./features/03-evolution/update-conflict.feature,./features/03-evolution/test-discipline.feature",
-  "6": "./features/02-daily-work/self-healing.feature,./features/03-evolution/hybrid-ci.feature,./features/03-evolution/runner-cleanup.feature,./features/02-daily-work/source-publication.feature,./features/02-daily-work/publication-contracts.feature,./features/01-install/publication-only.feature",
-  "7": "./features/02-daily-work/osv-scope.feature,./features/02-daily-work/quality-gate.feature,./features/02-daily-work/megalinter-reports.feature",
-  "8": "./features/02-daily-work/protected-commits.feature,./features/02-daily-work/secret-scans.feature,./features/02-daily-work/betterleaks-redact.feature,./features/03-evolution/matrix.feature,./features/03-evolution/renovate.feature,./features/01-install/agent-mode.feature",
-  "9": "./features/02-daily-work/daily-contribution.feature,./features/02-daily-work/release-window.feature"
+  "comment": "CI shard map for the e2e job (parallel: 14). Each entry lists the feature FILES one shard runs (comma-separated, relative to the codecept dir, consumed via TASK_CODECEPTJS_FEATURES); check:shard-coverage enforces that every feature file lands in exactly one shard. Packed longest first on the scenario times measured in five pipelines. CodeceptJS hands each of a shard's two workers a whole file, in the order listed here, so every shard also lists its longest file first. Seven stories ride alone: the three that wait on a generated project's own pipelines (install, daily-contribution, hybrid-ci: 16 to 22 minutes) and four that take up to 7 minutes on their own. Every other shard holds at most about 5 minutes of scenarios on its slowest measured run, counting on the MegaLinter image pulled while GitLab boots for the stories that start it (E2E_MEGALINTER_FEATURES in project/Taskfile.yml). Most stories that run pipelines register a project-scoped runner on the shard's OWN gitlab-runner service (each CI shard boots its own compose stack), whose single job slot serialises their jobs, so no shard runs two of them. A LOCAL full-suite run ignores this map and shares one runner service, which is why the teardown stays surgical.",
+  "1": "./features/01-install/install.feature",
+  "2": "./features/02-daily-work/daily-contribution.feature",
+  "3": "./features/03-evolution/hybrid-ci.feature",
+  "4": "./features/02-daily-work/self-healing.feature",
+  "5": "./features/02-daily-work/source-publication.feature",
+  "6": "./features/01-install/merge-request-safety.feature",
+  "7": "./features/02-daily-work/release-window.feature",
+  "8": "./features/03-evolution/update-conflict.feature,./features/02-daily-work/betterleaks-redact.feature,./features/03-evolution/matrix.feature,./features/02-daily-work/publication-contracts.feature,./features/02-daily-work/storyboard-layout.feature",
+  "9": "./features/02-daily-work/tdd-cycle.feature,./features/02-daily-work/tdd-cycle-reports.feature,./features/01-install/publication-only.feature,./features/01-install/agent-mode.feature",
+  "10": "./features/03-evolution/test-discipline.feature,./features/03-evolution/update.feature,./features/03-evolution/runner-cleanup.feature,./features/02-daily-work/secret-scans.feature",
+  "11": "./features/02-daily-work/osv-scope.feature,./features/03-evolution/renovate.feature,./features/03-evolution/version-pins.feature",
+  "12": "./features/01-install/fresh-machine.feature,./features/02-daily-work/protected-commits.feature",
+  "13": "./features/02-daily-work/quality-gate.feature,./features/03-evolution/publication-update.feature",
+  "14": "./features/02-daily-work/megalinter-reports.feature,./features/01-install/first-run-help.feature"
 }
