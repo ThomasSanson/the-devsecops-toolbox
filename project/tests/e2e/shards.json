@@ -11,7 +11,7 @@
   "9": "./features/02-daily-work/tdd-cycle.feature,./features/02-daily-work/tdd-cycle-reports.feature,./features/01-install/publication-only.feature,./features/01-install/agent-mode.feature",
   "10": "./features/03-evolution/test-discipline.feature,./features/03-evolution/update.feature,./features/03-evolution/runner-cleanup.feature,./features/02-daily-work/secret-scans.feature",
   "11": "./features/02-daily-work/osv-scope.feature,./features/03-evolution/renovate.feature,./features/03-evolution/version-pins.feature",
-  "12": "./features/01-install/fresh-machine.feature,./features/02-daily-work/protected-commits.feature,./features/02-daily-work/env-layering.feature,./features/01-install/go-install-zsh.feature",
+  "12": "./features/01-install/fresh-machine.feature,./features/02-daily-work/protected-commits.feature,./features/02-daily-work/env-layering.feature,./features/01-install/go-install-zsh.feature,./features/01-install/copier-answers.feature",
   "13": "./features/02-daily-work/quality-gate.feature,./features/03-evolution/publication-update.feature",
   "14": "./features/02-daily-work/megalinter-reports.feature,./features/01-install/first-run-help.feature,./features/02-daily-work/team-compose-task.feature,./features/02-daily-work/deploy-only.feature"
 }

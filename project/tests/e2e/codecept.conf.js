@@ -104,7 +104,8 @@ exports.config = {
       './support/steps/env-layering.js',
       './support/steps/lychee-settings.js',
       './support/steps/go-install-zsh.js',
-      './support/steps/deploy-only.js'
+      './support/steps/deploy-only.js',
+      './support/steps/copier-answers.js'
     ]
   },
   plugins: {
