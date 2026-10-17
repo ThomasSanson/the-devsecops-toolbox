@@ -111,6 +111,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**red-evidence**](02-daily-work/red-evidence.svg): The RED gate refuses a failure caused by a refused connection and accepts the one on the test's own check, from the same run. A tag that names two tests and a report cut short are refused too.
   Chapters: A refused connection is not a failing test · One scenario, in one whole report.
   Replay: `task project:test:e2e -- --grep "@red-evidence"`
+- [**team-compose-task**](02-daily-work/team-compose-task.svg): A new project's Taskfile names its Docker Compose command at the top, in PROJECT_DOCKER_COMPOSE, and a task the team adds runs Compose on the project's own compose file through it.
+  Replay: `task project:test:e2e -- --grep "@team-compose-task"`
 
 ## Act 3 — Evolution (`03-evolution`)
 
