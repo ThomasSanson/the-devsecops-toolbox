@@ -43,8 +43,8 @@ const GITLAB_COM_REMOTE = 'https://gitlab.com/acme/widgets.git'
 // 1440 px of terminal (157 columns after the prompt's 32) holds the longest
 // one on a single row.
 const TOOLS_LINE = 'git remote -v; gum --version; glow --version; glab --version'
-const ONE_BY_ONE_LINE = 'task glab:auth:ensure; .config/gum/install.sh; task glab:auth:ensure; .config/glow/install.sh; task glab:auth:ensure'
-const CLI_LINE = 'task glab:install && task glab:auth:ensure'
+const CHECK_LINE = 'task glab:auth:ensure'
+const SETUP_LINE = 'task dev:setup-environment && task glab:auth:ensure'
 const GITLABSSH_LINE = `git remote set-url origin ${GITLABSSH_REMOTE} && git remote -v && task glab:auth:ensure`
 const GITHUB_LINE = `git remote set-url origin ${GITHUB_REMOTE} && git remote -v && task glab:auth:ensure`
 const INIT_LINE = `git remote set-url origin ${GITLAB_COM_REMOTE} && task devsecops:init`
@@ -53,8 +53,8 @@ const OPT_OUT_LINE = `git remote set-url origin ${GITHUB_REMOTE} && TASK_GLAB_EN
 const SIGN_IN_QUESTION = 'Continue and sign in now?'
 const SIGN_IN_CARD = 'GitLab Authentication Required'
 const CHECK_FAILED = 'task: Failed to run task "glab:auth:ensure"'
-// The first init installs every tool, a long run that scrolls off the screen:
-// its card starts at the last line of that install.
+// The setup installs every tool, a long run that scrolls off the screen: the
+// cards that run it start at its last line.
 const SETUP_DONE = '🎉 Development environment setup completed successfully'
 // The pinned tool versions (and glab's build commit) move with every Renovate
 // bump and say nothing about the check.
@@ -69,6 +69,8 @@ const RERUN_MASK = [
 ]
 
 let container = null
+// The command the check named on its first stop, for the card that runs it.
+let named = null
 
 After(() => {
   teardownFreshUbuntu(container)
@@ -107,12 +109,12 @@ function expectNonInteractiveHost (host) {
 // A card whose line ends on gum's live question. gum erases a question once it
 // is answered, so the card is taken while it waits. The developer then answers
 // No and the prompt comes back. Returns the screen text of the card.
-async function signInOfferCard (frame, line) {
+async function signInOfferCard (frame, line, fromMarker = line.slice(0, 40)) {
   await clearTerminal(I)
   I.type(line)
   I.pressKey('Enter')
   await waitForTerminalText(I, SIGN_IN_QUESTION, COMMAND_TIMEOUT_MS)
-  await addStoryboardFrame(I, await captureTerminalFrame(I, frame, { fromMarker: line.slice(0, 40), mask: VERSION_MASK }))
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frame, { fromMarker, mask: VERSION_MASK }))
   const screen = await terminalScreenText(I)
   I.click('.xterm-screen')
   I.pressKey('n')
@@ -134,42 +136,41 @@ storyboardStep(Given, "a developer's project points at the company's own GitLab,
   ], 'tools')
 })
 
-// Three runs of the check, the tool it named installed in between: it stops at
-// gum, then glow, then the GitLab CLI, in that order, and fails each time.
-storyboardStep(When, 'the developer runs the GitLab check and installs only the tool it names, one at a time', async () => {
-  const screen = await terminalCard(I, 'tools-one-by-one', ONE_BY_ONE_LINE, { mask: VERSION_MASK })
-  const order = [
-    'Required UI dependency missing: gum',
-    'gum installed to',
-    'Required UI dependency missing: glow',
-    'glow installed to',
-    'GitLab CLI not found',
-    'install     glab'
-  ]
-  expectOnScreen(screen, order, 'tools one by one')
-  const at = order.map((text) => screen.indexOf(text))
-  if (at.some((index, i) => i > 0 && index < at[i - 1])) {
-    throw new Error(`Expected the check to stop at gum, then glow, then the GitLab CLI, in that order:\n${screen}`)
-  }
-  const failures = screen.split(CHECK_FAILED).length - 1
-  if (failures !== 3) throw new Error(`Expected the check to fail on each of its 3 runs, it failed ${failures} times:\n${screen}`)
-  const remedies = screen.split('  task dev:setup-environment').length - 1
-  if (remedies !== 2) throw new Error(`Expected the gum and glow stops to both point at task dev:setup-environment, found ${remedies}:\n${screen}`)
-  // Each card follows the advice the card before it printed: the developer
-  // runs the command the check names, never an installer the check never named.
-  for (const [, named] of screen.matchAll(/^Run:\n\s+(\S.*)$/gm)) {
-    if (!ONE_BY_ONE_LINE.includes(named.trim())) {
-      throw new Error(`The check says to run "${named.trim()}", but the developer types: ${ONE_BY_ONE_LINE}`)
-    }
-  }
+// The check on the bare machine: it stops at gum and names the setup that
+// installs every tool.
+storyboardStep(When, 'the developer runs the GitLab check, it names the missing tool and the setup that installs it', async () => {
+  const screen = await terminalCard(I, 'check-names-setup', CHECK_LINE)
+  expectOnScreen(screen, ['Required UI dependency missing: gum', 'Then rerun:', '  task devsecops:init', CHECK_FAILED], 'missing tool')
+  expectOffScreen(screen, ['glow', 'GitLab CLI not found'], 'missing tool')
+  const advice = /^Run:\n\s+(\S.*)$/m.exec(screen)
+  if (!advice) throw new Error(`Expected the check to name a command to run:\n${screen}`)
+  named = advice[1].trim()
+  if (named !== 'task dev:setup-environment') throw new Error(`Expected the check to name the setup, it names "${named}":\n${screen}`)
+
+  // Off camera, the two other stops: with gum alone the check names glow and
+  // the same setup, with both it asks for the GitLab CLI. Both tools go again,
+  // so the setup the next card runs starts from the same bare machine.
+  const glow = runInFreshUbuntu(container, `.config/gum/install.sh >/dev/null && CI=true ${CHECK_LINE}`, { timeout: 120000 })
+  if (glow.exitCode === 0) throw new Error(`Expected the check to stop without glow:\n${glow.output}`)
+  expectOnScreen(glow.output, ['Required UI dependency missing: glow', '  task dev:setup-environment'], 'glow stop')
+  const cli = runInFreshUbuntu(container, `.config/glow/install.sh >/dev/null && CI=true ${CHECK_LINE}`, { timeout: 120000 })
+  if (cli.exitCode === 0) throw new Error(`Expected the check to stop without the GitLab CLI:\n${cli.output}`)
+  expectOnScreen(cli.output, ['GitLab CLI not found', 'install     glab'], 'GitLab CLI stop')
+  expectOffScreen(cli.output, ['Required UI dependency missing'], 'GitLab CLI stop')
+  const bare = runInFreshUbuntu(container, 'rm -f "$HOME/.local/bin/gum" "$HOME/.local/bin/glow" && ! command -v gum && ! command -v glow', { timeout: 60000 })
+  if (bare.exitCode !== 0) throw new Error(`Expected gum and glow to be gone again:\n${bare.output}`)
 })
 
-// glab installed, nobody signed in: in a terminal the check shows glow's sign-in
-// card for the host it read from the remote and asks to sign in.
-storyboardStep(When, "the developer installs the GitLab CLI, the check names the company's GitLab host and offers to sign in", async () => {
-  const screen = await signInOfferCard('signin-offer-selfhosted', CLI_LINE)
-  expectOnScreen(screen, ['glab installation complete', SIGN_IN_QUESTION], 'sign-in offer')
+// Each card follows the advice the card before it printed: the setup the check
+// named installs every tool, glab included, and the check gets past all three
+// to glow's sign-in card for the host it read from the remote.
+storyboardStep(When, "the developer runs that setup, the check names the company's GitLab host and offers to sign in", async () => {
+  if (!SETUP_LINE.startsWith(`${named} `)) throw new Error(`The check said to run "${named}", but the developer types: ${SETUP_LINE}`)
+  const screen = await signInOfferCard('signin-offer-selfhosted', SETUP_LINE, SETUP_DONE)
+  expectOnScreen(screen, [SETUP_DONE, SIGN_IN_QUESTION], 'sign-in offer')
   expectOnScreen(signInCardRows(screen), [`Target Host: ${SELF_HOSTED}`], 'sign-in offer')
+  const tools = runInFreshUbuntu(container, 'command -v gum && command -v glow && command -v glab', { timeout: 60000 })
+  if (tools.exitCode !== 0) throw new Error(`Expected the setup to install gum, glow and glab:\n${tools.output}`)
   expectNonInteractiveHost(SELF_HOSTED)
 })
 

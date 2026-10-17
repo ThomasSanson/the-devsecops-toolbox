@@ -25,7 +25,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**missing-docker**](01-install/missing-docker.svg): On a machine without Docker, the installer says so before it sets up the project and names what to install, then goes on to the setup questions.
   Replay: `task project:test:e2e -- --grep "@missing-docker"`
 - [**5. first-run-help**](01-install/first-run-help.svg): Every check stops and names the fix, and init finishes cleanly once GitLab is turned off.
-  Chapters: The check names each missing tool · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
+  Chapters: The check names what is missing, and the command that installs it · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
   Replay: `task project:test:e2e -- --grep "@first-run-help"`
 - [**6. merge-request-safety**](01-install/merge-request-safety.svg): init always reaches the main branch through a review you can see, from any branch, unless you opt out on purpose. Run again, it keeps the review it opened, and once that review is merged it proposes nothing: no branch pushed, no empty merge request.
   Chapters: The main branch already exists, and the developer is on an experiment branch · Running init again keeps the review, and proposes nothing once it is merged · The review switched off on purpose.
