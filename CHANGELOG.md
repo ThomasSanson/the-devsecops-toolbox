@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.17 (2026-10-17)
+
+### Fix
+
+- **glab**: keep a working token until its replacement is stored
+
 ## 24.4.16 (2026-10-17)
 
 ### Fix
