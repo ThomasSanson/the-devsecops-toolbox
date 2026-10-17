@@ -232,6 +232,12 @@ const LYCHEE_RELEASE = '24.4.10'
 function prepareLycheeAcceptTemplate () {
   const tpl = tmpDir('e2e-lychee-accept')
   run(`mkdir -p ${tpl} && cp -a ${TEMPLATE_SRC}/. ${tpl} && chown -R "$(id -u):$(id -g)" ${tpl}`)
+  // The test toolbox ships the migration with LYCHEE_RELEASE, whatever release
+  // the real toolbox ships it in.
+  const copierYml = fs.readFileSync(`${tpl}/copier.yml`, 'utf8')
+  const gated = copierYml.replace(/version: "[^"]+"(\n\s+command: [^\n]*merge-lychee-keys\.py)/, `version: "${LYCHEE_RELEASE}"$1`)
+  if (gated === copierYml) throw new Error('Fixture setup: no versioned merge-lychee-keys.py migration in copier.yml')
+  fs.writeFileSync(`${tpl}/copier.yml`, gated)
   const file = `${tpl}/${LYCHEE_CONFIG}`
   const current = fs.readFileSync(file, 'utf8')
   const before = current.match(/^[\s\S]*?^exclude_path = \[[\s\S]*?^\]\n/m)

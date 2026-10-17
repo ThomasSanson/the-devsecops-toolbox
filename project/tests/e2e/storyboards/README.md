@@ -35,6 +35,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**retired-linters**](02-daily-work/retired-linters.svg): On a real GitLab project, a framework update stops at a MegaLinter settings file linked outside the project. Without the link, the same update arrives as a merge request that removes only the retired linters and keeps every comment and control. Asking again changes nothing.
   Chapters: A settings file linked outside the project stops the update · Without the link, the update arrives as a clean merge request.
   Replay: `task project:test:e2e -- --grep "@retired-linters"`
+- [**lychee-settings**](02-daily-work/lychee-settings.svg): A framework update adds an accept list to the lychee settings, where the project already wrote its own. The update leaves one list holding both, so lychee still reads its settings and checks the links, and the project's own address stays in a file of its own that no update touches.
+  Replay: `task project:test:e2e -- --grep "@lychee-settings"`
 - [**framework-dependencies**](02-daily-work/framework-dependencies.svg): The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
   Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
 - [**report-permissions**](02-daily-work/report-permissions.svg): MegaLinter's reports belong to the developer who ran it, through Docker or through npx, and nobody else can read or change them. The developer can still delete them.

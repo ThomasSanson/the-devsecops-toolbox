@@ -72,6 +72,16 @@ _migrations:
   # and would lose them.
   - command: "sh '{{ _copier_conf.src_path }}/.config/copier/keep-agents-out.sh' '{{ _copier_conf.src_path }}'"
     when: "{{ _stage == 'after' and install_scope == 'publication' }}"
+  # Before this release a project kept its own lychee settings in the toolbox's
+  # file, so a release adding a key the project had set too (accept, #227)
+  # merged cleanly and left the key twice: TOML refuses that, and lychee stops
+  # before checking a single link. Merge the copies once, after the update,
+  # with copier's own Python (it reads TOML). A project's own addresses now go
+  # in a file of its own that lychee reads, and no update touches. The version
+  # is the release that ships this migration: every project below it, broken
+  # since 23.0.44 or not, runs it once on its next update.
+  - version: "24.4.99"
+    command: "'{{ _copier_python }}' '{{ _copier_conf.src_path }}/.config/copier/merge-lychee-keys.py'"
 
 # Questions — CI/CD platform
 ci_platform:
@@ -204,6 +214,7 @@ _exclude:
   - .cache
   # Run from the template checkout during an update (see _migrations).
   - .config/copier/keep-agents-out.sh
+  - .config/copier/merge-lychee-keys.py
   - .config/copier/migrate-agents.sh
   # CI sharding is a framework-suite concern: the shard map lives under the
   # excluded project/tests and the guard would have nothing to check downstream.
