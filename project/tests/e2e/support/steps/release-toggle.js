@@ -31,6 +31,12 @@
  * and its own tag together, and not the tag the project's publish step kept in
  * the job.
  *
+ * Chapter 5 — the push token is not left behind (issue #184). The release once
+ * wrote its push token into the remote URL of the job's clone and never took
+ * it out, so it stayed in .git/config. The test project's release job prints
+ * `git remote get-url origin` right after `task release`, and the story proves
+ * that address is still the runner's own, without the push token.
+ *
  * Both crashes are deterministic, not timing races. Chapter 1 points the
  * release's git server host at a name that does not resolve, so the push fails
  * while the door open and the re-lock (which go through the API URL) both still
@@ -211,6 +217,17 @@ function wirePublishStep (repoDir) {
     throw new Error(`Fixture setup: no project:release placeholder to fill in ${file}`)
   }
   fs.writeFileSync(file, content.replace(RELEASE_PHASE_DONE, `${PUBLISH_STEP}${RELEASE_PHASE_DONE}`))
+}
+
+// Chapter 5 reads the remote URL the release leaves in the job's clone: the
+// test project's release job prints it once `task release` is done. GitLab
+// keeps an included job's keys and takes `script` from the project's own file.
+// A failed release stops the script first, so only a release that pushed
+// prints it.
+const REMOTE_CHECK = 'git remote get-url origin'
+function wireRemoteCheck (repoDir) {
+  const file = `${repoDir}/.gitlab-ci.yml`
+  fs.appendFileSync(file, `\nrelease:\n  script:\n    - task release\n    - ${REMOTE_CHECK}\n`)
 }
 
 // Push the freshly rendered framework straight to main as a single `feat:`
@@ -435,6 +452,8 @@ let renderDir = null
 let tokenId = null
 let lambdaHeaders = null
 let runner = null
+let pushToken = null
+let relaunch = null
 
 const ownsScenario = (test) => Boolean(test && test.tags && test.tags.includes('@release-window'))
 
@@ -445,6 +464,8 @@ Before((test) => {
   tokenId = null
   lambdaHeaders = null
   runner = null
+  pushToken = null
+  relaunch = null
 })
 After(async (test) => {
   if (!ownsScenario(test)) return
@@ -498,10 +519,11 @@ storyboardStep(Given, 'a release job on the main branch crashes mid-push while i
   }
   renderDir = renderProject()
   wirePublishStep(renderDir)
+  wireRemoteCheck(renderDir)
   pushFeatToMain(renderDir, token)
   // Wire the release automation AND sabotage its push host, so the release opens
   // the door then crashes on the push — deterministically, no timing race.
-  const pushToken = await wireReleaseAutomation(PROJECT_NAME, rootHeaders)
+  pushToken = await wireReleaseAutomation(PROJECT_NAME, rootHeaders)
   await updateProjectSettings(PROJECT_NAME, { merge_method: 'ff', remove_source_branch_after_merge: true }, rootHeaders)
   // Start from the toolbox's resting state: main locked to No one, so the
   // release's temporary open (0 -> 40) is a real transition and the final
@@ -689,7 +711,8 @@ storyboardStep(Then, 'the project still has no tag after the rejected push', asy
 
 storyboardStep(When, 'the release is relaunched on the updated main branch and pushes its version commit and its tag together', async () => {
   const rootHeaders = await getRootHeaders()
-  const { jobId, trace } = await runRelease(rootHeaders, 'once relaunched on the updated main branch', { status: 'success' })
+  relaunch = await runRelease(rootHeaders, 'once relaunched on the updated main branch', { status: 'success' })
+  const { jobId, trace } = relaunch
   // Twins: the publish step kept its local tag again, and the push carried the
   // main branch and the release's own tag, and nothing else.
   if (!trace.includes('Tagged the image build image-0.2.0')) {
@@ -725,5 +748,28 @@ storyboardStep(Then, 'the project has exactly one tag, 0.2.0, on the version com
   await gitlabFrame(I, 'one-tag-with-its-commit', gitlabUrl.tags(PROJECT_NAME), {
     waitText: '0.2.0',
     height: 640
+  })
+})
+
+// ============================================
+// Chapter 5 — the push token is not left behind
+// ============================================
+
+storyboardStep(Then, "the release job's copy of the project still points at GitLab without the push token", async () => {
+  // Twin: the line the release job printed after `task release` is the address
+  // GitLab's runner cloned with (its own gitlab-ci-token user, whatever GitLab
+  // masks), on this project. A release that wrote its push token into the
+  // remote URL left its oauth2 user and token there instead.
+  const lines = relaunch.trace.split('\n')
+  const at = lines.findIndex(l => l.endsWith(`$ ${REMOTE_CHECK}`))
+  const remote = at === -1 ? '' : lines[at + 1]
+  const runnerRemote = new RegExp(`^http://gitlab-ci-token:[^@]*@gitlab/${lambdaUser()}/${PROJECT_NAME}\\.git$`)
+  if (!runnerRemote.test(remote) || remote.includes(pushToken)) {
+    throw new Error(`Expected the release to leave the runner's remote URL in the job's clone, got: ${remote.split(pushToken).join('<push token>') || '(no remote printed)'}`)
+  }
+
+  await jobLogFrame(I, 'remote-without-push-token', PROJECT_NAME, relaunch.jobId, {
+    from: `$ ${REMOTE_CHECK}`,
+    fold: ['Saving cache']
   })
 })

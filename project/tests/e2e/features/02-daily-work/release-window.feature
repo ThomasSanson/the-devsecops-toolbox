@@ -22,10 +22,15 @@ Feature: A release that fails leaves nothing broken behind
   # The fourth relaunches that release and proves it pushes the version commit
   # and its own tag together, and no other tag.
   #
+  # The release pushes with a token that may write to the main branch. The fifth
+  # chapter proves the release job's copy of the project still points at GitLab
+  # without that token once the release is done, so the token is not left behind
+  # in the project's git settings.
+  #
   # ONE sentence = ONE card = ONE pixel baseline (tolerance: 0); every card is a
   # real GitLab page, twinned with a REST/log check of the same fact.
   @release-window
-  Scenario: a crashed release leaves the main branch locked, pushes no tag on its own, and its relaunch publishes the version commit with its tag
+  Scenario: a crashed release leaves the main branch locked, pushes no tag on its own, and its relaunch publishes the version commit with its tag without leaving its push token behind
     # Chapter: The push window always closes
     # Note: Nobody may push straight to the main branch: every change goes through a reviewed merge request. The release job is the one exception, and this is its real log on GitLab, from the moment its new version is ready.
     # Note: The release job opens that exception, "Temporarily opening push access for Maintainers", and dies on "Could not resolve host" right after "Pushing tags and the version commit to main...". On its way out the release job takes the push access back itself, "Default branch protection restored (push=No one).", and GitLab's after_script, a cleanup step that runs on every outcome, runs task glab:release:lock-default-branch and takes it back a second time. The job still ends on a red Failed pill.
@@ -59,3 +64,8 @@ Feature: A release that fails leaves nothing broken behind
     # Note: The tags page now lists one tag, 0.2.0, on "build: bump version 0.1.0 → 0.2.0", the version commit at the tip of the main branch. image-0.2.0, the tag the publish step kept in the job, never reached GitLab.
     # Copy: http://gitlab/<lambda-user>/<project>/-/tags
     Then the project has exactly one tag, 0.2.0, on the version commit at the tip of the main branch
+    # Chapter: The push token is not left behind
+    # Note: The same release job page, read from "$ git remote get-url origin", a line this test project adds to its release job right after task release. It prints the address the job's copy of the project uses to reach GitLab.
+    # Note: The address is the one GitLab's runner cloned the project with: "gitlab-ci-token", the job's own token, which GitLab hides as [MASKED] and which stops working when the job ends. The release's push token is not in it, so it does not stay behind in the project's git settings once the release is done.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/jobs/<id>
+    Then the release job's copy of the project still points at GitLab without the push token
