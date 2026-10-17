@@ -10,8 +10,10 @@ Feature: Publishing the source of a private project, without the parts that must
   # The publication's safety promises, one at a time, typed into a real
   # terminal on throwaway Git repositories. GitLab's API is played by
   # fixture-forge, a stand-in this test controls, because a real GitLab cannot
-  # refuse one request on demand. The last chapter publishes to a real public
-  # project on GitLab. Every card is twinned with a check of the same fact.
+  # refuse one request on demand. Two chapters use the real test GitLab instead:
+  # one finds an approval GitLab lists after another merge request and past its
+  # first page, and the last one publishes to a real public project. Every card
+  # is twinned with a check of the same fact.
   @publication-contracts
   Scenario: Publication keeps its safety promises from source selection to repeated releases
     # Chapter: Exactly the committed files, or nothing
@@ -49,6 +51,19 @@ Feature: Publishing the source of a private project, without the parts that must
     # Note: Both runs fail and say so: The forge refused the approval request. Nothing was approved. The request log marks each refusal 403, the code a forge answers when it refuses. The first run is refused from its first request and gives up at the fourth, when it tries to commit the new list. The second run gets as far as the very last request, the POST of the sign-off thread.
     # Copy: task publication:approve
     And approval fails loudly when the forge refuses every request, or only the sign-off thread
+    # Chapter: Approval is found on every merge request and every page
+    # Note: A project on the test GitLab, built from a copy that adds src/notice.txt. Merge request !1 brought in the commit that approves it, and merge request !2 later brought the main branch into a branch called stable, that same commit included.
+    # Note: GitLab's page for that commit says "2 merge requests" and names both. Its API, which the publication reads, lists !2 first, and nobody answered anything on !2.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/commit/<source-commit-3>
+    When on GitLab, the commit that approves a new path belongs to two merged merge requests
+    # Note: Merge request !1, scrolled to its last thread: the question task publication:approve asks, "Resolved by Publication Owner". Above it are "Review comment 100" and the 99 before it, so the tab reads "Overview 101".
+    # Note: GitLab's API hands out at most 100 discussions per page, so the owner's answer is on the second page.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1
+    And the owner's answer is on merge request !1, after 100 review comments
+    # Note: The copy's origin points at that project. The first run is given a token GitLab refuses, "returned error: 401". The publication cannot read the approval, says "GitLab did not answer, so nobody can say who approved this list", and stops.
+    # Note: The second run has the developer's real token. It reads both merge requests and every page of their discussions, and says "Approved by "publication-owner" in merge request !1". The public repository now holds the 3 approved files.
+    # Copy: task publication:publish
+    Then publication finds that answer and publishes, and stops when GitLab does not answer
     # Chapter: Tokens and setup failures stay safe
     # Note: Here git, curl, sed and jq are stand-ins that write every argument they receive to argv.log, then run the real tool. The publication succeeds. The log holds the clone and the push, and neither throwaway token from .env: grep counts 0.
     # Note: The last command puts a token inside the public repository's URL. The dry run refuses that URL, and its answer does not repeat the token.

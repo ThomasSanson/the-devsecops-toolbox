@@ -33,12 +33,17 @@ const {
   waitForTtyd
 } = require('./docker')
 const {
+  BASE_URL,
+  encodedProjectPath,
   getRootHeaders,
   createProject,
   deleteProject,
   createLambdaPersonalAccessToken,
-  revokePersonalAccessToken
+  revokePersonalAccessToken,
+  mergeMergeRequest,
+  createMergeRequestWhenBranchExists
 } = require('./gitlabApi')
+const { freshGet, freshPost, freshPut } = require('./http')
 
 const FORGE_HOST = 'fixture-forge'
 const FORGE_PORT = 8080
@@ -344,9 +349,11 @@ function writeContainerFile (container, file, content) {
 
 // A read in the container, the twin of what a card shows. Quiet: the cards
 // read the repositories often, and their ids have no place in the job log.
-function inContainer (container, script) {
+// `env` reaches the script only, never the screen.
+function inContainer (container, script, env = {}) {
+  const vars = Object.entries(env).flatMap(([key, value]) => ['-e', `${key}=${value}`])
   try {
-    return execFileSync('docker', ['exec', '-u', 'bootstrap', '-e', `HOME=${HOME}`, '-w', HOME, container, 'sh', '-c', script],
+    return execFileSync('docker', ['exec', '-u', 'bootstrap', '-e', `HOME=${HOME}`, ...vars, '-w', HOME, container, 'sh', '-c', script],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   } catch (error) {
     throw new Error(`\`${script}\` failed in the publication terminal:\n${error.stdout || ''}${error.stderr || ''}`)
@@ -426,6 +433,141 @@ async function createPublicTarget () {
   }
 }
 
+// The owner as the source-publication story creates it: a second real user.
+async function ensureOwner (root) {
+  const users = `${BASE_URL}/api/v4/users`
+  let found = (await freshGet(`${users}?username=${OWNER}`, root)).data
+  if (!found.length) {
+    await freshPost(users, {
+      email: `${OWNER}@test.local`,
+      username: OWNER,
+      name: 'Publication Owner',
+      password: process.env.TASK_GITLAB_LAMBDA_PASSWORD,
+      skip_confirmation: true
+    }, root)
+    found = (await freshGet(`${users}?username=${OWNER}`, root)).data
+  }
+  if (!found.length) throw new Error(`Could not create the GitLab user ${OWNER}`)
+  return found[0].id
+}
+
+async function mergeWhenReady (projectName, iid, headers) {
+  const deadline = Date.now() + 120000
+  for (;;) {
+    const res = await mergeMergeRequest(projectName, iid, headers)
+    if (res.status === 200 && res.data.state === 'merged') return res.data
+    if (Date.now() > deadline) throw new Error(`Merge request !${iid} did not merge: ${res.status} ${JSON.stringify(res.data)}`)
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+}
+
+// How many review comments come before the owner's answer: one more than a
+// page of the API holds.
+const REVIEW_COMMENTS = 100
+
+/**
+ * The approval chapter's project on the test GitLab, public so that the copy
+ * fetches it with no credential. ~/pages, a copy of the base, adds
+ * src/notice.txt on the main branch and approves it on publication-approval.
+ * Merge request !1 brings that approval in after 100 review comments and the
+ * owner's answer; merge request !2 then brings the main branch into stable,
+ * the approving commit included. The copy then sits on GitLab's main branch,
+ * its origin pointing at the project, its .env holding a real token.
+ */
+async function createApprovalProject (container) {
+  const root = await getRootHeaders()
+  const name = `e2e-publication-${crypto.randomBytes(4).toString('hex')}`
+  const lambda = await createLambdaPersonalAccessToken(`approval-${name}`, ['api', 'write_repository'], root)
+  const ownerId = await ensureOwner(root)
+  const ownerToken = (await freshPost(`${BASE_URL}/api/v4/users/${ownerId}/personal_access_tokens`,
+    { name: `approval-${name}`, scopes: ['api'] }, root)).data
+  const headers = { 'PRIVATE-TOKEN': lambda.token }
+  const project = {
+    projectName: name,
+    teardown: async () => {
+      await deleteProject(name, root).catch(() => {})
+      for (const id of [lambda.id, ownerToken.id]) await revokePersonalAccessToken(id, root).catch(() => {})
+    }
+  }
+  try {
+    if (!ownerToken.token) throw new Error(`Could not create a token for ${OWNER}: ${JSON.stringify(ownerToken)}`)
+    const created = await createProject({ name, visibility: 'public', initialize_with_readme: false, auto_devops_enabled: false }, headers)
+    if (created.status >= 400) throw new Error(`Creating "${name}" returned ${created.status}: ${JSON.stringify(created.data)}`)
+    const api = `${BASE_URL}/api/v4/projects/${encodedProjectPath(name)}`
+    const member = await freshPost(`${api}/members`, { user_id: ownerId, access_level: 30 }, root)
+    if (member.status >= 400) throw new Error(`Could not add ${OWNER} to "${name}": ${JSON.stringify(member.data)}`)
+
+    const remote = new URL(`/${created.data.path_with_namespace}.git`, BASE_URL)
+    const push = new URL(remote.href)
+    push.username = process.env.TASK_GITLAB_LAMBDA_USER
+    push.password = lambda.token
+    const [marker, commit] = inContainer(container, String.raw`
+set -eu
+export GIT_AUTHOR_DATE=2026-01-02T00:00:00Z GIT_COMMITTER_DATE=2026-01-02T00:00:00Z
+cp -a source pages
+git init -q --bare pages-public.git
+cd pages
+printf 'a notice for the public\n' > src/notice.txt
+git add --force src/notice.txt
+git commit -q -m 'feat: add src/notice.txt'
+git checkout -q -b publication-approval
+printf 'src/notice.txt\n' >> .config/publication/manifest
+git commit -q -am 'chore(publication): approve src/notice.txt for publication'
+git push -q "$PUSH_URL" main~1:refs/heads/stable main:refs/heads/main publication-approval:refs/heads/publication-approval
+git hash-object .config/publication/manifest
+git rev-parse HEAD
+`, { PUSH_URL: push.href }).trim().split('\n')
+
+    const opened = await createMergeRequestWhenBranchExists(name,
+      { source_branch: 'publication-approval', target_branch: 'main', title: 'chore(publication): approve what becomes public' }, headers)
+    if (opened.status >= 400) throw new Error(`Could not open merge request !1: ${JSON.stringify(opened.data)}`)
+    const mr = `${api}/merge_requests/${opened.data.iid}`
+    // In batches, then the question: only the question has to come last.
+    // One after the other, so the page shows them in order, then the question.
+    // One attempt each: a retried POST could leave a comment twice.
+    for (let n = 1; n <= REVIEW_COMMENTS; n++) {
+      const posted = await freshPost(`${mr}/notes`, { body: `Review comment ${n}: read and fine.` }, headers, { retries: 1 })
+      if (posted.status >= 400) throw new Error(`Could not leave review comment ${n}: ${posted.status} ${JSON.stringify(posted.data)}`)
+    }
+    const asked = await freshPost(`${mr}/discussions`, {
+      body: `Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does.\n\nPublication-manifest: ${marker}`
+    }, headers)
+    if (asked.status >= 400) throw new Error(`Could not ask the question: ${JSON.stringify(asked.data)}`)
+    const resolved = await freshPut(`${mr}/discussions/${asked.data.id}?resolved=true`, {}, { 'PRIVATE-TOKEN': ownerToken.token })
+    if (resolved.status >= 400) throw new Error(`${OWNER} could not resolve the question: ${JSON.stringify(resolved.data)}`)
+    await mergeWhenReady(name, opened.data.iid, headers)
+
+    const stable = await createMergeRequestWhenBranchExists(name,
+      { source_branch: 'main', target_branch: 'stable', title: 'chore: bring the main branch into stable' }, headers)
+    if (stable.status >= 400) throw new Error(`Could not open merge request !2: ${JSON.stringify(stable.data)}`)
+    await mergeWhenReady(name, stable.data.iid, headers)
+
+    // What a developer's clone holds: GitLab's main branch, and the address of
+    // the project. The token is the developer's own, kept in .env.
+    inContainer(container, String.raw`
+set -eu
+cd pages
+git checkout -q main
+git fetch -q "$REMOTE" main
+git reset -q --hard FETCH_HEAD
+git remote set-url origin "$REMOTE"
+`, { REMOTE: remote.href })
+    writeContainerFile(container, `${HOME}/pages/.env`, [
+      'TASK_PUBLICATION_ENABLED=true',
+      'TASK_PUBLICATION_SOURCE_REF=main',
+      'TASK_PUBLICATION_TARGET_URL=../pages-public.git',
+      'TASK_PUBLICATION_TOKEN=fixture-target-token',
+      `TASK_PUBLICATION_SOURCE_TOKEN=${lambda.token}`,
+      'TASK_PUBLICATION_SCAN=off',
+      ''
+    ].join('\n'))
+    return { ...project, headers, token: lambda.token, api, marker, commit }
+  } catch (error) {
+    await project.teardown()
+    throw error
+  }
+}
+
 // The release directory's settings: the base ones, aimed at the real project.
 function releaseEnv (target) {
   return [
@@ -451,5 +593,7 @@ module.exports = {
   commitLabels,
   commitMasks,
   createPublicTarget,
+  createApprovalProject,
+  REVIEW_COMMENTS,
   releaseEnv
 }

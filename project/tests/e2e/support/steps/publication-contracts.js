@@ -16,6 +16,7 @@ const { storyboardStep, addStoryboardFrame } = require('../../../../../.config/c
 const { openTerminal, clearTerminal, captureTerminalFrame, terminalScreenText } = require('../terminal/capture')
 const { gitlabFrame, gitlabUrl, inNewTab } = require('../helpers/gitlabCard')
 const { listRepositoryTree, getRepositoryFile, listCommits, listProjectTags, createRepositoryTag } = require('../helpers/gitlabApi')
+const { freshGet } = require('../helpers/http')
 const { removeContainer } = require('../helpers/docker')
 const {
   HOME,
@@ -27,6 +28,8 @@ const {
   commitLabels,
   commitMasks,
   createPublicTarget,
+  createApprovalProject,
+  REVIEW_COMMENTS,
   releaseEnv
 } = require('../helpers/publicationFixture')
 const { I } = inject()
@@ -250,6 +253,70 @@ storyboardStep(Then, 'approval fails loudly when the forge refuses every request
   assert.match(log, /^403 POST \/api\/v4\/projects\/team%2Fprivate\/merge_requests\/1\/discussions$/m)
 })
 
+// Each commit id on a GitLab page becomes the label the terminal cards give it.
+function commitTextMasks () {
+  return [...commitLabels(ctx.container)].map(([sha, label]) => [new RegExp(`\\b${sha.slice(0, 7)}[0-9a-f]{0,33}\\b`, 'g'), label])
+}
+
+storyboardStep(When, 'on GitLab, the commit that approves a new path belongs to two merged merge requests', async () => {
+  ctx.approval = await createApprovalProject(ctx.container)
+  const { projectName, headers, api, commit } = ctx.approval
+  // The order GitLab lists them in: the one nobody answered on comes first.
+  const listed = await freshGet(`${api}/repository/commits/${commit}/merge_requests?state=merged`, headers)
+  assert.deepEqual(listed.data.map(mr => [mr.iid, mr.source_branch, mr.target_branch, mr.state]),
+    [[2, 'main', 'stable', 'merged'], [1, 'publication-approval', 'main', 'merged']])
+  await inNewTab(I, () => gitlabFrame(I, 'publication-contract-approval-commit', gitlabUrl.commit(projectName, commit), {
+    waitText: '!2',
+    height: PAGE_HEIGHT,
+    textMasks: commitTextMasks()
+  }))
+})
+
+storyboardStep(When, "the owner's answer is on merge request !1, after 100 review comments", async () => {
+  const { projectName, headers, api, marker } = ctx.approval
+  const page = async n => (await freshGet(`${api}/merge_requests/1/discussions?per_page=100&page=${n}`, headers)).data
+  const answers = discussions => discussions.flatMap(d => d.notes).filter(n => n.body.includes(`Publication-manifest: ${marker}`))
+  const [first, second] = [await page(1), await page(2)]
+  assert.equal(first.length, REVIEW_COMMENTS, 'The first page of discussions is not full')
+  assert.equal(answers(first).length, 0, "The owner's answer is on the first page of discussions")
+  assert.deepEqual(answers(second).map(n => [n.resolved, n.resolved_by.username]), [[true, 'publication-owner']],
+    "The owner's resolved answer is not on the second page of discussions")
+  // GitLab writes "mentioned in commit" after the merge, in the background:
+  // the card shows the activity down to that line.
+  const deadline = Date.now() + 60000
+  while (!(await freshGet(`${api}/merge_requests/1/notes?per_page=20&sort=desc`, headers)).data
+    .some(n => n.system && n.body.startsWith('mentioned in commit'))) {
+    if (Date.now() > deadline) throw new Error('GitLab never wrote "mentioned in commit" on merge request !1')
+    await I.wait(1)
+  }
+  await inNewTab(I, () => gitlabFrame(I, 'publication-contract-approval-page', gitlabUrl.mr(projectName, 1), {
+    waitText: 'Publication-manifest',
+    height: 1000,
+    textMasks: commitTextMasks(),
+    scrollTo: () => I.executeScript(() => {
+      const thread = [...document.querySelectorAll('.timeline-entry')].find(e => e.textContent.includes('Publication-manifest'))
+      if (!thread) throw new Error('The question is not on the merge request page')
+      thread.scrollIntoView({ block: 'center' })
+    })
+  }))
+})
+
+storyboardStep(Then, 'publication finds that answer and publishes, and stops when GitLab does not answer', async () => {
+  const [refused, published, files] = await card('publication-contract-approval-pages', [
+    'cd ~/pages && git remote get-url origin && TASK_PUBLICATION_SOURCE_TOKEN=refused-token task publication:publish',
+    'task publication:publish',
+    'git -C ../pages-public.git ls-tree -r --name-only main'
+  ])
+  assert.match(published, /Approved by "publication-owner" in merge request !1\n/,
+    `Publication did not find the owner's answer on the second page of the second merge request:\n${published}`)
+  assert.ok(!published.includes(FAILED), `The publication failed:\n${published}`)
+  assert.equal(files, '.gitignore\nsrc/message.txt\nsrc/notice.txt\n')
+  assert.equal(commitCount('pages-public.git'), 1)
+  assert.match(refused, /GitLab did not answer, so nobody can say who approved this list\./)
+  assert.ok(refused.includes(FAILED) && !refused.includes('Pushed'), `Publication went on without reading the approval:\n${refused}`)
+  for (const output of [refused, published]) assert.ok(!output.includes(ctx.approval.token), 'The publication printed its token')
+})
+
 storyboardStep(Then, 'neither token shows up, in process arguments or in the refusal of a target URL that carries one', async () => {
   const [publish, searched, check] = await card('publication-contract-credentials', [
     'cd ~/credentials && cat bin/git && PATH=$PWD/bin:$PATH task publication:publish',
@@ -383,9 +450,10 @@ storyboardStep(Then, 'a public tag that already names another commit stops the n
 
 After(async () => {
   if (!ctx) return
-  const { forge, container, target } = ctx
+  const { forge, container, target, approval } = ctx
   ctx = null
   if (container) removeContainer(container)
   if (target) await target.teardown()
+  if (approval) await approval.teardown()
   await forge.close()
 })
