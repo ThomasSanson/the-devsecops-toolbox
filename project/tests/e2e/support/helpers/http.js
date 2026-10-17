@@ -73,4 +73,4 @@ function freshDelete (url, headers, opts) {
   return freshRequest('DELETE', url, { headers, ...opts })
 }
 
-module.exports = { freshGet, freshPost, freshPut, freshDelete }
+module.exports = { freshRequest, freshGet, freshPost, freshPut, freshDelete }

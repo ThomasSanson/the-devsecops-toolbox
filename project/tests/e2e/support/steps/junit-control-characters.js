@@ -23,7 +23,7 @@ const { terminalCard } = require('../terminal/capture')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabUrl, gitlabFrame } = require('../helpers/gitlabCard')
 const { waitMergeRequestPipeline } = require('../helpers/pipelineRunner')
-const { getRootHeaders, createProjectRunner, deleteRunner, createMergeRequestAfterPush, listMergeRequestDiffs, getPipelineTestReport } = require('../helpers/gitlabApi')
+const { getRootHeaders, createProjectRunner, deleteRunner, createMergeRequestWhenBranchExists, listMergeRequestDiffs, getPipelineTestReport } = require('../helpers/gitlabApi')
 const { composeService } = require('../helpers/docker')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { I } = inject()
@@ -234,7 +234,7 @@ storyboardStep(Given, 'a merge request adds one passing scenario, one plain fail
   fs.writeFileSync(path.join(ROOT, STEPS), PROBE_STEPS)
   git(`switch -q -c ${BRANCH} && git add -A && git commit -qm "${TITLE}"`)
   pub.push(BRANCH)
-  const mr = await createMergeRequestAfterPush(pub.projectName, { source_branch: BRANCH, target_branch: 'main', title: TITLE }, pub.headers)
+  const mr = await createMergeRequestWhenBranchExists(pub.projectName, { source_branch: BRANCH, target_branch: 'main', title: TITLE }, pub.headers)
   assert.equal(mr.status, 201, JSON.stringify(mr.data))
   story.iid = mr.data.iid
 

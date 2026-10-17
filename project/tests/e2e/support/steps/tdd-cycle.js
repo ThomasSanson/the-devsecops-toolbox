@@ -459,7 +459,7 @@ const baselineMode = require('../helpers/baselineModeFixture')
 const { captureElementFrame, addStoryboardFrame } = require('../../../../../.config/codeceptjs/storyboard')
 const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabUrl, gitlabFrame } = require('../helpers/gitlabCard')
-const { createMergeRequestAfterPush, listMergeRequestDiffs, getRepositoryFileMeta } = require('../helpers/gitlabApi')
+const { createMergeRequestWhenBranchExists, listMergeRequestDiffs, getRepositoryFileMeta } = require('../helpers/gitlabApi')
 
 let baseline = null
 
@@ -510,7 +510,7 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
   baseline.teardown = pub.teardown
   baselineMode.commitRewrittenReferences()
   pub.push(baselineMode.BRANCH)
-  const mr = await createMergeRequestAfterPush(pub.projectName,
+  const mr = await createMergeRequestWhenBranchExists(pub.projectName,
     { source_branch: baselineMode.BRANCH, target_branch: 'main', title: baselineMode.COMMIT }, pub.headers)
   assert.equal(mr.status, 201, JSON.stringify(mr.data))
   const iid = mr.data.iid

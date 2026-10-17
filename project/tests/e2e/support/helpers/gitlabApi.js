@@ -1,4 +1,4 @@
-const { freshGet, freshPost, freshPut, freshDelete } = require('./http')
+const { freshRequest, freshGet, freshPost, freshPut, freshDelete } = require('./http')
 const { runCommand, composeService } = require('./docker')
 
 const BASE_URL = 'http://gitlab:80' // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
@@ -460,27 +460,22 @@ async function getPipelineTestReport (projectName, pipelineId, headers) {
 
 module.exports.getPipelineTestReport = getPipelineTestReport
 
-// createMergeRequest right after a push: GitLab can answer "source_branch does
-// not exist" for a moment while it records the new branch, so ask again.
-async function createMergeRequestAfterPush (projectName, payload, headers, tries = 20) {
-  let res
-  for (let i = 0; i < tries; i++) {
-    res = await createMergeRequest(projectName, payload, headers)
-    if (!(res.status === 400 && JSON.stringify(res.data).includes('does not exist'))) return res
-    await new Promise(resolve => setTimeout(resolve, 1000))
-  }
-  return res
-}
-
-module.exports.createMergeRequestAfterPush = createMergeRequestAfterPush
-
 /**
- * Open a merge request right after a push. GitLab 19.4 can still answer that
- * the source branch does not exist after its branch API lists it: retry that
- * one answer, and only that one, until timeoutMs. Returns the last response.
+ * Open a merge request right after a push. GitLab only learns a pushed branch
+ * once a background job has refreshed its branch-name cache: until then it
+ * refuses the merge request with "source_branch does not exist", although a
+ * GET on the branch already answers, read straight from the repository. HEAD
+ * on that endpoint reads the cache, the very check the merge request runs:
+ * wait on it, as .config/glab/init-merge-request.sh does, then still retry
+ * that one answer until timeoutMs. Returns the last response.
  */
 async function createMergeRequestWhenBranchExists (projectName, payload, headers, { timeoutMs = 60000 } = {}) {
   const deadline = Date.now() + timeoutMs
+  const branch = `${BASE_URL}/api/v4/projects/${encodedProjectPath(projectName)}/repository/branches/` +
+    encodeURIComponent(payload.source_branch)
+  while ((await freshRequest('HEAD', branch, { headers })).status !== 204 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
   for (;;) {
     const response = await createMergeRequest(projectName, payload, headers)
     const errors = response.data?.message
