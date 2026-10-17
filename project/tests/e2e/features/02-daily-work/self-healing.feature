@@ -36,8 +36,9 @@ Feature: the framework repairs its own GitLab setup when something breaks it
   # keeps the token the variable holds. Chapter 8: a project that drifted the
   # way a live one does is put back by one `task devsecops:reload`, which also
   # replaces both tokens even though they still worked, and leaves the
-  # project's own settings alone. init leaves a working token alone, as
-  # chapters 1 and 5 show: that is the difference between the two commands.
+  # project's own settings and its release version alone. init leaves a
+  # working token alone, as chapters 1 and 5 show: that is the difference
+  # between the two commands.
   @self-healing
   Scenario: init heals a revoked, duplicate, wrong or weakened token and an unguarded variable, and reload puts a drifted project back
     # Chapter: A revoked release token is rebuilt
@@ -132,6 +133,10 @@ Feature: the framework repairs its own GitLab setup when something breaks it
     # Note: GitLab's page for the commit "chore: add the project's own settings": four changed files, with one green line of the project's own added at the end of each.
     # Copy: git commit -am "chore: add the project's own settings" && git push origin main
     And the project added its own settings to .env.dist, .env.dev, the MegaLinter settings and the Trivy ignore list
+    # Note: A release writes the new version in two files: VERSION, and the version line of .config/commitizen/cz.yaml, the settings of Commitizen, the tool that makes the release. Commitizen stops when the two disagree.
+    # Note: GitLab's page for the commit "build: bump version 0.1.0 → 0.2.0": two changed files, .config/commitizen/cz.yaml and VERSION, each going from 0.1.0 in red to 0.2.0 in green.
+    # Copy: git commit -am "build: bump version 0.1.0 → 0.2.0" && git push origin main
+    And the project released version 0.2.0, written to VERSION and to the Commitizen settings
     # Note: That loosening lets someone push a hand edit straight to the main branch. GitLab's page for the commit "chore: tweak the pipeline by hand": one changed file, .gitlab-ci.yml, with one green line added at its end, "# a hand-edited line the toolbox never wrote".
     # Copy: git commit -am "chore: tweak the pipeline by hand" && git push origin main
     And someone pushed a hand edit of the pipeline file straight to the main branch
@@ -145,5 +150,6 @@ Feature: the framework repairs its own GitLab setup when something breaks it
     # Note: The reload also put .gitlab-ci.yml back on disk, without the hand-written line. The main branch is locked, so the developer commits it on a branch and opens a merge request with the push.
     # Note: GitLab's page for that commit, the same kind of page as the hand edit: "1 merge request", one changed file, .gitlab-ci.yml, and the red line "# a hand-edited line the toolbox never wrote" removed.
     # Note: The four files with the project's own settings are not in the commit: the reload left those lines where the project put them.
+    # Note: .config/commitizen/cz.yaml is not in it either: its version is still 0.2.0, the same as VERSION, so the next release starts from there.
     # Copy: git switch -c reload-framework && git commit -am "chore: put the framework files back" && git push -o merge_request.create -o merge_request.target=main origin reload-framework
     And the developer sends the restored pipeline file back through a merge request

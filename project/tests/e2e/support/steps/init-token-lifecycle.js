@@ -313,12 +313,15 @@ async function protectedBranchFrame (frameName) {
 // card ending under the diff. The pipeline row carries a global id and a
 // status, and the Pipelines tab a count that depends on timing: both go. The
 // tab itself only exists once GitLab has created the commit's pipeline, so the
-// card waits for it. The sidebar goes back to its top, where "Commits" still
-// fits, instead of the half-cut item GitLab's own scroll leaves on top.
-async function commitFrame (frameName, sha, { waitText, prepare = null, height = 660, scrollTo = null }) {
+// card waits for it, unless the commit starts none (`pipeline: false`). The
+// sidebar goes back to its top, where "Commits" still fits, instead of the
+// half-cut item GitLab's own scroll leaves on top.
+async function commitFrame (frameName, sha, { waitText, prepare = null, height = 660, scrollTo = null, pipeline = true }) {
   const headers = await getRootHeaders()
-  await waitFor(`a pipeline for commit ${sha}`, async () =>
-    ((await listProjectPipelines(projectName, headers, `?sha=${sha}`)).data || []).length)
+  if (pipeline) {
+    await waitFor(`a pipeline for commit ${sha}`, async () =>
+      ((await listProjectPipelines(projectName, headers, `?sha=${sha}`)).data || []).length)
+  }
   await gitlabFrame(I, frameName, gitlabUrl.commit(projectName, sha), {
     height,
     waitText,
@@ -684,6 +687,12 @@ const PROJECT_LINES = {
   '.config/trivy/trivyignore.yml': '  - {id: DS002, paths: [project/legacy/Dockerfile]}'
 }
 const PROJECT_LINES_TITLE = "chore: add the project's own settings"
+// A release moves the version in VERSION and in the Commitizen settings, and
+// Commitizen stops when the two disagree: the version is the project's, and a
+// reload must leave it in both.
+const CZ_CONFIG = '.config/commitizen/cz.yaml'
+const RELEASED = '0.2.0'
+const RELEASE_TITLE = `build: bump version 0.1.0 → ${RELEASED}`
 const RESTORE_BRANCH = 'reload-framework'
 const RESTORE_TITLE = 'chore: put the framework files back'
 
@@ -798,6 +807,28 @@ storyboardStep(Given, 'the project added its own settings to .env.dist, .env.dev
   await commitFrame('reload-project-lines', sha, { waitText: PROJECT_LINES['.env.dist'], height: 1100, scrollTo: scrollToCommitTitle })
 })
 
+storyboardStep(Given, 'the project released version 0.2.0, written to VERSION and to the Commitizen settings', async () => {
+  const dir = repoDirFor(projectName)
+  const cz = fs.readFileSync(`${dir}/${CZ_CONFIG}`, 'utf8')
+  if (!/^ {2}version: 0\.1\.0$/m.test(cz)) throw new Error(`Expected ${CZ_CONFIG} at version 0.1.0 before the release:\n${cz}`)
+  fs.writeFileSync(`${dir}/${CZ_CONFIG}`, cz.replace(/^ {2}version: 0\.1\.0$/m, `  version: ${RELEASED}`))
+  fs.writeFileSync(`${dir}/VERSION`, `${RELEASED}\n`)
+  git(`git commit --quiet --no-verify -am "${RELEASE_TITLE}" && git push -q --no-verify origin main`)
+  const sha = git('git rev-parse HEAD')
+  const headers = await getRootHeaders()
+  const head = (await listCommits(projectName, 'main', headers))[0]
+  if (head.id !== sha || head.title !== RELEASE_TITLE) {
+    throw new Error(`Expected "${RELEASE_TITLE}" (${sha}) on top of main, found "${head.title}" (${head.id})`)
+  }
+  if (!(await getRepositoryFile(projectName, CZ_CONFIG, 'main', headers)).includes(`  version: ${RELEASED}\n`) ||
+    (await getRepositoryFile(projectName, 'VERSION', 'main', headers)).trim() !== RELEASED) {
+    throw new Error(`Expected ${CZ_CONFIG} and VERSION on main at version ${RELEASED}`)
+  }
+  // The pipeline's workflow rules skip a "build: bump version" commit: no
+  // pipeline to wait for.
+  await commitFrame('reload-release-version', sha, { waitText: `version: ${RELEASED}`, height: 800, scrollTo: scrollToCommitTitle, pipeline: false })
+})
+
 storyboardStep(Given, 'someone pushed a hand edit of the pipeline file straight to the main branch', async () => {
   fs.appendFileSync(`${repoDirFor(projectName)}/${PIPELINE_FILE}`, `${HAND_EDIT}\n`)
   // The push goes through only because the main branch was loosened.
@@ -846,6 +877,12 @@ storyboardStep(Then, 'the developer sends the restored pipeline file back throug
     if (!fs.readFileSync(`${repoDirFor(projectName)}/${file}`, 'utf8').includes(line)) {
       throw new Error(`Expected the reload to keep the project's line "${line.trim()}" in ${file}, it is gone`)
     }
+  }
+  // The release version is the project's too: still the one in VERSION.
+  const czAfter = fs.readFileSync(`${repoDirFor(projectName)}/${CZ_CONFIG}`, 'utf8')
+  const versionAfter = fs.readFileSync(`${repoDirFor(projectName)}/VERSION`, 'utf8').trim()
+  if (!czAfter.includes(`  version: ${RELEASED}\n`) || versionAfter !== RELEASED) {
+    throw new Error(`Expected the reload to keep version ${RELEASED} in ${CZ_CONFIG} and VERSION, VERSION says ${versionAfter} and ${CZ_CONFIG}:\n${czAfter}`)
   }
   // reload touched exactly one file: the pipeline file, without the hand edit.
   const changed = git('git status --porcelain')
