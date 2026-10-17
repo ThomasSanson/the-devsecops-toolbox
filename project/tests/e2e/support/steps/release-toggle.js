@@ -763,7 +763,7 @@ storyboardStep(Then, "the release job's copy of the project still points at GitL
   const lines = relaunch.trace.split('\n')
   const at = lines.findIndex(l => l.endsWith(`$ ${REMOTE_CHECK}`))
   const remote = at === -1 ? '' : lines[at + 1]
-  const runnerRemote = new RegExp(`^http://gitlab-ci-token:[^@]*@gitlab/${lambdaUser()}/${PROJECT_NAME}\\.git$`)
+  const runnerRemote = new RegExp(`^http://gitlab-ci-token:[^@]*@gitlab/${lambdaUser()}/${PROJECT_NAME}\\.git$`) // DevSkim: ignore DS137138 -- The isolated test GitLab's remote URL, matched in a job log.
   if (!runnerRemote.test(remote) || remote.includes(pushToken)) {
     throw new Error(`Expected the release to leave the runner's remote URL in the job's clone, got: ${remote.split(pushToken).join('<push token>') || '(no remote printed)'}`)
   }
