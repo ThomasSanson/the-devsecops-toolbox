@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 24.4.10 (2026-10-17)
+
+### Fix
+
+- **publication**: keep the Docker scan report in the scanner's order
+- **publication**: redact secret values in the scan report
+
 ## 24.4.9 (2026-10-17)
 
 ### Fix
