@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.3 (2026-10-17)
+
+### Fix
+
+- **megalinter**: read TASK_MEGALINTER_CONFIG in every local task
+
 ## 24.5.2 (2026-10-17)
 
 ### Fix
