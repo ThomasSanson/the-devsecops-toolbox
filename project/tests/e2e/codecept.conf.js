@@ -92,6 +92,7 @@ exports.config = {
       './support/steps/init-token-lifecycle.js',
       './support/steps/version-pins.js',
       './support/steps/dictionary-timeout.js',
+      './support/steps/missing-docker.js',
       './support/steps/renovate-detection.js',
       './support/steps/renovate-runtime.js',
       './support/steps/hybrid-ci.js',
