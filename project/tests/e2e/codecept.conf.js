@@ -108,7 +108,8 @@ exports.config = {
       './support/steps/lychee-settings.js',
       './support/steps/go-install-zsh.js',
       './support/steps/deploy-only.js',
-      './support/steps/copier-answers.js'
+      './support/steps/copier-answers.js',
+      './support/steps/megalinter-base-render.js'
     ]
   },
   plugins: {
