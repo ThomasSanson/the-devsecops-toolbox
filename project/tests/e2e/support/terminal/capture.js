@@ -538,7 +538,8 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
   const info = await buildCompactTerminalCapture(
     I,
     COMPACT_CAPTURE_ID,
-    TERMINAL_NOISE_PATTERNS.map(function (re) { return re.source }),
+    // opts.drop: rows this card leaves out, on top of the noise every card drops.
+    [...TERMINAL_NOISE_PATTERNS, ...(opts.drop || [])].map(function (re) { return re.source }),
     opts.fromMarker || null,
     opts.maxRows || 0,
     opts.beforeRows || 0,
