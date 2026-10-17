@@ -46,6 +46,8 @@ To initialize the development environment:
 task dev:setup-environment
 ```
 
+Then open a new terminal: nvm, Go and the tools installed in `~/.local/bin` are only on the `PATH` of a new shell.
+
 or
 
 ```bash

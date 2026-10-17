@@ -280,6 +280,8 @@ Key environment variables are automatically loaded by Task. See [`.env.dist`](.e
   task dev:setup-environment
   ```
 
+  Then open a new terminal: nvm, Go and the tools installed in `~/.local/bin` are only on the `PATH` of a new shell.
+
 2. **Run Code Quality and Security Checks**:
   ```bash
   task code
@@ -409,6 +411,8 @@ sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d
 ```bash
 task dev:setup-environment
 ```
+
+Then open a new terminal: nvm, Go and the tools installed in `~/.local/bin` are only on the `PATH` of a new shell.
 
 4. Run the complete pipeline locally:
 ```bash
