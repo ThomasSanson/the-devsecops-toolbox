@@ -34,6 +34,26 @@ Feature: a freshly generated project passes its own quality gate
     # Note: The worker reports "Worker task exit code: 201", the code Task gives a failed command, and GitLab marks the job Failed: the failure is not swallowed.
     Then the CI job log shows the worker's real task output and keeps the job failed
 
+  # Lizard, the complexity checker the code stage runs, used to get only the
+  # options of TASK_LIZARD_CLI_OPTS: what a developer typed after
+  # `task lizard --` never reached it (issue #97). The terminal runs the real
+  # task in a generated project, pointed at the developer's own src folder, once
+  # without options and once with a lower complexity limit.
+  @lizard-cli-args
+  Scenario: Lizard receives the options a developer types after task lizard --
+    # Note: A project generated from the toolbox, with one file of the developer's own: src/shipping.py. Its function shipping_cost has two if lines and one elif, so there are four paths through it.
+    # Note: Lizard counts those paths as the function's cyclomatic complexity, CCN in its tables.
+    # Copy: cat src/shipping.py
+    Given a generated project holds a function with four paths through it
+    # Note: The developer runs Lizard through the toolbox. TASK_LIZARD_PATH_TO_ANALYSE=src points it at the developer's own code. Task first prints the script it runs, and that script's last line starts Lizard.
+    # Note: The table gives shipping_cost a CCN of 4. Lizard answers "No thresholds exceeded (cyclomatic_complexity > 15 ...)": 15 is its default limit. The run ends with exit code 0. Versions show as <version>: they move with each update.
+    # Copy: TASK_LIZARD_PATH_TO_ANALYSE=src task lizard; echo "exit code: $?"
+    When the developer runs task lizard, the function stays under Lizard's default limit of 15
+    # Note: The same command with --CCN 3 after the two dashes. The last line of the script now ends with --CCN 3: Task hands the option to Lizard.
+    # Note: Lizard lists shipping_cost under "Warnings (cyclomatic_complexity > 3 ...)" and fails, so Task stops with exit code 201, the code it gives a failed command.
+    # Copy: TASK_LIZARD_PATH_TO_ANALYSE=src task lizard -- --CCN 3; echo "exit code: $?"
+    Then with --CCN 3 after the two dashes, Lizard flags the function and the run fails
+
   @retired-linters
   Scenario: a framework update removes retired linters and preserves project controls
     # Note: GitLab shows the project's MegaLinter settings, .config/megalinter/config.yml, on the main branch. They still name three linters MegaLinter has retired: REPOSITORY_GITLEAKS, SQL_TSQLLINT and REPOSITORY_KICS, two of them with options of their own.

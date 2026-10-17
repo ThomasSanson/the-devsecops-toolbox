@@ -470,3 +470,58 @@ storyboardStep(Then, 'task megalinter:pnpm:dlx loads the same settings file', as
   copyToDockerHost()
   assertProjectSettingsLoaded(await terminalCard(I, 'pnpm-dlx-loads-project-settings', lintRun('megalinter:pnpm:dlx'), { mask: CARD_MASKS }))
 })
+
+// @lizard-cli-args: the real `task lizard` in a generated project, pointed at
+// the developer's own src folder (the framework's own scripts under .config
+// would fill the card and move with every toolbox change). Run once off camera
+// before each card, as the twin of what the card shows.
+const LIZARD_PROJECT = '/tmp/e2e-lizard-cli-args'
+const LIZARD_SOURCE = 'src/shipping.py'
+const LIZARD_RUN = 'TASK_LIZARD_PATH_TO_ANALYSE=src task lizard'
+// The Python and Lizard versions move with each Renovate update.
+const LIZARD_MASKS = [[/--python \d+(\.\d+)+/g, '--python <version>'], [/lizard==\d+(\.\d+)+/g, 'lizard==<version>']]
+
+function lizard (...cliArgs) {
+  return runTask(LIZARD_PROJECT, ['lizard', 'TASK_LIZARD_PATH_TO_ANALYSE=src', ...cliArgs], { timeout: 600000, colour: '0' })
+}
+
+storyboardStep(Given, 'a generated project holds a function with four paths through it', async () => {
+  removeRendered(LIZARD_PROJECT)
+  state.project = renderProject({}, { dst: LIZARD_PROJECT })
+  state.dirs.push(state.project)
+  fs.mkdirSync(path.join(state.project, 'src'))
+  fs.writeFileSync(path.join(state.project, LIZARD_SOURCE), [
+    'def shipping_cost(weight, express):',
+    '    if weight <= 0:',
+    '        raise ValueError("weight must be positive")',
+    '    if express:',
+    '        return 15 + weight * 2',
+    '    elif weight > 10:',
+    '        return 10 + weight',
+    '    return 5',
+    ''
+  ].join('\n'))
+  const env = { ...process.env }
+  delete env.TASK_E2E_UPDATE_BASELINES
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env, port: 7699 })
+  const screen = await terminalCard(I, 'lizard-function', `cat ${LIZARD_SOURCE}`)
+  assert.ok(screen.includes('def shipping_cost(weight, express):') && screen.includes('    elif weight > 10:'), `The card must show the function:\n${screen}`)
+})
+
+storyboardStep(When, "the developer runs task lizard, the function stays under Lizard's default limit of 15", async () => {
+  const { raw, exitCode } = await lizard()
+  assert.equal(exitCode, 0, `task lizard must pass under the default limit:\n${raw}`)
+  assert.ok(raw.includes('shipping_cost@1-8@src/shipping.py'), `Lizard must read the developer's function:\n${raw}`)
+  assert.ok(raw.includes('No thresholds exceeded (cyclomatic_complexity > 15'), `Lizard must keep its default limit of 15:\n${raw}`)
+  const screen = await terminalCard(I, 'lizard-default', `${LIZARD_RUN}; echo "exit code: $?"`, { mask: LIZARD_MASKS })
+  assert.ok(screen.includes('No thresholds exceeded (cyclomatic_complexity > 15') && screen.includes('exit code: 0'), `The card must show the passing run:\n${screen}`)
+})
+
+storyboardStep(Then, 'with --CCN 3 after the two dashes, Lizard flags the function and the run fails', async () => {
+  const { raw, exitCode } = await lizard('--', '--CCN', '3')
+  assert.notEqual(exitCode, 0, `task lizard -- --CCN 3 must hand the lower limit to Lizard, which fails on a CCN of 4:\n${raw}`)
+  const warnings = raw.indexOf('!!!! Warnings (cyclomatic_complexity > 3')
+  assert.ok(warnings !== -1 && raw.indexOf('shipping_cost@1-8@src/shipping.py', warnings) !== -1, `Lizard must flag shipping_cost above a CCN of 3:\n${raw}`)
+  const screen = await terminalCard(I, 'lizard-ccn-3', `${LIZARD_RUN} -- --CCN 3; echo "exit code: $?"`, { mask: LIZARD_MASKS })
+  assert.ok(screen.includes('Warnings (cyclomatic_complexity > 3') && screen.includes('exit code: 201'), `The card must show the flagged run:\n${screen}`)
+})
