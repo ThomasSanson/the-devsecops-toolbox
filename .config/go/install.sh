@@ -20,8 +20,16 @@ if [ "$(id -u)" -ne 0 ]; then
     if curl -fsSL https://go.dev/dl/go1.24.2.linux-amd64.tar.gz | tar -xz -C ~/.local/go --strip-components=1; then
       ln -sf ~/.local/go/bin/go ~/.local/bin/go
       ln -sf ~/.local/go/bin/gofmt ~/.local/bin/gofmt
-      # Set GOPATH to ~/.local so `go install` puts binaries in ~/.local/bin (already in PATH)
-      printf '\nexport GOROOT="%s/.local/go"\nexport GOPATH="%s/.local"\n' "$HOME" "$HOME" >>~/.bashrc
+      # Set GOPATH to ~/.local so `go install` puts binaries in ~/.local/bin (already in PATH),
+      # in the startup file of the user's login shell, once.
+      case "${SHELL:-}" in
+      */zsh) rc="${ZDOTDIR:-$HOME}/.zshrc" ;;
+      */bash) rc="$HOME/.bashrc" ;;
+      *) rc="$HOME/.profile" ;;
+      esac
+      if ! grep -qxF "export GOROOT=\"$HOME/.local/go\"" "$rc" 2>/dev/null; then
+        printf '\nexport GOROOT="%s/.local/go"\nexport GOPATH="%s/.local"\n' "$HOME" "$HOME" >>"$rc"
+      fi
       log "Go user-space installation successful."
       exit 0
     else
