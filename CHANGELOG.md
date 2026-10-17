@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.0 (2026-10-17)
+
+### Feat
+
+- **renovate**: group the minor and patch updates of project/
+
 ## 24.4.20 (2026-10-17)
 
 ### Fix
