@@ -31,6 +31,12 @@ Feature: a freshly generated project passes its own quality gate
     # Note: git status lists only the two files Copier had already written.
     # Copy: cat .config/megalinter/shared.yml && task devsecops:update; git status --short
     Then the framework update stops at a settings file that is not valid YAML and names it, before it changes any MegaLinter setting
+    # Chapter: A read-only settings file stops the update
+    # Note: The developer has undone what the stopped update wrote, closed the bracket in shared.yml and committed the fix. Then they made shared.yml read-only: stat shows 444 for it, so nobody may write it, and 644 for the four other files, which their owner may write.
+    # Note: The clean-up says "No write access to .config/megalinter/shared.yml", then "No settings file was changed". It checks that it may write every file before it writes any, so config.flow.yml and config.yml keep their retired linters for now.
+    # Note: git status lists only the two files Copier had already written.
+    # Copy: stat -c '%a %n' .config/megalinter/*.yml && task devsecops:update; git status --short
+    And the framework update stops at a read-only settings file and names it, before it changes any MegaLinter setting
     # Chapter: Back on what GitLab holds, the update arrives as a clean merge request
     # Note: The developer goes back to what GitLab holds: the reset drops the commits with the link and with shared.yml, and git clean removes the file the stopped update had added. Then they ask for the update again.
     # Note: This time the clean-up prints "removed retired references" for config.flow.yml and for config.yml, and the update ends with "Opened merge request update-framework-devsecops → main."

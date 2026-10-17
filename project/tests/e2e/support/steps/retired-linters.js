@@ -5,7 +5,8 @@
 // (the settings on the main branch) and holds its proof (the merge request's
 // Changes tab); the terminal in between shows the update stopped by a settings
 // file linked outside the project, then by a settings file with a typo, then
-// accepted on what GitLab holds, then asked again for nothing. Every card is twinned with a check of the same fact:
+// by a read-only one, then accepted on what GitLab holds, then asked again for
+// nothing. Every card is twinned with a check of the same fact:
 // MegaLinter's own configuration loader, the files in the container, REST.
 const { I } = inject()
 const assert = require('node:assert/strict')
@@ -91,12 +92,17 @@ const TYPO = [
 ].join('\n')
 // Where the YAML parser locates the list it could not finish.
 const TYPO_PLACE = `in "${LINK}", line 3, column 18`
+// The same file with its bracket closed: valid, and naming a retired linter,
+// so the clean-up has to write it after both regular files.
+const SHARED = TYPO + ']\n'
+const NO_WRITE = 'No write access to ' + LINK
 // What every stopped clean-up says after its reason: nothing changed, and how
 // to repair.
 const STOPPED = '[megalinter migration] No settings file was changed. Fix the file named above, then ask for the update again.'
 // The line the developer types in each terminal card (also its # Copy).
 const REFUSED_RUN = `readlink ${LINK} && task devsecops:update; git status --short`
 const TYPO_RUN = `cat ${LINK} && task devsecops:update; git status --short`
+const READ_ONLY_RUN = "stat -c '%a %n' .config/megalinter/*.yml && task devsecops:update; git status --short"
 const ACCEPTED_RUN = 'git reset -q --hard origin/main && git clean -fdq && task devsecops:update'
 const REPEATED_RUN = 'task devsecops:update'
 
@@ -270,6 +276,37 @@ storyboardStep(Then, 'the framework update stops at a settings file that is not 
   assert.ok(!screen.includes(ANNOUNCEMENT), screen)
   assert.equal(megalinterFiles(), before, 'A stopped migration must change no MegaLinter file')
   assert.deepEqual(workingTreeChanges(), RELEASE_FILES, 'Only the files Copier wrote may change')
+  const remoteAfter = await remoteState()
+  assert.deepEqual(remoteAfter.branches, remoteBefore.branches, 'A stopped update must push nothing')
+  assert.deepEqual(remoteAfter.requests, [], 'A stopped update must open no merge request')
+})
+
+// Off camera: what the stopped update wrote is undone, the bracket is closed
+// and committed, then the file is made read-only (git does not see that). On
+// camera: the permissions, the update that names the file, and what the
+// stopped update left. A clean-up that wrote as it went would already have
+// changed config.flow.yml and config.yml when it reached shared.yml. The
+// twins: no MegaLinter file changed, only Copier's two files in the working
+// tree (no temporary file left), the message, and nothing on GitLab.
+storyboardStep(Then, 'the framework update stops at a read-only settings file and names it, before it changes any MegaLinter setting', async () => {
+  inProject([
+    'git checkout -q -- . && git clean -fdq',
+    `printf '%s' ${shellEscape(SHARED)} > ${LINK}`,
+    `git commit -q --no-verify -am ${shellEscape("fix: close the list in the team's MegaLinter settings")}`,
+    `chmod a-w ${LINK}`
+  ].join('\n'))
+  const before = megalinterFiles()
+  const remoteBefore = await remoteState()
+
+  const screen = await terminalCard(I, 'update-refused-by-read-only', READ_ONLY_RUN, { mask: COPIER_RUN_MASKS })
+
+  assert.equal(megalinterFiles(), before, 'A stopped migration must change no MegaLinter file:\n' + screen)
+  assert.deepEqual(workingTreeChanges(), RELEASE_FILES, 'Only the files Copier wrote may change:\n' + screen)
+  assert.ok(screen.includes(`444 ${LINK}`), screen)
+  assert.ok(screen.includes(NO_WRITE + '\n' + STOPPED), 'The clean-up must name the read-only file:\n' + screen)
+  assert.ok(!screen.includes('Traceback'), screen)
+  assert.ok(screen.includes('task: Failed to run task "devsecops:update"'), screen)
+  assert.ok(!screen.includes(ANNOUNCEMENT), screen)
   const remoteAfter = await remoteState()
   assert.deepEqual(remoteAfter.branches, remoteBefore.branches, 'A stopped update must push nothing')
   assert.deepEqual(remoteAfter.requests, [], 'A stopped update must open no merge request')
