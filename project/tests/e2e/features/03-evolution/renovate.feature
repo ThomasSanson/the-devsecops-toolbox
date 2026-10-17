@@ -61,9 +61,13 @@ Feature: Dependency updates flow through the framework, not around it
   @renovate-runtime
   Scenario: Renovate validates through its pinned download without a global installation
     # Note: One terminal session in a freshly generated project, on a machine with no Renovate installed. The developer writes an option Renovate does not know into the configuration.
-    # Note: task renovate:validate downloads the Renovate release the project pins through npx. It answers "Invalid configuration option: unknownOptionForTest" and fails. Once git puts the generated configuration back, the same task answers "Config validated successfully against 1 file(s)".
+    # Note: task renovate:validate installs the Renovate release the project pins into a fresh folder, and its first line names that release. It answers "Invalid configuration option: unknownOptionForTest" and fails with exit status 1. Once git puts the generated configuration back, the same task answers "Config validated successfully against 1 file(s)".
     # Copy: task renovate:validate
     Then a project without Renovate installed gets the pinned validator, which refuses an unknown option and accepts the generated configuration
+    # Note: This card gets its own home folder, so the damage stays in it. npx runs the pinned Renovate once, and npm keeps the unpacked files in its cache, under ~/.npm/_npx. Then truncate cuts the validator's main file down to 200 bytes, as wc shows.
+    # Note: npx would run that broken file the next time, and its crash would read like a refused configuration. task renovate:validate does not touch it. npm unpacks Renovate into a fresh folder and checks every package against the checksum the registry publishes, then the task checks the version. It answers "Config validated successfully against 1 file(s)".
+    # Copy: task renovate:validate
+    And the task ignores a damaged copy that npx left in npm's cache and validates with a freshly checked copy
 
   @renovate-nightly
   Scenario: On the main branch, a push pipeline leaves Renovate to the project's nightly schedule

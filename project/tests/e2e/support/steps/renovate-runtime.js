@@ -5,7 +5,8 @@
  * One terminal session in a freshly generated project, on a runner with no
  * Renovate installed: the real commands run in order, and their real output,
  * colours kept, is the card. The pinned validator refuses an unknown option,
- * then accepts the generated configuration once git puts it back.
+ * then accepts the generated configuration once git puts it back. A damaged
+ * copy that npx left in npm's cache is never run.
  */
 const assert = require('assert/strict')
 const fs = require('fs')
@@ -27,14 +28,27 @@ After(() => {
 // npx fetches from GitHub. When that download fails, the validator prints a
 // 40-line warning and validates the same way with JavaScript regexes: the card
 // would change with the network, not with the toolbox.
-const ENV = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error', RENOVATE_X_IGNORE_RE2: 'true' }
+// npm_config_update_notifier: npm announces its own newer release from an
+// empty cache, so the card would change with npm's release day.
+const ENV = { ...process.env, FORCE_COLOR: '1', npm_config_loglevel: 'error', npm_config_update_notifier: 'false', RENOVATE_X_IGNORE_RE2: 'true' }
 
-function sh (dir, command) {
+// The project the first card renders: the next cards run in it too.
+let project
+
+function sh (dir, command, env = {}) {
   try {
-    return { status: 0, output: execFileSync('sh', ['-c', `${command} 2>&1`], { cwd: dir, env: ENV, encoding: 'utf8', timeout: 300000 }) }
+    return { status: 0, output: execFileSync('sh', ['-c', `${command} 2>&1`], { cwd: dir, env: { ...ENV, ...env }, encoding: 'utf8', timeout: 300000 }) }
   } catch (error) {
     return { status: error.status, output: `${error.stdout || ''}${error.stderr || ''}` }
   }
+}
+
+function transcript (session) {
+  return session.map(({ command, output }) => `$ ${command}\n${output}`).join('').trimEnd()
+}
+
+function pinnedVersion () {
+  return fs.readFileSync(path.join(project, '.config/renovate/version'), 'utf8').trim()
 }
 
 function render (data) {
@@ -60,8 +74,8 @@ async function sessionFrame (frameName, text) {
 }
 
 storyboardStep(Then, 'a project without Renovate installed gets the pinned validator, which refuses an unknown option and accepts the generated configuration', async () => {
-  const project = render()
-  const version = fs.readFileSync(path.join(project, '.config/renovate/version'), 'utf8').trim()
+  project = render()
+  const version = pinnedVersion()
   // Off camera: the render becomes a repository, so git can put the generated
   // configuration back on camera.
   execFileSync('sh', ['-c', 'git init -q && git add -A && git -c user.email=e2e@test.local -c user.name=e2e commit -qm render'], { cwd: project })
@@ -75,22 +89,55 @@ storyboardStep(Then, 'a project without Renovate installed gets the pinned valid
   ].map(command => ({ command, ...sh(project, command) }))
   const [installed, , refused, , accepted] = session
   // The pin moves with every Renovate release, the render path with every run.
-  const text = session.map(({ command, output }) => `$ ${command}\n${output}`).join('').trimEnd()
-    .replaceAll(project, '<project>').replaceAll(version, 'x.x.x')
+  const text = transcript(session).replaceAll(project, '<project>').replaceAll(version, 'x.x.x')
   await sessionFrame('runtime-validate', text)
 
-  // Twins: no Renovate on the runner, the pinned release through npx, the
-  // refusal named, then the generated configuration accepted.
+  // Twins: no Renovate on the runner, the pinned release, the refusal named,
+  // then the generated configuration accepted.
   assert.equal(installed.output.trim(), 'Renovate is not installed', 'The CodeceptJS runner must not include a global Renovate installation')
   assert.notEqual(refused.status, 0, 'The validator must reject the unknown option')
   assert.ok(stripAnsiEscapeSequences(refused.output).includes('Invalid configuration option: unknownOptionForTest'), refused.output)
   assert.equal(accepted.status, 0, accepted.output)
   assert.ok(accepted.output.includes('Config validated successfully'), accepted.output)
-  for (const result of [refused, accepted]) assert.ok(result.output.includes(`npx --yes -p renovate@${version}`), result.output)
+  for (const result of [refused, accepted]) assert.ok(result.output.includes(`renovate@${version}`), result.output)
   // Twins: Renovate's run resolves the same pinned download, and the
   // configuration with automerge off is valid too.
   const run = sh(project, 'task renovate:dry-run --dry')
   assert.ok(run.status === 0 && run.output.includes(`renovate@${version}`), run.output)
   const automergeOff = sh(render({ devsecops_automerge: 'false' }), 'task renovate:validate')
   assert.ok(automergeOff.status === 0 && automergeOff.output.includes('Config validated successfully'), automergeOff.output)
+})
+
+storyboardStep(Then, 'the task ignores a damaged copy that npx left in npm\'s cache and validates with a freshly checked copy', async () => {
+  const version = pinnedVersion()
+  // Off camera: a home folder of its own, so npm's cache and the damage stay
+  // in this card.
+  const home = fs.mkdtempSync('/tmp/e2e-renovate-home-')
+  rendered.push(home)
+  const npx = `npx --yes -p renovate@${version} renovate-config-validator --version`
+  const damaged = '~/.npm/_npx/*/node_modules/renovate/dist/config-validator.js'
+  const session = [
+    npx,
+    `truncate -s 200 ${damaged}`,
+    `wc -c ${damaged}`,
+    'task renovate:validate'
+  ].map(command => ({ command, ...sh(project, command, { HOME: home }) }))
+  const [copied, , size, validated] = session
+
+  // Twins: npx unpacked the pinned release, the copy is still damaged after
+  // the task and crashes when npx runs it, and the task validated anyway,
+  // with the copy it installed and checked itself.
+  assert.ok(copied.status === 0 && copied.output.trim() === version, copied.output)
+  assert.match(size.output, /^200 \S+\/config-validator\.js\n$/, 'Exactly one copy of the validator must be damaged')
+  assert.equal(fs.statSync(size.output.trim().split(' ')[1]).size, 200, 'The task must leave the damaged copy alone')
+  const crash = sh(project, npx, { HOME: home })
+  assert.notEqual(crash.status, 0, `npx must crash on the damaged copy:\n${crash.output}`)
+  assert.equal(validated.status, 0, validated.output)
+  assert.ok(validated.output.includes(`renovate@${version} installed fresh, checksums and version checked`), validated.output)
+  assert.ok(validated.output.includes('Config validated successfully'), validated.output)
+
+  // The pin moves with every Renovate release, and so does the folder npx
+  // derives from it; the home folder moves with every run.
+  const text = transcript(session).replaceAll(home, '~').replace(/_npx\/[0-9a-f]+\//g, '_npx/<hash>/').replaceAll(version, 'x.x.x')
+  await sessionFrame('runtime-damaged-copy', text)
 })
