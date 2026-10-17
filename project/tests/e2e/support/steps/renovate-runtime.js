@@ -5,8 +5,9 @@
  * One terminal session in a freshly generated project, on a runner with no
  * Renovate installed: the real commands run in order, and their real output,
  * colours kept, is the card. The pinned validator refuses an unknown option,
- * then accepts the generated configuration once git puts it back. A damaged
- * copy that npx left in npm's cache is never run.
+ * then accepts the generated configuration once git puts it back. An
+ * unreachable registry is reported as a download problem, never as a verdict
+ * on the configuration, and a damaged copy npx left in npm's cache never runs.
  */
 const assert = require('assert/strict')
 const fs = require('fs')
@@ -106,6 +107,32 @@ storyboardStep(Then, 'a project without Renovate installed gets the pinned valid
   assert.ok(run.status === 0 && run.output.includes(`renovate@${version}`), run.output)
   const automergeOff = sh(render({ devsecops_automerge: 'false' }), 'task renovate:validate')
   assert.ok(automergeOff.status === 0 && automergeOff.output.includes('Config validated successfully'), automergeOff.output)
+})
+
+storyboardStep(Then, 'when the npm registry cannot be reached, the task says the configuration was not checked, and the retry validates it once the registry answers', async () => {
+  const version = pinnedVersion()
+  const unreachable = 'npm_config_registry=http://registry.invalid/ npm_config_cache=$(mktemp -d) task renovate:validate'
+  // Off camera, on the first run only: npm retries a failed download for
+  // about a minute, and the card would only wait longer.
+  const session = [
+    { command: unreachable, ...sh(project, unreachable, { npm_config_fetch_retries: '0' }) },
+    { command: 'task renovate:validate', ...sh(project, 'task renovate:validate') }
+  ]
+  const [failed, retry] = session
+  const plain = stripAnsiEscapeSequences(failed.output)
+
+  // Twins: the download problem named, with its own exit status, and no
+  // verdict on the configuration; then the retry validates it.
+  assert.notEqual(failed.status, 0, plain)
+  assert.ok(plain.includes(`renovate@${version} could not be downloaded, so the configuration was NOT checked`), plain)
+  assert.ok(plain.includes('exit status 2'), plain)
+  for (const verdict of ['Invalid configuration', 'Found errors', 'Config validated']) assert.ok(!plain.includes(verdict), plain)
+  assert.equal(retry.status, 0, retry.output)
+  assert.ok(retry.output.includes('Config validated successfully'), retry.output)
+
+  // npm names its log after the empty cache and the time of the run.
+  const text = transcript(session).replace(/\/tmp\/tmp\.\w+\/_logs\/[\w.-]+\.log/g, '<npm-log>').replaceAll(version, 'x.x.x')
+  await sessionFrame('runtime-registry-unreachable', text)
 })
 
 storyboardStep(Then, 'the task ignores a damaged copy that npx left in npm\'s cache and validates with a freshly checked copy', async () => {
