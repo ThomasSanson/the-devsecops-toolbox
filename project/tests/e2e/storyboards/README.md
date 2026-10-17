@@ -98,6 +98,9 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@generated-project-red"`
 - [**env-layering**](02-daily-work/env-layering.svg): The guide of a generated project says which settings file wins. A development value in `.env.dev` beats the default in `.env.dist`, and a `.env` file that git ignores beats both.
   Replay: `task project:test:e2e -- --grep "@env-layering"`
+- [**red-evidence**](02-daily-work/red-evidence.svg): The RED gate refuses a failure caused by a refused connection and accepts the one on the test's own check, from the same run. A tag that names two tests and a report cut short are refused too.
+  Chapters: A refused connection is not a failing test · One scenario, in one whole report.
+  Replay: `task project:test:e2e -- --grep "@red-evidence"`
 
 ## Act 3 — Evolution (`03-evolution`)
 

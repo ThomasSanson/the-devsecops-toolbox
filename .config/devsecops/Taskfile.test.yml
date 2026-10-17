@@ -461,6 +461,9 @@ tasks:
         tagged scenario was really recorded AND really failed. A run that dies
         while loading its files exits non-zero and records nothing — a crash,
         not a proof — and is refused.
+        So are a failure on the test's environment rather than its own check
+        (a refused connection, a missing module, a failed hook), a tag that
+        names several scenarios, and a report cut short.
 
         Deliberately NOT in the `default` task and NOT a CI job: it gates the
         LOCAL loop, between writing the test and writing the code. On a merge
@@ -472,7 +475,8 @@ tasks:
 
       📊 Exit codes:
         - 0: the scenario ran and failed on its own check
-        - 1: no report, no such scenario, or the scenario passed
+        - 1: no whole report, no such scenario, a tag on several, the
+          scenario passed, or it failed on its environment
         - 2: no scenario tag given
     cmds:
       - bash .config/devsecops/scripts/check-red-is-real.sh {{.CLI_ARGS}}
