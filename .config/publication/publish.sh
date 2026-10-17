@@ -57,8 +57,11 @@
 #                                     scan report hides, in percent
 #
 # EXIT CODES:
-#   0  published, or nothing to do
-#   1  refused (nothing approved, wrong signatory, misconfiguration)
+#   0  published, or nothing to do; for doctor, the project is ready
+#   1  refused (nothing approved, wrong signatory, misconfiguration); for
+#      doctor, something it needs is missing
+#   3  doctor only: nothing missing in what it checked, but GitLab was not
+#      asked, so readiness is unknown
 #
 # ============================================================================
 
@@ -1220,6 +1223,7 @@ init_schedule() {
 # the first time should be able to see the whole list before the first attempt.
 # ---------------------------------------------------------------------------
 DOCTOR_MISSING=0
+DOCTOR_SKIPPED=0
 
 verdict() {
   _ok="$1"
@@ -1235,13 +1239,21 @@ verdict() {
   return 0
 }
 
-# Check the variable's metadata. Masking controls job-log redaction; authorized
-# API clients can still retrieve its value, which must never be printed here.
-has_ci_variable() {
-  forge_ready || return 1
-  command -v jq >/dev/null 2>&1 || return 1
-  _found="$(api GET "/projects/${PROJECT_ENC}/variables/$1" | jq -r '.key? // empty' 2>/dev/null || true)"
-  [ -n "${_found}" ]
+# What is wrong with the CI/CD variable that holds a token, or nothing when it
+# is stored masked and protected. GitLab answers with the value too: only the
+# key and the two flags are read, and the value never reaches the screen.
+# Masking controls job-log redaction; protection keeps the token away from
+# pipelines of unprotected branches.
+ci_variable_problem() {
+  api GET "/projects/${PROJECT_ENC}/variables/$1" 2>/dev/null | jq -rs '
+    (.[0] // {}) as $v
+    | if ($v.key? | type) == "string" then
+        if $v.masked == true and $v.protected == true then empty
+        elif $v.masked == true then "is stored, but not protected"
+        elif $v.protected == true then "is stored, but not masked"
+        else "is stored, but neither masked nor protected" end
+      elif (($v.message? // "") | tostring | startswith("404 Variable")) then "is not stored"
+      else "could not be read from GitLab" end' 2>/dev/null || printf 'could not be read from GitLab'
 }
 
 cmd_doctor() {
@@ -1263,20 +1275,24 @@ cmd_doctor() {
     "Nobody has said where the source goes. \`task publication:init\` asks."
 
   if forge_ready; then
-    verdict "$(has_ci_variable TASK_PUBLICATION_TOKEN && echo 0 || echo 1)" \
-      "A token that may push to it is stored, masked" \
-      "Create it on the public repository, then \`task publication:init\` stores it."
-    verdict "$(has_ci_variable TASK_PUBLICATION_SOURCE_TOKEN && echo 0 || echo 1)" \
-      "A token that may read this repository's merge requests is stored" \
-      "\`task publication:init\` creates one project token and stores it under both names."
+    _problem="$(ci_variable_problem TASK_PUBLICATION_TOKEN)"
+    verdict "$([ -z "${_problem}" ] && echo 0 || echo 1)" \
+      "A token that may push to it is stored, masked and protected" \
+      "TASK_PUBLICATION_TOKEN ${_problem}. \`task publication:init\` stores it masked and protected."
+    _problem="$(ci_variable_problem TASK_PUBLICATION_SOURCE_TOKEN)"
+    verdict "$([ -z "${_problem}" ] && echo 0 || echo 1)" \
+      "A token that may read this repository's merge requests is stored, masked and protected" \
+      "TASK_PUBLICATION_SOURCE_TOKEN ${_problem}. \`task publication:init\` stores a project token there, masked and protected."
     _schedule="$(api GET "/projects/${PROJECT_ENC}/pipeline_schedules?per_page=100" |
       jq -r '[.[]? | select(.description | startswith("Source publication"))] | length' 2>/dev/null || echo 0)"
     verdict "$([ "${_schedule:-0}" -gt 0 ] && echo 0 || echo 1)" \
       "A nightly check looks for the next toolbox release" \
       "\`task publication:init\` schedules it."
   else
-    say "⏭️  The forge was not asked: no token for this repository in the environment."
-    say "   \`task publication:init\` asks for one, uses it once, and stores nothing."
+    # Not asked is not fine: these three are counted apart, never as passed.
+    DOCTOR_SKIPPED=3
+    say "⏭️  GitLab was not asked about the two tokens and the nightly check."
+    say "   Set TASK_PUBLICATION_SOURCE_TOKEN to a token for this repository to check them."
   fi
 
   verdict "$(grep -q 'publication/gitlab-ci.yml' .gitlab-ci.yml 2>/dev/null && echo 0 || echo 1)" \
@@ -1295,22 +1311,33 @@ cmd_doctor() {
     "The publication is switched on" \
     "Set TASK_PUBLICATION_ENABLED=true in ${ENV_FILE} when the rest is ready."
 
+  # The answer is the exit status too, so a script and a person read the same
+  # thing: 0 ready, 1 something missing, 3 not known because GitLab was not asked.
   printf '\n'
-  if [ "${DOCTOR_MISSING}" -eq 0 ]; then
+  if [ "${DOCTOR_MISSING}" -eq 0 ] && [ "${DOCTOR_SKIPPED}" -eq 0 ]; then
     say "Nothing missing. \`task publication:check\` says what would leave today."
     printf '\n'
     return 0
   fi
+  if [ "${DOCTOR_MISSING}" -eq 0 ]; then
+    say "No problem in the checks that ran, but ${DOCTOR_SKIPPED} were skipped: whether the project is ready is not known."
+    printf '\n'
+    exit 3
+  fi
 
-  say "${DOCTOR_MISSING} $(plural "${DOCTOR_MISSING}" thing things) to settle."
+  _settle="${DOCTOR_MISSING} $(plural "${DOCTOR_MISSING}" thing things) to settle."
+  [ "${DOCTOR_SKIPPED}" -eq 0 ] || _settle="${_settle} ${DOCTOR_SKIPPED} checks were skipped."
+  say "${_settle}"
   if [ -t 0 ] && prompt_yes "Answer the setup questions now? [Y/n]: "; then
     printf '\n'
     cmd_init
-    return 0
+    say "Run \`task publication:doctor\` again to see what is left."
+    printf '\n'
+    exit 1
   fi
   say "When you are ready: task publication:init"
   printf '\n'
-  return 0
+  exit 1
 }
 
 # The installer has its own; this script is on its own, so it carries one.

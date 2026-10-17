@@ -351,11 +351,12 @@ Review code that receives protected variables accordingly.
 
 ## Setting it up once
 
-`task publication:doctor` provides setup hints, not a readiness certificate.
-Without a source token it skips forge checks, and its successful exit does not
-mean every requirement is satisfied. It expects the standalone CI include even
-when a full toolbox project uses `task release` instead. Read its findings and
-verify the chosen publication path.
+`task publication:doctor` checks the setup and answers with its exit status
+too: 0 when nothing is missing, 1 when something is, with the fix beside it,
+and 3 when no token for this repository was set, so GitLab was not asked about
+the two tokens and the nightly schedule. A token counts only when GitLab stores
+it masked and protected. The doctor expects the standalone CI include even when
+a full toolbox project uses `task release` instead.
 
 Automatic setup creates a **project access token**. On GitLab.com this requires
 Premium or Ultimate; GitLab.com Free does not provide that setup path. Project

@@ -70,6 +70,12 @@ tasks:
         a scanner, the nightly check — and prints the fix beside each answer.
         Offers to run the setup questions for whatever is missing.
 
+      📊 Exit codes:
+        - 0: nothing is missing
+        - 1: something is missing
+        - 3: nothing missing in what was checked, but without a token for
+          this repository GitLab was not asked
+
       🔄 Execution:
         Runs publish.sh in doctor mode.
     interactive: true
