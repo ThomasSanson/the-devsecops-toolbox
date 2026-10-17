@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1504" height="10199" viewBox="0 0 1504 10199" role="img" aria-labelledby="sb-title sb-desc">
 <title id="sb-title">Publishing the source of a private project, without the parts that must stay private: Publication keeps its safety promises from source selection to repeated releases</title>
-<desc id="sb-desc">e2e storyboard · project/tests/e2e/features/02-daily-work/source-publication.feature · replay: task test -- --grep "@publication-contracts"</desc>
+<desc id="sb-desc">e2e storyboard · project/tests/e2e/features/02-daily-work/publication-contracts.feature · replay: task test -- --grep "@publication-contracts"</desc>
 <style>.copy{user-select:all;-webkit-user-select:all;cursor:text}.copy:hover{text-decoration:underline}</style>
 <rect width="1504" height="10199" fill="#0f1017"/>
 <text x="32" y="54" font-family="ui-sans-serif, system-ui, sans-serif" font-size="28" fill="#e8e8ec" font-weight="700">Publishing the source of a private project, without the</text>
 <text x="32" y="88" font-family="ui-sans-serif, system-ui, sans-serif" font-size="28" fill="#e8e8ec" font-weight="700">parts that must stay private</text>
 <text x="32" y="116" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#98a0b3">Scenario: Publication keeps its safety promises from source selection to repeated releases</text>
-<text x="1472" y="44" font-family="ui-monospace, 'JetBrains Mono', 'Fira Code', monospace" font-size="12" fill="#98a0b3" text-anchor="end">project/tests/e2e/features/02-daily-work/source-publication.feature</text>
+<text x="1472" y="44" font-family="ui-monospace, 'JetBrains Mono', 'Fira Code', monospace" font-size="12" fill="#98a0b3" text-anchor="end">project/tests/e2e/features/02-daily-work/publication-contracts.feature</text>
 <text x="1472" y="62" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#98a0b3" text-anchor="end">e2e storyboard · baseline</text>
 <rect x="32" y="150" width="1440" height="36" rx="8" fill="#1c1e2a"/>
 <text x="48" y="173" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.5" fill="#98a0b3">replay this scenario</text>

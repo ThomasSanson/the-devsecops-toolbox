@@ -1,9 +1,10 @@
 /* global inject Given When Then After */
 // cspell:ignore greting
 /**
- * Storyboards of features/02-daily-work/tdd-cycle.feature: the toolbox checks
- * the proof its method asks for, on a throwaway copy of the framework, with the
- * framework's own engine, configuration and JUnit reporter.
+ * Storyboards of features/02-daily-work/tdd-cycle.feature and
+ * tdd-cycle-reports.feature: the toolbox checks the proof its method asks for,
+ * on a throwaway copy of the framework, with the framework's own engine,
+ * configuration and JUnit reporter.
  *
  * Every terminal card is a real ttyd terminal opened in THIS container (see
  * helpers/localTerminal.js): the nested engine and the local gates live here,

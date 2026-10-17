@@ -1,6 +1,6 @@
 /* global inject After Given When Then */
 /**
- * Storyboard for @junit-control-characters (features/02-daily-work/tdd-cycle.feature).
+ * Storyboard for @junit-control-characters (features/02-daily-work/tdd-cycle-reports.feature).
  *
  * The repository's JUnit reporter feeds two readers: GitLab, which shows the
  * report of a pipeline on its Tests tab, and the local RED gate. A failure

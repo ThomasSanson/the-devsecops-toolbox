@@ -5,10 +5,11 @@ vars:
   TASK_DOCKER_CE_IMAGE_NAME: "registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
   TASK_DOCKER_CE_DOCKERFILE: ".config/devcontainer/ubuntu/Dockerfile"
   PROJECT_DOCKER_COMPOSE: "cd project && docker compose"
-  # Feature files whose stories run MegaLinter, through task megalinter or in a
-  # generated project's code:megalinter job: the CI shard that runs one of them
-  # starts pulling the MegaLinter image once GitLab is up (project:test:e2e).
-  E2E_MEGALINTER_FEATURES: "quality-gate|install\\.feature|daily-contribution|hybrid-ci"
+  # Feature files whose stories start the MegaLinter image, through task
+  # megalinter, in a CI job such as code:megalinter, or to read its settings.
+  # The CI shard that runs one of them starts pulling the image once GitLab is
+  # up (project:test:e2e).
+  E2E_MEGALINTER_FEATURES: "osv-scope|megalinter-reports|quality-gate|install\\.feature|daily-contribution|hybrid-ci"
 
 tasks:
   project:plan:
