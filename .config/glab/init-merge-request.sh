@@ -1,10 +1,11 @@
 #!/usr/bin/env sh
 # Deliver a framework change through a reviewable merge request.
 #
-# Branches FROM the default branch (regardless of the branch currently checked
-# out), commits the working-tree changes onto it, pushes, and opens a merge
-# request into the default branch. The merge request is left OPEN for review —
-# the framework is never pushed straight to the default branch.
+# Branches FROM the default branch as GitLab holds it (regardless of the
+# branch currently checked out), commits the working-tree changes onto it,
+# pushes, and opens a merge request into the default branch. The merge request
+# is left OPEN for review — the framework is never pushed straight to the
+# default branch.
 #
 # Two callers, one delivery: `devsecops:init` scaffolds the framework onto
 # init-framework-devsecops, `devsecops:update` carries a toolbox release onto
@@ -19,7 +20,9 @@
 #       there. init never does: it always branches off the default branch,
 #       whatever happens to be checked out.
 #
-# Idempotent: re-uses the branch if it exists and does not open a duplicate MR.
+# Idempotent: re-uses the branch while it carries commits the default branch
+# lacks, does not open a duplicate MR, and stops before pushing anything when
+# there is nothing to propose.
 set -eu
 
 DEFAULT_BRANCH="${TASK_GIT_DEFAULT_BRANCH:-main}"
@@ -61,19 +64,38 @@ if [ "${STAY_ON_BRANCH}" = "true" ] && [ "${CURRENT_BRANCH}" != "${DEFAULT_BRANC
   exit 0
 fi
 
-printf '  🔄 Preparing %s from %s...\n' "${MR_BRANCH}" "${DEFAULT_BRANCH}"
+# The default branch as GitLab holds it: the local copy may lag behind it.
+git fetch --quiet origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+BASE="origin/${DEFAULT_BRANCH}"
 
-# Create the delivery branch from the DEFAULT branch (not the current one),
-# carrying the working-tree changes onto it.
-git checkout -B "${MR_BRANCH}" "${DEFAULT_BRANCH}" >/dev/null 2>&1 ||
-  git checkout -B "${MR_BRANCH}" >/dev/null 2>&1
+# Commits on the delivery branch that the default branch does not have yet are
+# work in progress: the branch is re-used, never reset.
+FROM="${BASE}"
+if [ -n "$(git rev-list -n 1 "${BASE}..refs/heads/${MR_BRANCH}" 2>/dev/null)" ]; then
+  FROM="${MR_BRANCH}"
+fi
+
+# Nothing to propose: no change in the working tree and no such commit. Stop
+# before switching branches, so the developer's branch, and the ignore rules
+# it carries, stay as they are.
+if [ "${FROM}" = "${BASE}" ] && [ -z "$(git status --porcelain)" ]; then
+  printf '  ✅ No framework changes to propose: %s on GitLab already has them. Nothing pushed, no merge request opened.\n' "${DEFAULT_BRANCH}"
+  exit 0
+fi
+
+# Carry the working-tree changes onto the delivery branch: the one that already
+# carries work, or a new one from the default branch (not from the current one).
+if [ "${FROM}" = "${MR_BRANCH}" ]; then
+  printf '  🔄 Preparing %s, keeping the commits already on it...\n' "${MR_BRANCH}"
+  git checkout -q "${MR_BRANCH}"
+else
+  printf '  🔄 Preparing %s from %s...\n' "${MR_BRANCH}" "${DEFAULT_BRANCH}"
+  git checkout -B "${MR_BRANCH}" "${BASE}" >/dev/null 2>&1 ||
+    git checkout -B "${MR_BRANCH}" >/dev/null 2>&1
+fi
 
 git add -A
-if git diff --cached --quiet; then
-  printf '  ✅ No framework changes to propose (already on %s).\n' "${DEFAULT_BRANCH}"
-else
-  git commit --no-verify -m "${MR_TITLE}" >/dev/null
-fi
+git diff --cached --quiet || git commit --no-verify -m "${MR_TITLE}" >/dev/null
 
 git push -u origin "${MR_BRANCH}"
 
