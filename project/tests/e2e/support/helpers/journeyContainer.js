@@ -155,6 +155,10 @@ function authenticateGlab (name, token) {
   const result = execInContainerAsUser(name, 'bootstrap', [
     'export PATH="$HOME/.local/bin:$PATH"',
     `bash ${TEMPLATE_DIR}/.config/glab/install.sh`,
+    // glab asks gitlab.com for its latest release once a day, from its first
+    // command on. When gitlab.com answers 429, glab sleeps out Retry-After
+    // (20 minutes seen) and the story hangs; the test GitLab is all it needs.
+    'glab config set check_update false --global',
     `glab auth login --hostname gitlab --token ${shellEscape(token)} --api-protocol http --api-host gitlab:80 --git-protocol http`
   ].join('\n'), { timeout: SETUP_TIMEOUT })
   if (result.exitCode !== 0) {
