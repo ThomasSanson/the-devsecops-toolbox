@@ -114,7 +114,7 @@ task docker-ce:build:all:dockerfile  # Build all Dockerfiles
 ```bash
 task test                      # Run all tests
 task test:tdd                  # TDD workflow (build + test)
-task project:test:copier       # Copier scaffolding tests
+task project:test:e2e          # E2E suite: Copier renders and the developer journey
 task codeceptjs:npx            # Run CodeceptJS via npx
 task codeceptjs:docker         # Run CodeceptJS via Docker
 task devsecops:test:bootstrap:infrastructure  # Bootstrap test infra
@@ -252,7 +252,8 @@ task project:test:e2e -- --grep "@render-matrix"
 - `.config/gitlab/ci/workflow.yml`
 - `.config/gitlab/ci/devsecops/*.yml` (9 phase files)
 
-**Base Image**: `registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:18.0.0`
+**Base Image**: `registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox:<version>`, where `<version>` is the release in `VERSION`.
+`task release` moves the image line of `.gitlab-ci.yml`, the one in `.config/publication/gitlab-ci.yml` and `VERSION` together.
 
 ### CI Variables Required
 
@@ -274,8 +275,8 @@ task project:test:e2e -- --grep "@render-matrix"
 
 ### Paths
 - **Config files**: `.config/{tool}/`
-- **Test features**: `project/plugin/tests/features/`
-- **Test steps**: `project/plugin/tests/e2e/codeceptjs/step_definitions/`
+- **Test features**: `project/tests/e2e/features/`
+- **Test steps**: `project/tests/e2e/support/steps/`
 - **Reports**: `megalinter-reports/`
 - **Cache**: `.cache/`
 
@@ -295,9 +296,9 @@ Files ending in `.jinja` are Copier templates:
 | `codeceptjs` | `.config/codeceptjs/Dockerfile`          | E2E testing     |
 | `kaniko`     | `.config/kaniko/Dockerfile`              | CI image builds |
 
-### DevContainer (docker-compose.yml)
-- **Image**: Ubuntu 24.04
-- **Features**: Docker-in-Docker, host networking, privileged
+### DevContainer (`.config/devcontainer/docker-compose.yml`)
+- **Image**: Ubuntu, at the version `.config/devcontainer/ubuntu/Dockerfile` pins
+- **Features**: the host's Docker socket, host networking, privileged
 - **Healthcheck**: `task --version`
 
 ---
