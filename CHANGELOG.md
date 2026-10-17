@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.1 (2026-10-17)
+
+### Fix
+
+- **release**: keep the push token out of the remote URL
+
 ## 24.5.0 (2026-10-17)
 
 ### Feat
