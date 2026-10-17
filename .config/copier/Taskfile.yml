@@ -64,9 +64,9 @@ tasks:
         that release ships — the "reload" half of `task devsecops:reload`.
 
         Files listed under `_skip_if_exists` in the template stay as they are,
-        and so do the four files the toolbox writes a few lines of and the
-        project owns the rest of: `.env.dist`, `.env.dev`,
-        `.config/megalinter/config.yml` and `.config/trivy/trivyignore.yml`.
+        and so do the files the project owns part of: `.env.dist`, `.env.dev`,
+        `.config/megalinter/config.yml`, `.config/trivy/trivyignore.yml` and
+        `.config/commitizen/cz.yaml`, whose version every release moves.
         `update` still merges the toolbox's own lines into them.
 
       🔧 Variables:
@@ -87,7 +87,7 @@ tasks:
       # --skip, not _skip_if_exists: listed there, these files would also be
       # left out of every update, and the toolbox's own lines in them would
       # never reach the project again.
-      - "{{.TASK_COPIER_COMMAND}} recopy --trust --overwrite --defaults --skip-answered --skip-tasks --vcs-ref :current: --skip .env.dist --skip .env.dev --skip .config/megalinter/config.yml --skip .config/trivy/trivyignore.yml {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
+      - "{{.TASK_COPIER_COMMAND}} recopy --trust --overwrite --defaults --skip-answered --skip-tasks --vcs-ref :current: --skip .env.dist --skip .env.dev --skip .config/megalinter/config.yml --skip .config/trivy/trivyignore.yml --skip .config/commitizen/cz.yaml {{.TASK_COPIER_CLI_OPTS}} --answers-file {{.TASK_COPIER_ANSWER_FILE}}"
       - cmd: echo "🎉 Copier recopy completed successfully."
         silent: true
 
