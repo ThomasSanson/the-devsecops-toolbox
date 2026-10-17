@@ -23,8 +23,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**5. first-run-help**](01-install/first-run-help.svg): Every check stops and names the fix, and init finishes cleanly once GitLab is turned off.
   Chapters: The check names each missing tool · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
   Replay: `task project:test:e2e -- --grep "@first-run-help"`
-- [**6. merge-request-safety**](01-install/merge-request-safety.svg): init always reaches the main branch through a review you can see, from any branch, unless you opt out on purpose.
-  Chapters: The main branch already exists, and the developer is on an experiment branch · The review switched off on purpose.
+- [**6. merge-request-safety**](01-install/merge-request-safety.svg): init always reaches the main branch through a review you can see, from any branch, unless you opt out on purpose. Run again, it keeps the review it opened, and once that review is merged it proposes nothing: no branch pushed, no empty merge request.
+  Chapters: The main branch already exists, and the developer is on an experiment branch · Running init again keeps the review, and proposes nothing once it is merged · The review switched off on purpose.
   Replay: `task project:test:e2e -- --grep "@merge-request-safety"`
 
 ## Act 2 — Daily work (`02-daily-work`)

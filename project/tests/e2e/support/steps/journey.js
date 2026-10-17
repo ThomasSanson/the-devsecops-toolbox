@@ -45,6 +45,7 @@ const {
   listPipelineJobs,
   getMergeRequest,
   mergeMergeRequest,
+  updateProjectSettings,
   putRepositoryFile,
   getJobTrace,
   getRepositoryFile,
@@ -1226,6 +1227,161 @@ storyboardStep(Then, 'GitLab lists the main branch and the framework branch, nev
   await assertMainOn('Initial commit')
   const local = inProject(`git log --format=%s main..${EXPERIMENT_BRANCH}`).trim()
   if (local !== EXPERIMENT_COMMIT) throw new Error(`Expected the experiment still on the developer's machine, ${EXPERIMENT_BRANCH} holds:\n${local}`)
+})
+
+// Chapter 2, same project and same copy: init's GitLab step run again while
+// merge request !1 waits, then the merge request merged and the step run again,
+// from the framework branch with the main branch left behind, then from an
+// up-to-date main branch. Each run is twinned with the copy itself (branch,
+// commit, nothing staged) and REST (the branches, the merge requests).
+const CONFIGURE_LINE = 'task devsecops:init:configure'
+const NOTHING_TO_PROPOSE = 'No framework changes to propose: main on GitLab already has them. Nothing pushed, no merge request opened.'
+const IGNORED_PACKAGES = '!! .config/commitlint/node_modules/'
+const BRANCH_DONE = "Done! Protected branch 'main' is configured."
+// The merge starts the main branch's pipeline, whose icon moves on every run.
+const PIPELINE_ICON = ['[data-testid="ci-icon"]', '.ci-status-link']
+
+// No runner serves these projects, and the pipeline is not the subject: the
+// "Pipelines must succeed" rule is lifted for the merge, and init's own merge
+// settings put it back on its next run. GitLab deletes the merged branch in a
+// background job.
+async function mergeFrameworkRequest () {
+  const project = global.journeyProjectName
+  const rootHeaders = await getRootHeaders()
+  await updateProjectSettings(project, { only_allow_merge_if_pipeline_succeeds: false }, rootHeaders)
+  let state = ''
+  for (let i = 0; i < 30 && state !== 'merged'; i++) {
+    const merged = await mergeMergeRequest(project, global.journeyMergeRequestIid, { 'PRIVATE-TOKEN': global.journeyLambdaToken })
+    state = (merged.data && merged.data.state) || ''
+    if (state !== 'merged') await I.wait(2)
+  }
+  if (state !== 'merged') throw new Error(`Expected merge request !${global.journeyMergeRequestIid} to merge, got state=${state}`)
+  for (let i = 0; i < 30; i++) {
+    const names = ((await listProjectBranches(project, rootHeaders)).data || []).map(b => b.name)
+    if (!names.includes(INIT_BRANCH)) return
+    await I.wait(2)
+  }
+  throw new Error(`Expected GitLab to delete ${INIT_BRANCH} once merged`)
+}
+
+// The only merge request GitLab ever held is chapter 1's, merged.
+async function assertOnlyTheMergedRequest () {
+  const all = (await listProjectMergeRequests(global.journeyProjectName, await getRootHeaders(), '?state=all')).data || []
+  const seen = all.map(m => `!${m.iid} ${m.source_branch} ${m.state}`)
+  if (JSON.stringify(seen) !== JSON.stringify([`!${global.journeyMergeRequestIid} ${INIT_BRANCH} merged`])) {
+    throw new Error(`Expected only the merged merge request !${global.journeyMergeRequestIid}, GitLab holds ${JSON.stringify(seen)}`)
+  }
+}
+
+// init's GitLab step, typed on camera; the card is the end of the run, from the
+// protected-branch line init prints right before its delivery step. The twins
+// come first, so a wrong run never leaves a picture behind: init's verdict, and
+// the copy as it was (same branch, same commit, nothing to commit).
+async function configureAgainCard (frameName, verdict) {
+  const branch = inProject('git branch --show-current').trim()
+  const head = inProject('git rev-parse HEAD').trim()
+  await clearTerminal(I)
+  await typeCommandAndWait(I, CONFIGURE_LINE)
+  const screen = await terminalScreenText(I)
+  if (!screen.includes(verdict)) {
+    // From the protected-branch line on: above it, the merge settings print
+    // GitLab's whole project record.
+    throw new Error(`Expected init to say "${verdict}":\n${screen.slice(screen.indexOf(BRANCH_DONE))}`)
+  }
+  const after = { branch: inProject('git branch --show-current').trim(), head: inProject('git rev-parse HEAD').trim() }
+  if (after.branch !== branch || after.head !== head) {
+    throw new Error(`Expected the copy left on ${branch} at ${head}, it is on ${after.branch} at ${after.head}`)
+  }
+  const status = inProject('git status --porcelain')
+  if (status.trim()) throw new Error(`Expected nothing to commit after init, git status says:\n${status}`)
+  await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, {
+    fromMarker: BRANCH_DONE,
+    mask: [[new RegExp(global.journeyProjectName, 'g'), 'project']]
+  }))
+}
+
+// After the merge: no branch but main on GitLab, and no merge request but the
+// merged one.
+async function assertNothingNewOnGitLab () {
+  await assertBranchesExactly(['main'])
+  await assertNoOpenMr()
+  await assertOnlyTheMergedRequest()
+}
+
+// Chapter 1 left the copy on the framework branch, its commit the one merge
+// request !1 carries. The twins: GitLab's framework branch on that same
+// commit, and !1 the only merge request, still carrying that one commit.
+storyboardStep(When, "the developer runs init's GitLab step again while the merge request waits, and it opens no second one", async () => {
+  await openTerminal(I, global.journeyContainer, STORY_TERMINAL)
+  await configureAgainCard('terminal-configure-review-waits', `Merge request for ${INIT_BRANCH} already open.`)
+  const remote = ((await listProjectBranches(global.journeyProjectName, await getRootHeaders())).data || []).find(b => b.name === INIT_BRANCH)
+  if (!remote || remote.commit.id !== inProject('git rev-parse HEAD').trim()) {
+    throw new Error(`Expected ${INIT_BRANCH} on GitLab still on the copy's commit, found ${JSON.stringify(remote && remote.commit.id)}`)
+  }
+  const all = (await listProjectMergeRequests(global.journeyProjectName, await getRootHeaders(), '?state=all')).data || []
+  if (all.length !== 1 || all[0].iid !== global.journeyMergeRequestIid || all[0].state !== 'opened') {
+    throw new Error(`Expected merge request !${global.journeyMergeRequestIid} alone, still open, found ${JSON.stringify(all.map(m => `!${m.iid} ${m.state}`))}`)
+  }
+  const titles = await mrCommitTitles()
+  if (JSON.stringify(titles) !== JSON.stringify([INIT_COMMIT])) {
+    throw new Error(`Expected merge request !${global.journeyMergeRequestIid} to carry only "${INIT_COMMIT}", it carries ${JSON.stringify(titles)}`)
+  }
+})
+
+storyboardStep(When, 'the merge request is merged, and the main branch on GitLab holds the framework', async () => {
+  await mergeFrameworkRequest()
+  await gitlabFrame(I, 'branches-merged', gitlabUrl.branches(global.journeyProjectName), { waitText: INIT_COMMIT, hide: PIPELINE_ICON })
+  await assertBranchesExactly(['main'])
+  await assertMainOn(INIT_COMMIT)
+})
+
+// What chapter 1 left in the copy: the framework branch checked out, the main
+// branch on "Initial commit", and the packages init installed, ignored.
+storyboardStep(When, "the developer's copy is still on the framework branch, with an old main branch and ignored packages", async () => {
+  await openTerminal(I, global.journeyContainer, STORY_TERMINAL)
+  const screen = await terminalCard(I, 'terminal-copy-left-behind', 'git branch -v && git status --short --ignored', {
+    mask: [[/\b[0-9a-f]{7,40}\b/g, '<sha>']]
+  })
+  if (!screen.includes(`* ${INIT_BRANCH}`) || !screen.includes(IGNORED_PACKAGES)) {
+    throw new Error(`Expected the copy on ${INIT_BRANCH}, with the commitlint packages ignored:\n${screen}`)
+  }
+  if (inProject('git log -1 --format=%s main').trim() !== 'Initial commit') {
+    throw new Error('Expected the main branch of the copy still on "Initial commit"')
+  }
+  const status = inProject('git status --porcelain')
+  if (status.trim()) throw new Error(`Expected nothing to commit in the copy, git status says:\n${status}`)
+})
+
+storyboardStep(When, "the developer runs init's GitLab step again, and it has nothing to propose", async () => {
+  await configureAgainCard('terminal-configure-left-behind', NOTHING_TO_PROPOSE)
+  await assertNothingNewOnGitLab()
+  if (inProject('git log -1 --format=%s main').trim() !== 'Initial commit') {
+    throw new Error('Expected init to leave the main branch of the copy alone')
+  }
+})
+
+storyboardStep(When, 'the developer brings the main branch up to date', async () => {
+  const screen = await terminalCard(I, 'terminal-main-up-to-date', 'git switch main && git pull -q && git branch -v', {
+    mask: [[/\b[0-9a-f]{7,40}\b/g, '<sha>']]
+  })
+  if (!screen.includes("Your branch is behind 'origin/main' by 1 commit")) {
+    throw new Error(`Expected git to find the main branch behind GitLab's, read by init's last run:\n${screen}`)
+  }
+  if (inProject('git branch --show-current').trim() !== 'main' || inProject('git rev-parse main').trim() !== inProject(`git rev-parse ${INIT_BRANCH}`).trim()) {
+    throw new Error(`Expected the copy on main, on the same commit as ${INIT_BRANCH}`)
+  }
+})
+
+storyboardStep(When, "the developer runs init's GitLab step once more, and it still has nothing to propose", async () => {
+  await configureAgainCard('terminal-configure-up-to-date', NOTHING_TO_PROPOSE)
+  await assertNothingNewOnGitLab()
+})
+
+storyboardStep(Then, 'GitLab still lists the main branch alone, with no new branch and no new merge request', async () => {
+  await gitlabFrame(I, 'branches-still-alone', gitlabUrl.branches(global.journeyProjectName), { waitText: INIT_COMMIT, hide: PIPELINE_ICON })
+  await assertBranchesExactly(['main'])
+  await assertMainOn(INIT_COMMIT)
+  await assertOnlyTheMergedRequest()
 })
 
 // Chapter 1 is released first: its container, project and token never leak.
