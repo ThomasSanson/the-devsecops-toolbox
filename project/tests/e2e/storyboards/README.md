@@ -48,6 +48,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@osv-scope"`
 - [**megalinter-config**](02-daily-work/megalinter-config.svg): A project names its own MegaLinter settings file in `TASK_MEGALINTER_CONFIG`, and `task megalinter` and `task megalinter:pnpm:dlx` both load that file and run only the check it keeps.
   Replay: `task project:test:e2e -- --grep "@megalinter-config"`
+- [**grype-excludes**](02-daily-work/grype-excludes.svg): Grype, run with the settings file MegaLinter hands it, reports the vulnerable lockfile of an API under project/api and skips the same lockfile in the API's .cache, vendor and venv folders. Every folder of its exclude list now matches at any depth.
+  Replay: `task project:test:e2e -- --grep "@grype-excludes"`
 - [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
   Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`

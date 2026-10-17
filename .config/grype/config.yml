@@ -1,8 +1,8 @@
 ---
 exclude:
-  - "./.cache"
-  - "./.git"
-  - "./megalinter-reports"
-  - "./vendor"
-  - "./venv"
+  - "**/.cache/**"
+  - "**/.git/**"
+  - "**/megalinter-reports/**"
+  - "**/vendor/**"
+  - "**/venv/**"
   - "**/node_modules/**"
