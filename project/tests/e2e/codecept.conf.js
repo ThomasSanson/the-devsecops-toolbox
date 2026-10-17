@@ -102,7 +102,8 @@ exports.config = {
       './support/steps/junit-control-characters.js',
       './support/steps/publication-update.js',
       './support/steps/env-layering.js',
-      './support/steps/lychee-settings.js'
+      './support/steps/lychee-settings.js',
+      './support/steps/go-install-zsh.js'
     ]
   },
   plugins: {

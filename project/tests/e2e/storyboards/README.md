@@ -28,6 +28,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**6. merge-request-safety**](01-install/merge-request-safety.svg): init always reaches the main branch through a review you can see, from any branch, unless you opt out on purpose. Run again, it keeps the review it opened, and once that review is merged it proposes nothing: no branch pushed, no empty merge request.
   Chapters: The main branch already exists, and the developer is on an experiment branch · Running init again keeps the review, and proposes nothing once it is merged · The review switched off on purpose.
   Replay: `task project:test:e2e -- --grep "@merge-request-safety"`
+- [**go-install-zsh**](01-install/go-install-zsh.svg): Without sudo, the Go installer writes GOROOT and GOPATH to the startup file of the developer's login shell, here ~/.zshrc, and a second run does not add them twice.
+  Replay: `task project:test:e2e -- --grep "@go-install-zsh"`
 
 ## Act 2 — Daily work (`02-daily-work`)
 
