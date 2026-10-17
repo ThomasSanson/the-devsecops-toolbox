@@ -444,6 +444,41 @@ storyboardStep(When, 'a worker exits early, the engine alone still says OK, and 
   }
 })
 
+// Each case: the twin first, off camera, then the card, read for the same two
+// verdicts: the engine alone exits 0, the guard exits 1 and says why.
+const verdicts = screen => screen.split('\n').map(row => row.trim()).filter(row => /^exit code \d+$/.test(row))
+
+storyboardStep(When, 'a copy repeats the name of the interrupted scenario, the engine alone says OK, and the guard refuses the duplicate', async () => {
+  workerCompletion.assertDuplicateCase()
+  const screen = await card('worker-completion-duplicate-title', workerCompletion.duplicateLine())
+  assert.deepEqual(verdicts(screen), ['exit code 0', 'exit code 1'], `The engine alone must exit 0 and the guard 1:\n${screen}`)
+  for (const said of ['Then the worker completes example 1', 'Worker exited with code 23', 'OK  | 1 passed', 'Worker completion: FAIL',
+    'Ambiguous duplicate scenario title: Interrupted worker: a worker must finish its scenario @worker-stop']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the card:\n${screen}`)
+  }
+})
+
+storyboardStep(When, 'a hook skips a selected scenario, the engine alone says OK, and the guard refuses the skip', async () => {
+  workerCompletion.assertSkippedCase()
+  const screen = await card('worker-completion-skipped', workerCompletion.skippedLine())
+  assert.deepEqual(verdicts(screen), ['exit code 0', 'exit code 1'], `The engine alone must exit 0 and the guard 1:\n${screen}`)
+  for (const said of ['test.ctx.skip()', 'OK  | 2 passed, 1 skipped', 'Worker completion: FAIL (2/3 selected scenarios)',
+    'skipped: Skipped scenario: a selected scenario must not be skipped @worker-skip']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the card:\n${screen}`)
+  }
+})
+
+storyboardStep(When, 'a worker hangs, and the guard stops the run at its time limit and keeps the report already written', async () => {
+  workerCompletion.assertSuspendedCases()
+  const screen = await card('worker-completion-suspended', workerCompletion.suspendedLine())
+  assert.deepEqual(verdicts(screen), ['exit code 1'], `The guard must exit 1:\n${screen}`)
+  for (const said of ['Then the worker sleeps for 60 seconds', 'Worker completion: FAIL (2/3 selected scenarios)',
+    'missing: Suspended worker: a worker must not hang @worker-hang', 'engine exit: killed after 15 s (TASK_E2E_TIMEOUT)',
+    'testcase name="Completed worker: the selected example 1 completes', 'testcase name="Completed worker: the selected example 2 completes']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the card:\n${screen}`)
+  }
+})
+
 storyboardStep(Then, 'complete selections pass with either a grep filter or its inverse', async () => {
   // Off camera: a successful launch leaves reports the selected runs must not reuse.
   workerCompletion.seedReports()

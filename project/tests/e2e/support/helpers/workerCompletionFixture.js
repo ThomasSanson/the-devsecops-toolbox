@@ -1,8 +1,9 @@
 /**
  * @worker-completion fixture: a throwaway copy of the framework whose only
- * features are two probes, run by the real engine and the repository's JUnit
+ * features are small probes, run by the real engine and the repository's JUnit
  * reporter. One probe step ends its own worker process when WORKER_PROBE_STOP
- * is 1, the way a crash would.
+ * is 1, the way a crash would. The others repeat a scenario's name, skip a
+ * scenario, sleep past the run's time limit or kill the whole engine.
  *
  * The cards type their lines in a real terminal (tdd-cycle.js); the functions
  * below are their twins: the same runs, off camera, checked on disk.
@@ -10,7 +11,7 @@
 const assert = require('assert/strict')
 const fs = require('fs')
 const path = require('path')
-const { spawnSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const { copyFrameworkWithEngine, engineCommand } = require('./frameworkCopy')
 
 const ROOT = '/tmp/e2e-worker-completion'
@@ -50,6 +51,50 @@ Then('the excluded scenario must never run', () => {
 // one is outside the selection.
 const SETUP_LINE = `export TASK_CODECEPTJS_FEATURES=${SELECTED} WORKER_PROBE_STOP=1 && cat ${E2E}/features/worker-*.feature ${E2E}/support/steps/worker-probe.js`
 
+// Ways a run can look complete without being complete. Each card shows its own
+// probe, so none of these names matches the setup card's worker-* pattern.
+const PROBES = {
+  // The interrupted scenario's exact name, with a step that passes.
+  'features/duplicate-title.feature': `Feature: Interrupted worker
+  @worker-stop
+  Scenario: a worker must finish its scenario
+    Then the worker completes example 1
+`,
+  'features/skipped-scenario.feature': `Feature: Skipped scenario
+  @worker-skip
+  Scenario: a selected scenario must not be skipped
+    Then the worker completes example 1
+`,
+  'support/steps/skip-hook.js': `/* global Before */
+Before(test => {
+  if (test.tags.includes('@worker-skip')) test.ctx.skip()
+})
+`,
+  'features/suspended-worker.feature': `Feature: Suspended worker
+  @worker-hang
+  Scenario: a worker must not hang
+    Then the worker sleeps for 60 seconds
+`,
+  'support/steps/sleep-step.js': `/* global Then */
+Then('the worker sleeps for {int} seconds', seconds => new Promise(resolve => setTimeout(resolve, seconds * 1000)))
+`,
+  // Off camera only: a worker that takes the whole engine down with it.
+  'features/lost-supervisor.feature': `Feature: Lost supervisor
+  @worker-kill
+  Scenario: the engine must outlive its workers
+    Then the worker kills the whole engine
+`,
+  'support/steps/kill-engine.js': `/* global Then */
+Then('the worker kills the whole engine', () => process.kill(process.pid, 'SIGKILL'))
+`
+}
+const DUPLICATE = './features/worker-stopped.feature,./features/duplicate-title.feature'
+const SKIPPED = './features/skipped-scenario.feature,./features/worker-completed.feature'
+const SUSPENDED = './features/suspended-worker.feature,./features/worker-completed.feature'
+// Long enough for the worker that runs the two examples to write its report,
+// far shorter than the 60 seconds the other one sleeps.
+const LIMIT = '15'
+
 function environment (stop, features = SELECTED) {
   const env = { ...process.env, WORKER_PROBE_STOP: stop ? '1' : '0', TASK_CODECEPTJS_FEATURES: features, FORCE_COLOR: '0' }
   delete env.TASK_CODECEPTJS_GREP
@@ -74,12 +119,14 @@ function prepareWorkerFixture () {
     fs.writeFileSync(path.join(ROOT, E2E, 'features/worker-' + name + '.feature'), body)
   }
   fs.writeFileSync(path.join(ROOT, E2E, 'support/steps/worker-probe.js'), STEPS)
+  for (const [name, body] of Object.entries(PROBES)) fs.writeFileSync(path.join(ROOT, E2E, name), body)
+  const steps = ['worker-probe.js', ...Object.keys(PROBES).filter(name => name.endsWith('.js')).map(name => path.basename(name))]
   // The real engine and repository JUnit plugin need no browser to reproduce a
   // worker exiting. Only these probe steps load, so no other journey's cleanup
   // hook can run inside this disposable nested launch.
   fs.appendFileSync(path.join(ROOT, CONFIG),
     '\nexports.config.helpers = {}\nexports.config.include = {}\n' +
-    "exports.config.gherkin.steps = ['./support/steps/worker-probe.js']\n" +
+    `exports.config.gherkin.steps = ${JSON.stringify(steps.map(name => './support/steps/' + name))}\n` +
     "exports.config.plugins = { junit: { require: './support/junit-reporter.js', enabled: true } }\n")
 }
 
@@ -163,6 +210,88 @@ function assertSelectedReports (screen) {
     'Both Outline examples, and only the selected examples, must complete')
 }
 
+// A case card: its probe, then one selection run by the engine alone and by the
+// guard, each verdict after its exit code. The subshell leaves the session's
+// export as the setup card left it, for the cards after this one.
+const show = (...names) => `cat ${names.map(name => `${E2E}/${name}`).join(' ')}; `
+const engineAlone = log => `${NATIVE} > ${log}-engine.log; echo "exit code $?"; tail -n 1 ${log}-engine.log; `
+const guardedRun = (log, lines) => `${guarded()} > ${log}.log; echo "exit code $?"; tail -n ${lines} ${log}.log`
+
+function duplicateLine () {
+  return show('features/duplicate-title.feature') +
+    `(export TASK_CODECEPTJS_FEATURES=${DUPLICATE}; ${engineAlone('duplicate')}${guardedRun('duplicate', 2)})`
+}
+
+function skippedLine () {
+  return show('features/skipped-scenario.feature', 'support/steps/skip-hook.js') +
+    `(export TASK_CODECEPTJS_FEATURES=${SKIPPED}; ${engineAlone('skipped')}${guardedRun('skipped', 2)})`
+}
+
+// No engine-alone run here: it would only wait for the sleeping step. The last
+// command lists the scenarios the report left on disk holds.
+function suspendedLine () {
+  return show('features/suspended-worker.feature', 'support/steps/sleep-step.js') +
+    `(export TASK_CODECEPTJS_FEATURES=${SUSPENDED} TASK_E2E_TIMEOUT=${LIMIT}; ${guardedRun('suspended', 3)}); ` +
+    `grep -ho 'testcase name="[^"]*"' ${JUNIT}/*.xml`
+}
+
+// The twin of a case card: the same selection, off camera, by the engine alone
+// (unless it would only sleep) and by the guard, timed.
+function runCase (features, { engine = true, ...extra } = {}) {
+  const env = { ...environment(true, features), ...extra }
+  const native = engine ? run(NATIVE, env) : null
+  const command = engineCommand(ROOT, env, { workers: 2 })
+  const started = Date.now()
+  const guard = run(command, env)
+  return { native, guard, seconds: (Date.now() - started) / 1000, reports: reportSnapshot() }
+}
+
+const testcases = reports => reports.flatMap(report =>
+  [...report.xml.matchAll(/<testcase name="([^"]*)"/g)].map(match => match[1].replace(/\s+/g, ' ')))
+
+function assertDuplicateCase () {
+  const { native, guard } = runCase(DUPLICATE)
+  assert.equal(native.code, 0, 'The engine alone is expected to exit 0 on the copy, the hole the guard closes:\n' + native.output)
+  assert.match(native.output, /Worker exited with code 23/, native.output)
+  assert.match(native.output, /OK\s+\|\s+1 passed\b/, native.output)
+  assert.equal(guard.code, 1, 'The guard took the copy for the interrupted scenario:\n' + guard.output)
+  assert.match(guard.output, /Ambiguous duplicate scenario title: Interrupted worker: a worker must finish its scenario @worker-stop/, guard.output)
+}
+
+function assertSkippedCase () {
+  const { native, guard } = runCase(SKIPPED)
+  assert.equal(native.code, 0, 'The engine alone is expected to exit 0 on a skip, the hole the guard closes:\n' + native.output)
+  assert.match(native.output, /OK\s+\|\s+2 passed, 1 skipped/, native.output)
+  assert.equal(guard.code, 1, 'The guard accepted a skipped scenario:\n' + guard.output)
+  assert.match(guard.output, /Worker completion: FAIL \(2\/3 selected scenarios\)/, guard.output)
+  assert.match(guard.output, /skipped: Skipped scenario: a selected scenario must not be skipped @worker-skip/, guard.output)
+}
+
+function assertSuspendedCases () {
+  const hung = runCase(SUSPENDED, { engine: false, TASK_E2E_TIMEOUT: LIMIT })
+  assert.equal(hung.guard.code, 1, 'The guard must stop a hanging run at TASK_E2E_TIMEOUT:\n' + hung.guard.output)
+  assert.ok(hung.seconds < 45, `The guard waited ${hung.seconds} s, for the sleeping step instead of its ${LIMIT} s limit`)
+  assert.match(hung.guard.output, /missing: Suspended worker: a worker must not hang @worker-hang/, hung.guard.output)
+  assert.match(hung.guard.output, new RegExp(`engine exit: killed after ${LIMIT} s \\(TASK_E2E_TIMEOUT\\)`), hung.guard.output)
+  assert.deepEqual(testcases(hung.reports), [1, 2].map(n => `Completed worker: the selected example ${n} completes @worker-ok`),
+    'The report the other worker wrote must stay on disk for diagnosis')
+
+  // A worker that takes the whole engine down, supervisor included.
+  const lost = runCase('./features/lost-supervisor.feature', { engine: false })
+  assert.equal(lost.guard.code, 1, 'The guard accepted a run whose engine was killed:\n' + lost.guard.output)
+  assert.match(lost.guard.output, /missing: Lost supervisor: the engine must outlive its workers @worker-kill/, lost.guard.output)
+  assert.match(lost.guard.output, /engine exit: signal SIGKILL/, lost.guard.output)
+
+  // A limit the guard cannot read is refused, never ignored.
+  const unread = runCase(SUSPENDED, { engine: false, TASK_E2E_TIMEOUT: '30m' })
+  assert.equal(unread.guard.code, 1, unread.guard.output)
+  assert.match(unread.guard.output, /TASK_E2E_TIMEOUT must be a whole number of seconds: 30m/, unread.guard.output)
+
+  // The task hands the limit over to the test container.
+  const preview = execSync('task --dry project:test:e2e 2>&1', { cwd: ROOT, env: { ...environment(false), TASK_E2E_TIMEOUT: LIMIT }, encoding: 'utf8' })
+  assert.match(preview, new RegExp(`-e TASK_E2E_TIMEOUT='${LIMIT}' `), 'task project:test:e2e must pass TASK_E2E_TIMEOUT on:\n' + preview)
+}
+
 function removeWorkerFixture () {
   fs.rmSync(ROOT, { recursive: true, force: true })
 }
@@ -177,5 +306,11 @@ module.exports = {
   interruptedLine,
   selectedLine,
   assertSelectedReports,
+  duplicateLine,
+  assertDuplicateCase,
+  skippedLine,
+  assertSkippedCase,
+  suspendedLine,
+  assertSuspendedCases,
   removeWorkerFixture
 }

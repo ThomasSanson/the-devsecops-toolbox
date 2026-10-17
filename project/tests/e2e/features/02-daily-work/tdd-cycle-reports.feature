@@ -23,7 +23,7 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
   @worker-completion
   Scenario: Every selected scenario must finish before a parallel run can succeed
     # Chapter: A worker can disappear before its result exists
-    # Note: A throwaway copy of the toolbox gets three test files and one step file. One scenario's only step ends its own worker with the code 23 when WORKER_PROBE_STOP is 1, the way a crash would. Two examples always pass. The third file, Outside this shard, must never run.
+    # Note: The card shows three test files and one step file of a throwaway copy of the toolbox. One scenario's only step ends its own worker with the code 23 when WORKER_PROBE_STOP is 1, the way a crash would. Two examples always pass. The third file, Outside this shard, must never run.
     # Note: The export selects worker-stopped.feature and worker-completed.feature, the way a CI shard does, and turns the crash on for the rest of the session.
     # Copy: export TASK_CODECEPTJS_FEATURES=./features/worker-stopped.feature,./features/worker-completed.feature WORKER_PROBE_STOP=1 && cat project/tests/e2e/features/worker-*.feature project/tests/e2e/support/steps/worker-probe.js
     Given parallel test files contain an interruptible worker and two completing examples
@@ -32,6 +32,22 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: Off camera, the guard refuses the same way when the interrupted scenario runs alone, and when an earlier successful run left its reports behind: it empties the report folder first.
     # Copy: codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > engine.log; echo "exit code $?"; tail -n 1 engine.log; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > guarded.log; echo "exit code $?"; tail -n 3 guarded.log
     When a worker exits early, the engine alone still says OK, and the toolbox guard fails the same run
+    # Chapter: A run can look complete without being complete
+    # Note: A new file, duplicate-title.feature, repeats the interrupted scenario word for word, but its only step passes. The line runs the interrupted scenario and this copy, with the crash still on.
+    # Note: The engine alone loses its worker again and says "OK | 1 passed", exit code 0. That one pass belongs to the copy, not to the scenario that crashed.
+    # Note: The guard refuses before anything runs: "Ambiguous duplicate scenario title". Two selected scenarios share one name, so no result could tell which of them finished.
+    # Copy: cat project/tests/e2e/features/duplicate-title.feature; (export TASK_CODECEPTJS_FEATURES=./features/worker-stopped.feature,./features/duplicate-title.feature; codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > duplicate-engine.log; echo "exit code $?"; tail -n 1 duplicate-engine.log; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > duplicate.log; echo "exit code $?"; tail -n 2 duplicate.log)
+    And a copy repeats the name of the interrupted scenario, the engine alone says OK, and the guard refuses the duplicate
+    # Note: skipped-scenario.feature holds one more scenario, and skip-hook.js a Before hook that skips every scenario tagged @worker-skip, the way a test skips itself when something it needs is missing. The line runs it beside the two examples.
+    # Note: The engine alone says "OK | 2 passed, 1 skipped" and exits with the code 0. A skipped scenario checked nothing.
+    # Note: The guard counts 2 of the 3 selected scenarios, names the skipped one and exits with the code 1.
+    # Copy: cat project/tests/e2e/features/skipped-scenario.feature project/tests/e2e/support/steps/skip-hook.js; (export TASK_CODECEPTJS_FEATURES=./features/skipped-scenario.feature,./features/worker-completed.feature; codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > skipped-engine.log; echo "exit code $?"; tail -n 1 skipped-engine.log; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > skipped.log; echo "exit code $?"; tail -n 2 skipped.log)
+    And a hook skips a selected scenario, the engine alone says OK, and the guard refuses the skip
+    # Note: The step of suspended-worker.feature sleeps for 60 seconds: its worker stops answering. The line runs it beside the two examples with TASK_E2E_TIMEOUT=15, a limit of 15 seconds for the whole run. Without a value, the limit is 1800 seconds.
+    # Note: At 15 seconds the guard stops the engine: "engine exit: killed after 15 s (TASK_E2E_TIMEOUT)". It counts 2 of the 3 selected scenarios, names the one that hung and exits with the code 1.
+    # Note: The report the other worker wrote stays on disk for whoever investigates: the last two lines are its two examples. Off camera, the guard fails the same way when a step kills the whole engine.
+    # Copy: cat project/tests/e2e/features/suspended-worker.feature project/tests/e2e/support/steps/sleep-step.js; (export TASK_CODECEPTJS_FEATURES=./features/suspended-worker.feature,./features/worker-completed.feature TASK_E2E_TIMEOUT=15; node project/tests/e2e/support/helpers/workerCompletion.js /usr/local/bin/codeceptjs run-workers 2 --features --by pool --config project/tests/e2e/codecept.conf.js > suspended.log; echo "exit code $?"; tail -n 3 suspended.log); grep -ho 'testcase name="[^"]*"' project/tests/e2e/_output/junit/*.xml
+    And a worker hangs, and the guard stops the run at its time limit and keeps the report already written
     # Chapter: A complete selection still passes
     # Note: The guard follows the real selection, not every scenario of the repository. A grep on the two examples passes, 2 of 2, and so does the inverse grep that leaves the interrupted scenario out.
     # Note: The interrupted scenario is never selected, so no worker stops, and the third file stays out as the export said.
