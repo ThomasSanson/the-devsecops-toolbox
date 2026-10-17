@@ -16,7 +16,7 @@
  * a Vue re-render after the mask cannot bring a date or a counter back.
  */
 const { projectPath } = require('./gitlabApi')
-const { addStoryboardFrame, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
+const { addStoryboardFrame, baseDir, capturePageFrame } = require('../../../../../.config/codeceptjs/storyboard')
 
 const CARD_WIDTH = 1440
 const CARD_HEIGHT = 900
@@ -271,7 +271,8 @@ async function gitlabFrame (I, frameName, url, {
     }
     await maskGitLabPage(I, { projectNames, keepContext, textMasks, hide })
     await scrollPage(I, scrollTo || (url.includes('#') ? 'keep' : null))
-    await addStoryboardFrame(I, await capturePageFrame(I, frameName))
+    // In the story's own folder, as captureTerminalFrame does.
+    await addStoryboardFrame(I, await capturePageFrame(I, `${baseDir()}/${frameName}`))
   } finally {
     if (before) await I.resizeWindow(before.width, before.height)
   }

@@ -18,7 +18,7 @@ const fs = require('fs')
 const path = require('path')
 // Frame paths and the frame assert live in the shipped storyboard module
 // (.config/codeceptjs/storyboard.js) so generated projects get them too.
-const { addStoryboardFrame, frameOutputPath } = require('../../../../../.config/codeceptjs/storyboard')
+const { addStoryboardFrame, baseDir, frameOutputPath } = require('../../../../../.config/codeceptjs/storyboard')
 const { ttydPort } = require('../helpers/docker')
 
 const TERMINAL_SETTLE_TIMEOUT_SECONDS = 20
@@ -553,10 +553,14 @@ async function captureTerminalFrame (I, frameName, opts = {}) {
   if (!info || !info.kept) {
     throw new Error(`Terminal frame "${frameName}" produced no rows (fromMarker=${JSON.stringify(opts.fromMarker || null)})`)
   }
-  fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
-  await I.captureScreenshot(`storyboard-frames/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
+  // The scratch PNG sits in the story's own folder: two stories running side
+  // by side may name a frame alike ("update-run"), and the second capture
+  // would land in the first story's assert. The baseline name stays frameName.
+  const scratch = `${baseDir()}/${frameName}`
+  fs.mkdirSync(path.dirname(frameOutputPath(scratch)), { recursive: true })
+  await I.captureScreenshot(`storyboard-frames/${scratch}`, 'actual', '#' + COMPACT_CAPTURE_ID)
   await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
-  return frameOutputPath(frameName)
+  return frameOutputPath(scratch)
 }
 
 // Every rendered row, as text: the programmatic twin of a terminal card.

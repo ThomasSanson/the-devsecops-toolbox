@@ -95,6 +95,7 @@ const { TASKFILE_LINE_RELEASED, OLD_WORKFLOWS, COPIER_RUN_MASKS } = require('../
 const {
   storyboardStep,
   addStoryboardFrame,
+  baseDir,
   frameOutputPath
 } = require('../../../../../.config/codeceptjs/storyboard')
 
@@ -1696,11 +1697,13 @@ async function scrollbackFrame (frameName, { from, before = 0, to, mask = [], no
     from, placed.end - placed.start + before + 1, before, mask
   )
   if (!info || !info.kept) throw new Error(`Scrollback card "${frameName}" produced no rows`)
-  fs.mkdirSync(path.dirname(frameOutputPath(frameName)), { recursive: true })
-  await I.captureScreenshot(`storyboard-frames/${frameName}`, 'actual', '#' + COMPACT_CAPTURE_ID)
+  // In the story's own folder, as captureTerminalFrame does.
+  const scratch = `${baseDir()}/${frameName}`
+  fs.mkdirSync(path.dirname(frameOutputPath(scratch)), { recursive: true })
+  await I.captureScreenshot(`storyboard-frames/${scratch}`, 'actual', '#' + COMPACT_CAPTURE_ID)
   await removeCompactTerminalCapture(I, COMPACT_CAPTURE_ID)
   await scrollTerminalToBottom(I)
-  await addStoryboardFrame(I, frameOutputPath(frameName))
+  await addStoryboardFrame(I, frameOutputPath(scratch))
 }
 
 // Off camera: the per-run GitLab project (empty, for the last chapter), the
