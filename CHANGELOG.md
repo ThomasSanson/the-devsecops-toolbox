@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.9 (2026-10-17)
+
+### Fix
+
+- **test**: let a generated project prove its RED
+
 ## 24.4.8 (2026-10-16)
 
 ### Fix
