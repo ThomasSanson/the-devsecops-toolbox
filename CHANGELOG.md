@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.13 (2026-10-17)
+
+### Fix
+
+- **copier**: keep the project's own settings on reload
+
 ## 24.4.12 (2026-10-17)
 
 ### Fix
