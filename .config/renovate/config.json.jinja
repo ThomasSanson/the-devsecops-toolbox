@@ -28,6 +28,12 @@
   node_modules/vendor/tests paths of config:recommended, and a project
   renovate.json that extends config:recommended would wipe it. Package rules
   add up. Proven by the same feature (@renovate-flow, issue #234).
+
+  The minor and patch updates of project/** share one merge request; a major,
+  the toolbox update (not under project/) and a vulnerability fix (Renovate
+  forces its groupName to null) each keep their own. Measured on a generated
+  project: ten merge requests cost ten full pipelines per merge on main.
+  Proven by the same feature (@renovate-flow).
 -#}
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
@@ -77,6 +83,12 @@
       "automergeType": "pr",
       "automergeStrategy": "fast-forward",
       "prCreation": "immediate"
+    },
+    {
+      "description": "One merge request for every minor and patch update of project/: the main branch takes fast-forward merges only, so each merge made Renovate rebase every other open merge request and rerun its whole pipeline. Majors still come one by one.",
+      "matchFileNames": ["project/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "project dependencies"
     },
     {
       "description": "Deployment manifests: an image tag there says what is deployed, not a dependency to keep up. A fix commit that bumped the project's own image made a release, whose new image Renovate bumped again, in a loop. A version reaches an environment through a merge request someone opens.",
