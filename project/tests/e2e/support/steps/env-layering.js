@@ -76,15 +76,15 @@ storyboardStep(Given, "the project's guide lists its three settings files in the
 
 storyboardStep(When, 'the developer adds a setting with a default in .env.dist and a development value in .env.dev, task uses the development value', async () => {
   fs.appendFileSync(path.join(PROJECT, '.env.dist'), 'TASK_APP_URL=https://app.example.com\n')
-  fs.appendFileSync(path.join(PROJECT, '.env.dev'), 'TASK_APP_URL=http://localhost:8080\n')
+  fs.appendFileSync(path.join(PROJECT, '.env.dev'), 'TASK_APP_URL=http://localhost:8080\n') // DevSkim: ignore DS162092 -- An example development address in a test project; nothing serves it.
   fs.appendFileSync(path.join(PROJECT, 'project/Taskfile.yml'), TASK)
   assert.deepEqual(sh('git diff --name-only').trim().split('\n'), ['.env.dev', '.env.dist', 'project/Taskfile.yml'],
     'The developer touched the two settings files and the project Taskfile, nothing else')
-  assert.equal(sh(SHOW).trim(), 'The app runs at http://localhost:8080')
+  assert.equal(sh(SHOW).trim(), 'The app runs at http://localhost:8080') // DevSkim: ignore DS162092 -- An example development address in a test project; nothing serves it.
 
   const screen = await terminalCard(I, 'env-dev-wins', `git diff && ${SHOW}`, { mask: DIFF_MASKS })
-  for (const said of ['+TASK_APP_URL=https://app.example.com', '+TASK_APP_URL=http://localhost:8080',
-    '+  project:monitor:app:info:', 'The app runs at http://localhost:8080']) shows(screen, said)
+  for (const said of ['+TASK_APP_URL=https://app.example.com', '+TASK_APP_URL=http://localhost:8080', // DevSkim: ignore DS162092 -- An example development address in a test project; nothing serves it.
+    '+  project:monitor:app:info:', 'The app runs at http://localhost:8080']) shows(screen, said) // DevSkim: ignore DS162092 -- An example development address in a test project; nothing serves it.
 })
 
 storyboardStep(Then, 'a .env file, which git ignores, wins over both', async () => {
@@ -93,6 +93,6 @@ storyboardStep(Then, 'a .env file, which git ignores, wins over both', async () 
   // Throws when git does not ignore the file.
   sh('git check-ignore -q .env')
   assert.equal(sh(SHOW).trim(), 'The app runs at https://staging.example.com')
-  for (const said of ['!! .env', '.env:TASK_APP_URL=https://staging.example.com', '.env.dev:TASK_APP_URL=http://localhost:8080',
+  for (const said of ['!! .env', '.env:TASK_APP_URL=https://staging.example.com', '.env.dev:TASK_APP_URL=http://localhost:8080', // DevSkim: ignore DS162092 -- An example development address in a test project; nothing serves it.
     '.env.dist:TASK_APP_URL=https://app.example.com', 'The app runs at https://staging.example.com']) shows(screen, said)
 })
