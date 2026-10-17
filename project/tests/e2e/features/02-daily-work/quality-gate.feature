@@ -25,11 +25,17 @@ Feature: a freshly generated project passes its own quality gate
     # Note: git status lists the two files Copier had already written. No MegaLinter settings file is among them: the clean-up checks every file before it changes any.
     # Copy: readlink .config/megalinter/shared.yml && task devsecops:update; git status --short
     Then the framework update stops at a settings file linked outside the project, before it changes any MegaLinter setting
-    # Chapter: Without the link, the update arrives as a clean merge request
-    # Note: The developer goes back to what GitLab holds: the reset drops the commit with the link, and git clean removes the file the stopped update had added. Then they ask for the update again.
+    # Chapter: A settings file with a typo stops the update
+    # Note: The developer has undone what the stopped update wrote, then replaced the link with a file of their own, shared.yml, committed without pushing. cat shows a typo: its list opens with a bracket that never closes.
+    # Note: The clean-up names the file and the line where the list opens, line 3 of shared.yml. It says "No settings file was changed" and asks to fix the file, then ask for the update again. The task fails, so nothing is pushed.
+    # Note: git status lists only the two files Copier had already written.
+    # Copy: cat .config/megalinter/shared.yml && task devsecops:update; git status --short
+    Then the framework update stops at a settings file that is not valid YAML and names it, before it changes any MegaLinter setting
+    # Chapter: Back on what GitLab holds, the update arrives as a clean merge request
+    # Note: The developer goes back to what GitLab holds: the reset drops the commits with the link and with shared.yml, and git clean removes the file the stopped update had added. Then they ask for the update again.
     # Note: This time the clean-up prints "removed retired references" for config.flow.yml and for config.yml, and the update ends with "Opened merge request update-framework-devsecops → main."
     # Copy: git reset -q --hard origin/main && git clean -fdq && task devsecops:update
-    When the developer drops the link and asks for the framework update again
+    When the developer goes back to what GitLab holds and asks for the framework update again
     # Note: The Changes tab of that merge request on GitLab, four files. The first two are the release itself, folded here: the version number in the answers file, and the one file this test release adds.
     # Note: In both MegaLinter files, only the lines that name a retired linter go. A comment written at the end of such a line stays, on a line of its own. JSON_V8R, YAML_V8R, FORMATTERS_DISABLE_ERRORS and ERROR_ON_MISSING_EXEC_BIT stay as they were.
     # Copy: http://gitlab/<lambda-user>/<project>/-/merge_requests/1/diffs
