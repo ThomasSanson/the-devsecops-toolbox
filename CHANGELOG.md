@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.14 (2026-10-17)
+
+### Fix
+
+- **betterleaks**: skip vendor/ and warn against extending the config
+
 ## 24.4.13 (2026-10-17)
 
 ### Fix
