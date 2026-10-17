@@ -38,7 +38,7 @@ Feature: Trusting the installer on a fresh machine
     # Note: The developer keeps the complete framework and presses Enter on every Copier question. The installer builds the project, then runs its setup, task devsecops:init, and the output scrolls on for minutes.
     # Note: This part scrolled by on the way: the setup says "unzip is required before task devsecops:init.", installs it with sudo on its own, and ends on "unzip installed successfully!". Apt's progress lines are left out.
     Then the setup finds unzip missing and installs it with sudo by itself
-    # Note: The end of the run. The setup reaches "Configuring GitLab project..." and stops: "No 'origin' remote configured. Add a GitLab remote, then re-run." The folder is not linked to any GitLab project, so the framework has nowhere to go yet.
+    # Note: The end of the run. The setup reaches "Configuring GitLab project..." and its GitLab sign-in check, glab:auth:ensure, stops it: "No 'origin' remote configured. Add a GitLab remote, then re-run." The folder is not linked to any GitLab project, so the framework has nowhere to go yet.
     # Note: The developer then types echo "exit code: $?": the run ended with exit code 201, and the prompt is back.
     And the installer stops and says the project needs a GitLab remote
     # Chapter: Following that advice opens the merge request

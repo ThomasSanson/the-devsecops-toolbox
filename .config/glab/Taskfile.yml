@@ -214,8 +214,7 @@ tasks:
 
         # Remotes exist but none is a GitLab host (e.g. cloned from another
         # forge): authenticating cannot help — the remote itself must be
-        # aligned first. Only fires when there ARE remotes to align, so
-        # remote-less repos keep the generic auth flow below.
+        # aligned first.
         if [ -z "$host" ] && [ -n "$(git remote 2>/dev/null || true)" ]; then
           echo "❌ No GitLab repository remote was detected."
           echo ""
@@ -224,7 +223,12 @@ tasks:
           echo "  task devsecops:init"
           exit 1
         fi
-        host="${host:-gitlab.example.com}"
+        # No remote at all and no GITLAB_HOST: there is no GitLab to sign in
+        # to yet. Same advice as glab:bootstrap-main, which init runs next.
+        if [ -z "$host" ]; then
+          echo "❌ No 'origin' remote configured. Add a GitLab remote, then re-run."
+          exit 1
+        fi
 
         # 2. Check if gitlab CLI is available at all
         if ! command -v glab >/dev/null 2>&1; then

@@ -363,7 +363,7 @@ storyboardStep(Then, 'turning off Docker Compose only deletes the compose file',
     'D project/docker-compose.yml'
   ])
   assertLeftOut('no-compose', ['project/docker-compose.yml'])
-  await compareFrame('answers-no-compose', 'no-compose', compare, { expand: [MATRIX_ANSWERS, 'project/docker-compose.yml'], height: 520 })
+  await compareFrame('answers-no-compose', 'no-compose', compare, { expand: [MATRIX_ANSWERS, 'project/docker-compose.yml'], height: 660 })
 })
 
 storyboardStep(Then, 'turning on Ansible only adds its config, its lint tooling and their Taskfile include', async () => {

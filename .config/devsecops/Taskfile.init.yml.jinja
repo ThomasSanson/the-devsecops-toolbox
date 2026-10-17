@@ -42,12 +42,12 @@ tasks:
     cmds:
       - cmd: echo "📦 Installing missing prerequisites..."
         silent: true
-      - task: :git:install
+      - task: :git:install:sudo
       - task: :unzip:install:sudo
 
   template:
     interactive: true
-    desc: � Scaffold or update project from template
+    desc: ⚙️ Scaffold or update project from template
     summary: |
       ℹ️ Description:
         Runs Copier to scaffold a new project or update an existing one
@@ -70,7 +70,7 @@ tasks:
 {%- if ci_platform.startswith('gitlab') %}
 {% raw %}
   configure:
-    desc: ⚙️ Configure GitLab project settings
+    desc: 🦊 Configure GitLab project settings
     status:
       - test "{{.TASK_GLAB_ENABLED}}" = "false"
     summary: |
@@ -84,8 +84,9 @@ tasks:
     deps:
       - :glab:install
     cmds:
-      - cmd: echo "⚙️ Configuring GitLab project..."
+      - cmd: echo "🦊 Configuring GitLab project..."
         silent: true
+      - task: :glab:auth:ensure
       - task: :glab:bootstrap-main
       - task: :glab:merge-settings
       - task: :glab:renovate-token

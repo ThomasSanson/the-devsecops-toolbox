@@ -6,3 +6,10 @@ name: {{ project_slug }}
 
 networks:
   {{ project_slug }}:
+    driver_opts:
+      # Match the smallest underlying MTU: GitLab.com hosted runners set the
+      # outer Docker MTU to 1360 (see .config/gitlab/ci/services.yml).
+      # Compose-created bridges otherwise default to 1500 inside dind,
+      # silently dropping full-size packets from the test containers.
+      # Harmless on hosts whose MTU is larger.
+      com.docker.network.driver.mtu: 1360

@@ -13,7 +13,9 @@ test:
     expose_as: 'Test artifacts'
     paths:
       - .diagnostics
-      - project
+      # What the tests write (reports, screenshots), not the whole project
+      # folder: node_modules or a build there can weigh gigabytes.
+      - project/tests
     reports:
       # GitLab reads these for the pipeline's Tests tab and the merge request
       # test summary; the archive above keeps them downloadable. A project
