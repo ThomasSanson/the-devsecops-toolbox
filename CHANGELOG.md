@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.20 (2026-10-17)
+
+### Fix
+
+- **no-cheat**: see the checks a change removes
+
 ## 24.4.19 (2026-10-17)
 
 ### Fix
