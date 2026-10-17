@@ -242,9 +242,11 @@ tasks:
       # The regeneration flag travels with CI when CI is set: the container
       # sees neither unless it is told, and the visual helpers refuse to
       # rewrite a reference only when they know they run in CI.
+      # TASK_E2E_TIMEOUT, when set, replaces the guard's limit of 2400 seconds
+      # for the whole run (see support/helpers/workerCompletion.js).
       - cmd: >-
           {{.PROJECT_DOCKER_COMPOSE}} exec -T
-          {{if eq (.TASK_E2E_UPDATE_BASELINES | default "") "1"}}-e TASK_E2E_UPDATE_BASELINES=1 {{if env "CI"}}-e CI={{env "CI"}} {{end}}{{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}codeceptjs
+          {{if eq (.TASK_E2E_UPDATE_BASELINES | default "") "1"}}-e TASK_E2E_UPDATE_BASELINES=1 {{if env "CI"}}-e CI={{env "CI"}} {{end}}{{end}}{{if .TASK_CODECEPTJS_FEATURES}}-e TASK_CODECEPTJS_FEATURES='{{.TASK_CODECEPTJS_FEATURES}}' {{end}}{{if .TASK_E2E_TIMEOUT}}-e TASK_E2E_TIMEOUT='{{.TASK_E2E_TIMEOUT}}' {{end}}codeceptjs
           node project/tests/e2e/support/helpers/workerCompletion.js
           /usr/local/bin/codeceptjs run-workers
           {{.TASK_E2E_WORKERS | default "3"}}

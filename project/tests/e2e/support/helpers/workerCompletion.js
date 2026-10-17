@@ -2,7 +2,9 @@
 /**
  * CodeceptJS can overwrite a worker's nonzero exit with a successful aggregate
  * result. Certify this launch from its selected Gherkin scenarios and fresh
- * per-worker JUnit reports, not from the aggregate exit code alone.
+ * per-worker JUnit reports, not from the aggregate exit code alone. A run that
+ * lasts longer than TASK_E2E_TIMEOUT seconds (2400 by default) is killed and
+ * fails, its reports kept.
  *
  * This is the repository's run-workers/pool entrypoint. Other distribution
  * strategies and configuration overrides are refused explicitly: guessing at
@@ -91,8 +93,11 @@ function readWorkerReports (directory) {
       // Retries in one worker are ordered in its report. Only the last attempt
       // certifies completion; a later failure or skip cannot reuse an earlier
       // pass. Never sum testcase counts to hide a missing scenario.
-      const passed = !['failure', 'error', 'skipped'].some(tag => testcase.getElementsByTagName(tag).length)
-      latest.set(title, { worker, passed })
+      // A skip is never a retry: CodeceptJS can still report a scenario its
+      // hook skipped as passed right after, and that pass must not count.
+      const skipped = Boolean(previous && previous.skipped) || testcase.getElementsByTagName('skipped').length > 0
+      const passed = !skipped && !['failure', 'error'].some(tag => testcase.getElementsByTagName(tag).length)
+      latest.set(title, { worker, passed, skipped })
     }
   }
   return latest
@@ -104,6 +109,7 @@ function certify (selected, latest, engineStatus) {
   for (const title of [...selected.keys()].sort()) {
     const result = latest.get(title)
     if (!result) problems.push('missing: ' + title)
+    else if (result.skipped) problems.push('skipped: ' + title)
     else if (!result.passed) problems.push('not passed: ' + title)
     else passed++
   }
@@ -117,16 +123,28 @@ function certify (selected, latest, engineStatus) {
   return accepted ? 0 : 1
 }
 
+// The longest a whole run may take, in seconds. A hung worker must fail the
+// run while the CI job, limited to 45 minutes, can still save the reports. A
+// longer run raises it.
+function timeoutSeconds (value = process.env.TASK_E2E_TIMEOUT || '2400') {
+  if (!/^[1-9][0-9]*$/.test(value)) throw new Error('TASK_E2E_TIMEOUT must be a whole number of seconds: ' + value)
+  return Number(value)
+}
+
 async function main (args) {
   const options = selectionOptions(args)
+  const seconds = timeoutSeconds()
   const reports = path.join(path.dirname(path.resolve(options.config)), '_output/junit')
   // Clear before loading the configuration: a config crash or an empty
   // selection must not leave an earlier failure available as RED evidence.
   fs.rmSync(reports, { recursive: true, force: true })
   const { selected } = await selectedScenarios(options)
-  const engine = spawnSync(args[0], args.slice(1), { stdio: 'inherit' })
-  if (engine.error) throw engine.error
-  const status = engine.signal ? 'signal ' + engine.signal : engine.status
+  // SIGKILL: a frozen engine may never act on a gentler signal. The reports
+  // its finished workers already wrote stay on disk for diagnosis.
+  const engine = spawnSync(args[0], args.slice(1), { stdio: 'inherit', timeout: seconds * 1000, killSignal: 'SIGKILL' })
+  const timedOut = engine.error && engine.error.code === 'ETIMEDOUT'
+  if (engine.error && !timedOut) throw engine.error
+  const status = timedOut ? `killed after ${seconds} s (TASK_E2E_TIMEOUT)` : engine.signal ? 'signal ' + engine.signal : engine.status
   return certify(selected, readWorkerReports(reports), status)
 }
 

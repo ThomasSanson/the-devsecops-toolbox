@@ -77,8 +77,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**baseline-mode**](02-daily-work/baseline-mode.svg): Only the value 1, on a developer's machine, rewrites a reference. CI refuses it, and a merge request shows each rewritten reference for a reviewer to accept.
   Chapters: A visible difference must fail · A developer rewrites the references, a reviewer accepts them.
   Replay: `task project:test:e2e -- --grep "@baseline-mode"`
-- [**worker-completion**](02-daily-work/worker-completion.svg): A lost worker fails the run even when the engine exits 0. A complete selection still passes, with a grep filter or its inverse.
-  Chapters: A worker can disappear before its result exists · A complete selection still passes.
+- [**worker-completion**](02-daily-work/worker-completion.svg): A lost worker fails the run even when the engine exits 0, and so do a copied scenario name, a skipped scenario and a worker that hangs past the time limit. A complete selection still passes, with a grep filter or its inverse.
+  Chapters: A worker can disappear before its result exists · A run can look complete without being complete · A complete selection still passes.
   Replay: `task project:test:e2e -- --grep "@worker-completion"`
 - [**junit-control-characters**](02-daily-work/junit-control-characters.svg): GitLab reads a real failure report even when an assertion carries terminal colours, and shows the time each scenario took on two workers. The RED gate accepts the same coloured failure as a genuine one.
   Chapters: GitLab reads the report of a merge request · The RED gate reads the same report.

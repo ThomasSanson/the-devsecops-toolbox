@@ -111,7 +111,10 @@ task project:test:e2e                                   # full suite, parallel (
 task project:test:e2e -- --grep "@self-healing"         # filter by tag (CLI args)
 task project:test:e2e TASK_CODECEPTJS_GREP=@self-healing   # filter by tag (env var)
 TASK_E2E_WORKERS=5 task project:test:e2e                # bump parallelism
+TASK_E2E_TIMEOUT=7200 task project:test:e2e             # allow a longer run (default 2400 seconds)
 ```
+
+The guard around the engine (`support/helpers/workerCompletion.js`) stops a run that takes longer than `TASK_E2E_TIMEOUT` seconds, 2400 by default, and fails it. A hung worker then fails the CI job while it can still save the reports: the ones already written stay in `_output/junit` for diagnosis. Raise the limit for a run expected to last longer, such as the whole suite on one machine.
 
 The suite executes inside the `codeceptjs` container (identical font stack local / CI).
 Scenarios that need a fresh Ubuntu spawn one through the docker socket via `support/helpers/freshUbuntu.js` (first-run-help: a copy of the toolbox with a live terminal) or `support/helpers/journeyContainer.js` (developer journey: clone of a blank test-GitLab project + working-branch installer).
