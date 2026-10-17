@@ -116,10 +116,12 @@ required approval rules:
     blocks the merge while that thread is unanswered. The full toolbox configures
     this through `TASK_GLAB_ALL_THREADS_RESOLVED`; `publication:init` also enables
     it for standalone installations. Set it yourself when using manual setup.
-3. At publish time the toolbox asks the API which merge request brought the
-    current manifest in. It requires a resolved thread carrying that manifest's
-    exact hash, answered by a username listed in `owners`. Resolving an unrelated
-    discussion or a thread for an earlier manifest does not approve this one.
+3. At publish time the toolbox asks the API for every merged merge request
+    that carries the commit which last changed the manifest, and reads all of
+    their discussions, page after page. It requires a resolved thread carrying
+    that manifest's exact hash, answered by a username listed in `owners`.
+    Resolving an unrelated discussion or a thread for an earlier manifest does
+    not approve this one. When GitLab does not answer, publication stops.
 
 Editing a resolved question invalidates that decision. Run
 `task publication:approve` again to request a fresh owner decision; the edited

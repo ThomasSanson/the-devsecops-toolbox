@@ -672,6 +672,10 @@ cmd_publish() {
   fi
 
   resolve_approval
+  if [ "${APPROVAL_UNREAD}" -eq 1 ]; then
+    refuse "GitLab did not answer, so nobody can say who approved this list." \
+      "Nothing was published. Check TASK_PUBLICATION_SOURCE_TOKEN and try again."
+  fi
   if [ "${APPROVAL_OK}" -ne 1 ]; then
     if [ -n "${APPROVAL_SIGNER}" ]; then
       refuse "The approved list was signed off by \"${APPROVAL_SIGNER}\", who is not an owner." \
@@ -817,6 +821,7 @@ PROJECT_ENC="$(url_encode_path "${PROJECT_PATH}")"
 APPROVAL_MR_IID=""
 APPROVAL_SIGNER=""
 APPROVAL_OK=0
+APPROVAL_UNREAD=0
 
 api() {
   _api_method="$1"
@@ -835,6 +840,27 @@ api() {
     fi
   } | curl --config - --silent --show-error --fail-with-body \
     --connect-timeout 10 --max-time 60 --request "${_api_method}" "${API_URL}${_api_path}"
+}
+
+# Every page of a GitLab list, as one JSON array. GitLab hands out at most 100
+# entries a page, and what is looked for can sit on any of them. Fails when any
+# page fails: half a list read as the whole list is how an answer goes missing.
+api_pages() {
+  case "$1" in
+  *\?*) _pages_sep='&' ;;
+  *) _pages_sep='?' ;;
+  esac
+  _pages_n=1
+  : >"${WORK}/pages"
+  while :; do
+    _pages_chunk="$(api GET "$1${_pages_sep}per_page=100&page=${_pages_n}")" || return 1
+    _pages_count="$(printf '%s' "${_pages_chunk}" | jq 'if type == "array" then length else error end' 2>/dev/null)" ||
+      return 1
+    printf '%s\n' "${_pages_chunk}" >>"${WORK}/pages"
+    [ "${_pages_count}" -eq 100 ] || break
+    _pages_n=$((_pages_n + 1))
+  done
+  jq -s 'add // []' "${WORK}/pages"
 }
 
 redact_token() {
@@ -892,6 +918,7 @@ resolve_approval() {
   APPROVAL_MR_IID=""
   APPROVAL_SIGNER=""
   APPROVAL_OK=0
+  APPROVAL_UNREAD=0
 
   forge_ready || return 0
   command -v jq >/dev/null 2>&1 || return 0
@@ -899,30 +926,41 @@ resolve_approval() {
   _commit="$(git log -1 --format=%H "${SOURCE_SHA:-HEAD}" -- "${MANIFEST}" 2>/dev/null || true)"
   [ -n "${_commit}" ] || return 0
 
-  _mr="$(api GET "/projects/${PROJECT_ENC}/repository/commits/${_commit}/merge_requests?state=merged" |
-    jq -r '[.[]? | select(.state == "merged")] | .[0].iid // empty' 2>/dev/null || true)"
-  [ -n "${_mr}" ] || return 0
-  APPROVAL_MR_IID="${_mr}"
-
-  # EVERY answered thread, not just the first: an owner who arrives after
-  # somebody else already ticked the box has to be able to answer on the same
-  # merge request, and that late answer is what unblocks the publication.
+  # EVERY merged merge request that carries that commit, not only the first one
+  # GitLab lists: merging the main branch into another branch carries it too,
+  # and GitLab lists that newer merge request first, with nobody's answer on it.
+  _mrs="$(api_pages "/projects/${PROJECT_ENC}/repository/commits/${_commit}/merge_requests?state=merged")" || {
+    APPROVAL_UNREAD=1
+    return 0
+  }
   _marker="Publication-manifest: $(git hash-object "${MANIFEST_F}")"
-  _signers="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions?per_page=100" |
-    approval_notes "${_marker}" |
-    jq -r '[.[]? | select(.resolved == true) | .resolved_by.username]
-            | unique | .[]' 2>/dev/null || true)"
-  [ -n "${_signers}" ] || return 0
-
-  # An owner among them settles it; otherwise keep the first name, so the
-  # refusal can say who did answer instead of only who should have.
-  APPROVAL_SIGNER="$(printf '%s\n' "${_signers}" | head -n 1)"
-  for _candidate in ${_signers}; do
-    if owner_list | grep -qxF "${_candidate}"; then
-      APPROVAL_SIGNER="${_candidate}"
-      APPROVAL_OK=1
-      break
-    fi
+  for _mr in $(printf '%s' "${_mrs}" | jq -r '.[] | select(.state == "merged") | .iid'); do
+    [ -n "${APPROVAL_MR_IID}" ] || APPROVAL_MR_IID="${_mr}"
+    # EVERY answered thread on every page, not just the first: an owner who
+    # arrives after somebody else already ticked the box has to be able to
+    # answer on the same merge request, and that late answer is what unblocks
+    # the publication.
+    _discussions="$(api_pages "/projects/${PROJECT_ENC}/merge_requests/${_mr}/discussions")" || {
+      APPROVAL_UNREAD=1
+      return 0
+    }
+    _signers="$(printf '%s' "${_discussions}" | approval_notes "${_marker}" |
+      jq -r '[.[]? | select(.resolved == true) | .resolved_by.username]
+              | unique | .[]' 2>/dev/null || true)"
+    for _candidate in ${_signers}; do
+      if owner_list | grep -qxF "${_candidate}"; then
+        APPROVAL_MR_IID="${_mr}"
+        APPROVAL_SIGNER="${_candidate}"
+        APPROVAL_OK=1
+        return 0
+      fi
+      # Keep the first name that did answer, so the refusal can say who did
+      # instead of only who should have.
+      if [ -z "${APPROVAL_SIGNER}" ]; then
+        APPROVAL_MR_IID="${_mr}"
+        APPROVAL_SIGNER="${_candidate}"
+      fi
+    done
   done
   return 0
 }
@@ -1035,7 +1073,7 @@ ensure_approval_thread() {
   _thread_body="$(printf '%s\n\n%s' \
     'Do these paths become public? Resolve this thread to say yes. An owner has to be the one who does.' \
     "${_thread_marker}")"
-  _threads="$(api GET "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions?per_page=100")" || return 1
+  _threads="$(api_pages "/projects/${PROJECT_ENC}/merge_requests/${_thread_mr}/discussions")" || return 1
   _thread_exists="$(printf '%s' "${_threads}" |
     approval_notes "${_thread_marker}" |
     jq -r --arg body "${_thread_body}" '[.[]? | select(.body == $body)] | length')"
