@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.16 (2026-10-17)
+
+### Fix
+
+- **betterleaks**: give each Docker scan its own container
+
 ## 24.4.15 (2026-10-17)
 
 ### Fix
