@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 24.5.2 (2026-10-17)
+
+### Fix
+
+- **no-cheat**: refuse t.skip() and t.todo() on the test( line too
+- **no-cheat**: refuse the node:test ways to skip a test
+
 ## 24.5.1 (2026-10-17)
 
 ### Fix
