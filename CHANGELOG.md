@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.15 (2026-10-17)
+
+### Fix
+
+- **glab**: check which token the CI/CD variable holds, keep it guarded
+
 ## 24.4.14 (2026-10-17)
 
 ### Fix
