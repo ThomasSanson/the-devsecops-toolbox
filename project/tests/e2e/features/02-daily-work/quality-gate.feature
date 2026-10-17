@@ -80,6 +80,27 @@ Feature: a freshly generated project passes its own quality gate
     # Copy: task megalinter; echo "exit code $?"
     Then MegaLinter leaves both tables as they are, run after run, and markdownlint flags only the copy padded by character count
 
+  # Trivy, a scanner MegaLinter runs, takes its settings from
+  # .config/trivy/config.yml: MegaLinter hands it that file with --config.
+  # trivyignore.yml, the file config.yml names as its ignorefile, only lists
+  # findings the project accepts, so a folder list written there skipped
+  # nothing (issue #149). MegaLinter also passes Trivy the folders of its own
+  # EXCLUDED_DIRECTORIES setting, so the terminal runs the trivy binary of the
+  # project's MegaLinter image with the settings file alone.
+  @trivy-skip-dirs
+  Scenario: Trivy skips the folders its settings list and still reports the project's own dependencies
+    # Note: A project generated from the toolbox holds the same lockfile twice. package-lock.json, at the root, lists the project's own dependencies. vendor/acme/widget/package-lock.json stands for a library a package manager installed under vendor/. Both pin lodash 4.17.20, a version with a known vulnerability.
+    # Copy: grep -H -A1 '"node_modules/lodash"' package-lock.json vendor/acme/widget/package-lock.json
+    Given a generated project holds the same vulnerable lockfile at its root and in a library under vendor/
+    # Note: Trivy scans the project with its settings file and saves what it finds as JSON. jq, a JSON reader, then lists the files in which Trivy found a vulnerability.
+    # Note: There is one: package-lock.json, the project's own lockfile. vendor/acme/widget/package-lock.json pins the same lodash 4.17.20 and is not listed: Trivy skipped the vendor folder.
+    # Copy: trivy fs --quiet --scanners vuln --config .config/trivy/config.yml --format json --output /tmp/trivy.json . && jq -r '.Results[] | select(.Vulnerabilities) | .Target' /tmp/trivy.json
+    When the developer scans the project with Trivy's settings, it reports the root lockfile and skips vendor/
+    # Note: The settings file MegaLinter hands Trivy. Its scan.skip-dirs list names vendor next to the other folders that hold no code of the project's own, such as .cache, .git and venv. Trivy reads the list from this file.
+    # Note: Its ignorefile line still points Trivy to trivyignore.yml, the file of findings the project accepts.
+    # Copy: cat .config/trivy/config.yml
+    Then Trivy's settings file lists the folders to skip and still points to the file of accepted findings
+
   @retired-linters
   Scenario: a framework update removes retired linters and preserves project controls
     # Note: GitLab shows the project's MegaLinter settings, .config/megalinter/config.yml, on the main branch. They still name three linters MegaLinter has retired: REPOSITORY_GITLEAKS, SQL_TSQLLINT and REPOSITORY_KICS, two of them with options of their own.

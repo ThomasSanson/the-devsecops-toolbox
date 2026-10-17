@@ -525,3 +525,44 @@ storyboardStep(Then, 'with --CCN 3 after the two dashes, Lizard flags the functi
   const screen = await terminalCard(I, 'lizard-ccn-3', `${LIZARD_RUN} -- --CCN 3; echo "exit code: $?"`, { mask: LIZARD_MASKS })
   assert.ok(screen.includes('Warnings (cyclomatic_complexity > 3') && screen.includes('exit code: 201'), `The card must show the flagged run:\n${screen}`)
 })
+
+// @trivy-skip-dirs: Trivy as MegaLinter runs it, the binary of the project's
+// MegaLinter image reading the settings file MegaLinter hands it, without the
+// folders MegaLinter adds on its own. The same lockfile sits at the root and
+// under vendor/: only the scan.skip-dirs list Trivy reads tells them apart.
+const TRIVY_PROJECT = '/tmp/e2e-trivy-skip-dirs'
+const TRIVY_CONFIG = '.config/trivy/config.yml'
+const TRIVY_REPORT = '/tmp/trivy.json'
+const TRIVY_LOCKS = ['package-lock.json', 'vendor/acme/widget/package-lock.json']
+const TRIVY_SCAN = `trivy fs --quiet --scanners vuln --config ${TRIVY_CONFIG} --format json --output ${TRIVY_REPORT} . && jq -r '.Results[] | select(.Vulnerabilities) | .Target' ${TRIVY_REPORT}`
+
+storyboardStep(Given, 'a generated project holds the same vulnerable lockfile at its root and in a library under vendor/', async () => {
+  removeRendered(TRIVY_PROJECT)
+  state.project = renderProject({}, { dst: TRIVY_PROJECT })
+  state.dirs.push(state.project, TRIVY_REPORT)
+  TRIVY_LOCKS.forEach(writeLock)
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('trivy'), port: 7697, height: 900 })
+  const screen = await terminalCard(I, 'trivy-lockfiles', `grep -H -A1 '"node_modules/lodash"' ${TRIVY_LOCKS.join(' ')}`)
+  for (const file of TRIVY_LOCKS) assert.ok(screen.includes(`${file}-      "version": "4.17.20"`), `${file} must pin lodash 4.17.20:\n${screen}`)
+})
+
+storyboardStep(When, "the developer scans the project with Trivy's settings, it reports the root lockfile and skips vendor/", async () => {
+  const screen = await terminalCard(I, 'trivy-scan', TRIVY_SCAN)
+  const results = JSON.parse(fs.readFileSync(TRIVY_REPORT, 'utf8')).Results || []
+  const read = results.map(result => result.Target).join(', ')
+  const own = results.find(result => result.Target === 'package-lock.json')
+  assert.ok(own && (own.Vulnerabilities || []).some(found => found.PkgName === 'lodash' && found.InstalledVersion === '4.17.20'),
+    `Trivy must report lodash 4.17.20 in the root lockfile. It read: ${read}`)
+  assert.ok(!results.some(result => result.Target.startsWith('vendor/')), `Trivy must skip vendor/. It read: ${read}`)
+  assert.ok(screen.split('\n').includes('package-lock.json') && !screen.includes('vendor/'), `The card must list the root lockfile only:\n${screen}`)
+})
+
+storyboardStep(Then, "Trivy's settings file lists the folders to skip and still points to the file of accepted findings", async () => {
+  const screen = await terminalCard(I, 'trivy-settings', `cat ${TRIVY_CONFIG}`)
+  const config = fs.readFileSync(path.join(state.project, TRIVY_CONFIG), 'utf8')
+  const ignored = fs.readFileSync(path.join(state.project, '.config/trivy/trivyignore.yml'), 'utf8')
+  assert.match(config, /^scan:\n {2}skip-dirs:\n(?: {4}- .+\n)* {4}- vendor\n/m, `${TRIVY_CONFIG} must list vendor under scan.skip-dirs:\n${config}`)
+  assert.match(config, /^ignorefile: \.config\/trivy\/trivyignore\.yml$/m, `${TRIVY_CONFIG} must still name the file of accepted findings`)
+  assert.doesNotMatch(ignored, /^scan:/m, 'trivyignore.yml must hold accepted findings only')
+  assert.ok(screen.includes('skip-dirs:'), `The card must show the folder list:\n${screen}`)
+})
