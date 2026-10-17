@@ -5,6 +5,10 @@ vars:
   TASK_DOCKER_CE_IMAGE_NAME: "registry.gitlab.com/digital-commons/devsecops/the-devsecops-toolbox"
   TASK_DOCKER_CE_DOCKERFILE: ".config/devcontainer/ubuntu/Dockerfile"
   PROJECT_DOCKER_COMPOSE: "cd project && docker compose"
+  # Feature files whose stories run MegaLinter, through task megalinter or in a
+  # generated project's code:megalinter job: the CI shard that runs one of them
+  # starts pulling the MegaLinter image once GitLab is up (project:test:e2e).
+  E2E_MEGALINTER_FEATURES: "quality-gate|install\\.feature|daily-contribution|hybrid-ci"
 
 tasks:
   project:plan:
@@ -142,9 +146,21 @@ tasks:
       # not pay it, then reclaim ALL build cache before the suite. Local devs keep
       # their cache (guarded on CI). The df/docker-df probe is the "before suite"
       # half of the instrumentation.
+      # The shards whose stories run MegaLinter (in a generated project's
+      # pipeline, or through task megalinter) start pulling its image here,
+      # detached, so the suite never waits for it: the pipeline stories need it
+      # minutes into their scenario and used to pay 3 to 4 minutes for it there.
+      # Not earlier: on the CI runners' slow disks, building or pulling while
+      # GitLab CE is extracted and boots made that boot 80 s longer.
+      # cspell:ignore setsid
       - cmd: |
           {{if ne (env "CI") ""}}
             {{.PROJECT_DOCKER_COMPOSE}} build ubuntu || true
+            if echo "${TASK_CODECEPTJS_FEATURES:-}" | grep -qE '{{.E2E_MEGALINTER_FEATURES}}'; then
+              ml_image=$(sed -n 's/^ *name: \(ghcr\.io\/oxsecurity\/megalinter[^ ]*\).*/\1/p' .config/gitlab/ci/devsecops/code.yml | head -n 1)
+              setsid -f sh -c "docker pull -q '$ml_image' > /tmp/e2e-megalinter-pull.log 2>&1"
+              echo "⏬ pulling $ml_image in the background for the stories that run MegaLinter"
+            fi
             docker builder prune -af || true
             docker image prune -f || true
             date -u +"⏱️  setup done, suite start: %H:%M:%S UTC"

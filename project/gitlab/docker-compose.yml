@@ -48,6 +48,10 @@ services:
       timeout: 15s
       retries: 20
       start_period: 300s
+      # During the start period, check every 5 s: with only the 30 s interval,
+      # a GitLab ready at 3 min was seen healthy up to 30 s later, and every
+      # e2e shard waited for that.
+      start_interval: 5s
     networks:
       - the-devsecops-toolbox
 
