@@ -95,13 +95,17 @@ PARALLEL_PROCESS_NUMBER: 2 # Limiting to 2 cores is necessary to prevent Dustilo
 
 PRE_COMMANDS:
   # - command: cd /tmp/lint && mkdir -p /usr/share/ansible && find . -type f \( -iname 'requirements.yml' -o -iname 'requirements.yaml' \) -print0 | xargs -0 -I{} sh -c 'grep -Eq "^[[:space:]]*collections[[:space:]]*:" "{}" && ansible-galaxy collection install -r "{}" -p /usr/share/ansible/collections || ansible-galaxy role install -r "{}" --roles-path /usr/share/ansible/roles'
+  # npm waits five minutes for a registry that does not answer, and tries
+  # each dictionary three times: a stalled registry held the job for more
+  # than an hour. The dictionaries install in seconds.
   - command: |
-      npm install -g \
+      timeout 120 npm install -g \
         @cspell/dict-companies \
         @cspell/dict-en-gb \
         @cspell/dict-fr-fr \
         @cspell/dict-python \
-        @cspell/dict-software-terms
+        @cspell/dict-software-terms \
+        || { echo "npm could not install the CSpell dictionaries within 120 seconds."; exit 1; }
 
 POST_COMMANDS:
   - command: test ! -d /tmp/lint/.ansible || chmod -R 777 /tmp/lint/.ansible
