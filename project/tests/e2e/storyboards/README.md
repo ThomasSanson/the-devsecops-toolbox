@@ -20,6 +20,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**4. fresh-machine**](01-install/fresh-machine.svg): Without curl the installer refuses cleanly. On a bare machine, the README one-liner piped into bash asks before each tool, adds unzip by itself and says what to do next. With no terminal at all, as in CI, it asks nothing and finishes.
   Chapters: Without curl, the installer refuses cleanly · The one-line install sets up the bare machine · Following that advice opens the merge request · With no terminal at all, nothing is asked.
   Replay: `task project:test:e2e -- --grep "@fresh-machine"`
+- [**task-install-without-sudo**](01-install/task-install-without-sudo.svg): On a bare machine where the developer has no sudo rights, the task installer cannot use /usr/local/bin. It installs task into ~/.local/bin instead, says that folder must be on the PATH, and the shell finds task there.
+  Replay: `task project:test:e2e -- --grep "@task-install-without-sudo"`
 - [**5. first-run-help**](01-install/first-run-help.svg): Every check stops and names the fix, and init finishes cleanly once GitLab is turned off.
   Chapters: The check names each missing tool · The check reads the right GitLab host · init names the exact fix, then bows out cleanly.
   Replay: `task project:test:e2e -- --grep "@first-run-help"`

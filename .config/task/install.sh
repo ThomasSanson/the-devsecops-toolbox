@@ -38,19 +38,26 @@ log "Installing Taskfile v${TASK_VERSION}..."
 # hosts (taskfile.dev) intermittently stalls; an unbounded curl then hangs
 # until the job timeout (observed as exit 28 killing CI builds).
 CURL_FLAGS="--location --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120"
-INSTALL_CMD="sh -c \"\$(curl $CURL_FLAGS https://taskfile.dev/install.sh)\" -- -d -b /usr/local/bin \"v${TASK_VERSION}\""
-if [ -w /usr/local/bin ]; then
+BIN_DIR=/usr/local/bin
+INSTALL_CMD="sh -c \"\$(curl $CURL_FLAGS https://taskfile.dev/install.sh)\" -- -d -b \"\$BIN_DIR\" \"v${TASK_VERSION}\""
+if [ -w "$BIN_DIR" ]; then
   eval "$INSTALL_CMD"
 elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
   # shellcheck disable=SC2086
-  sudo -n sh -c "$(curl $CURL_FLAGS https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin "v${TASK_VERSION}"
+  sudo -n sh -c "$(curl $CURL_FLAGS https://taskfile.dev/install.sh)" -- -d -b "$BIN_DIR" "v${TASK_VERSION}"
 else
-  log "Warning: /usr/local/bin not writable and no passwordless sudo. Trying anyway..."
+  BIN_DIR="${HOME}/.local/bin"
+  log "Warning: /usr/local/bin not writable and no passwordless sudo. Installing into ${BIN_DIR} instead..."
+  mkdir -p "$BIN_DIR"
   eval "$INSTALL_CMD"
 fi
 
-if command -v task >/dev/null 2>&1; then
-  log "Taskfile installed successfully: $(task --version)"
+if [ -x "$BIN_DIR/task" ]; then
+  log "Taskfile installed successfully in ${BIN_DIR}: $("$BIN_DIR/task" --version)"
+  if [ "$BIN_DIR" != /usr/local/bin ]; then
+    log "${BIN_DIR} must be on your PATH, before any other folder with a task in it:"
+    log "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+  fi
 else
   log "Error: Taskfile installation failed."
   exit 1
