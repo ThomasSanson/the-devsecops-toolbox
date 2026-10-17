@@ -59,7 +59,7 @@ const OWN_IMAGE = {
   pinned: '0.2.0'
 }
 const DOWNSTREAM_RUN_ENV = {
-  RENOVATE_CONFIG: JSON.stringify({ hostRules: [{ hostType: 'docker', matchHost: 'localhost', insecureRegistry: true }] })
+  RENOVATE_CONFIG: JSON.stringify({ hostRules: [{ hostType: 'docker', matchHost: 'localhost', insecureRegistry: true }] }) // DevSkim: ignore DS162092 -- The suite's own test registry on the local network; never a deployed endpoint.
 }
 const DOWNSTREAM_FILES = [ANSWERS, OWN_IMAGE.overlay, OWN_DEPENDENCY.file]
 const TOOLBOX_UPDATE_FILES = [ANSWERS, ...Object.keys(RELEASES['1.0.1'])].sort()
@@ -359,7 +359,7 @@ storyboardStep(Given, 'the project deploys its own image, pinned at 0.2.0 in its
   git(dir, 'add', '-A')
   git(dir, 'commit', '--quiet', '--no-verify', '-m', 'feat: depend on toml')
   const name = `e2e-renovate-project-${suffix}`
-  const image = `localhost:${OWN_IMAGE.port}/${projectPath(name)}`
+  const image = `localhost:${OWN_IMAGE.port}/${projectPath(name)}` // DevSkim: ignore DS162092 -- The suite's own test registry on the local network; never a deployed endpoint.
   fs.mkdirSync(path.dirname(path.join(dir, OWN_IMAGE.overlay)), { recursive: true })
   fs.writeFileSync(path.join(dir, OWN_IMAGE.overlay), [
     'apiVersion: kustomize.config.k8s.io/v1beta1',
