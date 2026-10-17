@@ -40,6 +40,7 @@ tasks:
         - TASK_LIZARD_VERSION: Lizard version
         - TASK_LIZARD_CLI_OPTS: Command-line options for Lizard
         - TASK_LIZARD_PATH_TO_ANALYSE: Path to analyse
+        Use CLI_ARGS to pass additional arguments to Lizard: task lizard -- --CCN 10
 
       🔄 Execution:
         Runs Lizard with specified options on designated files
@@ -63,6 +64,6 @@ tasks:
             EXCLUDE_ARGS="$EXCLUDE_ARGS -x\"./$line/*\""
           fi
         done < .gitignore
-        eval {{.TASK_LIZARD_COMMAND}} $EXCLUDE_ARGS {{.TASK_LIZARD_CLI_OPTS}} {{.TASK_LIZARD_PATH_TO_ANALYSE}}
+        eval {{.TASK_LIZARD_COMMAND}} $EXCLUDE_ARGS {{.TASK_LIZARD_CLI_OPTS}} {{.TASK_LIZARD_PATH_TO_ANALYSE}} {{.CLI_ARGS}}
       - cmd: echo "🎉 Lizard analysis phase completed successfully"
         silent: true
