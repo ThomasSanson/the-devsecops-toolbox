@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.19 (2026-10-17)
+
+### Fix
+
+- **release**: push the version commit and its tag atomically
+
 ## 24.4.18 (2026-10-17)
 
 ### Fix
