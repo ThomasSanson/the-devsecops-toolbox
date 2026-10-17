@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.12 (2026-10-17)
+
+### Fix
+
+- **glab**: keep the runner registration token out of setup output
+
 ## 24.4.11 (2026-10-17)
 
 ### Fix
