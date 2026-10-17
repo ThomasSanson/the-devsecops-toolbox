@@ -589,6 +589,104 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
 })
 
 // ===========================================================================
+// @build-coverage-example: the task the build check prints for a service with
+// no build task, pasted as printed, is the task the check wants (issue #141).
+// ===========================================================================
+
+// Fixed, because the prompt prints it. Outside /tmp: until #240, the check
+// read the project's .gitignore line tmp/ against the whole path, and found
+// nothing in a project that sits there.
+const BUILD_EXAMPLE = '/srv/e2e-build-coverage'
+const FRONTEND = 'project/frontend/docker-compose.yml'
+const FRONTEND_SERVICE = '---\nservices:\n  frontend:\n    build: .\n'
+const FRONTEND_TASK = [
+  '  project:build:frontend:',
+  '    cmds:',
+  `      - docker compose -f ${FRONTEND} build`
+]
+let buildExample = null
+
+After((test) => {
+  if (!owns(test, '@build-coverage-example')) return
+  if (buildExample && buildExample.closeTerminal) buildExample.closeTerminal()
+  for (const leftover of [BUILD_EXAMPLE, `${BUILD_EXAMPLE}.gitconfig`]) fs.rmSync(leftover, { recursive: true, force: true })
+  buildExample = null
+})
+
+// A command run off camera in the project, as plain text with its exit code.
+function inBuildExample (command) {
+  try {
+    const output = execSync(`${command} 2>&1`, { cwd: BUILD_EXAMPLE, env: buildExample.env, encoding: 'utf8', timeout: 120000 })
+    return { status: 0, output: stripAnsiEscapeSequences(output) }
+  } catch (err) {
+    return { status: err.status, output: stripAnsiEscapeSequences(String(err.stdout)) }
+  }
+}
+
+// The lines the check prints under "Example for", as a developer selects them.
+function printedExample (output) {
+  const rows = output.split('\n')
+  const at = rows.findIndex(row => row.startsWith('Example for '))
+  assert.notEqual(at, -1, `The check must print an example:\n${output}`)
+  const end = rows.findIndex((row, i) => i > at && row.trim() === '')
+  return rows.slice(at + 1, end)
+}
+
+storyboardStep(Given, 'a generated project adds a frontend service and no task to build it', async () => {
+  fs.rmSync(BUILD_EXAMPLE, { recursive: true, force: true })
+  renderProject({}, { dst: BUILD_EXAMPLE })
+  const gitConfig = `${BUILD_EXAMPLE}.gitconfig`
+  fs.writeFileSync(gitConfig, '[safe]\n\tdirectory = *\n[user]\n\temail = e2e@test.local\n\tname = e2e\n[init]\n\tdefaultBranch = main\n')
+  buildExample = { env: nestedEnv({ GIT_CONFIG_GLOBAL: gitConfig }) }
+  execSync('git init -q && git add -A && git commit -qm "the generated project"', { cwd: BUILD_EXAMPLE, env: buildExample.env })
+  fs.mkdirSync(path.join(BUILD_EXAMPLE, path.dirname(FRONTEND)))
+  fs.writeFileSync(path.join(BUILD_EXAMPLE, FRONTEND), FRONTEND_SERVICE)
+
+  buildExample.closeTerminal = await openLocalTerminal(I, { cwd: BUILD_EXAMPLE, env: buildExample.env, port: 7712, height: 1200 })
+  const screen = await card('build-coverage-example-setup', `git status --short --untracked-files=all && cat ${FRONTEND}`)
+  for (const said of [`?? ${FRONTEND}`, '  frontend:', '    build: .']) {
+    assert.ok(screen.includes(said), `Expected the new service on the setup card, with "${said}":\n${screen}`)
+  }
+  assert.equal(inBuildExample('git status --short --untracked-files=all').output.trim(), `?? ${FRONTEND}`, 'The developer added the service, nothing else')
+})
+
+storyboardStep(When, 'the build check refuses the frontend service and prints the task it is missing', async () => {
+  // The twin first, off camera: the same check, read as plain text.
+  const run = inBuildExample(BUILD_CHECK)
+  assert.notEqual(run.status, 0, `The check must fail without the frontend build task:\n${run.output}`)
+  assert.ok(run.output.includes('Missing task: project:build:frontend'), `The check must name the missing task:\n${run.output}`)
+  assert.deepEqual(printedExample(run.output), FRONTEND_TASK, `The example must be the task the frontend needs, with its full name and its path from the repository root:\n${run.output}`)
+
+  const screen = await card('build-coverage-example-refused', `${BUILD_CHECK}; echo "exit code $?"`)
+  for (const said of [`✗ ${FRONTEND}`, 'Missing task: project:build:frontend', ...FRONTEND_TASK, 'exit code 201']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the refusal card:\n${screen}`)
+  }
+})
+
+storyboardStep(Then, 'the task pasted as printed satisfies the build check', async () => {
+  // The paste: the lines the check printed, read back from its own output.
+  const printed = printedExample(inBuildExample(BUILD_CHECK).output)
+  fs.appendFileSync(path.join(BUILD_EXAMPLE, 'project/Taskfile.yml'), `\n${printed.join('\n')}\n`)
+  const added = inBuildExample('git diff -U0').output.split('\n').filter(row => /^\+(?!\+\+)/.test(row)).map(row => row.slice(1))
+  assert.deepEqual(added, ['', ...printed], 'The developer pasted the printed lines, nothing else')
+
+  // Twins: the check passes, and Task itself runs the pasted task from the
+  // repository root, where its Compose path leads to the new file.
+  const run = inBuildExample(BUILD_CHECK)
+  assert.equal(run.status, 0, `The check must pass once the printed task is pasted:\n${run.output}`)
+  assert.ok(run.output.includes('Task found: project:build:frontend'), `The check must find the pasted task:\n${run.output}`)
+  const dry = inBuildExample('task --dry project:build:frontend')
+  assert.equal(dry.status, 0, `Task must know project:build:frontend:\n${dry.output}`)
+  assert.ok(dry.output.includes(`docker compose -f ${FRONTEND} build`), `The pasted task must build the frontend's Compose file:\n${dry.output}`)
+  assert.ok(fs.existsSync(path.join(BUILD_EXAMPLE, FRONTEND)), `${FRONTEND} must exist from the repository root`)
+
+  const screen = await card('build-coverage-example-pasted', `git diff && ${BUILD_CHECK}; echo "exit code $?"`, DIFF_MASKS)
+  for (const said of [...printed.map(row => `+${row}`), 'Task found: project:build:frontend', 'All Docker Compose files have an associated build task!', 'exit code 0']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the pasted card:\n${screen}`)
+  }
+})
+
+// ===========================================================================
 // @generated-project-red: the same proof, in a project generated by the
 // toolbox.
 // ===========================================================================
