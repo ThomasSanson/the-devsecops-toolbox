@@ -28,14 +28,3 @@ misconfigurations:
       build-only container that does not operate as a long-running service.
       Health checks are not applicable for containers that execute
       single-purpose build tasks and terminate upon completion.
-
-scan:
-  skip-dirs:
-    - .ansible
-    - .cache
-    - .config/**/roles
-    - .git
-    - iac/helm/charts/vendor
-    - megalinter-reports
-    - vendor
-    - venv

@@ -55,6 +55,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@report-permissions"`
 - [**lizard-cli-args**](02-daily-work/lizard-cli-args.svg): In a generated project, `task lizard` passes a function with four paths under Lizard's default limit of 15. The same task with `-- --CCN 3` hands the lower limit to Lizard, which flags the function and fails the run.
   Replay: `task project:test:e2e -- --grep "@lizard-cli-args"`
+- [**trivy-skip-dirs**](02-daily-work/trivy-skip-dirs.svg): Trivy, run with the settings file MegaLinter hands it, reports the vulnerable lockfile at the root of a generated project and skips the same lockfile under vendor/. The folder list now sits in that settings file, next to the line that names the file of accepted findings.
+  Replay: `task project:test:e2e -- --grep "@trivy-skip-dirs"`
 - [**task-progress**](02-daily-work/task-progress.svg): Workers report actual task output while preserving failed exit codes.
   Replay: `task project:test:e2e -- --grep "@task-progress"`
 - [**dictionary-timeout**](02-daily-work/dictionary-timeout.svg): MegaLinter installs its spelling dictionaries with npm before its checks. Against a registry that never answers, that install stops after 120 seconds and MegaLinter says why, instead of holding the run for more than an hour.

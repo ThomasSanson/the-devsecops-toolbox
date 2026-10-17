@@ -681,7 +681,7 @@ const PROJECT_LINES = {
   '.env.dist': 'APP_URL=https://app.example.org',
   '.env.dev': 'APP_URL=http://localhost:3000', // DevSkim: ignore DS162092,DS137138 -- A project's own development setting written into a test fixture; nothing serves it.
   '.config/megalinter/config.yml': 'SHOW_ELAPSED_TIME: true',
-  '.config/trivy/trivyignore.yml': '    - project/legacy'
+  '.config/trivy/trivyignore.yml': '  - {id: DS002, paths: [project/legacy/Dockerfile]}'
 }
 const PROJECT_LINES_TITLE = "chore: add the project's own settings"
 const RESTORE_BRANCH = 'reload-framework'

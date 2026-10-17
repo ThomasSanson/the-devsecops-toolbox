@@ -1,2 +1,13 @@
 ---
 ignorefile: .config/trivy/trivyignore.yml
+
+scan:
+  skip-dirs:
+    - .ansible
+    - .cache
+    - .config/**/roles
+    - .git
+    - iac/helm/charts/vendor
+    - megalinter-reports
+    - vendor
+    - venv
