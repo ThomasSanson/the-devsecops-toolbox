@@ -132,18 +132,35 @@ tasks:
         - TASK_RENOVATE_LOG_LEVEL: Logging verbosity
 
       🔄 Execution:
-        Uses the installed validator, or downloads the framework version via npx
+        Uses the installed validator. Otherwise npm installs the framework
+        version into a fresh folder and the task checks its version first.
+        A failed download exits with status 2 and says the configuration was
+        NOT checked; otherwise the validator's own exit status is kept.
     deps: [check]
-    vars:
-      TASK_RENOVATE_VALIDATOR:
-        sh: |
-          if command -v renovate-config-validator >/dev/null 2>&1; then
-            echo "renovate-config-validator"
-          else
-            echo "npx --yes -p renovate@{{.TASK_RENOVATE_VERSION}} renovate-config-validator"
-          fi
     cmds:
-      - cmd: 'LOG_LEVEL="{{.TASK_RENOVATE_LOG_LEVEL}}" {{.TASK_RENOVATE_VALIDATOR}} "{{.TASK_RENOVATE_CONFIG}}"'
+      - cmd: |
+          set -eu
+          VALIDATOR=renovate-config-validator
+          if ! command -v "$VALIDATOR" >/dev/null 2>&1; then
+            # A fresh folder every time: npx would rerun the files it unpacked
+            # last time without checking them, and a damaged copy would fail
+            # like a refused configuration. npm checks every package against
+            # the checksum the registry publishes, its own cache included.
+            DIR=$(mktemp -d)
+            trap 'rm -rf "$DIR"' EXIT
+            if ! npm install --prefix "$DIR" --no-save --no-audit --no-fund "renovate@{{.TASK_RENOVATE_VERSION}}" >/dev/null; then
+              echo "❌ renovate@{{.TASK_RENOVATE_VERSION}} could not be downloaded, so the configuration was NOT checked. Fix the network or the npm registry, then run task renovate:validate again."
+              exit 2
+            fi
+            VALIDATOR="$DIR/node_modules/.bin/renovate-config-validator"
+            if [ "$("$VALIDATOR" --version 2>/dev/null || true)" != "{{.TASK_RENOVATE_VERSION}}" ]; then
+              echo "❌ The download is not renovate@{{.TASK_RENOVATE_VERSION}}, so the configuration was NOT checked."
+              exit 2
+            fi
+            echo "📦 renovate@{{.TASK_RENOVATE_VERSION}} installed fresh, checksums and version checked"
+          fi
+          LOG_LEVEL="{{.TASK_RENOVATE_LOG_LEVEL}}" "$VALIDATOR" "{{.TASK_RENOVATE_CONFIG}}"
+        silent: true
 
   dry-run:
     desc: 🧪 Local dry-run of Renovate with the provided configuration
