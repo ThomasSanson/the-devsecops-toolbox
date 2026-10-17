@@ -155,6 +155,13 @@ storyboardStep(When, 'the developer runs the GitLab check and installs only the 
   if (failures !== 3) throw new Error(`Expected the check to fail on each of its 3 runs, it failed ${failures} times:\n${screen}`)
   const remedies = screen.split('  task dev:setup-environment').length - 1
   if (remedies !== 2) throw new Error(`Expected the gum and glow stops to both point at task dev:setup-environment, found ${remedies}:\n${screen}`)
+  // Each card follows the advice the card before it printed: the developer
+  // runs the command the check names, never an installer the check never named.
+  for (const [, named] of screen.matchAll(/^Run:\n\s+(\S.*)$/gm)) {
+    if (!ONE_BY_ONE_LINE.includes(named.trim())) {
+      throw new Error(`The check says to run "${named.trim()}", but the developer types: ${ONE_BY_ONE_LINE}`)
+    }
+  }
 })
 
 // glab installed, nobody signed in: in a terminal the check shows glow's sign-in
