@@ -380,7 +380,7 @@ storyboardStep(Given, 'the project names its own MegaLinter settings file in TAS
     COREPACK_DEFAULT_TO_LATEST: '0',
     TASK_MEGALINTER_CONTAINER_NAME: 'megalinter-config-' + crypto.randomBytes(4).toString('hex')
   }
-  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: state.env, port: 7694 })
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: state.env, port: 7695 })
   const screen = await terminalCard(I, 'project-settings-file', `cat ${SETTINGS} && grep TASK_MEGALINTER_CONFIG .env.dist`, { mask: CARD_MASKS })
   assert.ok(screen.includes('ENABLE_LINTERS: [BASH_SHELLCHECK]'), screen)
   assert.ok(screen.includes(`TASK_MEGALINTER_CONFIG=${SETTINGS}`), screen)
