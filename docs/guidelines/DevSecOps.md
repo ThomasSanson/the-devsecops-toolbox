@@ -17,7 +17,7 @@ The repository must follow a standardised structure as outlined below. This stru
 │   └── environment/
 │       └── staging/
 ├── .config/
-│   ├── nodejs/
+│   ├── node/
 │   └── megalinter/
 ├── tests/
 │   ├── unit/
@@ -233,7 +233,7 @@ graph TD
         D7[kaniko]
         D8[lizard]
         D9[megalinter]
-        D10[nodejs]
+        D10[node]
         D11[podman]
         D12[yamllint]
         D --> D1 & D2 & D3 & D4 & D5 & D6 & D7 & D8 & D9 & D10 & D11 & D12
@@ -912,7 +912,7 @@ All modifications or customisations must align with the principles detailed abov
 │   └── environment/    (Environment-specific configurations)
 │       └── staging/
 ├── .config/
-│   ├── nodejs/         (Node.js configurations)
+│   ├── node/           (Node.js configurations)
 │   └── megalinter/     (Linter configurations)
 ├── tests/
 │   └── infrastructure/ (Infrastructure tests)
