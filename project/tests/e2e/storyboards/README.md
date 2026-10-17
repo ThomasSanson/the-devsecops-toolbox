@@ -116,7 +116,7 @@ Read the acts in order and you follow one developer from an empty project all th
   Chapters: The team's work sits in the old .agent folder · The release moves the folder, and only the team's edit is left to settle.
   Replay: `task project:test:e2e -- --grep "@agents-move"`
 - [**15. render-matrix**](03-evolution/render-matrix.svg): The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
-  Chapters: What the default project looks like on GitLab · The default project passes its own YAML linter · Each answer changes exactly what it promises, one branch per answer.
+  Chapters: What the default project looks like on GitLab · The default project passes its own YAML linter · Each answer changes exactly what it promises, one branch per answer · The default project keeps every fix of the toolbox's own files.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`
 - [**16. renovate-flow**](03-evolution/renovate-flow.svg): On a generated project, the real Renovate bot opens only the toolbox update and the toml update, and leaves the project's own image alone in its deployment manifest. Once the project has more dependencies, their minor and patch updates share one merge request and a major update keeps its own. On the toolbox itself, it opens one merge request per dependency.
   Chapters: A generated project only receives the toolbox update · A generated project's own minor and patch updates share one merge request · The toolbox updates its own tools, one merge request each.

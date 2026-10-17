@@ -20,8 +20,8 @@ const {
 } = require('../helpers/gitlabApi')
 const { stripAnsiEscapeSequences } = require('../helpers/docker')
 const { openLocalTerminal } = require('../helpers/localTerminal')
-const { terminalCard } = require('../terminal/capture')
-const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
+const { captureTerminalFrame, clearTerminal, terminalCard, terminalScreenText, typeCommandAndWait } = require('../terminal/capture')
+const { addStoryboardFrame, storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 // Per-scenario state. Worker processes run scenarios sequentially, so
 // module-level state is safe; the Before hook resets it for every scenario.
@@ -461,4 +461,183 @@ storyboardStep(Then, 'choosing French Gherkin switches every test-writing rule a
     expand: [MATRIX_ANSWERS, '.agents/rules/tests-structure.md'],
     height: 910
   })
+})
+
+// ============================================
+// Chapter 3 of @render-matrix: the default project against the toolbox's own
+// files (#197). A toolbox file X with a template twin X.jinja reaches the
+// projects through the twin only, so a fix made to X alone never ships. Every
+// twin of the default render must render like the toolbox's own X, blank
+// lines aside; a Taskfile is held include by include and task by task,
+// comments aside. The differences listed below are deliberate, each with its
+// reason. Anything else is drift.
+// ============================================
+
+const TOOLBOX = '/workspace'
+const SKILL_AUDIENCE = 'the toolbox points at its own e2e suite, a project at its project/tests folder'
+const TWIN_DIFFERENCES = {
+  '.agents/rules/interaction.md': 'it points at code-style.md, a rule only the toolbox has',
+  '.agents/rules/tests-integrity.md': 'the toolbox describes its own storyboard gates and suite',
+  '.agents/skills/create-feature/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/delete-feature/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/development-cycle/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/read-feature/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/tdd/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/tdd-step1-red/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/test/SKILL.md': SKILL_AUDIENCE,
+  '.agents/skills/update-feature/SKILL.md': SKILL_AUDIENCE,
+  '.config/commitizen/cz.yaml': 'the toolbox also bumps its own image tag',
+  '.config/gitlab/ci/devsecops/code.yml': 'code:all runs on Alpine on both sides: alpine:latest in the toolbox, alpine:3.20 in a project',
+  '.config/gitlab/ci/devsecops/test.yml': 'the toolbox shards its suite and publishes its storyboards; the test job artifacts are checked below',
+  '.config/gitlab/ci/tags.yml': 'written from the CI platform answers',
+  '.config/gitlab/ci/variables.yml': 'written from the CI platform answers',
+  '.config/megalinter/config.base.yml': 'the toolbox scans its own tools, a project leaves them to the toolbox',
+  '.config/megalinter/config.yml': "the project's own MegaLinter settings",
+  '.config/renovate/config.json': 'a project only follows the toolbox release and its own project folder',
+  '.env.dist': 'the toolbox adds the settings of its test GitLab',
+  'CHANGELOG.md': 'a project starts its own history',
+  VERSION: 'a project starts at 0.1.0',
+  'project/Taskfile.yml': "a project's own tasks start empty",
+  'project/docker-compose.yml': "a project's own services start empty; the network MTU is checked below"
+}
+// Inside the Taskfiles: includes the default answers leave out (ansible,
+// podman), init kept optional for a single-component project, the toolbox's
+// own guards (a call to one of them goes with it) and the wording of two gates
+// for a project's audience.
+const TASKFILE_DIFFERENCES = {
+  'Taskfile.yml': ['include ansible', 'include podman', 'include devsecops:init'],
+  '.config/devsecops/Taskfile.test.yml': [
+    'task check:include-coverage', 'task check:release-lock', 'task check:shard-coverage',
+    'task check:storyboard-coverage', 'task check:test-coverage',
+    'task check:no-cheat', 'task check:red-is-real'
+  ]
+}
+const TWIN_TASKS = '(devsecops:init|glow|gum):'
+const TWIN_MASKS = [[/\/tmp\/e2e-render-matrix-\w+/g, '/tmp/e2e-render-matrix-<tmp>']]
+
+// A Taskfile's includes and tasks, each with the lines under it, blank lines
+// and comments aside.
+function taskfileBlocks (lines) {
+  const blocks = new Map()
+  let section = null
+  let key = null
+  for (const line of lines) {
+    if (!line.trim() || /^\s*#/.test(line)) continue
+    const top = line.match(/^(\S+):/)
+    const head = line.match(/^ {2}(\S+):\s*$/)
+    if (top) {
+      section = top[1]
+      key = null
+    } else if (head && (section === 'includes' || section === 'tasks')) {
+      key = `${section === 'includes' ? 'include' : 'task'} ${head[1]}`
+      blocks.set(key, [])
+    } else if (key) {
+      blocks.get(key).push(line)
+    }
+  }
+  return new Map([...blocks].map(([k, body]) => [k, body.join('\n')]))
+}
+
+// Every twin of the render that differs from the toolbox's own file and is not
+// listed as deliberate.
+function twinDrifts (render) {
+  // Each file once: not again through a link (.claude/skills/* -> .agents/skills/*).
+  const root = fs.realpathSync(render)
+  const twins = fs.readdirSync(render, { recursive: true })
+    .filter(f => !f.startsWith(`.git${path.sep}`) && fs.realpathSync(path.join(root, f)) === path.join(root, f))
+    .filter(f => fs.existsSync(path.join(TOOLBOX, `${f}.jinja`)) && fs.existsSync(path.join(TOOLBOX, f)))
+  if (twins.length < Object.keys(TWIN_DIFFERENCES).length) throw new Error(`Found only ${twins.length} .jinja twins in the default render`)
+  const substance = (text) => text.split('\n').filter(l => l.trim()).join('\n')
+  const drifts = []
+  for (const file of twins.filter(f => !(f in TWIN_DIFFERENCES))) {
+    const own = fs.readFileSync(path.join(TOOLBOX, file), 'utf8')
+    const theirs = fs.readFileSync(path.join(render, file), 'utf8')
+    if (!/(^|\/)Taskfile[^/]*\.yml$/.test(file)) {
+      if (substance(own) !== substance(theirs)) drifts.push(`${file} differs from the toolbox's own`)
+      continue
+    }
+    const deliberate = TASKFILE_DIFFERENCES[file] || []
+    const project = taskfileBlocks(theirs.split('\n'))
+    const toolboxOnly = deliberate.filter(k => k.startsWith('task ') && !project.has(k)).map(k => k.slice('task '.length))
+    const toolbox = taskfileBlocks(own.split('\n').filter(l => {
+      const call = l.match(/^\s*- task: :?(\S+)\s*$/)
+      return !(call && toolboxOnly.includes(call[1]))
+    }))
+    for (const key of new Set([...toolbox.keys(), ...project.keys()])) {
+      if (deliberate.includes(key)) continue
+      if (!project.has(key)) drifts.push(`${file}: ${key} is only in the toolbox`)
+      else if (!toolbox.has(key)) drifts.push(`${file}: ${key} is only in the project`)
+      else if (toolbox.get(key) !== project.get(key)) drifts.push(`${file}: ${key} differs from the toolbox's own`)
+    }
+  }
+  return drifts
+}
+
+// The lines of `task --list` the first card greps, spaces evened out.
+function listedTasks (dir) {
+  const out = execFileSync('task', ['--list'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  return stripAnsiEscapeSequences(out).split('\n').filter(l => new RegExp(TWIN_TASKS).test(l)).map(l => l.replace(/\s+/g, ' ').trim())
+}
+
+// ONE terminal card in the default render, opened and closed inside its step:
+// the typed lines one after the other, then everything from the first one
+// down to the prompt that came back. Two lines when the card compares the
+// project with the toolbox: the second prompt shows where the second list
+// comes from.
+async function twinCard (frameName, commands) {
+  const env = { ...process.env }
+  for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
+  const close = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7695, height: 800 })
+  try {
+    await clearTerminal(I)
+    for (const command of commands) await typeCommandAndWait(I, command)
+    await addStoryboardFrame(I, await captureTerminalFrame(I, frameName, { fromMarker: commands[0].slice(0, 40), mask: TWIN_MASKS }))
+    return await terminalScreenText(I)
+  } finally {
+    close()
+  }
+}
+
+storyboardStep(Then, 'the default project lists the same init, gum and glow tasks as the toolbox', async () => {
+  // Back to the default render: the main branch, as GitLab holds it.
+  matrixGit(['checkout', '--quiet', 'main'])
+  if (matrixGit(['status', '--porcelain'])) throw new Error('Expected the main branch checkout to be the default render, untouched')
+  const drifts = twinDrifts(matrix.dir)
+  if (drifts.length) {
+    throw new Error(`Expected every .jinja twin of the default project to render like the toolbox's own file, or to be listed as a deliberate difference:\n${drifts.join('\n')}`)
+  }
+  const project = listedTasks(matrix.dir)
+  const toolbox = listedTasks(TOOLBOX)
+  if (project.length !== 10 || JSON.stringify(project) !== JSON.stringify(toolbox)) {
+    throw new Error(`Expected the project and the toolbox to list the same ten init, gum and glow tasks.\nProject:\n${project.join('\n')}\nToolbox:\n${toolbox.join('\n')}`)
+  }
+  const grep = `task --list | grep -E '${TWIN_TASKS}'`
+  const screen = await twinCard('defaults-twin-tasks', [grep, `cd ${TOOLBOX} && ${grep}`])
+  for (const line of project) {
+    const name = line.split(' ')[1]
+    if (screen.split('\n').filter(l => l.trim().startsWith(`* ${name} `)).length !== 2) {
+      throw new Error(`Expected the card to list ${name} once for each side:\n${screen}`)
+    }
+  }
+})
+
+storyboardStep(Then, "the default project's compose network uses the same 1360 MTU as the toolbox", async () => {
+  const mtu = (text) => (text.match(/^\s*com\.docker\.network\.driver\.mtu: (\d+)\s*$/m) || [])[1]
+  const own = mtu(fs.readFileSync(path.join(TOOLBOX, 'project/docker-compose.yml'), 'utf8'))
+  if (own !== '1360') throw new Error(`Expected the toolbox's own compose network to use an MTU of 1360, found ${own}`)
+  const compose = matrixFile('project/docker-compose.yml')
+  if (mtu(compose) !== own) throw new Error(`Expected the default project's compose network to use the toolbox's MTU of ${own}:\n${compose}`)
+  const screen = await twinCard('defaults-compose-mtu', ['cat project/docker-compose.yml'])
+  if (!screen.includes(`com.docker.network.driver.mtu: ${own}`)) throw new Error(`Expected the card to show the MTU:\n${screen}`)
+})
+
+storyboardStep(Then, "the default project's test job keeps its test folder, not the whole project folder", async () => {
+  const job = (matrixFile('.config/gitlab/ci/devsecops/test.yml').match(/^test:\n[\s\S]*?(?=^\S|$(?![\s\S]))/m) || [''])[0]
+  const paths = ((job.match(/^ {4}paths:\n((?: {6}.*\n)+)/m) || [])[1] || '').split('\n')
+    .map(l => l.trim()).filter(l => l.startsWith('- ')).map(l => l.slice(2))
+  if (JSON.stringify(paths) !== JSON.stringify(['.diagnostics', 'project/tests'])) {
+    throw new Error(`Expected the default test job to keep .diagnostics and project/tests as artifacts, found ${JSON.stringify(paths)}:\n${job}`)
+  }
+  const screen = await twinCard('defaults-test-artifacts', ['head -n 19 .config/gitlab/ci/devsecops/test.yml'])
+  if (!screen.includes('- project/tests') || !screen.includes('expire_in: 3 days')) throw new Error(`Expected the card to show the artifacts list down to expire_in:\n${screen}`)
 })

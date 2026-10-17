@@ -5,7 +5,7 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
   automerge, project mode, Gherkin language) to render the expected files
   So that a template bug in any answer, default or not, can never ship silently
 
-  # ONE story in three chapters. Chapter 1 renders the working-branch
+  # ONE story in four chapters. Chapter 1 renders the working-branch
   # template with every default answer and pushes it as the main branch of a
   # throwaway GitLab project. Chapter 2 runs the project's own yamllint on
   # that render, in a terminal. Chapter 3 renders the SAME
@@ -13,7 +13,10 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
   # branch, and shows GitLab's compare page of that branch against the main
   # branch: every changed file in the Files panel, the telling ones unfolded.
   # The seven compare cards are shot from the same page, so the reader
-  # compares panels, not pages.
+  # compares panels, not pages. Chapter 4 goes back to the main branch in a
+  # terminal and holds the default project against the toolbox's own files:
+  # a file the toolbox keeps a .jinja twin of must render like the toolbox's
+  # own, unless the step file lists the difference as deliberate (#197).
   #
   # ONE sentence = ONE card = ONE pixel baseline, asserted inside the step
   # (tolerance: 0). Each card is twinned with the same fact checked by code:
@@ -73,3 +76,16 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: tests-structure.md is unfolded: features/ and pages/ now ask for fr instead of en. The answers file at the bottom shows gherkin_language turning to fr.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data gherkin_language=fr /workspace acme
     And choosing French Gherkin switches every test-writing rule and skill to French
+    # Chapter: The default project keeps every fix of the toolbox's own files
+    # Note: A terminal in the default project, back on the main branch. The developer lists its init, gum and glow tasks, then moves to /workspace, the toolbox's own folder, and lists the same tasks there.
+    # Note: Both lists hold the same ten lines. The project's init offers "⚙️ Scaffold or update project from template" and "🦊 Configure GitLab project settings", like the toolbox's, and the toolbox offers gum:install and glow:install, like the project.
+    # Copy: task --list | grep -E '(devsecops:init|glow|gum):'; cd /workspace && task --list | grep -E '(devsecops:init|glow|gum):'
+    Then the default project lists the same init, gum and glow tasks as the toolbox
+    # Note: The project's own compose file, printed whole. Its network sets com.docker.network.driver.mtu: 1360, the value the toolbox's own compose file uses.
+    # Note: GitLab.com's runners use an MTU of 1360. Inside the CI's Docker, a network left at the usual 1500 drops the bigger packets without a word, and downloads in the test containers stall.
+    # Copy: cat project/docker-compose.yml
+    And the default project's compose network uses the same 1360 MTU as the toolbox
+    # Note: The start of the project's test job, from .config/gitlab/ci/devsecops/test.yml. After a run, GitLab keeps two folders for 3 days: .diagnostics and project/tests, where the tests write their reports and screenshots.
+    # Note: The rest of the project folder stays out. A node_modules folder or a build there can weigh gigabytes.
+    # Copy: head -n 19 .config/gitlab/ci/devsecops/test.yml
+    And the default project's test job keeps its test folder, not the whole project folder
