@@ -16,6 +16,7 @@
  */
 const fs = require('fs')
 const { execSync, spawn } = require('child_process')
+const { threadId } = require('worker_threads')
 const { openTerminal } = require('../terminal/capture')
 
 const TTYD = '/tmp/e2e-ttyd'
@@ -41,7 +42,9 @@ const ENGINE_MASKS = [
 function ensureTtyd () {
   if (fs.existsSync(TTYD)) return
   // Two workers may race here: each writes its own file, the rename is atomic.
-  const part = `${TTYD}.${process.pid}`
+  // The workers are threads of one process: the pid alone would give them all
+  // the same file.
+  const part = `${TTYD}.${process.pid}.${threadId}`
   execSync(`cd /workspace/project && docker compose run --rm -T --no-deps --entrypoint cat ubuntu /usr/local/bin/ttyd > ${part}`,
     { stdio: ['ignore', 'ignore', 'pipe'], timeout: 120000 })
   fs.chmodSync(part, 0o755)
