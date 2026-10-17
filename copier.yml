@@ -254,6 +254,10 @@ _exclude:
   - .vscode
   - CONTRIBUTING.md
   - copier.yml
+  # The toolbox's map of its own source tree (copier.yml, the .jinja
+  # templates, its own test suite): none of it exists in a generated
+  # project. See #165.
+  - docs/guidelines/Task Mapping.md
   - megalinter-reports
   - node_modules
   # Anchored: the bare pattern matched a README.md at ANY depth, so a component

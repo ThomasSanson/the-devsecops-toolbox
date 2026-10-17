@@ -36,6 +36,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@copier-gherkin-language"`
 - [**copier-docker-answers**](01-install/copier-docker-answers.svg): Copier refuses a malformed Docker answer for a project on its own runners, and an address with a stray space still gives a CI file that yamllint accepts.
   Replay: `task project:test:e2e -- --grep "@copier-docker-answers"`
+- [**shipped-guides**](01-install/shipped-guides.svg): The toolbox keeps Task Mapping.md, its map of its own source tree. A project generated from it gets every other guide in docs/guidelines, without that one.
+  Replay: `task project:test:e2e -- --grep "@shipped-guides"`
 
 ## Act 2 — Daily work (`02-daily-work`)
 
