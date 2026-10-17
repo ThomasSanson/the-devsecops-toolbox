@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.4.11 (2026-10-17)
+
+### Fix
+
+- **publication**: do not report a skipped scan as clean
+
 ## 24.4.10 (2026-10-17)
 
 ### Fix
