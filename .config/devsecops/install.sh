@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # DevSecOps Toolbox Installer
 # Usage:
-#   sh -c "$(curl --location https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/install.sh)"
+#   sh -c "$(curl --location https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh)"
 #
 # Prerequisites: curl
 #

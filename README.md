@@ -24,6 +24,7 @@
   - [Task Control](#task-control)
   - [Common Operations](#common-operations)
   - [Project Customization](#project-customization)
+  - [Updating the framework](#updating-the-framework)
   - [Available Commands](#available-commands)
 - [Environment Variables](#environment-variables)
 - [Development Setup](#development-setup)
@@ -31,6 +32,7 @@
 - [Features](#features)
 - [Security](#security)
   - [Security Best Practices](#security-best-practices)
+- [Tips and Troubleshooting](#tips-and-troubleshooting)
 - [Contributing](#contributing)
 - [Contributors](#contributors)
 - [License](#license)
@@ -68,7 +70,6 @@ The DevSecOps Toolbox is a comprehensive toolset designed to streamline and enfo
 ```bash
 .
 ├── .config/           # Tool-specific configurations
-│   ├── bun/          # Bun package manager configuration
 │   ├── commitizen/   # Commit message standardisation
 │   ├── devsecops/   # DevSecOps pipeline stages
 │   ├── docker-ce/   # Docker configuration
@@ -210,15 +211,7 @@ pipx install uv
 pipx ensurepath
 ```
 
-2. Install the declared Python version with uv:
-
-```bash
-uv python install "$(cat .config/python/.python-version)"
-```
-
-The toolbox Python source of truth is `.config/python/.python-version`.
-
-3. Install Copier with pipx:
+2. Install Copier with pipx:
 
 ```bash
 pipx install copier
@@ -226,7 +219,7 @@ pipx install copier
 
 Note: pipx installs CLI tools in isolated environments, independent of any project virtual environments. This is expected and recommended.
 
-4. Generate a new project using the template:
+3. Generate a new project using the template:
 
 ```bash
 cd ~/workspace/path/to/your/new/project
@@ -240,6 +233,14 @@ copier copy --trust -a .config/devsecops/.copier-answers.yml https://gitlab.com/
 Replace `/path/to/your/new/project` with your desired project location.
 Use `.` to create in the current directory
 
+
+4. Install the Python version the new project declares, with uv:
+
+```bash
+uv python install "$(cat .config/python/.python-version)"
+```
+
+The toolbox Python source of truth is `.config/python/.python-version`, a file the project generation of step 3 writes.
 
 5. Commit the toolbox and start the pipeline:
 
@@ -367,7 +368,6 @@ task devsecops:update
 # Run specific tools
 task megalinter         # Code quality & security
 task commitizen         # Manage commits
-task docker-ce:test     # Docker tests
 task lizard             # Code complexity analysis
 task commitlint         # Commit message validation
 ```
@@ -432,7 +432,6 @@ The toolbox follows a modular architecture:
 ```bash
 .
 ├── .config/                  # Tool configurations
-│   ├── bun/                 # Bun runtime config
 │   ├── commitizen/          # Commit message config
 │   ├── devsecops/          # Pipeline stage definitions
 │   │   ├── Taskfile.plan.yml
@@ -481,7 +480,7 @@ The toolbox implements multiple security measures:
 - Regular security scans
 - Code review enforcement
 
-## Tips & Troubleshooting
+## Tips and Troubleshooting
 
 ### MegaLinter CSpell Configuration Fix
 
