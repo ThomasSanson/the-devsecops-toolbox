@@ -87,6 +87,7 @@ exports.config = {
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/team-compose-task.js',
+      './support/steps/shipped-guides.js',
       './support/steps/update-conflict.js',
       './support/steps/scanner-log-redaction.js',
       './support/steps/betterleaks-redact-config.js',
