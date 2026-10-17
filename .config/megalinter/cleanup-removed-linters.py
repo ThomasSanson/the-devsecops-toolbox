@@ -1,6 +1,9 @@
 """Remove obsolete MegaLinter references without rewriting project settings."""
 
+import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -147,21 +150,45 @@ def validated_updates():
         except ValueError as error:
             raise ValueError(f"{error}: {file}") from None
         if result != original:
+            if not os.access(file, os.W_OK):
+                raise PermissionError(f"No write access to {file}")
             updates.append((file, result))
     return updates
 
 
-def main():
-    """Name the file that stops the migration and how to repair it."""
+def staged(updates):
+    """Write each result beside its file, so a failed write leaves it whole."""
+    temporaries = []
     try:
-        updates = validated_updates()
-    except (ValueError, yaml.YAMLError) as error:
+        for file, result in updates:
+            descriptor, temporary = tempfile.mkstemp(
+                prefix=f".{file.name}.", dir=file.parent
+            )
+            temporaries.append((temporary, file))
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(result)
+            shutil.copymode(file, temporary)
+    except OSError:
+        for temporary, _ in temporaries:
+            os.unlink(temporary)
+        raise
+    return temporaries
+
+
+def main():
+    """Change every settings file or none, and name the file that stops it."""
+    try:
+        temporaries = staged(validated_updates())
+    except (OSError, ValueError, yaml.YAMLError) as error:
         sys.exit(
             f"{error}\n[megalinter migration] No settings file was changed. "
             "Fix the file named above, then ask for the update again."
         )
-    for file, result in updates:
-        file.write_text(result)
+    # ponytail: a rename into the directory that just took the temporary file
+    # does not fail in practice. If one did, each file would still be whole or
+    # migrated, and asking again would finish the job.
+    for temporary, file in temporaries:
+        os.replace(temporary, file)
         print(f"[megalinter migration] removed retired references from {file}")
 
 

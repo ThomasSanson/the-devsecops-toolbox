@@ -32,8 +32,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**7. daily-contribution**](02-daily-work/daily-contribution.svg): An everyday change goes from an issue to a merge request, passes its pipeline, and the main branch releases it with no manual step.
   Chapters: An issue starts the work · The change rides a merge request · The main branch releases it.
   Replay: `task project:test:e2e -- --grep "@daily-contribution"`
-- [**retired-linters**](02-daily-work/retired-linters.svg): On a real GitLab project, a framework update stops at a MegaLinter settings file linked outside the project. Without the link, the same update arrives as a merge request that removes only the retired linters and keeps every comment and control. Asking again changes nothing.
-  Chapters: A settings file linked outside the project stops the update · Without the link, the update arrives as a clean merge request.
+- [**retired-linters**](02-daily-work/retired-linters.svg): On a GitLab project, a framework update stops at a MegaLinter settings file that links outside the project, has a typo or is read-only: it names the file and changes nothing. Back on what GitLab holds, it arrives as a merge request that removes only the retired linters and keeps every comment and control. Asking again changes nothing.
+  Chapters: A settings file linked outside the project stops the update · A settings file with a typo stops the update · A read-only settings file stops the update · Back on what GitLab holds, the update arrives as a clean merge request.
   Replay: `task project:test:e2e -- --grep "@retired-linters"`
 - [**lychee-settings**](02-daily-work/lychee-settings.svg): A framework update adds an accept list to the lychee settings, where the project already wrote its own. The update leaves one list holding both, so lychee still reads its settings and checks the links, and the project's own address stays in a file of its own that no update touches.
   Replay: `task project:test:e2e -- --grep "@lychee-settings"`
