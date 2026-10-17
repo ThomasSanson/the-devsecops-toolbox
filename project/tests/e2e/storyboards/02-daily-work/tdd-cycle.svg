@@ -154,9 +154,9 @@
 <text x="50" y="6482" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">skip: true }. node:test then reports the test as skipped and never runs it.</text>
 <text x="50" y="6500" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3"></text>
 <text x="50" y="6518" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">The guard stops on that line as well. It names project/tests/unit/greeting.test.js:4 and says what the line does: "a</text>
-<text x="50" y="6536" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">skipped or todo test: its failure no longer fails the suite". Off camera, it refuses the other forms node:test offers, {</text>
-<text x="50" y="6554" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">todo: true }, test.todo( and t.skip( among them, and lets a skip through when its value is a condition a reviewer can</text>
-<text x="50" y="6572" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">read.</text>
+<text x="50" y="6536" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">skipped or todo test: its failure no longer fails the suite". Off camera, it also refuses { todo: true }, test.todo(,</text>
+<text x="50" y="6554" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">and t.skip( or t.todo( whether on a line of their own or on the test( line, and lets a skip through when its value is a</text>
+<text x="50" y="6572" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.8" fill="#98a0b3">condition a reviewer can read.</text>
 <text x="50" y="6596" font-family="ui-monospace, 'JetBrains Mono', 'Fira Code', monospace" font-size="12.5" fill="#7aa2f7" class="copy" xml:space="preserve"><tspan x="50" dy="0">cat project/tests/unit/greeting.test.js &amp;&amp; task devsecops:test:check:no-cheat BASE=HEAD</tspan></text>
 </g>
 <circle cx="36" cy="5962" r="16" fill="#3b82f6"/>
