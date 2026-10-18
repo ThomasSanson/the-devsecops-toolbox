@@ -34,6 +34,20 @@
         "ghcr.io/oxsecurity/megalinter"
       ],
       "enabled": false
+    },
+    {
+      "description": "One merge request for the toolbox's own minor and patch updates. Renovate runs once a night and the main branch only takes fast-forward merges, so one update can land per night: five merge requests for five small updates would take five nights. The tools that change what the tests see keep a merge request each.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "!gitlab/gitlab-ce",
+        "!gitlab/gitlab-runner",
+        "!playwright",
+        "!mcr.microsoft.com/playwright",
+        "!@digital-commons-official/codeceptjs-visual-helper",
+        "!python",
+        "!lizard"
+      ],
+      "groupName": "toolbox dependencies"
     }
   ],
   "customManagers": [
