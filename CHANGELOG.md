@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.7 (2026-10-18)
+
+### Fix
+
+- **deps**: group the toolbox's own minor and patch updates
+
 ## 24.5.6 (2026-10-18)
 
 ### Fix
