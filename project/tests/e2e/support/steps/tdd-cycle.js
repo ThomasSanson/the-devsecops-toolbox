@@ -868,7 +868,7 @@ storyboardStep(Given, 'two Docker Compose projects on the same machine each run 
   startStandIn('e2e-ours', 'gitlab')
   startStandIn('e2e-neighbour', 'gitlab')
   startStandIn('e2e-ours', 'codeceptjs', true)
-  ownTerminal = await openLocalTerminal(I, { cwd: '/app', env: nestedEnv(), port: 7694, height: 600 })
+  ownTerminal = await openLocalTerminal(I, { cwd: '/app', env: nestedEnv(), port: 7698, height: 600 })
   const screen = await card('own-gitlab-two-projects', OWN_LIST)
   const listed = ownSh(OWN_LIST).trim().split('\n').slice(1).map(row => row.trim().split(/\s+/))
   assert.deepEqual(listed, [[OWN_SUITE, 'e2e-ours', 'codeceptjs'], [NEIGHBOUR_GITLAB, 'e2e-neighbour', 'gitlab'],
