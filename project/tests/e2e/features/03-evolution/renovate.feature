@@ -64,3 +64,13 @@ Feature: Dependency updates flow through the framework, not around it
     # Note: task renovate:validate downloads the Renovate release the project pins through npx. It answers "Invalid configuration option: unknownOptionForTest" and fails. Once git puts the generated configuration back, the same task answers "Config validated successfully against 1 file(s)".
     # Copy: task renovate:validate
     Then a project without Renovate installed gets the pinned validator, which refuses an unknown option and accepts the generated configuration
+
+  @renovate-nightly
+  Scenario: On the main branch, a push pipeline leaves Renovate to the project's nightly schedule
+    # Note: Every Renovate run on the main branch rebases every open Renovate merge request, and every rebase starts a full pipeline. With fast-forward merges, each merge on main used to restart them all.
+    # Note: Off camera, a project on GitLab with a nightly pipeline schedule, like the toolbox's own "Renovate" schedule at 1 am.
+    Given a project on GitLab with a nightly pipeline schedule
+    # Note: The terminal plays the feedback job of a push pipeline on that project's main branch. The job finds the schedule and leaves Renovate to it, without starting Renovate.
+    # Note: Off camera, the same job in the scheduled pipeline runs Renovate. Once the schedule is deleted, a push pipeline runs Renovate again, so a project without a schedule keeps getting its updates.
+    # Copy: CI_PIPELINE_SOURCE=push task devsecops:feedback:renovate
+    Then a push pipeline leaves Renovate to the schedule, and only the scheduled pipeline runs it

@@ -33,6 +33,8 @@ const { publishToGitLab } = require('../helpers/gitlabProject')
 const { gitlabFrame, gitlabUrl } = require('../helpers/gitlabCard')
 const { BASE_URL, projectPath, encodedProjectPath, listProjectMergeRequests, getRepositoryFile } = require('../helpers/gitlabApi')
 const { freshGet, freshPost, freshDelete } = require('../helpers/http')
+const { openLocalTerminal } = require('../helpers/localTerminal')
+const { terminalCard } = require('../terminal/capture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const { I } = inject()
@@ -624,4 +626,79 @@ storyboardStep(Then, 'the MegaLinter update moves the local pin and both CI pins
   const changes = await mergeRequestChanges(projectName, mr.iid, headers)
   await changesFrame('toolbox-megalinter-update', projectName, mr.iid, '.config/megalinter/package.json', { projectNames: [], height: 980 })
   assertMovesTogether('MegaLinter', changes, MEGALINTER_FILES, UPDATES['oxsecurity/megalinter'])
+})
+
+// ---------------------------------------------------------------------------
+// @renovate-nightly: on the main branch, a push pipeline leaves Renovate to
+// the project's nightly schedule
+// ---------------------------------------------------------------------------
+
+// What the feedback job of a pipeline on the project's main branch has, the
+// pipeline source aside. The job runs in the suite's own checkout, the
+// framework the project would carry.
+function feedbackJobEnv (pub) {
+  return {
+    ...process.env,
+    CI: 'true',
+    CI_COMMIT_BRANCH: 'main',
+    CI_API_V4_URL: `${BASE_URL}/api/v4`,
+    CI_PROJECT_ID: String(pub.projectId),
+    TASK_RENOVATE_PLATFORM: 'gitlab',
+    TASK_RENOVATE_ENDPOINT: `${BASE_URL}/api/v4`,
+    TASK_RENOVATE_TOKEN: pub.token,
+    TASK_RENOVATE_REPOSITORY: projectPath(pub.projectName)
+  }
+}
+
+// Off camera: the same job, read as plain text.
+function runFeedbackJob (pub, source) {
+  try {
+    return execFileSync('task', ['devsecops:feedback:renovate'], {
+      cwd: REPO, env: { ...feedbackJobEnv(pub), CI_PIPELINE_SOURCE: source }, encoding: 'utf8', stdio: 'pipe', timeout: RENOVATE_TIMEOUT_MS
+    })
+  } catch (e) {
+    throw new Error(`The ${source} pipeline's feedback job failed:\n${(e.stdout || '') + (e.stderr || '')}`)
+  }
+}
+
+const WAITS = 'Renovate waits for this project\'s pipeline schedule'
+const RENOVATE_RAN = 'Repository finished'
+
+function assertRenovate (what, output, ran) {
+  if (output.includes(RENOVATE_RAN) !== ran) {
+    throw new Error(`${what} must ${ran ? '' : 'not '}run Renovate:\n${output.slice(-3000)}`)
+  }
+  if (output.includes(WAITS) === ran) {
+    throw new Error(`${what} must ${ran ? 'not ' : ''}say "${WAITS}":\n${output.slice(-3000)}`)
+  }
+}
+
+storyboardStep(Given, 'a project on GitLab with a nightly pipeline schedule', async () => {
+  story = { pubs: [], dirs: [] }
+  const dir = tempDir('e2e-renovate-nightly')
+  fs.writeFileSync(path.join(dir, 'README.md'), '# A project with a nightly schedule\n')
+  // CI stays on, or GitLab refuses the schedule: with no .gitlab-ci.yml the
+  // project still starts no pipeline.
+  const pub = await publishToGitLab(dir, { name: `e2e-renovate-nightly-${crypto.randomBytes(4).toString('hex')}` })
+  story.pubs.push(pub)
+  const created = await freshPost(`${BASE_URL}/api/v4/projects/${pub.projectId}/pipeline_schedules`,
+    { description: 'Renovate', ref: 'main', cron: '0 1 * * *', cron_timezone: 'Europe/Paris' }, pub.headers)
+  if (created.status >= 400) throw new Error(`Creating the nightly schedule returned ${created.status}: ${JSON.stringify(created.data)}`)
+  story.nightly = { pub, scheduleId: created.data.id }
+})
+
+storyboardStep(Then, 'a push pipeline leaves Renovate to the schedule, and only the scheduled pipeline runs it', async () => {
+  const { pub, scheduleId } = story.nightly
+  assertRenovate('A push pipeline on main, with a schedule,', runFeedbackJob(pub, 'push'), false)
+  const close = await openLocalTerminal(I, { cwd: REPO, env: feedbackJobEnv(pub), port: 7696, height: 560 })
+  try {
+    const screen = await terminalCard(I, 'renovate-nightly-push', 'CI_PIPELINE_SOURCE=push task devsecops:feedback:renovate')
+    assertRenovate('A push pipeline on main, with a schedule,', screen, false)
+  } finally {
+    await close()
+  }
+  assertRenovate('The scheduled pipeline', runFeedbackJob(pub, 'schedule'), true)
+  const deleted = await freshDelete(`${BASE_URL}/api/v4/projects/${pub.projectId}/pipeline_schedules/${scheduleId}`, pub.headers)
+  if (deleted.status >= 400) throw new Error(`Deleting the nightly schedule returned ${deleted.status}`)
+  assertRenovate('A push pipeline on main, without a schedule,', runFeedbackJob(pub, 'push'), true)
 })
