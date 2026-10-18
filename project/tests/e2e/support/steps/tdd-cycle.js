@@ -745,7 +745,7 @@ storyboardStep(Given, 'a project has a unit test task, one test still waiting fo
   fs.writeFileSync(path.join(AGENT, UNIT_GREETING), GREETING_TEST)
   fs.writeFileSync(path.join(AGENT, UNIT_SERVICE), SERVICE_TEST)
 
-  agentRun.closeTerminal = await openLocalTerminal(I, { cwd: AGENT, env: agentRun.env, port: 7694, height: 1000 })
+  agentRun.closeTerminal = await openLocalTerminal(I, { cwd: AGENT, env: agentRun.env, port: 7697, height: 1000 })
   const screen = await card('agent-run-setup', 'git add -N . && git diff', DIFF_MASKS)
   assertScreen(screen, ['+  project:test:unit:', '+      - node --test {{.CLI_ARGS}}', "+module.exports.greeting = () => ''",
     "+  assert.equal(greeting('Lambda'), 'Hello, Lambda')", '+  await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000))'])
