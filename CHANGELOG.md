@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.6.0 (2026-10-18)
+
+### Feat
+
+- **renovate**: leave Renovate to the project's schedule on the main branch
+
 ## 24.5.7 (2026-10-18)
 
 ### Fix
