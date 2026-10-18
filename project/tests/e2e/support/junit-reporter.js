@@ -53,10 +53,17 @@ const esc = (s) =>
 module.exports = function junitReporter () {
   const cases = []
 
+  // CodeceptJS sends test.passed and test.failed from inside the scenario,
+  // and mocha only sets test.duration once the scenario has called back, so
+  // test.duration is still empty here. The reporter times each scenario
+  // itself, from test.started. A skipped scenario never starts: 0 s.
+  const started = new WeakMap()
+  event.dispatcher.on(event.test.started, (t) => started.set(t, Date.now()))
+
   const record = (test, status) =>
     cases.push({
       name: typeof test.fullTitle === 'function' ? test.fullTitle() : test.title,
-      time: (test.duration || 0) / 1000,
+      time: (started.has(test) ? Date.now() - started.get(test) : test.duration || 0) / 1000,
       status,
       err: test.err && (test.err.message || String(test.err))
     })

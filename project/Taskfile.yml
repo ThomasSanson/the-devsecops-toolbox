@@ -208,6 +208,9 @@ tasks:
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs rm -rf /app/project/tests"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T codeceptjs mkdir -p /app/project/tests"
       - cmd: "{{.PROJECT_DOCKER_COMPOSE}} cp tests/. codeceptjs:/app/project/tests/"
+      # The unit tests of the suite's own tooling (node:test, a few seconds)
+      # run first, in the container where CodeceptJS is installed.
+      - cmd: "{{.PROJECT_DOCKER_COMPOSE}} exec -T -w /app codeceptjs node --test 'project/tests/unit/*.test.js'"
       # Each cp runs in a subshell: PROJECT_DOCKER_COMPOSE starts with
       # `cd project &&`, which would break on the second invocation if the
       # first one had already changed the script's working directory.
