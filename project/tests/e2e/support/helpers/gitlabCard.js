@@ -61,7 +61,8 @@ const gitlabUrl = {
   ciSettings: (p) => `${base(p)}/-/settings/ci_cd`,
   repoSettings: (p) => `${base(p)}/-/settings/repository`,
   mergeSettings: (p) => `${base(p)}/-/settings/merge_requests`,
-  accessTokens: (p) => `${base(p)}/-/settings/access_tokens`
+  accessTokens: (p) => `${base(p)}/-/settings/access_tokens`,
+  pipelineSchedules: (p) => `${base(p)}/-/pipeline_schedules`
 }
 
 // Wait until the page stops changing (no DOM mutation for quietMs), then for its

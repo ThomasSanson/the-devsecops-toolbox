@@ -59,6 +59,10 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Note: The project's CI/CD variables hold both tokens under the same names, so the pipeline can read them. GitLab shows their values as dots.
     # Copy: http://gitlab/<lambda-user>/<project>/-/settings/ci_cd
     And GitLab now keeps both tokens as CI/CD variables
+    # Note: The project's pipeline schedules. The install created one, "Renovate", on the main branch, once a night between 2 and 5 am, Paris time. The hour and the minute come from the project's number, so the projects of a group do not all start at once.
+    # Note: Pipelines on the main branch now leave Renovate to this schedule, so a merge no longer rebases every open Renovate merge request.
+    # Copy: http://gitlab/<lambda-user>/<project>/-/pipeline_schedules
+    And GitLab now runs Renovate from a nightly pipeline schedule
     # Chapter: The merge request proves itself
     # Note: A runner, the machine that runs pipelines, now serves this project, and the merge request's pipeline runs every job the framework ships. All of them pass.
     # Note: The card is the log of one of them, the code:megalinter job: MegaLinter's verdict for each of its linters, one line each, every one "successfully". The secret and dependency scanners betterleaks, grype, trivy and trufflehog are among them.

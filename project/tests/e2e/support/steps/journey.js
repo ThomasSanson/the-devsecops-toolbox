@@ -1304,6 +1304,8 @@ const HOME_HIDE = ['.project-stats', '[data-testid="project-stats"]', '[class*="
 const HOME_HEIGHT = 1100
 // Token expiry ("in 12 months") and the address that last used a token.
 const TOKEN_PAGE_MASKS = [[/\bin \d+ (day|week|month|year)s?\b/, ''], [/\b\d{1,3}(?:\.\d{1,3}){3}\b/, '']]
+// The schedule's night time and the countdown to its next run.
+const SCHEDULE_PAGE_MASKS = [[/\b\d{1,2} \d \* \* \*/, '<minute> <hour> * * *'], [/\bin (?:about )?\d+ (?:minute|hour)s?\b|\bin an? (?:minute|hour)\b/, 'in <time>']]
 // The secret and dependency scanners whose green verdict the MegaLinter card
 // shows (moved here with the retired @quality-gate story).
 const SECURITY_LINTERS = ['betterleaks', 'trivy', 'trufflehog', 'grype']
@@ -1547,6 +1549,27 @@ storyboardStep(Then, 'GitLab now keeps both tokens as CI/CD variables', async ()
   await assertProjectVariable('TASK_COMMITIZEN_TOKEN')
   await assertProjectVariable('TASK_RENOVATE_TOKEN')
   await ciVariablesFrame(I, 'gitlab-cicd-variables', global.journeyProjectName)
+})
+
+// The twin: one active "Renovate" schedule on main, at the night time the
+// project's number gives (minute = id % 60, hour = 2 + id / 60 % 3), Paris
+// time. The card masks that time and the countdown to the next run, both of
+// which move with the project's number and the clock.
+storyboardStep(Then, 'GitLab now runs Renovate from a nightly pipeline schedule', async () => {
+  const headers = await getRootHeaders()
+  const encoded = encodeURIComponent(projectPath(global.journeyProjectName))
+  const project = (await freshGet(`${BASE_URL}/api/v4/projects/${encoded}`, headers)).data
+  const schedules = (await freshGet(`${BASE_URL}/api/v4/projects/${encoded}/pipeline_schedules`, headers)).data || []
+  const cron = `${project.id % 60} ${2 + Math.floor(project.id / 60) % 3} * * *`
+  const found = schedules.map(({ description, ref, cron, cron_timezone: timezone, active }) => ({ description, ref, cron, timezone, active }))
+  // GitLab stores the branch the script names as a full ref.
+  const expected = [{ description: 'Renovate', ref: 'refs/heads/main', cron, timezone: 'Europe/Paris', active: true }]
+  if (JSON.stringify(found) !== JSON.stringify(expected)) {
+    throw new Error(`Expected the install to schedule Renovate once a night: ${JSON.stringify(expected)}, got ${JSON.stringify(found)}`)
+  }
+  await gitlabFrame(I, 'gitlab-pipeline-schedules', gitlabUrl.pipelineSchedules(global.journeyProjectName), {
+    waitText: 'Renovate', textMasks: SCHEDULE_PAGE_MASKS, height: 560
+  })
 })
 
 // The merge request's pipeline, waited to its end on the project's runner. The
