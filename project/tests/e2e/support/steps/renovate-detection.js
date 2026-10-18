@@ -120,6 +120,12 @@ const UPDATES = {
 }
 const COPIER_FILES = ['.config/copier/requirements.txt', INSTALL_SH]
 const MEGALINTER_FILES = ['.config/gitlab/ci/devsecops/code.yml', '.config/gitlab/ci/devsecops/code.yml.jinja', '.config/megalinter/package.json']
+// The toolbox's own minor and patch updates share one merge request; the
+// tools that change what its tests see keep their own (.config/renovate/config.json).
+const GROUPED = ['ansible-core', 'copier', 'oxsecurity/megalinter']
+const APART = ['playwright', 'mcr.microsoft.com/playwright']
+const GROUP_BRANCH = /toolbox-dependencies$/
+const GROUP_FILES = ['.config/ansible/requirements.txt', ...COPIER_FILES, ...MEGALINTER_FILES].sort()
 
 // Every place a bootstrap tool is pinned: its .config source and install.sh,
 // which installs it before the toolbox is on the machine.
@@ -523,10 +529,11 @@ storyboardStep(Then, 'the project dependencies merge request moves toml and nose
 })
 
 // ---------------------------------------------------------------------------
-// Chapter 3: the toolbox updates its own tools, one merge request each
+// Chapter 3: the toolbox groups its own small updates, and keeps the tools
+// its tests see apart
 // ---------------------------------------------------------------------------
 
-storyboardStep(When, "the toolbox's own Renovate runs, it opens one merge request per dependency", async () => {
+storyboardStep(When, "the toolbox's own Renovate runs, it groups its small updates and keeps playwright apart", async () => {
   const { projectName, token, headers } = story.toolbox
   const entries = await runRenovate(story.toolboxDir, projectName, token, TOOLBOX_RUN_ENV)
   story.toolboxMrs = await openMergeRequests(projectName, headers)
@@ -541,21 +548,28 @@ storyboardStep(When, "the toolbox's own Renovate runs, it opens one merge reques
       if (!files.has(file)) throw new Error(`Renovate does not see ${tool.depName} in ${file} (found in: ${[...files].join(', ') || 'nowhere'})`)
     }
   }
-  // Twin: one branch per dependency, never shared, each opened as a merge request.
+  // Twin: each dependency gets exactly one update branch, at its one release.
   story.toolboxBranches = {}
-  const owners = {}
   for (const [name, version] of Object.entries(UPDATES)) {
     const found = deps[name] || { branches: new Set(), versions: new Set() }
     if (found.branches.size !== 1) throw new Error(`${name} must get exactly one update branch, got ${JSON.stringify([...found.branches])}`)
-    const branch = [...found.branches][0]
-    if (owners[branch]) throw new Error(`${name} and ${owners[branch]} share the branch ${branch}: one dependency, one merge request`)
-    owners[branch] = name
-    story.toolboxBranches[name] = branch
+    story.toolboxBranches[name] = [...found.branches][0]
     if (![...found.versions].some(v => v.endsWith(version.replace(/^v/, '')))) {
       throw new Error(`${name} must be proposed at ${version}, got ${JSON.stringify([...found.versions])}`)
     }
   }
-  assertSameList('Branches of the merge requests the toolbox\'s Renovate opened', story.toolboxMrs.map(mr => mr.source_branch), Object.values(story.toolboxBranches))
+  // Twin: the small updates share the group's branch, the tools the tests
+  // see each keep a branch of their own, and each branch is one merge request.
+  for (const name of GROUPED) {
+    if (!GROUP_BRANCH.test(story.toolboxBranches[name])) {
+      throw new Error(`${name} must ride in the toolbox dependencies group, got the branch ${story.toolboxBranches[name]}`)
+    }
+  }
+  const apart = APART.map(name => story.toolboxBranches[name])
+  if (new Set(apart).size !== APART.length || apart.some(branch => GROUP_BRANCH.test(branch))) {
+    throw new Error(`playwright and its test image must keep a branch each, out of the group: ${JSON.stringify(apart)}`)
+  }
+  assertSameList('Branches of the merge requests the toolbox\'s Renovate opened', story.toolboxMrs.map(mr => mr.source_branch), [...new Set(Object.values(story.toolboxBranches))])
 
   // Twin of the playwright skew: the test image installs the browser its own
   // playwright asks for, and that browser is really there.
@@ -571,10 +585,11 @@ function toolboxMergeRequest (depName) {
   return mr
 }
 
-// Twins of a Changes card: exactly these files, each one moved to `version`.
+// Twins of a Changes card: the grouped merge request changes exactly the
+// files of its updates, and these `files` move to `version`.
 function assertMovesTogether (what, changes, files, version) {
-  assertSameList(`Files the ${what} update changes`, changes.map(change => change.new_path), files)
-  for (const change of changes) {
+  assertSameList('Files the grouped update changes', changes.map(change => change.new_path), GROUP_FILES)
+  for (const change of changes.filter(change => files.includes(change.new_path))) {
     if (!change.diff.split('\n').some(line => line.startsWith('+') && line.includes(version))) {
       throw new Error(`${change.new_path} must move to ${version} in the ${what} update:\n${change.diff}`)
     }
