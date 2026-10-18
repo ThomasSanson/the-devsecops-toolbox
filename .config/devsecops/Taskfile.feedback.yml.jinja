@@ -44,6 +44,17 @@ tasks:
 
   renovate:
     desc: Run Renovate as part of feedback (skipped unless enabled)
+    vars:
+      # In CI on the default branch, a project with a pipeline schedule runs
+      # Renovate from that schedule only: each run rebases every open Renovate
+      # merge request, and each rebase starts a full pipeline. Without a
+      # schedule, or when the API does not answer, every pipeline runs it.
+      TASK_RENOVATE_WAITS_FOR_SCHEDULE:
+        sh: |
+          if [ "{{.TASK_GIT_IS_DEFAULT_BRANCH}}" = true ] && [ -n "${CI:-}" ] && [ "${CI_PIPELINE_SOURCE:-}" != schedule ] &&
+            curl -sf -H "PRIVATE-TOKEN: ${TASK_RENOVATE_TOKEN:-${RENOVATE_TOKEN:-}}" \
+              "${CI_API_V4_URL:-}/projects/${CI_PROJECT_ID:-}/pipeline_schedules?scope=active" | grep -q '"id"'
+          then echo true; else echo false; fi
     status:
       - test "{{.TASK_DEVSECOPS_FEEDBACK_RENOVATE_ENABLED}}" != "true"
     cmds:
@@ -51,7 +62,11 @@ tasks:
           echo "TASK_GIT_DEFAULT_BRANCH={{.TASK_GIT_DEFAULT_BRANCH}}"
           echo "TASK_GIT_IS_DEFAULT_BRANCH={{.TASK_GIT_IS_DEFAULT_BRANCH}}"
           echo "TASK_RENOVATE_PLATFORM={{.TASK_RENOVATE_PLATFORM}}"
+      - cmd: echo "⏭️  Renovate waits for this project's pipeline schedule, so this pipeline rebases no Renovate merge request."
+        silent: true
+        if: '[ "{{.TASK_RENOVATE_WAITS_FOR_SCHEDULE}}" = true ]'
       - task: :renovate
+        if: '[ "{{.TASK_RENOVATE_WAITS_FOR_SCHEDULE}}" != true ]'
         vars:
           TASK_RENOVATE_PLATFORM: '{{ if eq .TASK_GIT_IS_DEFAULT_BRANCH "false" }}local{{ else }}{{.TASK_RENOVATE_PLATFORM}}{{ end }}'
 {%- endraw %}
