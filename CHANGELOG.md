@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.7.0 (2026-10-18)
+
+### Feat
+
+- **devsecops**: run a task for an agent and keep its own verdict
+
 ## 24.6.0 (2026-10-18)
 
 ### Feat
