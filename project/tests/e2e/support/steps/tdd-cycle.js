@@ -739,7 +739,8 @@ storyboardStep(Given, 'a project has a unit test task, one test still waiting fo
 
   fs.appendFileSync(path.join(AGENT, 'project/Taskfile.yml'), UNIT_TASK)
   fs.mkdirSync(path.join(AGENT, 'project/src'))
-  fs.mkdirSync(path.join(AGENT, 'project/tests/unit'))
+  // The toolbox has unit tests of its own there already.
+  fs.mkdirSync(path.join(AGENT, 'project/tests/unit'), { recursive: true })
   fs.writeFileSync(path.join(AGENT, 'project/src/greeting.js'), GREETING_CODE)
   fs.writeFileSync(path.join(AGENT, UNIT_GREETING), GREETING_TEST)
   fs.writeFileSync(path.join(AGENT, UNIT_SERVICE), SERVICE_TEST)
