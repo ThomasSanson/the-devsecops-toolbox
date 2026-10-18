@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.5.6 (2026-10-18)
+
+### Fix
+
+- **deps**: update dependency renovate to v44.167.1
+
 ## 24.5.5 (2026-10-17)
 
 ### Fix
