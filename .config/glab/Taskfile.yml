@@ -672,6 +672,31 @@ tasks:
           bash {{.TASK_GLAB_CONFIG_DIR}}/commitizen-token.sh
         silent: true
 
+  renovate-schedule:
+    desc: 🌙 Run Renovate from a nightly pipeline schedule
+    summary: |
+      ℹ️ Description:
+        Gives the project a "Renovate" pipeline schedule, once a night on the
+        default branch, between 2:00 and 4:59 Europe/Paris (the time comes
+        from the project's id). Pipelines on the default branch then leave
+        Renovate to it, so a merge no longer rebases every open Renovate merge
+        request. A project that already has an active schedule keeps it.
+        Never fails: without a schedule, Renovate keeps running in every pipeline.
+
+      🔐 Preconditions:
+        - glab must be installed and authenticated
+        - jq must be installed
+    preconditions:
+      - sh: command -v glab >/dev/null 2>&1
+        msg: "❌ glab is not installed. Run 'task glab:install' first."
+      - sh: command -v jq >/dev/null 2>&1
+        msg: "❌ jq is not installed."
+    status:
+      - test "{{.TASK_GLAB_ENABLED}}" = "false"
+    cmds:
+      - cmd: bash {{.TASK_GLAB_CONFIG_DIR}}/renovate-schedule.sh
+        silent: true
+
   protected-branch:
     desc: 🔒 Configure protected branch with strict rules
     summary: |

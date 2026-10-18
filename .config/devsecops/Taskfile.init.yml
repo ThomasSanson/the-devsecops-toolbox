@@ -72,7 +72,8 @@ tasks:
         1. Installs glab CLI
         2. Configures merge request settings
         3. Sets up project access tokens (Renovate, Commitizen)
-        4. Configures protected branches
+        4. Schedules Renovate once a night
+        5. Configures protected branches
     deps:
       - :glab:install
     cmds:
@@ -82,6 +83,7 @@ tasks:
       - task: :glab:bootstrap-main
       - task: :glab:merge-settings
       - task: :glab:renovate-token
+      - task: :glab:renovate-schedule
       - task: :glab:commitizen-token
       - task: :glab:protected-branch
       - task: :glab:init-merge-request
