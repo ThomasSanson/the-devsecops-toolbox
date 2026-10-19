@@ -43,6 +43,7 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Chapter: GitLab reads the report of a merge request
     # Note: A merge request adds three probe scenarios to a throwaway copy of the toolbox, with the steps behind them. One passes. Two fail with the same message: quotes, an accent, an emoji, a tab and a line break included.
     # Note: The last step also wraps its message in terminal colours, the escape code before [31m, and adds every control character XML forbids: the kind of text a test tool really prints.
+    # Note: Each probe first waits a known time with the wait helper: three seconds for the one that passes, two and one for the two that fail. The passing one has a file of its own, report-pass.feature: the test engine hands whole files to its workers, so two files keep two workers busy.
     # Copy: http://gitlab/<user>/<project>/-/merge_requests/1/diffs
     Given a merge request adds one passing scenario, one plain failure and one failure in terminal colours
     # Note: The merge request's pipeline runs the three scenarios with the toolbox's own test engine and JUnit reporter, on the very image the test suite runs in, and hands the report to GitLab.
@@ -52,8 +53,12 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Note: The details of the coloured failure, as a reviewer opens them on that tab. The message reads as it was written, with no escape code and none of the forbidden characters.
     # Copy: http://gitlab/<user>/<project>/-/pipelines/<id>/test_report
     Then GitLab shows the coloured failure as readable text, without the terminal colours
+    # Note: The job runs the three scenarios on two workers, the way the toolbox's own pipeline does, so two of them run at the same time.
+    # Note: On the same tab, the Duration column reads 2, 1 and 3 seconds: each scenario gets the time it waited, not the time of its worker. The 6 at the top right is their sum. The hundredths change from one run to the next, so they are hidden behind <..>.
+    # Copy: http://gitlab/<user>/<project>/-/pipelines/<id>/test_report
+    And GitLab shows the time each scenario took, though two workers ran them side by side
     # Chapter: The RED gate reads the same report
-    # Note: The same three scenarios, run on the developer's machine, leave the same report in project/tests/e2e/_output/junit. The RED gate reads it and accepts the coloured failure as real: the scenario ran and failed on its own check.
+    # Note: The same three scenarios, run on the developer's machine on one worker, leave their report in project/tests/e2e/_output/junit. The RED gate reads it and accepts the coloured failure as real: the scenario ran and failed on its own check.
     # Note: It quotes that check on one readable line: the line break and the tab become spaces, and nothing of the colours is left.
     # Copy: ls project/tests/e2e/_output/junit && task devsecops:test:check:red-is-real -- @report-colour
     And the RED guard still accepts the coloured assertion as a genuine failure

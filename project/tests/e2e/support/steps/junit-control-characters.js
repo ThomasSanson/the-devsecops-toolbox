@@ -32,6 +32,7 @@ const ROOT = '/tmp/e2e-junit-report'
 const GIT_CONFIG = `${ROOT}.gitconfig`
 const E2E = 'project/tests/e2e'
 const FEATURE = `${E2E}/features/report-probe.feature`
+const PASS_FEATURE = `${E2E}/features/report-pass.feature`
 const STEPS = `${E2E}/support/steps/report-probe.js`
 const CONFIG = `${E2E}/codecept.conf.js`
 const REPORT = `${E2E}/_output/junit/results-1.xml`
@@ -42,10 +43,14 @@ const NET = 'the-devsecops-toolbox_the-devsecops-toolbox'
 const TITLE = 'test: add a passing probe and two failing ones'
 const COLOURED = 'JUnit report probe: a coloured assertion fails @report-colour'
 const PLAIN = 'Expected <hello> & "world", got café 🧪\nKeep this second line\tindented.\r'
-const FEATURES = `Feature: JUnit report probe
+// The passing probe has a file of its own: the engine hands each of its
+// workers whole files, so two files keep two workers busy.
+const PASSING = `Feature: JUnit report probe
   @report-pass
   Scenario: an ordinary scenario passes
     Then the ordinary probe passes
+`
+const FEATURES = `Feature: JUnit report probe
   @report-plain
   Scenario: an ordinary assertion fails
     Then the plain probe fails
@@ -59,9 +64,11 @@ const message = ${JSON.stringify(PLAIN)}
 const forbidden = Array.from({ length: 32 }, (_, code) => code)
   .filter(code => ![9, 10, 13].includes(code)).concat([65534, 65535])
   .map(code => String.fromCharCode(code)).join('')
-Then('the ordinary probe passes', () => assert.equal(1 + 1, 2))
-Then('the plain probe fails', () => assert.fail(message))
-Then('the coloured probe fails', () => {
+const wait = seconds => new Promise(done => setTimeout(done, seconds * 1000))
+Then('the ordinary probe passes', () => wait(3))
+Then('the plain probe fails', () => wait(2).then(() => assert.fail(message)))
+Then('the coloured probe fails', async () => {
+  await wait(1)
   const escape = String.fromCharCode(27)
   assert.fail(escape + '[31m' + message + escape + '[0m' + forbidden + 'Message ends here.')
 })
@@ -75,6 +82,24 @@ cases = list(root.iter('testcase'))
 failures = [case.find('failure').get('message') for case in cases if case.find('failure') is not None]
 print(json.dumps({'tests': len(cases), 'failures': failures, 'skipped': len(list(root.iter('skipped'))), 'errors': len(list(root.iter('error')))}))
 `
+// Each probe waits a known time before its verdict: the seconds its report
+// must give it, whichever worker ran it.
+const WAITS = { '@report-pass': 3, '@report-plain': 2, '@report-colour': 1 }
+// The time of every scenario, read from every worker's report.
+const READ_TIMES = `import glob, json, sys
+import xml.etree.ElementTree as ET
+print(json.dumps([[case.get('name'), float(case.get('time'))] for path in sorted(glob.glob(sys.argv[1] + '/*.xml')) for case in ET.parse(path).getroot().iter('testcase')]))
+`
+
+// At least the wait, and less than one second more: the scenario's own time,
+// not the worker's or the run's.
+function assertWaited (times, where) {
+  assert.deepEqual(times.map(([name]) => name.split(' ').pop()).sort(), Object.keys(WAITS).sort(), `${where}: ${JSON.stringify(times)}`)
+  for (const [name, seconds] of times) {
+    const wait = WAITS[name.split(' ').pop()]
+    assert.ok(seconds >= wait && seconds < wait + 1, `${where}: "${name}" waited ${wait} s, its report says ${seconds} s`)
+  }
+}
 
 let story = null
 
@@ -167,7 +192,7 @@ async function poll (what, read, done, tries = 60) {
 storyboardStep(Given, 'a merge request adds one passing scenario, one plain failure and one failure in terminal colours', async () => {
   story = {}
   copyFrameworkWithEngine(ROOT)
-  const env = { ...process.env, TASK_CODECEPTJS_FEATURES: './features/report-probe.feature' }
+  const env = { ...process.env, TASK_CODECEPTJS_FEATURES: './features/report-probe.feature,./features/report-pass.feature' }
   for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'CI']) delete env[name]
   story.env = env
   // The real engine and the repository's JUnit reporter; no browser, and only
@@ -178,6 +203,8 @@ storyboardStep(Given, 'a merge request adds one passing scenario, one plain fail
   // The project's pipeline: one job, on merge requests only, running the line
   // `task project:test:e2e` ends on, and handing its reports to GitLab.
   story.command = engineCommand(ROOT, env)
+  // The job runs on two workers, as the toolbox's own pipeline does.
+  story.jobCommand = engineCommand(ROOT, env, { workers: 2 })
   fs.writeFileSync(path.join(ROOT, '.gitlab-ci.yml'), [
     'workflow:',
     '  rules:',
@@ -187,7 +214,7 @@ storyboardStep(Given, 'a merge request adds one passing scenario, one plain fail
     '  variables:',
     `    TASK_CODECEPTJS_FEATURES: ${env.TASK_CODECEPTJS_FEATURES}`,
     '  script:',
-    `    - ${story.command}`,
+    `    - ${story.jobCommand}`,
     '  artifacts:',
     '    when: always',
     '    reports:',
@@ -203,6 +230,7 @@ storyboardStep(Given, 'a merge request adds one passing scenario, one plain fail
   story.runner = await startLocalImageRunner(pub.projectId, rootHeaders)
 
   fs.writeFileSync(path.join(ROOT, FEATURE), FEATURES)
+  fs.writeFileSync(path.join(ROOT, PASS_FEATURE), PASSING)
   fs.writeFileSync(path.join(ROOT, STEPS), PROBE_STEPS)
   git(`switch -q -c ${BRANCH} && git add -A && git commit -qm "${TITLE}"`)
   pub.push(BRANCH)
@@ -210,16 +238,16 @@ storyboardStep(Given, 'a merge request adds one passing scenario, one plain fail
   assert.equal(mr.status, 201, JSON.stringify(mr.data))
   story.iid = mr.data.iid
 
-  // The twin: the merge request adds the two probe files and nothing else.
-  const diffs = await poll('merge request diffs', () => listMergeRequestDiffs(pub.projectName, story.iid, pub.headers), d => d && d.length >= 2)
-  assert.deepEqual(diffs.map(d => d.new_path).sort(), [FEATURE, STEPS].sort())
+  // The twin: the merge request adds the three probe files and nothing else.
+  const diffs = await poll('merge request diffs', () => listMergeRequestDiffs(pub.projectName, story.iid, pub.headers), d => d && d.length >= 3)
+  assert.deepEqual(diffs.map(d => d.new_path).sort(), [FEATURE, PASS_FEATURE, STEPS].sort())
   // Its pipeline runs before the card, so the page shows its final state.
   const pipeline = await waitMergeRequestPipeline(I, pub.projectName, story.iid, rootHeaders)
   assert.equal(pipeline.status, 'failed', `The pipeline must fail on the two failing probes, got ${pipeline.status}`)
   story.pipeline = pipeline.pid
 
   await gitlabFrame(I, 'probes-merge-request', gitlabUrl.mr(pub.projectName, story.iid, 'diffs'), {
-    height: 840,
+    height: 950,
     waitText: 'report-probe.js'
   })
 })
@@ -261,9 +289,32 @@ storyboardStep(Then, 'GitLab shows the coloured failure as readable text, withou
   })
 })
 
+storyboardStep(Then, 'GitLab shows the time each scenario took, though two workers ran them side by side', async () => {
+  const { pub } = story
+  // The twin, twice: GitLab's reading of the job's reports, then the reports
+  // the job's own command writes here, one per worker.
+  assertWaited(story.cases.map(c => [c.name, c.execution_time]), 'GitLab')
+  try {
+    execSync(`${story.jobCommand} 2>&1`, { cwd: ROOT, env: story.env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  } catch (_) {} // Two probes fail by design.
+  const reports = path.join(ROOT, path.dirname(REPORT))
+  assert.deepEqual(fs.readdirSync(reports).sort(), ['results-1.xml', 'results-2.xml'], 'Each of the two workers writes its own report')
+  fs.writeFileSync(path.join(ROOT, 'read-times.py'), READ_TIMES)
+  assertWaited(JSON.parse(execSync(`python3 read-times.py ${reports}`, { cwd: ROOT, encoding: 'utf8' })), 'JUnit')
+
+  // The same page and size as the summary card: only the durations differ.
+  await gitlabFrame(I, 'gitlab-test-durations', `${gitlabUrl.pipeline(pub.projectName, story.pipeline)}/test_report`, {
+    height: 700,
+    waitText: JOB,
+    // GitLab prints hundredths of a second, which change from run to run.
+    textMasks: [[/\b(\d+)\.\d{2}s\b/g, '$1.<..>s']],
+    prepare: () => openSuite()
+  })
+})
+
 storyboardStep(Then, 'the RED guard still accepts the coloured assertion as a genuine failure', async () => {
-  // The same three scenarios, run locally the way the job ran them: the RED
-  // gate reads the report the local run leaves.
+  // The same three scenarios, run locally on one worker: the RED gate reads
+  // the report the local run leaves.
   let run
   try {
     run = { code: 0, output: execSync(`${story.command} 2>&1`, { cwd: ROOT, env: story.env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }) }

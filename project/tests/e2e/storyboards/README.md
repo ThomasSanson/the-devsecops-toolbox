@@ -80,7 +80,7 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**worker-completion**](02-daily-work/worker-completion.svg): A lost worker fails the run even when the engine exits 0. A complete selection still passes, with a grep filter or its inverse.
   Chapters: A worker can disappear before its result exists · A complete selection still passes.
   Replay: `task project:test:e2e -- --grep "@worker-completion"`
-- [**junit-control-characters**](02-daily-work/junit-control-characters.svg): GitLab reads a real failure report even when an assertion carries terminal colours, and the RED gate accepts the same coloured failure as a genuine one.
+- [**junit-control-characters**](02-daily-work/junit-control-characters.svg): GitLab reads a real failure report even when an assertion carries terminal colours, and shows the time each scenario took on two workers. The RED gate accepts the same coloured failure as a genuine one.
   Chapters: GitLab reads the report of a merge request · The RED gate reads the same report.
   Replay: `task project:test:e2e -- --grep "@junit-control-characters"`
 - [**agent-run**](02-daily-work/agent-run.svg): An assistant runs its tasks through one entry point. A passing check, an expected RED, a refused check and a test that never ends each come back with their own exit code, kept in a status file that no pipe can rewrite.
