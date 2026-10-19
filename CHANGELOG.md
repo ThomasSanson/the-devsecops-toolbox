@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.11 (2026-10-19)
+
+### Fix
+
+- **lizard**: pass the arguments after task lizard -- to Lizard
+
 ## 24.8.10 (2026-10-19)
 
 ### Fix
