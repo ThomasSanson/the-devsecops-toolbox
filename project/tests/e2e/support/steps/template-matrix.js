@@ -328,7 +328,7 @@ storyboardStep(Then, 'every YAML file of the default project passes yamllint', a
   assertYamlClean('default')
   const env = { ...process.env }
   for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
-  matrix.closeTerminal = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7694, height: 600 })
+  matrix.closeTerminal = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7701, height: 600 })
   const screen = await terminalCard(I, 'defaults-yamllint', 'task yamllint', { mask: YAMLLINT_MASKS })
   if (!screen.includes(YAMLLINT_VERDICT) || screen.includes('Failed to run task')) {
     throw new Error(`Expected task yamllint to end on "${YAMLLINT_VERDICT}":\n${screen}`)
