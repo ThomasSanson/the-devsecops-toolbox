@@ -68,7 +68,7 @@ fi
 install_from_github() {
   log "Attempting installation from GitHub releases..."
 
-  DOWNLOAD_URL="https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_${GLAB_ARCH}.tar.gz"
+  DOWNLOAD_URL="${GLAB_DOWNLOAD_URL:-https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_${GLAB_ARCH}.tar.gz}"
   TMP_DIR=$(mktemp -d)
 
   if command -v curl >/dev/null 2>&1; then
