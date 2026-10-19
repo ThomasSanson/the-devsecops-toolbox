@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.1 (2026-10-19)
+
+### Fix
+
+- **templates**: keep every rendered YAML file clean for yamllint
+
 ## 24.8.0 (2026-10-19)
 
 ### Feat
