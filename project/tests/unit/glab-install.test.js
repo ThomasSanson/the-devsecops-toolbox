@@ -12,6 +12,7 @@
  *
  *   node --test project/tests/unit/glab-install.test.js
  */
+// cspell:ignore setpriv reuid regid
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs')

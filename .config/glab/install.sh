@@ -71,10 +71,13 @@ install_from_github() {
   DOWNLOAD_URL="${GLAB_DOWNLOAD_URL:-https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_${GLAB_ARCH}.tar.gz}"
   TMP_DIR=$(mktemp -d)
 
+  # gitlab.com answers 429 to shared runners some days: wait and ask again,
+  # honouring Retry-After, for up to five minutes before giving up.
+  # cspell:ignore waitretry
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/glab.tar.gz" || return 1
+    curl -fsSL --retry 6 --retry-max-time 300 "$DOWNLOAD_URL" -o "$TMP_DIR/glab.tar.gz" || return 1
   elif command -v wget >/dev/null 2>&1; then
-    wget -q "$DOWNLOAD_URL" -O "$TMP_DIR/glab.tar.gz" || return 1
+    wget -q --tries=6 --waitretry=30 --retry-on-http-error=429,503 "$DOWNLOAD_URL" -O "$TMP_DIR/glab.tar.gz" || return 1
   else
     log "Neither curl nor wget found"
     return 1
