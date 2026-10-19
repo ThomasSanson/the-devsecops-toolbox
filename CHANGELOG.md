@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 24.8.8 (2026-10-19)
+
+### Fix
+
+- **megalinter**: change every settings file or none of them
+- **megalinter**: name the settings file that stops the migration
+
 ## 24.8.7 (2026-10-19)
 
 ### Fix
