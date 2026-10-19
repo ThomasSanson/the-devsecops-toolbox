@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.10 (2026-10-19)
+
+### Fix
+
+- **grype**: skip the excluded folders at any depth
+
 ## 24.8.9 (2026-10-19)
 
 ### Fix
