@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.9 (2026-10-19)
+
+### Fix
+
+- **templates**: carry the toolbox's own fixes into the .jinja twins
+
 ## 24.8.8 (2026-10-19)
 
 ### Fix
