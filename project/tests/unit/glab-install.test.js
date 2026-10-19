@@ -66,7 +66,7 @@ test('@glab-install-retry the installer waits out two 429 answers from gitlab.co
     response.writeHead(200, { 'Content-Type': 'application/gzip' })
     response.end(archive)
   })
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)) // DevSkim: ignore DS162092 -- The test's own stand-in server on loopback.
   try {
     const home = path.join(dir, 'home')
     fs.mkdirSync(home)
