@@ -59,7 +59,7 @@ storyboardStep(Given, "the project's guide lists its three settings files in the
   renderProject({}, { dst: PROJECT })
   fs.writeFileSync(GIT_CONFIG, '[safe]\n\tdirectory = *\n[user]\n\temail = e2e@test.local\n\tname = e2e\n[init]\n\tdefaultBranch = main\n')
   sh('git init -q && git add -A && git commit -qm "the generated project"')
-  story = { closeTerminal: await openLocalTerminal(I, { cwd: PROJECT, env: env(), port: 7694, height: 900 }) }
+  story = { closeTerminal: await openLocalTerminal(I, { cwd: PROJECT, env: env(), port: 7700, height: 900 }) }
 
   const screen = await terminalCard(I, 'the-guide-names-the-files', `grep -A 9 "Loading Order" "${GUIDE}"`)
   const guide = fs.readFileSync(path.join(PROJECT, GUIDE), 'utf8')
