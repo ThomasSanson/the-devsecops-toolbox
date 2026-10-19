@@ -587,7 +587,7 @@ function listedTasks (dir) {
 async function twinCard (frameName, commands) {
   const env = { ...process.env }
   for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
-  const close = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7695, height: 800 })
+  const close = await openLocalTerminal(I, { cwd: matrix.dir, env, port: 7703, height: 800 })
   try {
     await clearTerminal(I)
     for (const command of commands) await typeCommandAndWait(I, command)
