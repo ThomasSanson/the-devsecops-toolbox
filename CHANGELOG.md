@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.5 (2026-10-19)
+
+### Fix
+
+- **e2e**: refuse a skipped scenario and stop a hung run
+
 ## 24.8.4 (2026-10-19)
 
 ### Fix
