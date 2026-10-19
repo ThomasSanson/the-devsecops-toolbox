@@ -541,7 +541,7 @@ storyboardStep(Given, 'a generated project holds the same vulnerable lockfile at
   state.project = renderProject({}, { dst: TRIVY_PROJECT })
   state.dirs.push(state.project, TRIVY_REPORT)
   TRIVY_LOCKS.forEach(writeLock)
-  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('trivy'), port: 7697, height: 900 })
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('trivy'), port: 7704, height: 900 })
   const screen = await terminalCard(I, 'trivy-lockfiles', `grep -H -A1 '"node_modules/lodash"' ${TRIVY_LOCKS.join(' ')}`)
   for (const file of TRIVY_LOCKS) assert.ok(screen.includes(`${file}-      "version": "4.17.20"`), `${file} must pin lodash 4.17.20:\n${screen}`)
 })
