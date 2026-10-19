@@ -293,6 +293,8 @@ storyboardStep(Then, 'the framework update stops at a read-only settings file an
     'git checkout -q -- . && git clean -fdq',
     `printf '%s' ${shellEscape(SHARED)} > ${LINK}`,
     `git commit -q --no-verify -am ${shellEscape("fix: close the list in the team's MegaLinter settings")}`,
+    // The card prints every mode: set them, or the umask of the machine shows.
+    'chmod 644 .config/megalinter/*.yml',
     `chmod a-w ${LINK}`
   ].join('\n'))
   const before = megalinterFiles()
