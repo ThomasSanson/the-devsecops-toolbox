@@ -503,7 +503,7 @@ storyboardStep(Given, 'a generated project holds a function with four paths thro
   ].join('\n'))
   const env = { ...process.env }
   delete env.TASK_E2E_UPDATE_BASELINES
-  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env, port: 7699 })
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env, port: 7706 })
   const screen = await terminalCard(I, 'lizard-function', `cat ${LIZARD_SOURCE}`)
   assert.ok(screen.includes('def shipping_cost(weight, express):') && screen.includes('    elif weight > 10:'), `The card must show the function:\n${screen}`)
 })
