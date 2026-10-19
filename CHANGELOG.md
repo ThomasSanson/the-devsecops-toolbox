@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.4 (2026-10-19)
+
+### Fix
+
+- **renovate**: check the validator download before trusting its verdict
+
 ## 24.8.3 (2026-10-19)
 
 ### Fix
