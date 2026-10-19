@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 24.8.6 (2026-10-19)
+
+### Fix
+
+- **glab**: wait out gitlab.com's 429 answers before giving up on the download
+
+### Refactor
+
+- **glab**: let the installer take its download address from GLAB_DOWNLOAD_URL
+
 ## 24.8.5 (2026-10-19)
 
 ### Fix
