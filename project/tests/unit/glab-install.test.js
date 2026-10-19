@@ -68,7 +68,9 @@ test('@glab-install-retry the installer waits out two 429 answers from gitlab.co
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   try {
     const home = path.join(dir, 'home')
-    fs.mkdirSync(home, { mode: 0o777 })
+    fs.mkdirSync(home)
+    // The umask would take write access away from nobody.
+    fs.chmodSync(home, 0o777)
     const env = {
       HOME: home,
       PATH: narrowPath(dir),
