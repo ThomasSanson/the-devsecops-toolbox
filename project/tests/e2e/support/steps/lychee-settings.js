@@ -133,7 +133,7 @@ storyboardStep(Given, 'the developer kept their own accepted status codes in the
   git('commit', '-q', '--no-verify', '-m', OWN_COMMIT)
   assert.equal(git('status', '--porcelain'), '', 'The project must start clean')
 
-  story.closeTerminal = await openLocalTerminal(I, { cwd: PROJECT, env: terminalEnv(), port: 7695, height: 1000 })
+  story.closeTerminal = await openLocalTerminal(I, { cwd: PROJECT, env: terminalEnv(), port: 7707, height: 1000 })
   const screen = await terminalCard(I, 'own-settings', SHOW, { mask: DIFF_MASKS })
   assert.deepEqual(git('show', '--name-only', '--format=', 'HEAD').trim().split('\n'), [LYCHEE_CONFIG, IGNORE_FILE, PAGE],
     'The developer\'s commit must hold their settings, their ignore file and their page')
