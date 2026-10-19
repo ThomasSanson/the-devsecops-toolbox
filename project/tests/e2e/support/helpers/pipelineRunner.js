@@ -46,8 +46,11 @@ async function projectId (projectName, headers) {
 // pipeline's docker:dind service works. SIGHUP (not restart) reloads the freshly
 // written config.toml so the new runner starts picking jobs WITHOUT aborting a job
 // the shared service may already be running for the other scenario. Returns a
-// descriptor the caller keeps for teardownScopedRunner.
-async function registerScopedRunner (I, projectName, rootHeaders) {
+// descriptor the caller keeps for teardownScopedRunner. `svc` is our OWN runner
+// service by default: a second toolbox-derived stack on the machine would
+// otherwise register the runner on the neighbour's GitLab. A story that starts
+// a runner service of its own passes it.
+async function registerScopedRunner (I, projectName, rootHeaders, svc = composeService('gitlab-runner')) {
   const id = await projectId(projectName, rootHeaders)
   const runner = await createProjectRunner(id, rootHeaders, [RUNNER_TAG])
   if (runner.status >= 400) {
@@ -55,9 +58,6 @@ async function registerScopedRunner (I, projectName, rootHeaders) {
   }
   const runnerId = runner.data.id
   const glrt = runner.data.token
-  // Our OWN runner service: a second toolbox-derived stack on the machine would
-  // otherwise be picked first and register the runner on the neighbour's GitLab.
-  const svc = composeService('gitlab-runner')
   // A stopped checkout helper can still belong to a running job: GitLab Runner
   // reuses it for cache and artifact upload. Registration must leave every job
   // container alone and let its runner own the lifecycle. Keep concurrent=1

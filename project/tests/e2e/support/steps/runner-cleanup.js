@@ -83,8 +83,7 @@ async function isolateRunner () {
   state.directory = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-cleanup-'))
   state.owner = crypto.randomBytes(8).toString('hex')
   state.docker = execFileSync('which', ['docker'], { encoding: 'utf8' }).trim()
-  // Named like a compose service, so that registerScopedRunner, through the
-  // discovery adapter below, finds this service and no other.
+  // The story's own runner service, handed to registerScopedRunner by name.
   state.service = startIsolatedRunnerService(`e2e-cleanup-${state.owner}-gitlab-runner-1`, state.owner)
   const adapter = path.join(state.directory, 'docker')
   fs.copyFileSync(path.join(FIXTURES, 'limit-docker-discovery.sh'), adapter)
@@ -144,7 +143,7 @@ storyboardStep(Given, 'the first project\'s job is running and still has to uplo
     'Keep the single Docker job slot')
   state.first = await createFixtureProject('first-project')
   state.second = await createFixtureProject('second-project')
-  state.runners.push(await registerScopedRunner(I, state.first.name, state.root))
+  state.runners.push(await registerScopedRunner(I, state.first.name, state.root, state.service))
   const committed = await freshPost(`${BASE_URL}/api/v4/projects/${state.first.id}/repository/commits`, {
     branch: 'main',
     commit_message: 'test: preserve the checkout helper',
@@ -178,7 +177,7 @@ storyboardStep(Given, 'the first project\'s job is running and still has to uplo
 })
 
 storyboardStep(When, 'the second project registers its own runner', async () => {
-  const runner = await registerScopedRunner(I, state.second.name, state.root)
+  const runner = await registerScopedRunner(I, state.second.name, state.root, state.service)
   state.runners.push(runner)
   const verified = spawnSync(state.docker, ['exec', state.service, 'gitlab-runner', 'verify'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
