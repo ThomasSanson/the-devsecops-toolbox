@@ -983,11 +983,13 @@ const EVIDENCE_FEATURE_BODY = `Feature: A toolbox that says hello
 `
 
 // Port 9 is the "discard" port: nothing listens there, in any container.
+// The address is set here, out of the step file the card shows.
+const GREETING_SERVICE = 'http://127.0.0.1:9/greeting' // DevSkim: ignore DS162092 -- Port 9 on loopback, picked because nothing listens there.
 const EVIDENCE_STEPS_BODY = `/* global Then */
 const http = require('http')
 
 // The greeting service the toolbox will ask. Nobody has started it.
-const SERVICE = 'http://127.0.0.1:9/greeting' // DevSkim: ignore DS162092 -- Port 9 on loopback, picked because nothing listens there.
+const SERVICE = '${GREETING_SERVICE}'
 // The greeting itself. Nobody has written it yet.
 const greeting = (name) => ''
 
