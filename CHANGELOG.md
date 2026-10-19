@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.7.1 (2026-10-19)
+
+### Fix
+
+- **e2e**: refuse another project's GitLab when ours is missing
+
 ## 24.7.0 (2026-10-18)
 
 ### Feat
