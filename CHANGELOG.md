@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.3 (2026-10-19)
+
+### Fix
+
+- **test**: do not certify an environment error as a RED proof
+
 ## 24.8.2 (2026-10-19)
 
 ### Fix
