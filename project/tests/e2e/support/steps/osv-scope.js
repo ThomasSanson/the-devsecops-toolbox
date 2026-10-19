@@ -275,7 +275,7 @@ storyboardStep(Given, "a generated project's API holds the same vulnerable lockf
   state.project = renderProject({}, { dst: GRYPE_PROJECT })
   state.dirs.push(state.project, GRYPE_REPORT)
   API_LOCKS.forEach(writeLock)
-  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('grype'), port: 7698, height: 900 })
+  state.closeTerminal = await openLocalTerminal(I, { cwd: state.project, env: scannerEnv('grype'), port: 7705, height: 900 })
   const screen = await terminalCard(I, 'grype-lockfiles', 'grep -H -A1 \'"node_modules/lodash"\' $(find project -name package-lock.json | sort)')
   for (const file of API_LOCKS) assert.ok(screen.includes(`${file}-      "version": "4.17.20"`), `${file} must pin lodash 4.17.20:\n${screen}`)
 })
