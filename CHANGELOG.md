@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 24.8.0 (2026-10-19)
+
+### Feat
+
+- **glab**: schedule Renovate once a night at init and reload
+
+### Fix
+
+- **build-coverage**: find Compose files of a repository under /tmp
+
 ## 24.7.1 (2026-10-19)
 
 ### Fix
