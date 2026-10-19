@@ -927,7 +927,7 @@ storyboardStep(Given, 'a repository under /tmp adds a web service with no build 
   assert.equal(ignored('project/tmp/docker-compose.yml'), true, 'git must ignore the scratch copy in project/tmp')
   assert.equal(ignored('project/web/docker-compose.yml'), false, 'git must see the new web service')
 
-  closeBuildTerminal = await openLocalTerminal(I, { cwd: BUILD_ROOT, env: nestedEnv(), port: 7694 })
+  closeBuildTerminal = await openLocalTerminal(I, { cwd: BUILD_ROOT, env: nestedEnv(), port: 7699 })
   const screen = await card('build-coverage-under-tmp-setup', 'pwd && git status --short --ignored --untracked-files=all project/web project/tmp')
   for (const said of [BUILD_ROOT, '?? project/web/docker-compose.yml', '!! project/tmp/docker-compose.yml']) {
     assert.ok(screen.includes(said), `Expected "${said}" on the setup card:\n${screen}`)
