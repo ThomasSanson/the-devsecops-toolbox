@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 24.8.7 (2026-10-19)
+
+### Fix
+
+- **lychee**: keep the merge script under Lizard's limit and spell lycheeignore
+- **lychee**: merge the keys an update leaves twice in lychee settings
+
 ## 24.8.6 (2026-10-19)
 
 ### Fix
