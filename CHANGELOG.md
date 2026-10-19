@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.2 (2026-10-19)
+
+### Fix
+
+- **init**: open no merge request when there is nothing to propose
+
 ## 24.8.1 (2026-10-19)
 
 ### Fix
