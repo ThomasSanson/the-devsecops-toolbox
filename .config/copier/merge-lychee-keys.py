@@ -60,6 +60,23 @@ def merged(key, values):
     return f"{key} = [\n{body}\n]\n"
 
 
+def edits_for(key, places, lines):
+    """The edits that leave one copy of a key set more than once."""
+    start, end, _ = places[-1]
+    text = merged(key, [value for _, _, value in places])
+    edits = [(start, end, text)] if text else []
+    for first, after, _ in places[:-1]:
+        # Take the blank line under a block that opened the file or a paragraph.
+        opens = first == 0 or not lines[first - 1].strip()
+        if opens and after < len(lines) and not lines[after].strip():
+            after += 1
+        edits.append((first, after, ""))
+    times = "twice" if len(places) == 2 else f"{len(places)} times"
+    done = "merged into one list" if text else "kept the last one"
+    print(f"[lychee migration] {key} was set {times} in {CONFIG}: {done}")
+    return edits
+
+
 def main():
     if not CONFIG.is_file():
         return
@@ -71,21 +88,8 @@ def main():
         copies.setdefault(key, []).append((start, end, value))
     edits = []
     for key, places in copies.items():
-        if len(places) < 2:
-            continue
-        start, end, _ = places[-1]
-        text = merged(key, [value for _, _, value in places])
-        if text:
-            edits.append((start, end, text))
-        for first, after, _ in places[:-1]:
-            # Take the blank line under a block that opened the file or a paragraph.
-            opens = first == 0 or not lines[first - 1].strip()
-            if opens and after < len(lines) and not lines[after].strip():
-                after += 1
-            edits.append((first, after, ""))
-        times = "twice" if len(places) == 2 else f"{len(places)} times"
-        done = "merged into one list" if text else "kept the last one"
-        print(f"[lychee migration] {key} was set {times} in {CONFIG}: {done}")
+        if len(places) > 1:
+            edits += edits_for(key, places, lines)
     for start, end, text in sorted(edits, reverse=True):
         lines[start:end] = [text]
     if edits:
