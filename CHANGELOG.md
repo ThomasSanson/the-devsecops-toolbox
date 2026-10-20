@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.12 (2026-10-20)
+
+### Fix
+
+- **megalinter**: bound the CSpell dictionary install to two minutes
+
 ## 24.8.11 (2026-10-19)
 
 ### Fix
