@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.5 (2026-10-20)
+
+### Fix
+
+- **megalinter**: leave table layout to markdownlint
+
 ## 24.9.4 (2026-10-20)
 
 ### Fix
