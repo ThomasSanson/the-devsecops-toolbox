@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.2 (2026-10-20)
+
+### Fix
+
+- **install**: warn when no container engine answers before the setup
+
 ## 24.9.1 (2026-10-20)
 
 ### Fix
