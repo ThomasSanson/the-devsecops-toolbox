@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.14 (2026-10-20)
+
+### Fix
+
+- **project**: define PROJECT_DOCKER_COMPOSE in the generated Taskfile
+
 ## 24.8.13 (2026-10-20)
 
 ### Fix
