@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.6 (2026-10-20)
+
+### Fix
+
+- **deps**: resolve the fixed hono and follow-redirects in the CodeceptJS lockfile
+
 ## 24.9.5 (2026-10-20)
 
 ### Fix
