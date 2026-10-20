@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.13 (2026-10-20)
+
+### Fix
+
+- **task**: install task into ~/.local/bin when sudo is not available
+
 ## 24.8.12 (2026-10-20)
 
 ### Fix
