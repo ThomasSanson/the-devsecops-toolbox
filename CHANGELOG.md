@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.7 (2026-10-20)
+
+### Fix
+
+- **build-coverage**: print the missing task, ready to paste
+
 ## 24.9.6 (2026-10-20)
 
 ### Fix
