@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.1 (2026-10-20)
+
+### Fix
+
+- **copier**: validate the Gherkin language and the Docker answers
+
 ## 24.9.0 (2026-10-20)
 
 ### Feat
