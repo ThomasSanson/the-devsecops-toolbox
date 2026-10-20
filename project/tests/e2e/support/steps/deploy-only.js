@@ -147,7 +147,7 @@ storyboardStep(Given, 'a merge request that changes nothing but an image tag in 
   sh('git init -q && git add -A && git commit -qm "the project as it stands"')
   mergeRequest(shipRelease)
 
-  story.closeTerminal = await openLocalTerminal(I, { cwd: FIXTURE, env, port: 7695, height: 800 })
+  story.closeTerminal = await openLocalTerminal(I, { cwd: FIXTURE, env, port: 7710, height: 800 })
   const screen = await terminalCard(I, 'a-release-moves-image-tags', 'ls project && git diff main...HEAD')
   for (const said of ['argocd', 'kustomize', '-    newTag: 1.4.0', '+    newTag: 1.5.0']) {
     if (!screen.includes(said)) throw new Error(`Expected the release card to show ${JSON.stringify(said)}:\n${screen}`)

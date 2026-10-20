@@ -87,5 +87,5 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     And the default project's compose network uses the same 1360 MTU as the toolbox
     # Note: The start of the project's test job, from .config/gitlab/ci/devsecops/test.yml. After a run, GitLab keeps two folders for 3 days: .diagnostics and project/tests, where the tests write their reports and screenshots. It also reads the JUnit reports, for the pipeline's Tests tab.
     # Note: The rest of the project folder stays out. A node_modules folder or a build there can weigh gigabytes.
-    # Copy: head -n 25 .config/gitlab/ci/devsecops/test.yml
+    # Copy: head -n 30 .config/gitlab/ci/devsecops/test.yml
     And the default project's test job keeps its test folder, not the whole project folder

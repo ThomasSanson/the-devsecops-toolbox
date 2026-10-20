@@ -638,6 +638,6 @@ storyboardStep(Then, "the default project's test job keeps its test folder, not 
   if (JSON.stringify(paths) !== JSON.stringify(['.diagnostics', 'project/tests'])) {
     throw new Error(`Expected the default test job to keep .diagnostics and project/tests as artifacts, found ${JSON.stringify(paths)}:\n${job}`)
   }
-  const screen = await twinCard('defaults-test-artifacts', ['head -n 25 .config/gitlab/ci/devsecops/test.yml'])
+  const screen = await twinCard('defaults-test-artifacts', ['head -n 30 .config/gitlab/ci/devsecops/test.yml'])
   if (!screen.includes('- project/tests') || !screen.includes('expire_in: 3 days')) throw new Error(`Expected the card to show the artifacts list down to expire_in:\n${screen}`)
 })
