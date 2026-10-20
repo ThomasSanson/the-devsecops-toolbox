@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.8.15 (2026-10-20)
+
+### Fix
+
+- **go**: write GOROOT and GOPATH to the login shell's startup file
+
 ## 24.8.14 (2026-10-20)
 
 ### Fix
