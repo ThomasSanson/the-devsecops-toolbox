@@ -24,7 +24,7 @@ const { I } = inject()
 const PROJECT = '/tmp/e2e-env-layering'
 // Outside the project, so git status never lists it.
 const GIT_CONFIG = `${PROJECT}.gitconfig`
-const GUIDE = 'docs/guidelines/Task Mapping.md'
+const GUIDE = 'docs/guidelines/DevSecOps.md'
 const SHOW = 'task project:monitor:app:info'
 // The task the developer adds, written like every other task of that file.
 const TASK = `
@@ -61,13 +61,13 @@ storyboardStep(Given, "the project's guide lists its three settings files in the
   sh('git init -q && git add -A && git commit -qm "the generated project"')
   story = { closeTerminal: await openLocalTerminal(I, { cwd: PROJECT, env: env(), port: 7700, height: 900 }) }
 
-  const screen = await terminalCard(I, 'the-guide-names-the-files', `grep -A 9 "Loading Order" "${GUIDE}"`)
+  const screen = await terminalCard(I, 'the-guide-names-the-files', `grep -A 18 "^### 12.1" ${GUIDE}`)
   const guide = fs.readFileSync(path.join(PROJECT, GUIDE), 'utf8')
   for (const said of [
-    '1. .env       real values and secrets of a deployed environment, never versioned',
-    '2. .env.dev   development values, versioned, ready to use',
-    '3. .env.dist  defaults for every environment, versioned, no secrets',
-    'For local work, edit .env.dev: there is nothing to copy.'
+    'dotenv: [".env", ".env.dev", ".env.dist"]',
+    'The first file that sets a variable wins: `.env` over `.env.dev`, and `.env.dev` over `.env.dist`.',
+    '| `.env`      | No, git ignores it | Yes, real ones   | Values of a deployed environment (staging, production) |',
+    '- **Development:** `.env.dev` and `.env.dist` come with the repository. There is nothing to copy or create.'
   ]) {
     assert.ok(guide.includes(said), `Expected ${GUIDE} to say ${JSON.stringify(said)}`)
     shows(screen, said)
