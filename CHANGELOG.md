@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.3 (2026-10-20)
+
+### Fix
+
+- **publication**: make the doctor's answer a reliable readiness result
+
 ## 24.9.2 (2026-10-20)
 
 ### Fix
