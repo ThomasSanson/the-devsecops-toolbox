@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.9 (2026-10-20)
+
+### Fix
+
+- **trivy**: move scan.skip-dirs into the settings file Trivy reads
+
 ## 24.9.8 (2026-10-20)
 
 ### Fix
