@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.4 (2026-10-20)
+
+### Fix
+
+- **publication**: find the approval on every merge request and page
+
 ## 24.9.3 (2026-10-20)
 
 ### Fix
