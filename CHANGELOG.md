@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.0 (2026-10-20)
+
+### Feat
+
+- **test**: skip the test suite when a merge request only changes deployment files
+
 ## 24.8.15 (2026-10-20)
 
 ### Fix
