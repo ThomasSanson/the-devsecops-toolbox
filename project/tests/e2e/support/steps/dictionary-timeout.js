@@ -37,11 +37,12 @@ s.bind(("0.0.0.0", ${PORT}))
 s.listen(64)
 time.sleep(3600)
 `
+const LOOPBACK = '127.0.0.1' // DevSkim: ignore DS162092 -- The registry stand-in, probed from its own container.
 // The twin of "never answers": a request gets no byte back in five seconds.
 const PROBE = `import socket, time
 for _ in range(30):
     try:
-        c = socket.create_connection(("127.0.0.1", ${PORT}), 5)
+        c = socket.create_connection(("${LOOPBACK}", ${PORT}), 5)
         break
     except ConnectionRefusedError:
         time.sleep(0.5)
@@ -83,17 +84,17 @@ storyboardStep(Given, 'a generated project whose MegaLinter settings send npm to
     '# Only CSpell, on the MegaLinter settings, and a registry that never answers.',
     'ENABLE_LINTERS: [SPELL_CSPELL]',
     "FILTER_REGEX_INCLUDE: '\\.config/megalinter/'",
-    `NPM_CONFIG_REGISTRY: http://${address}:${PORT}/`,
+    `NPM_CONFIG_REGISTRY: http://${address}:${PORT}/`, // DevSkim: ignore DS137138 -- The test's registry stand-in, which never answers.
     ''
   ].join('\n'))
   execFileSync('sh', ['-c', 'git init -q && git add -A && git -c user.email=e2e@test.local -c user.name=E2E commit -qm "chore: initial render"'],
     { cwd: PROJECT, stdio: 'pipe' })
   story.closeTerminal = await openLocalTerminal(I, {
-    cwd: PROJECT, env: { ...process.env, TASK_MEGALINTER_CONTAINER_NAME: story.lint }, port: 7698, height: 600
+    cwd: PROJECT, env: { ...process.env, TASK_MEGALINTER_CONTAINER_NAME: story.lint }, port: 7708, height: 600
   })
   const screen = await terminalCard(I, 'registry-never-answers', 'tail -n 4 .config/megalinter/config.yml', { mask: REGISTRY_MASK })
   assert.ok(screen.includes('ENABLE_LINTERS: [SPELL_CSPELL]'), screen)
-  assert.ok(screen.includes(`NPM_CONFIG_REGISTRY: http://${address}:${PORT}/`), screen)
+  assert.ok(screen.includes(`NPM_CONFIG_REGISTRY: http://${address}:${PORT}/`), screen) // DevSkim: ignore DS137138 -- The test's registry stand-in, which never answers.
 })
 
 storyboardStep(Then, 'task megalinter stops the dictionary install after 120 seconds and says why', async () => {
