@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.8 (2026-10-20)
+
+### Fix
+
+- **copier**: keep the toolbox's task map out of generated projects
+
 ## 24.9.7 (2026-10-20)
 
 ### Fix
