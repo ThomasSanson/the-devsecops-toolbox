@@ -58,7 +58,7 @@ storyboardStep(Given, "a new project's Taskfile names its Docker Compose command
   for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete team.env[name]
   run('git init -q && git add -A && git commit -qm "the generated project"')
 
-  team.closeTerminal = await openLocalTerminal(I, { cwd: PROJECT, env: team.env, port: 7695, height: 800 })
+  team.closeTerminal = await openLocalTerminal(I, { cwd: PROJECT, env: team.env, port: 7709, height: 800 })
   const screen = await card('compose-command-at-the-top', `head -n 5 ${TASKFILE}`)
   assert.ok(screen.includes('PROJECT_DOCKER_COMPOSE: "cd project && docker compose"'), `Expected the variable on screen:\n${screen}`)
   // Twin: the variable sits at the top of the file, before the first task.
