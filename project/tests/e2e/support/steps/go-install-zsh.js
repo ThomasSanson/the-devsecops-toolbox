@@ -1,10 +1,14 @@
 /* global inject Given When Then After */
 /**
- * Storyboard for @go-install-zsh (features/01-install/go-install-zsh.feature).
+ * Storyboard for @go-install-zsh and @go-install-goroot
+ * (features/01-install/go-install-zsh.feature).
  *
  * Without sudo, .config/go/install.sh installs Go under ~/.local and writes
  * GOROOT and GOPATH to a startup file. It must be the one the developer's
  * login shell reads: here zsh, on a fresh Ubuntu machine, in a real terminal.
+ *
+ * With sudo, it installs Go from the package manager and links /usr/local/go
+ * to it, also on a machine without `which`, as a base Arch Linux install is.
  */
 const assert = require('assert/strict')
 const {
@@ -124,4 +128,46 @@ storyboardStep(Then, 'a second run of the installer does not add the lines twice
     assert.ok(screen.includes(said), `Expected "${said}" on screen:\n${screen}`)
   }
   assert.deepEqual(goLines(), { goroot: 1, gopath: 1 }, `Expected GOROOT and GOPATH still once each in ~/.zshrc:\n${readHome('.zshrc')}`)
+})
+
+// @go-install-goroot: the developer keeps sudo, so the installer runs again as
+// root and takes the package manager's road. /usr/bin/which is gone, as on a
+// base Arch Linux install.
+storyboardStep(Given, 'a developer with sudo is on a machine without which and without Go', async () => {
+  box = { name: containerName() }
+  runCommand(`cd /workspace/project && docker compose run -d --name ${box.name} ubuntu`, { timeout: 300000 })
+  asRoot(['rm -f /usr/bin/which', 'mkdir -p /workspace/.config/go'].join('\n'))
+  runCommand(`docker cp /workspace/${INSTALLER} ${box.name}:/workspace/${INSTALLER}`)
+  const start = asDeveloper([
+    'cd /workspace && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &',
+    'sleep 1'
+  ].join('\n'))
+  assert.equal(start.exitCode, 0, `ttyd did not start:\n${start.output}`)
+  waitForTtyd(box.name, 30000)
+  // Tall: apt-get prints a line per package before the installer's own lines,
+  // and the command the card starts from has to stay on screen.
+  await openTerminal(I, box.name, { height: 6000 })
+
+  const screen = await terminalCard(I, 'machine-without-which', 'type which go; sudo -n true && echo "sudo works"')
+  for (const said of ['which: not found', 'go: not found', 'sudo works']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on screen:\n${screen}`)
+  }
+  // Twins on the machine: no which, no Go, and sudo answers without a password.
+  assert.notEqual(asDeveloper('command -v which').exitCode, 0, 'which must be gone')
+  assert.notEqual(asDeveloper('command -v go').exitCode, 0, 'Go must not be installed yet')
+  assert.equal(asDeveloper('sudo -n true').exitCode, 0, 'The account must have sudo')
+})
+
+storyboardStep(Then, 'the Go installer links /usr/local/go to the Go it installed, and Go\'s standard library is there', async () => {
+  // The Go Ubuntu ships moves with its updates: its version is masked.
+  const mask = [[/go1\.\d+(?:\.\d+)?/g, 'go<version>'], [/go-1\.\d+/g, 'go-<version>']]
+  const screen = await terminalCard(I, 'go-root-link', `${INSTALLER}; echo "exit code: $?"; readlink /usr/local/go; ls -d /usr/local/go/src/runtime`, { timeoutMs: 600000, mask })
+  for (const said of ['Detected: Debian/Ubuntu (apt-get)', 'exit code: 0', '/usr/local/go/src/runtime']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on screen:\n${screen}`)
+  }
+  assert.ok(!screen.includes('No such file'), `ls must find src/runtime under /usr/local/go:\n${screen}`)
+  // Twin: /usr/local/go is the folder the installed go command lives in.
+  const goroot = asDeveloper('dirname "$(dirname "$(readlink -f "$(command -v go)")")"').stdout.trim()
+  assert.equal(asDeveloper('readlink -f /usr/local/go').stdout.trim(), goroot, `/usr/local/go must lead to ${goroot}`)
+  assert.equal(asDeveloper('test -d /usr/local/go/src/runtime').exitCode, 0, 'Go\'s standard library must be under /usr/local/go')
 })

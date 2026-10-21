@@ -29,3 +29,18 @@ Feature: The Go installer sets up the developer's own shell
     # Note: grep finds GOROOT and GOPATH once each, on lines 6 and 7 of ~/.zshrc: the second run did not add them again.
     # Copy: .config/go/install.sh; echo "exit code: $?"; grep -n GO ~/.zshrc
     And a second run of the installer does not add the lines twice
+
+  # As root, the installer takes Go from the package manager, then links
+  # /usr/local/go to wherever that Go lives, for the tools that look for it
+  # there. A base Arch Linux install has no `which` command (issue #68): the
+  # same fresh Ubuntu machine, without it, tells that story. Off camera,
+  # /usr/bin/which is removed; the developer keeps sudo.
+  @go-install-goroot
+  Scenario: On a machine without which, the Go installer links /usr/local/go to the Go it installed
+    # Note: A fresh Ubuntu machine with no which command, as on a base Arch Linux install, and no Go. The developer's account has sudo.
+    # Copy: type which go; sudo -n true && echo "sudo works"
+    Given a developer with sudo is on a machine without which and without Go
+    # Note: The developer runs the Go installer, the same line task dev:setup-environment runs. With sudo it runs again as root, installs Go with apt-get and says where Go lives, then links /usr/local/go there.
+    # Note: readlink shows where /usr/local/go points, and ls finds Go's standard library under it, in src/runtime: a tool that sets GOROOT to /usr/local/go builds with the Go that was installed.
+    # Copy: .config/go/install.sh; echo "exit code: $?"; readlink /usr/local/go; ls -d /usr/local/go/src/runtime
+    Then the Go installer links /usr/local/go to the Go it installed, and Go's standard library is there
