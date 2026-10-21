@@ -128,7 +128,7 @@ The recommended one-liner installer needs only:
 
 - Git
 - `curl` (to fetch the installer)
-- Docker or Docker Desktop 4.x or newer (for container support)
+- Docker, to run the tools in containers: Docker Engine on Linux. On Windows, Docker Desktop 4.x or newer with its WSL2 integration, and every command runs from WSL2
 
 It installs `task` and `uv` for you. The tools below are only required for the manual "Standard installation" path further down:
 
