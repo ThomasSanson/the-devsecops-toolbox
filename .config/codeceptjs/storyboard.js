@@ -59,9 +59,46 @@ function e2eDir () {
   return global.codecept_dir
 }
 
+// The keywords of the language a .feature file is written in, from Gherkin's
+// own table, which CodeceptJS's parser ships: a scenario under `# language: fr`
+// says Scénario, Soit, Quand, Alors (issue #254). English when the table cannot
+// be loaded or the language is unknown.
+const ENGLISH_KEYWORDS = {
+  feature: ['Feature'],
+  rule: ['Rule'],
+  background: ['Background'],
+  scenario: ['Scenario', 'Example'],
+  scenarioOutline: ['Scenario Outline', 'Scenario Template'],
+  examples: ['Examples', 'Scenarios'],
+  given: ['* ', 'Given '],
+  when: ['* ', 'When '],
+  then: ['* ', 'Then '],
+  and: ['* ', 'And '],
+  but: ['* ', 'But ']
+}
+
+function gherkinKeywords (source) {
+  const language = (source.match(/^\s*#\s*language\s*:\s*([\w-]+)/m) || [])[1] || 'en'
+  let languages = {}
+  try {
+    languages = require('@cucumber/gherkin/dist/src/gherkin-languages.json')
+  } catch (_) {}
+  return languages[language] || languages.en || ENGLISH_KEYWORDS
+}
+
+// Every step keyword with the group it opens, the longest first so that
+// "Sachant que " wins over "Sachant ". And, But and the bare "* " continue the
+// group of the sentence before them.
+function stepKeywords (dialect) {
+  const opens = ['given', 'when', 'then'].flatMap(group =>
+    dialect[group].filter(keyword => keyword !== '* ').map(keyword => ({ keyword, group })))
+  const continues = [...dialect.and, ...dialect.but].map(keyword => ({ keyword, group: null }))
+  return [...opens, ...continues].sort((a, b) => b.keyword.length - a.keyword.length)
+}
+
 // Every line of the scenario, verbatim from the .feature source, so each
 // card can carry its exact keyword (Given/When/Then/And/But — the And/But
-// resolution the step registry cannot provide).
+// resolution the step registry cannot provide), in the file's own language.
 // ponytail: single flat Scenario only — no Background/Examples resolution;
 // extend when a storyboard scenario first uses them.
 function parseScenarioLines (featureFile, scenarioTitle) {
@@ -71,10 +108,13 @@ function parseScenarioLines (featureFile, scenarioTitle) {
   } catch (_) {
     return []
   }
+  const dialect = gherkinKeywords(source)
+  const scenarioHeads = [...dialect.scenario, ...dialect.scenarioOutline].map(keyword => `${keyword}:`)
+  const blockHeads = [...scenarioHeads, ...[...dialect.feature, ...dialect.rule, ...dialect.background, ...dialect.examples].map(keyword => `${keyword}:`)]
+  const steps = stepKeywords(dialect)
   const lines = source.split('\n').map(line => line.trim())
-  const start = lines.findIndex(line =>
-    /^Scenario( Outline)?:/.test(line) && line.replace(/^Scenario( Outline)?:\s*/, '') === scenarioTitle
-  )
+  const start = lines.findIndex(line => scenarioHeads.some(head =>
+    line.startsWith(head) && line.slice(head.length).trim() === scenarioTitle))
   if (start === -1) return []
   const out = []
   let group = null
@@ -101,11 +141,11 @@ function parseScenarioLines (featureFile, scenarioTitle) {
       continue
     }
     if (line === '' || line.startsWith('@')) continue
-    if (/^(Scenario|Feature|Examples|Background)/.test(line)) break
-    const step = line.match(/^(Given|When|Then|And|But)\s+(.*)$/)
+    if (blockHeads.some(head => line.startsWith(head))) break
+    const step = steps.find(({ keyword }) => line.startsWith(keyword))
     if (!step) continue
-    if (step[1] === 'Given' || step[1] === 'When' || step[1] === 'Then') group = step[1].toLowerCase()
-    out.push({ keyword: step[1], group, text: step[2], chapter, note, copy })
+    if (step.group) group = step.group
+    out.push({ keyword: step.keyword.trim(), group, text: line.slice(step.keyword.length).trim(), chapter, note, copy })
     chapter = null
     note = null
     copy = null
