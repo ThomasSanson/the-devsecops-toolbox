@@ -76,7 +76,7 @@ fi
 if command -v go >/dev/null 2>&1; then
   log "go installed successfully: $(go version)"
   # Determine the actual GOROOT (where Go was installed by the package manager)
-  ACTUAL_GOROOT=$(dirname "$(dirname "$(readlink -f "$(which go)")")")
+  ACTUAL_GOROOT=$(dirname "$(dirname "$(readlink -f "$(command -v go)")")")
   log "Detected GOROOT: ${ACTUAL_GOROOT}"
   # Create symlink to /usr/local/go if Go was installed elsewhere
   # This ensures compatibility with tools expecting Go in /usr/local/go
