@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.15 (2026-10-21)
+
+### Fix
+
+- **devskim**: scan the project under /tmp/lint as under /builds
+
 ## 24.9.14 (2026-10-21)
 
 ### Fix
