@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.16 (2026-10-21)
+
+### Fix
+
+- **betterleaks**: catch a token written into an Authorization header
+
 ## 24.9.15 (2026-10-21)
 
 ### Fix
