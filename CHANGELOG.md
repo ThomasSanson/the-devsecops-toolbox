@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.10 (2026-10-21)
+
+### Fix
+
+- **copier**: keep the project's release version on reload
+
 ## 24.9.9 (2026-10-20)
 
 ### Fix
