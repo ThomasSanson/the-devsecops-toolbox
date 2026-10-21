@@ -69,3 +69,17 @@ Feature: the framework guards what reaches the repository: clean commits and no 
     # Note: Above [extend], it says how a project adds paths of its own: copy this file whole, then point TASK_BETTERLEAKS_CONFIG and REPOSITORY_BETTERLEAKS_CONFIG_FILE at the copy. It also says "Never point `[extend] path` at this file": MegaLinter already wraps this file, betterleaks follows two extends at most, and the MegaLinter scan would load no rule and pass.
     # Copy: cat .config/betterleaks/config.toml
     Then the scan's config lists vendor/ and tells a project allowlist to stand on its own, never to extend it
+
+  # Betterleaks' default rules catch a token assigned to a name such as apiKey,
+  # but not the same token written into an HTTP Authorization header, the shape
+  # every fetch or axios call to an API uses (issue #157). A downstream project
+  # committed a live token that way and every scan passed. The project keeps the
+  # default answers, so the scan runs in a container.
+  @bearer-token
+  Scenario: the full scan blocks a token written into an Authorization header
+    # Note: A project generated from the toolbox. src/client.js calls an API with a made-up 32-character token in its Authorization header, after the word Bearer, the way the developer would paste it from the API's settings page.
+    # Copy: cat src/client.js
+    Given a generated project calls an API with a token written into its Authorization header
+    # Note: The full scan reads every file of the project. It finds the token in src/client.js, line 2, under the rule bearer-token-hardcoded, prints "REDACTED" where the value was, and fails: "❌ Betterleaks detected secrets in your code!".
+    # Copy: task betterleaks:scan-full
+    When the developer runs the full secret scan, it blocks the token in the Authorization header

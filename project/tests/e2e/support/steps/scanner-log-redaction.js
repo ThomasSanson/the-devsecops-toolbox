@@ -350,3 +350,39 @@ storyboardStep(Then, 'the scan\'s config lists vendor/ and tells a project allow
   if (failures.length) throw new Error(failures.join('\n'))
   await terminalOutputFrame(I, 'vendor-config', `$ cat ${BETTERLEAKS_CONFIG}\n${config.trimEnd()}`)
 })
+
+// @bearer-token — one project with the default answers, so the Docker scanner:
+// a made-up token written into an HTTP Authorization header, the shape the
+// default rules miss. Built from pieces, so this file holds no such line.
+const BEARER_FILE = 'src/client.js'
+const BEARER_TOKEN = ['Ab12Cd34Ef56', 'Gh78Ij90Kl12', 'Mn34Op56'].join('')
+
+storyboardStep(Given, 'a generated project calls an API with a token written into its Authorization header', async () => {
+  binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redaction-bin-'))
+  const project = { mode: 'docker', dir: renderProject() }
+  projects.push(project)
+  const code = "export const orders = () => fetch('https://api.example.org/orders', {\n" +
+    `  headers: { Authorization: 'Bearer ${BEARER_TOKEN}' }\n})\n`
+  fs.mkdirSync(path.join(project.dir, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(project.dir, BEARER_FILE), code)
+  // Off camera, as in the scenarios above: a cold machine pulls the image first.
+  const taskfile = fs.readFileSync(path.join(project.dir, '.config/betterleaks/Taskfile.yml'), 'utf8')
+  execFileSync('docker', ['pull', '--quiet', taskfile.match(/TASK_BETTERLEAKS_IMAGE \| default "([^"]+)"/)[1]], { stdio: 'pipe' })
+  await terminalOutputFrame(I, 'bearer-file', `$ cat ${BEARER_FILE}\n${code.trimEnd()}`)
+})
+
+storyboardStep(When, 'the developer runs the full secret scan, it blocks the token in the Authorization header', async () => {
+  const project = projects[projects.length - 1]
+  const result = runTask(project, 'betterleaks:scan-full')
+  saveOutput('bearer', 'blocked', result)
+  const output = stripAnsiEscapeSequences(result.raw)
+  const failures = [
+    [result.exit !== 0, 'must fail'],
+    [new RegExp(`path\\s*\\.+\\s*/path/${BEARER_FILE.replace('.', '\\.')}`).test(output), `must name ${BEARER_FILE}`],
+    [output.includes('bearer-token-hardcoded'), 'must name the bearer-token-hardcoded rule'],
+    [/leaks found: 1\b/.test(output), 'must find exactly one leak'],
+    [!result.raw.includes(BEARER_TOKEN), 'must redact the detected value']
+  ].filter(([ok]) => !ok).map(([, message]) => `scan-full: ${message}`)
+  if (failures.length) throw new Error(`${failures.join('\n')}\n${output}`)
+  await terminalOutputFrame(I, 'bearer-scan', `$ task betterleaks:scan-full\n${display(result)}`)
+})
