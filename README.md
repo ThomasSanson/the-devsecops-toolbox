@@ -345,6 +345,11 @@ request is opened.
 
 It refuses to run on a dirty working tree, because it commits what it changed.
 
+When a release changes a line you had edited too, nothing is dropped: the file
+keeps both versions between conflict markers, yours under `<<<<<<< before updating`
+and the release's above `>>>>>>> after updating`, and `task devsecops:update` names
+the file with a warning. Settle each one on the update branch, then merge.
+
 ### Available Commands
 
 ```bash
