@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.14 (2026-10-21)
+
+### Fix
+
+- **release**: hand the release token and API URL to the scripts that read them
+
 ## 24.9.13 (2026-10-21)
 
 ### Fix
