@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.11 (2026-10-21)
+
+### Fix
+
+- **megalinter**: ship the base settings without a double blank line
+
 ## 24.9.10 (2026-10-21)
 
 ### Fix
