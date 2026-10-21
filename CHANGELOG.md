@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.13 (2026-10-21)
+
+### Fix
+
+- **devsecops**: write safe.directory once, and never from the release lock task
+
 ## 24.9.12 (2026-10-21)
 
 ### Fix
