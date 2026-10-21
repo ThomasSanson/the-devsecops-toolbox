@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.12 (2026-10-21)
+
+### Fix
+
+- **go**: find the installed Go without which
+
 ## 24.9.11 (2026-10-21)
 
 ### Fix
