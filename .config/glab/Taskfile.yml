@@ -898,11 +898,15 @@ tasks:
         sh: |
           if [ -n "${TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH:-}" ]; then
             echo "${TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}"
-          elif git rev-parse --is-inside-work-tree &>/dev/null; then
-            git config --global --add safe.directory "${PWD}"
-            git rev-parse --abbrev-ref HEAD 2>/dev/null || git symbolic-ref --short HEAD 2>/dev/null || echo main
           else
-            echo "main"
+            # Scoped to this evaluation, as in Taskfile.release.yml: no write
+            # to ~/.gitconfig each time this task runs (issue #158).
+            export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="${PWD}"
+            if git rev-parse --is-inside-work-tree &>/dev/null; then
+              git rev-parse --abbrev-ref HEAD 2>/dev/null || git symbolic-ref --short HEAD 2>/dev/null || echo main
+            else
+              echo "main"
+            fi
           fi
       TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN | default (env "TASK_COMMITIZEN_TOKEN")}}'
       TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL | default "https://gitlab.com/api/v4"}}'

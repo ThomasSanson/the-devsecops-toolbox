@@ -149,7 +149,12 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting git safe directory configuration"
         silent: true
-      - git config --global --add safe.directory "{{.TASK_DEV_INIT_PROJECT_DIR}}"
+      # Once, and as an absolute path: git ignores a relative one, and --add
+      # appends a copy on every init otherwise (issue #158).
+      - |
+        dir="$(cd "{{.TASK_DEV_INIT_PROJECT_DIR}}" && pwd -P)"
+        git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$dir" ||
+          git config --global --add safe.directory "$dir"
       - cmd: echo "🎉 Git safe directory configuration completed successfully"
         silent: true
 
