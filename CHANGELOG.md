@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 24.9.17 (2026-10-21)
+
+### Fix
+
+- **storyboard**: read the scenario's sentences in the language it is written in
+
 ## 24.9.16 (2026-10-21)
 
 ### Fix
