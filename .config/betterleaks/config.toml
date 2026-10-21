@@ -13,6 +13,19 @@ title = "Betterleaks Configuration"
 [extend]
 useDefault = true
 
+# The default rules catch a token assigned to a name such as apiKey, but not
+# the same token written into an HTTP Authorization header, after Bearer or on
+# its own: the shape every fetch or axios call uses (issue #157). Only a run of
+# 20 or more token characters with enough entropy counts, so a template such as
+# `Bearer ${token}` or a placeholder such as <token> does not.
+[[rules]]
+id = "bearer-token-hardcoded"
+description = "A token written into an HTTP Authorization header"
+regex = '''(?i)(?:authorization|bearer)["'\s:=]+(?:bearer\s+)?([a-z0-9\-_.~+/]{20,}=*)'''
+secretGroup = 1
+entropy = 3.5
+keywords = ["bearer", "authorization"]
+
 # Global configuration to ignore specific files
 [allowlist]
 description = "Files to ignore for secrets detection"
