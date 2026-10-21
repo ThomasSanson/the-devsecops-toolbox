@@ -911,6 +911,12 @@ tasks:
       TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN | default (env "TASK_COMMITIZEN_TOKEN")}}'
       TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL | default "https://gitlab.com/api/v4"}}'
       TASK_DEVSECOPS_RELEASE_PROJECT_PATH: '{{.TASK_DEVSECOPS_RELEASE_PROJECT_PATH | default "${PWD##*/}"}}'
+    # The scripts read these from the shell: Task hands them over only through
+    # env, so the fallback to TASK_COMMITIZEN_TOKEN and the default API URL
+    # reach the script on a machine as they do in CI (issue #198).
+    env:
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}'
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}'
     cmds:
       - cmd: |
           if [ "{{.TASK_DEVSECOPS_RELEASE_ALLOW_PUSH}}" != "true" ] || \

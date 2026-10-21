@@ -101,6 +101,12 @@ tasks:
         msg: "PROJECT_PATH (TASK_DEVSECOPS_RELEASE_PROJECT_PATH) is not set. Set TASK_DEVSECOPS_RELEASE_PROJECT_PATH or CI_PROJECT_PATH env var."
       - sh: test -n "{{.TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH}}"
         msg: "CURRENT_BRANCH (TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH) is not set. Set TASK_DEVSECOPS_RELEASE_CURRENT_BRANCH or ensure git setup is correct."
+    # The scripts read these from the shell: Task hands them over only through
+    # env, so the fallback to TASK_COMMITIZEN_TOKEN and the default API URL
+    # reach the script on a machine as they do in CI (issue #198).
+    env:
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}'
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}'
     cmds:
       - cmd: echo "🔄 Starting release bump"
         silent: true
@@ -148,6 +154,12 @@ tasks:
       The default branch is protected: push access is opened for the seconds the
       push takes, and restored by an EXIT trap on every way out, a kill
       included (asserted by .config/devsecops/scripts/check-release-lock.sh).
+    # The scripts read these from the shell: Task hands them over only through
+    # env, so the fallback to TASK_COMMITIZEN_TOKEN and the default API URL
+    # reach the script on a machine as they do in CI (issue #198).
+    env:
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}'
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}'
     cmds:
       - cmd: echo "🔄 Starting release push"
         silent: true
