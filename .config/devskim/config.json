@@ -2,11 +2,16 @@
   "Globs": [
     "**/.ansible/**",
     "**/.cache/**",
+    "**/.claude/**",
     "**/.config/**/roles/**",
+    "**/.diagnostics/**",
     "**/.git/**",
+    "**/_output/**",
+    "**/.ruff_cache/**",
     "**/megalinter-reports/**",
     "**/node_modules/**",
-    "**/tmp/**",
+    "**/?*/tmp/**",
+    "**/vendor/**",
     "**/venv/**"
   ]
 }
