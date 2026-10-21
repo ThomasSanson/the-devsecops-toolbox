@@ -83,6 +83,7 @@ exports.config = {
       './support/steps/osv-scope.js',
       './support/steps/report-permissions.js',
       './support/steps/markdown-tables.js',
+      './support/steps/devskim-workspace.js',
       './support/steps/daily-contribution.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
