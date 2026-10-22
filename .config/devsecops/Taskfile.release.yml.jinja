@@ -111,8 +111,8 @@ tasks:
     # env, so the fallback to TASK_COMMITIZEN_TOKEN and the default API URL
     # reach the script on a machine as they do in CI (issue #198).
     env:
-      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}'
-      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}'
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: "{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}"
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: "{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}"
     cmds:
       - cmd: echo "🔄 Starting release bump"
         silent: true
@@ -164,8 +164,8 @@ tasks:
     # env, so the fallback to TASK_COMMITIZEN_TOKEN and the default API URL
     # reach the script on a machine as they do in CI (issue #198).
     env:
-      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: '{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}'
-      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: '{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}'
+      TASK_DEVSECOPS_RELEASE_PUSH_TOKEN: "{{.TASK_DEVSECOPS_RELEASE_PUSH_TOKEN}}"
+      TASK_DEVSECOPS_RELEASE_GITLAB_API_URL: "{{.TASK_DEVSECOPS_RELEASE_GITLAB_API_URL}}"
     cmds:
       - cmd: echo "🔄 Starting release push"
         silent: true
