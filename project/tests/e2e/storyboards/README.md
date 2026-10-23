@@ -76,6 +76,10 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@grype-excludes"`
 - [**megalinter-base-render**](02-daily-work/megalinter-base-render.svg): A generated project receives the MegaLinter base settings with the same single blank line as the toolbox's own file, never two in a row for MegaLinter's formatter to remove.
   Replay: `task project:test:e2e -- --grep "@megalinter-base-render"`
+- [**zod-size-bound**](02-daily-work/zod-size-bound.svg): The installed test engine rejects oversized arrays, sets and maps
+  before visiting their elements, and still validates accepted values. The source of the regression and its real task
+  result are captured together.
+  Replay: `task project:test:e2e -- --grep "@zod-size-bound"`
 - [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
   Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`
@@ -91,8 +95,15 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**betterleaks-redact-config**](02-daily-work/betterleaks-redact-config.svg): A made-up password reaches a merge request. The generated Betterleaks job fails and prints REDACTED in the shared CI log, and only the developer's own terminal shows more, on request.
   Chapters: Every scan hides the whole value unless told otherwise · The shared CI log never prints the value · The developer sees more in their own terminal only.
   Replay: `task project:test:e2e -- --grep "@betterleaks-redact-config"`
-- [**9. self-healing**](02-daily-work/self-healing.svg): init repairs its own GitLab connection: a revoked, duplicate, wrong or weakened token, a tampered variable and a variable that lost its masking or protection are all fixed, and a token that was right is kept. A forced refresh that GitLab refuses halfway keeps the release token that works, and init finishes one that stopped halfway. One `task devsecops:reload` then puts a drifted project back (main branch protection, pipeline file, both tokens) and leaves the project's own settings and its release version where they are.
-  Chapters: A revoked release token is rebuilt · A duplicate token and a tampered variable are repaired · A variable that signs in as another token is fixed · A release token that cannot push is rebuilt · A variable that lost its guards gets them back, with the same token · A refresh that fails keeps the release token that works · A refresh cut short is finished by the next init · A project that drifted is put back in one command.
+- [**9. self-healing**](02-daily-work/self-healing.svg): init repairs its own GitLab connection: a revoked, duplicate,
+  wrong or weakened token, a tampered variable and a variable that lost its masking or protection are all fixed, and a
+  token that was right is kept. A forced refresh that GitLab refuses halfway keeps the release token that works, and
+  init finishes one that stopped halfway. One `task devsecops:reload` then puts a drifted project back (main branch
+  protection, pipeline file, both tokens) and leaves the project's own settings and its release version where they are.
+  Chapters: A revoked release token is rebuilt · A duplicate token and a tampered variable are repaired · A variable
+  that signs in as another token is fixed · A release token that cannot push is rebuilt · A variable that lost its
+  guards gets them back, with the same token · A refresh that fails keeps the release token that works · A refresh cut
+  short is finished by the next init · A project that drifted is put back in one command.
   Replay: `task project:test:e2e -- --grep "@self-healing"`
 - [**10. release-window**](02-daily-work/release-window.svg): A release that fails leaves nothing broken behind: the main branch re-locks itself, no tag is pushed for an image that was never published, and a rejected push leaves no tag on its own, so the relaunch publishes the version commit with its tag and leaves no push token behind.
   Chapters: The push window always closes · A release that cannot publish its image pushes nothing · A rejected push publishes nothing · The relaunched release pushes its version commit and its tag together · The push token is not left behind.
@@ -156,7 +167,10 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**15. render-matrix**](03-evolution/render-matrix.svg): The default render is canonical, and each Copier answer changes exactly what it promises, nothing more.
   Chapters: What the default project looks like on GitLab · The default project passes its own YAML linter · Each answer changes exactly what it promises, one branch per answer · The default project keeps every fix of the toolbox's own files.
   Replay: `task project:test:e2e -- --grep "@render-matrix"`
-- [**16. renovate-flow**](03-evolution/renovate-flow.svg): On a generated project, the real Renovate bot opens only the toolbox update and the toml update, and leaves the project's own image alone in its deployment manifest. Once the project has more dependencies, their minor and patch updates share one merge request and a major update keeps its own. On the toolbox itself, it opens one merge request per dependency.
+- [**16. renovate-flow**](03-evolution/renovate-flow.svg): On a generated project, the real Renovate bot opens only the
+  toolbox update and the toml update, and leaves the project's own image alone in its deployment manifest. Once the
+  project has more dependencies, their minor and patch updates share one merge request and a major update keeps its own.
+  On the toolbox itself, it opens one merge request per dependency.
   Chapters: A generated project only receives the toolbox update · A generated project's own minor and patch updates share one merge request · The toolbox updates its own tools, one merge request each.
   Replay: `task project:test:e2e -- --grep "@renovate-flow"`
 - [**Renovate runtime**](03-evolution/renovate-runtime.svg): The pinned download rejects invalid configuration and accepts the correction, without a global Renovate installation. A failed download says the configuration was not checked, and a damaged copy in npm's cache never runs.

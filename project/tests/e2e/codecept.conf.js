@@ -85,6 +85,7 @@ exports.config = {
       './support/steps/markdown-tables.js',
       './support/steps/devskim-workspace.js',
       './support/steps/daily-contribution.js',
+      './support/steps/dependency-safety.js',
       './support/steps/journey.js',
       './support/steps/template-matrix.js',
       './support/steps/team-compose-task.js',
