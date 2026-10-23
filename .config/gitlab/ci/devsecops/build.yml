@@ -4,6 +4,9 @@ build:
   needs: [] # Allows parallel execution
   extends: .docker-job
   script:
+    # Same question as the test job: a merge request that only changes
+    # deployment files has nothing to build here. See check-deploy-only.sh.
+    - if bash .config/devsecops/scripts/check-deploy-only.sh 'build job'; then exit 0; fi
     - task build
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'

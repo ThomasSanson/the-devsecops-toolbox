@@ -106,8 +106,8 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**12. tdd-cycle**](02-daily-work/tdd-cycle.svg): The toolbox tells a real failure apart from a run that died on its way to the test, refuses yesterday's failure as today's proof, and the phase refuses to certify work where a check was switched off or deleted, while a renamed test, or one deleted with its reason in the commit, goes through.
   Chapters: A failure that proves nothing · A failure that proves something · Yesterday's proof does not count · The phase refuses to certify itself · A check that disappears · A test that moves, and a test that goes for a reason.
   Replay: `task project:test:e2e -- --grep "@tdd-cycle"`
-- [**deploy-only**](02-daily-work/deploy-only.svg): A merge request that only changes deployment files skips the test suite, once the project names those folders. Anything else, and any doubt, runs it.
-  Chapters: A release that only moves image tags · Anything else still runs the test suite · When in doubt, the test suite runs.
+- [**deploy-only**](02-daily-work/deploy-only.svg): A merge request that only changes deployment files skips the test suite, and the build and deploy jobs too, once the project names those folders or files. Anything else, and any doubt, runs them.
+  Chapters: A release that only moves image tags · Anything else still runs the test suite · When in doubt, the test suite runs · A single file, not a whole folder · The build and deploy jobs ask the same question.
   Replay: `task project:test:e2e -- --grep "@deploy-only"`
 - [**baseline-mode**](02-daily-work/baseline-mode.svg): Only the value 1, on a developer's machine, rewrites a reference. CI refuses it, and a merge request shows each rewritten reference for a reviewer to accept.
   Chapters: A visible difference must fail · A developer rewrites the references, a reviewer accepts them.

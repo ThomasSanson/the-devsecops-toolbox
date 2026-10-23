@@ -218,3 +218,59 @@ storyboardStep(Then, 'when the change cannot be computed the test suite runs', a
   const seen = await card('unknown-diff-tests-run', [], `CI_MERGE_REQUEST_DIFF_BASE_SHA=${'0'.repeat(40)} ${CHECK}`)
   expectSuiteRuns(seen, 'cannot compute the diff')
 })
+
+function expectSkipped ({ screen, verdict }, said) {
+  if (verdict.code !== 0 || !verdict.output.includes(said) || !screen.includes(said)) {
+    throw new Error(`Expected the script to say ${JSON.stringify(said)} and exit 0, got exit ${verdict.code}:\n${verdict.output}\n--- screen ---\n${screen}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chapter 4: a single file, not a whole folder
+// ---------------------------------------------------------------------------
+
+const INGRESS = 'project/kustomize/overlays/production/ingress.yaml'
+
+storyboardStep(Then, 'once the main branch names a single file, a merge request that only changes that file skips the test suite', async () => {
+  sh('git checkout -q main')
+  edit('.env.dist', `${SETTING}="project/kustomize project/argocd"\n`, `${SETTING}="${OVERLAY}"\n`)
+  sh('git commit -qam "name the overlay, not its folder"')
+  mergeRequest(shipRelease)
+
+  const seen = await card('a-single-file-skips-tests', [
+    `git show main:.env.dist | grep '^${SETTING}='`,
+    'git diff --stat main...HEAD'
+  ], IN_MR)
+  expectSkipped(seen, `Only deployment files changed (${OVERLAY}): the test suite is skipped`)
+})
+
+storyboardStep(Then, 'a new file next to the named file runs the test suite', async () => {
+  mergeRequest(shipRelease, () => write(INGRESS, 'apiVersion: networking.k8s.io/v1\nkind: Ingress\n'))
+  const seen = await card('a-new-file-next-to-it-tests-run', ['git diff --stat main...HEAD'], IN_MR)
+  expectSuiteRuns(seen, `${INGRESS} is outside the deployment folders`)
+})
+
+// ---------------------------------------------------------------------------
+// Chapter 5: the build and deploy jobs ask the same question
+// ---------------------------------------------------------------------------
+
+// The three jobs that boot the whole project, as the working tree ships them.
+const JOBS = { build: `${CHECK} 'build job'`, test: `${CHECK};`, deploy: `${CHECK} 'deploy job'` }
+const jobFile = job => `.config/gitlab/ci/devsecops/${job}.yml`
+
+storyboardStep(Then, 'the build and deploy jobs ask the same script and skip the same way', async () => {
+  sh('git checkout -q main')
+  fs.mkdirSync(path.join(FIXTURE, '.config/gitlab/ci/devsecops'), { recursive: true })
+  Object.keys(JOBS).forEach(job => fs.copyFileSync(path.join(REPO, jobFile(job)), path.join(FIXTURE, jobFile(job))))
+  sh('git add -A && git commit -qm "the pipeline"')
+  mergeRequest(shipRelease)
+
+  const calls = `grep -h '${CHECK}' ${Object.keys(JOBS).map(jobFile).join(' ')}`
+  const seen = await card('build-and-deploy-skip-too', [calls], `${IN_MR} 'build job'`)
+  for (const [job, call] of Object.entries(JOBS)) {
+    if (!fs.readFileSync(path.join(FIXTURE, jobFile(job)), 'utf8').includes(call)) {
+      throw new Error(`Expected the ${job} job to run ${JSON.stringify(call)} before it starts`)
+    }
+  }
+  expectSkipped(seen, 'the build job is skipped')
+})

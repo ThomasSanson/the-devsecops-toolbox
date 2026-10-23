@@ -14,6 +14,10 @@ Feature: A merge request that only changes deployment files does not wait for th
   # file the merge request changes sits in one of those folders. Any other
   # answer, and any doubt, runs the suite exactly as before.
   #
+  # The setting can also name single files, for a project that wants its
+  # overlay and not the whole folder around it. The build and deploy jobs, which
+  # boot the whole project too, ask the same script and end green the same way.
+  #
   # Every card is a real terminal in a throwaway project: one line is typed, and
   # the whole screen it leaves is the card. The line ends on the script the test
   # job runs, with the variable GitLab hands a merge request pipeline.
@@ -52,3 +56,17 @@ Feature: A merge request that only changes deployment files does not wait for th
     # Note: The diff base points to a commit this clone does not hold, so git cannot say what changed. The script does not guess: it says "cannot compute the diff" and the suite runs, exit code 1.
     # Copy: CI_MERGE_REQUEST_DIFF_BASE_SHA=0000000000000000000000000000000000000000 bash .config/devsecops/scripts/check-deploy-only.sh; echo "exit code $?"
     Then when the change cannot be computed the test suite runs
+    # Chapter: A single file, not a whole folder
+    # Note: The main branch now names one file instead of two folders: the production overlay, as the first line shows. The merge request is the same release, one file.
+    # Note: The script says "Only deployment files changed (project/kustomize/overlays/production/kustomization.yaml): the test suite is skipped." and ends on exit code 0.
+    # Copy: git show main:.env.dist | grep '^TASK_DEVSECOPS_TEST_DEPLOY_PATHS='; git diff --stat main...HEAD; CI_MERGE_REQUEST_DIFF_BASE_SHA=$(git rev-parse main) bash .config/devsecops/scripts/check-deploy-only.sh; echo "exit code $?"
+    Then once the main branch names a single file, a merge request that only changes that file skips the test suite
+    # Note: The same release also adds a file next to the overlay, project/kustomize/overlays/production/ingress.yaml. The setting names the overlay, not its folder, so the new file is not a deployment file.
+    # Note: The script names the new file and the suite runs: exit code 1.
+    # Copy: git diff --stat main...HEAD; CI_MERGE_REQUEST_DIFF_BASE_SHA=$(git rev-parse main) bash .config/devsecops/scripts/check-deploy-only.sh; echo "exit code $?"
+    Then a new file next to the named file runs the test suite
+    # Chapter: The build and deploy jobs ask the same question
+    # Note: The test job is not the only one that boots the whole project: the build and deploy jobs do too. The grep shows the three jobs calling the same script, the build and deploy jobs with their own name.
+    # Note: The build job's line, run on the release, says "Only deployment files changed (...): the build job is skipped." and ends on exit code 0. The build job ends there, green, and so does the deploy job.
+    # Copy: grep -h 'bash .config/devsecops/scripts/check-deploy-only.sh' .config/gitlab/ci/devsecops/build.yml .config/gitlab/ci/devsecops/test.yml .config/gitlab/ci/devsecops/deploy.yml; CI_MERGE_REQUEST_DIFF_BASE_SHA=$(git rev-parse main) bash .config/devsecops/scripts/check-deploy-only.sh 'build job'; echo "exit code $?"
+    Then the build and deploy jobs ask the same script and skip the same way
