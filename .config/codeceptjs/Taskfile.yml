@@ -75,10 +75,15 @@ tasks:
         sh: node -p "require('./.config/codeceptjs/package.json').devDependencies.playwright"
       TASK_CODECEPTJS_VERSION_VISUAL_HELPER:
         sh: node -p "require('./.config/codeceptjs/package.json').devDependencies['@digital-commons-official/codeceptjs-visual-helper']"
+      # pageInfo imports the v4 default export. Mocha 12 brings v5 for itself,
+      # so npx needs the same explicit dependency as the Docker test runner.
+      TASK_CODECEPTJS_VERSION_JS_YAML:
+        sh: node -p "require('./.config/codeceptjs/package.json').devDependencies['js-yaml']"
       # Packages to install via npx
       TASK_CODECEPTJS_PACKAGE_CODECEPTJS: '{{.TASK_CODECEPTJS_PACKAGE_CODECEPTJS | default (printf "-p codeceptjs@%s" .TASK_CODECEPTJS_VERSION_CODECEPTJS)}}'
       TASK_CODECEPTJS_PACKAGE_PLAYWRIGHT: '{{.TASK_CODECEPTJS_PACKAGE_PLAYWRIGHT | default (printf "-p playwright@%s" .TASK_CODECEPTJS_VERSION_PLAYWRIGHT)}}'
       TASK_CODECEPTJS_PACKAGE_VISUAL_HELPER: '{{.TASK_CODECEPTJS_PACKAGE_VISUAL_HELPER | default (printf "-p @digital-commons-official/codeceptjs-visual-helper@%s" .TASK_CODECEPTJS_VERSION_VISUAL_HELPER)}}'
+      TASK_CODECEPTJS_PACKAGE_JS_YAML: '{{.TASK_CODECEPTJS_PACKAGE_JS_YAML | default (printf "-p js-yaml@%s" .TASK_CODECEPTJS_VERSION_JS_YAML)}}'
       TASK_CODECEPTJS_PACKAGE_EXTRA: '{{.TASK_CODECEPTJS_PACKAGE_EXTRA | default ""}}'
       _FINAL_BASE_URL: '{{if and (eq .TASK_CODECEPTJS_CI "true") .CODECEPTJS_BASE_URL_CI}}{{.CODECEPTJS_BASE_URL_CI}}{{else}}{{.CODECEPTJS_BASE_URL | default .TASK_CODECEPTJS_ENV_BASE_URL}}{{end}}'
     cmds:
@@ -87,7 +92,7 @@ tasks:
       - cmd: >-
           CODECEPTJS_BASE_URL={{._FINAL_BASE_URL}}
           PLAYWRIGHT_BROWSERS_PATH={{.TASK_CODECEPTJS_CACHE_DIR}}
-          npx -y {{.TASK_CODECEPTJS_PACKAGE_CODECEPTJS}} {{.TASK_CODECEPTJS_PACKAGE_PLAYWRIGHT}} {{.TASK_CODECEPTJS_PACKAGE_VISUAL_HELPER}} {{.TASK_CODECEPTJS_PACKAGE_EXTRA}}
+          npx -y {{.TASK_CODECEPTJS_PACKAGE_CODECEPTJS}} {{.TASK_CODECEPTJS_PACKAGE_PLAYWRIGHT}} {{.TASK_CODECEPTJS_PACKAGE_VISUAL_HELPER}} {{.TASK_CODECEPTJS_PACKAGE_JS_YAML}} {{.TASK_CODECEPTJS_PACKAGE_EXTRA}}
           codeceptjs run --config {{.TASK_CODECEPTJS_CONFIG}}{{if .TASK_CODECEPTJS_GREP}} --grep {{.TASK_CODECEPTJS_GREP}}{{end}}{{if .TASK_CODECEPTJS_DEBUG}} --debug{{end}}{{if .TASK_CODECEPTJS_STEPS}} --steps{{end}}{{if .TASK_CODECEPTJS_REPORTER}} --reporter {{.TASK_CODECEPTJS_REPORTER}}{{end}}{{if .TASK_CODECEPTJS_VERBOSE}} --verbose{{end}}{{if .TASK_CODECEPTJS_OVERRIDE}} --override {{.TASK_CODECEPTJS_OVERRIDE}}{{end}}
           {{.CLI_ARGS}}
       - cmd: echo '🎉 CodeceptJS (npx) tests completed successfully.'

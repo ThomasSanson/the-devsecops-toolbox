@@ -11,6 +11,7 @@
     "@types/node": "^24.10.1",
     "@digital-commons-official/codeceptjs-visual-helper": "2.0.3",
     "codeceptjs": "4.2.2",
+    "js-yaml": "^4.3.2",
     "playwright": "1.63.0",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.0"
