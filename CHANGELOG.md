@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 24.10.1 (2026-10-23)
+
+### Fix
+
+- **test**: stabilize concurrent MegaLinter reporter placement
+- **deps**: declare the YAML dependency used by CodeceptJS
+- **deps**: synchronize the CodeceptJS lockfile
+- **deps**: update toolbox dependencies
+
 ## 24.10.0 (2026-10-23)
 
 ### Feat
