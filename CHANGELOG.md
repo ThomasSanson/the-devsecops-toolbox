@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 24.10.0 (2026-10-23)
+
+### Feat
+
+- **ci**: skip build and deploy too, and accept single files, on deployment-only merge requests
+
+### Fix
+
+- **deps**: resolve the fixed ip-address in the CodeceptJS lockfile
+
 ## 24.9.17 (2026-10-21)
 
 ### Fix
