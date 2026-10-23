@@ -75,8 +75,8 @@ tasks:
         sh: node -p "require('./.config/codeceptjs/package.json').devDependencies.playwright"
       TASK_CODECEPTJS_VERSION_VISUAL_HELPER:
         sh: node -p "require('./.config/codeceptjs/package.json').devDependencies['@digital-commons-official/codeceptjs-visual-helper']"
-      # pageInfo imports the v4 default export. Mocha 12 brings v5 for itself,
-      # so npx needs the same explicit dependency as the Docker test runner.
+      # CodeceptJS's ARIA helper imports js-yaml's v4 default export.
+      # Supply it to npx too; Mocha 12 keeps its own v5 dependency.
       TASK_CODECEPTJS_VERSION_JS_YAML:
         sh: node -p "require('./.config/codeceptjs/package.json').devDependencies['js-yaml']"
       # Packages to install via npx
