@@ -29,3 +29,17 @@ storyboardStep(Then, 'the installed test engine passes the collection size regre
   assert.match(screen, /fail\s+0/, 'No dependency assertion may fail')
   assert.ok(screen.includes('exit code 0'), 'The task must preserve the successful test exit code')
 })
+
+storyboardStep(Given, 'the test engine has a regression for late compressed request bytes', async () => {
+  closeTerminal = await openLocalTerminal(I, { cwd: '/workspace', env: process.env, port: 7799, width: 1440, height: 1000 })
+  const screen = await terminalCard(I, 'compressed-request-specification', 'cat project/tests/unit/fixtures/body-parser-trailing.js')
+  assert.ok(screen.includes('bodyParser.json()(request'), 'The setup must invoke the real parser')
+  assert.ok(screen.includes('setImmediate(() => request.end(trailing))'), 'The setup must deliver trailing bytes after parsing')
+})
+
+storyboardStep(Then, 'the installed test engine survives the late compressed request bytes', async () => {
+  const screen = await terminalCard(I, 'compressed-request-result', 'task -x project:test:codeceptjs:body-parser; printf "exit code %s\\n" "$?"', { mask: DURATION_MASKS })
+  assert.match(screen, /pass\s+1/, 'The compressed request regression must pass')
+  assert.match(screen, /fail\s+0/, 'No parser assertion may fail')
+  assert.ok(screen.includes('exit code 0'), 'The child process must survive without an uncaught decoder error')
+})

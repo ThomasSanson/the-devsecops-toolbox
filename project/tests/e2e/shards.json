@@ -7,7 +7,7 @@
   "5": "./features/02-daily-work/source-publication.feature,./features/01-install/missing-docker.feature",
   "6": "./features/01-install/merge-request-safety.feature",
   "7": "./features/02-daily-work/release-window.feature",
-  "8": "./features/03-evolution/update-conflict.feature,./features/02-daily-work/betterleaks-redact.feature,./features/03-evolution/matrix.feature,./features/02-daily-work/publication-contracts.feature,./features/02-daily-work/storyboard-layout.feature,./features/02-daily-work/dependency-safety.feature",
+  "8": "./features/03-evolution/update-conflict.feature,./features/02-daily-work/betterleaks-redact.feature,./features/03-evolution/matrix.feature,./features/02-daily-work/publication-contracts.feature,./features/02-daily-work/storyboard-layout.feature,./features/02-daily-work/dependency-safety.feature,./features/02-daily-work/compressed-request.feature",
   "9": "./features/02-daily-work/tdd-cycle.feature,./features/02-daily-work/tdd-cycle-reports.feature,./features/01-install/publication-only.feature,./features/01-install/agent-mode.feature",
   "10": "./features/03-evolution/test-discipline.feature,./features/03-evolution/update.feature,./features/03-evolution/runner-cleanup.feature,./features/02-daily-work/secret-scans.feature",
   "11": "./features/02-daily-work/osv-scope.feature,./features/03-evolution/renovate.feature,./features/03-evolution/version-pins.feature",

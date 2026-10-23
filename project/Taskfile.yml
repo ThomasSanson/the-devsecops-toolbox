@@ -83,6 +83,25 @@ tasks:
         --test-reporter-destination=/reports/results-zod-size-bound.xml
         project/tests/unit/zod-size-bound.test.js
 
+  project:test:codeceptjs:body-parser:
+    desc: Check the test engine survives trailing bytes after a compressed request body
+    cmds:
+      - node --test --test-reporter=spec project/tests/unit/body-parser-trailing.test.js
+
+  project:test:codeceptjs:body-parser:docker:
+    desc: Run the compressed body regression in the test image and keep its JUnit report
+    cmds:
+      - mkdir -p tmp/dependency-tests
+      - >-
+        {{.PROJECT_DOCKER_COMPOSE}} run --rm -T --no-deps
+        -v '{{.ROOT_DIR}}/project/tests/unit:/app/project/tests/unit:ro'
+        -v '{{.ROOT_DIR}}/tmp/dependency-tests:/reports'
+        --entrypoint node codeceptjs --test
+        --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=/reports/results-body-parser-trailing.xml
+        project/tests/unit/body-parser-trailing.test.js
+
   project:build:ubuntu:
     desc: 🐳 Build Ubuntu test image
     cmds:
