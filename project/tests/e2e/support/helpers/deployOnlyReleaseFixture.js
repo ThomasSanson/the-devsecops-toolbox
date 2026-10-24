@@ -5,6 +5,7 @@ const path = require('path')
 const { execFileSync } = require('child_process')
 const { REPO } = require('./frameworkCopy')
 const { syncFixture, write, git, runTask } = require('./deployOnlyFixture')
+const { primePipelineGraphIds } = require('./deployOnlyGraphFixture')
 const { BASE_URL, getRootHeaders, createProjectRunner, deleteRunner, createProjectVariable, listPipelineJobs, listProjectPipelines, createMergeRequestWhenBranchExists } = require('./gitlabApi')
 const { freshGet, freshPost, freshPut } = require('./http')
 const { cancelRedundantPipelines, startIsolatedRunnerService, RUNNER_NET } = require('./pipelineRunner')
@@ -28,6 +29,7 @@ async function waitFor (read, matches, message, timeout = 240000) {
 }
 
 async function setup () {
+  await primePipelineGraphIds()
   const state = await syncFixture('/tmp/e2e-deploy-only-release')
   state.owner = crypto.randomBytes(8).toString('hex')
   state.runners = []

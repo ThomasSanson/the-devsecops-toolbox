@@ -18,6 +18,7 @@ const { openLocalTerminal } = require('../helpers/localTerminal')
 const { terminalCard } = require('../terminal/capture')
 const { composeService } = require('../helpers/docker')
 const { resetFileTreeScroll } = require('../helpers/deployOnlyFixture')
+const { primePipelineGraphIds, assertPipelineGraphIds } = require('../helpers/deployOnlyGraphFixture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
 const DIR = '/tmp/e2e-deploy-only-pipeline'
@@ -100,6 +101,7 @@ async function waitForPipeline (pipeline) {
 
 async function pipelineCard (name, pipeline) {
   await waitForPipeline(pipeline)
+  await assertPipelineGraphIds(state.pub, pipeline)
   await gitlabFrame(I, name, gitlabUrl.pipeline(state.pub.projectName, pipeline), {
     projectNames: [state.pub.projectName], waitText: 'code:project', height: 1100
   })
@@ -140,6 +142,7 @@ After(async (test) => {
 })
 
 storyboardStep(Given, 'a project whose pipeline names a deployment folder and a single deployment file', async () => {
+  await primePipelineGraphIds()
   fs.mkdirSync(DIR, { recursive: true })
   toolboxRepository(DIR)
   // Exercise the pipeline shipped to projects, including its single test job.

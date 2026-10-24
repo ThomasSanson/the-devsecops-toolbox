@@ -2,6 +2,7 @@
 const { I, GitLabUserPage } = inject()
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 const { gitlabFrame, gitlabUrl } = require('../helpers/gitlabCard')
+const { assertPipelineGraphIds } = require('../helpers/deployOnlyGraphFixture')
 const fixture = require('../helpers/deployOnlyReleaseFixture')
 let state
 
@@ -12,6 +13,7 @@ After(async test => {
 })
 
 async function card (name, pipeline) {
+  await assertPipelineGraphIds(state.pub, pipeline.id)
   await gitlabFrame(I, name, gitlabUrl.pipeline(state.pub.projectName, pipeline.id), {
     projectNames: [state.pub.projectName], waitText: 'release', height: 950
   })
