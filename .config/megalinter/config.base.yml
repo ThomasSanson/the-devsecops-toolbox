@@ -50,6 +50,7 @@ ANSIBLE_ANSIBLE_LINT_CONFIG_FILE: .config/ansible-lint/config.yaml
 COPYPASTE_JSCPD_CONFIG_FILE: .config/jscpd/config.json
 GHERKIN_GHERKIN_LINT_CONFIG_FILE: .config/gherkin-lint/config.json
 REPOSITORY_DEVSKIM_CONFIG_FILE: .config/devskim/config.json
+REPOSITORY_DEVSKIM_CLI_EXECUTABLE: [bash, .config/devskim/run.sh]
 # DevSkim matches the folders it skips against each file's full path, and
 # MegaLinter mounts the project under /tmp/lint on a developer's machine: the
 # tmp entry MegaLinter forwards would skip the whole project there. DevSkim's

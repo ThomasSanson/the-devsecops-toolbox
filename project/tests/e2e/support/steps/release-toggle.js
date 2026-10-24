@@ -227,7 +227,9 @@ function wirePublishStep (repoDir) {
 const REMOTE_CHECK = 'git remote get-url origin'
 function wireRemoteCheck (repoDir) {
   const file = `${repoDir}/.gitlab-ci.yml`
-  fs.appendFileSync(file, `\nrelease:\n  script:\n    - task release\n    - ${REMOTE_CHECK}\n`)
+  // Preserve the shipped plan dependency and locks. This release-only fixture
+  // needs a successful prerequisite, without bootstrapping the whole plan.
+  fs.appendFileSync(file, `\nplan:\n  before_script: []\n  script:\n    - echo "Release fixture prerequisite completed"\n\nrelease:\n  script:\n    - task release\n    - ${REMOTE_CHECK}\n`)
 }
 
 // Push the freshly rendered framework straight to main as a single `feat:`
@@ -308,14 +310,14 @@ async function clearAllPipelines (projectName, headers) {
 // the release job in the queue. Each of them pays the whole `task dev:init:ci`
 // setup inside nested docker-in-docker: the `plan` job — two echoes of actual
 // work — took 43 minutes of it in one run, and the release job sat `pending`
-// until the worker was killed for inactivity. This story is about the release
-// job, so its siblings are cancelled as soon as they appear. Cancelling needs
+// until the worker was killed for inactivity. Keep the lightweight plan
+// prerequisite; cancel the other siblings as soon as they appear. Cancelling needs
 // the project owner (lambda): a non-member admin gets 403 here.
 async function cancelSiblingJobs (projectName, jobs) {
   const enc = encodedProjectPath(projectName)
   const done = ['success', 'failed', 'canceled', 'canceling', 'skipped']
   for (const job of jobs) {
-    if (job.name === 'release' || job.stage === 'release') continue
+    if (job.name === 'plan' || job.name === 'release' || job.stage === 'release') continue
     if (done.includes(job.status)) continue
     const res = await freshPost(`${BASE_URL}/api/v4/projects/${enc}/jobs/${job.id}/cancel`, {}, lambdaHeaders)
     if (res.status >= 400) {
@@ -340,6 +342,8 @@ async function waitReleaseJobTerminal (I, projectName, pid, rootHeaders, runner)
     const line = `door=${level} release=${release ? release.status : 'absent'}`
     if (line !== last) { console.log(`release-crash: ${line}`); last = line }
     if (release && ['failed', 'success', 'canceled', 'skipped'].includes(release.status)) {
+      const plan = jobs.find(job => job.name === 'plan')
+      if (!plan || plan.status !== 'success') throw new Error('The release fixture prerequisite must finish successfully')
       if (release.status !== 'failed') dumpFailedTraces(projectName, jobs, rootHeaders, runner && runner.svc)
       return release
     }

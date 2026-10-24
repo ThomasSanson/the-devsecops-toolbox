@@ -395,9 +395,15 @@ For the complete list of variables and their default values, see [`.env.dist`](.
 ### GitLab CI/CD Variables
 The following variables need to be configured in your GitLab CI/CD settings:
 
-- `TASK_COMMITIZEN_TOKEN`: Project access token used by release push/protection workflow (managed by `task devsecops:init`)
+- `TASK_COMMITIZEN_TOKEN`: Project access token used by release push/protection and deployment-policy synchronization (managed by `task devsecops:init`)
 - `GITLAB_USER_LOGIN`: Your GitLab username (automatically provided)
 - `GITLAB_USER_EMAIL`: Your GitLab email (automatically provided)
+
+Deployment-only merge requests can keep code checks and release while omitting
+the other phases. This requires GitLab 19.2 or later. Set
+`TASK_DEVSECOPS_TEST_DEPLOY_PATHS` in `.env.dist`; the default-branch plan
+synchronizes the project variable automatically. See the
+[configuration and recovery guide](.config/devsecops/deployment-only.md).
 
 ## Development Setup
 

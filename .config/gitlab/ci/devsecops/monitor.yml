@@ -6,6 +6,7 @@ monitor:
   script:
     - task monitor
   rules:
+    - !reference [.deployment-only, rules]
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_MONITOR_SCHEDULE == "1"'

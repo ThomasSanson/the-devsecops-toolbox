@@ -16,6 +16,9 @@ variables:
   TASK_DEVSECOPS_RELEASE_ENABLED: $[[ inputs.TASK_DEVSECOPS_RELEASE_ENABLED ]]
   RUN_FEEDBACK_SCHEDULE: $[[ inputs.RUN_FEEDBACK_SCHEDULE ]]
 
+  # Full pipeline until plan synchronizes the project variable from dotenv.
+  TASK_DEVSECOPS_DEPLOY_ONLY_REGEXP: '\A'
+
 include:
   - local: .config/gitlab/ci/before_script.yml
   - local: .config/gitlab/ci/cache.yml

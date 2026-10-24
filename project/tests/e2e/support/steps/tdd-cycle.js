@@ -39,7 +39,7 @@ const card = (frame, line, mask = []) => terminalCard(I, frame, line, { mask: [.
 // comparing them.
 function nestedEnv (extra = {}) {
   const env = { ...process.env, ...extra }
-  for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
+  for (const name of ['TASK_E2E_UPDATE_BASELINES', 'TASK_E2E_TIMEOUT', 'TASK_CODECEPTJS_GREP', 'TASK_CODECEPTJS_FEATURES', 'CI']) delete env[name]
   return env
 }
 

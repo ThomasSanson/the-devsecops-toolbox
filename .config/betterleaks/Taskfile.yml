@@ -32,7 +32,7 @@ vars:
   # TASK_BETTERLEAKS_CONTAINER_NAME followed by an id drawn for this scan, and
   # only this scan removes it, so two scans sharing a Docker daemon never stop
   # each other's.
-  CONTAINER: '{{.TASK_BETTERLEAKS_CONTAINER_NAME}}-{{uuid}}'
+  CONTAINER: "{{.TASK_BETTERLEAKS_CONTAINER_NAME}}-{{uuid}}"
 
   # Proxy forwarding (transparent: only set if proxy env vars exist)
   TASK_BETTERLEAKS_PROXY_ARGS:

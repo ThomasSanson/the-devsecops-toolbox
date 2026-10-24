@@ -4,11 +4,9 @@ deploy:
   needs: [] # Allows parallel execution
   extends: .docker-job
   script:
-    # Same question as the test job: a merge request that only changes
-    # deployment files has nothing to start here. See check-deploy-only.sh.
-    - if bash .config/devsecops/scripts/check-deploy-only.sh 'deploy job'; then exit 0; fi
     - task deploy
   rules:
+    - !reference [.deployment-only, rules]
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_DEPLOY_SCHEDULE == "1"'

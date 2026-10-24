@@ -2,10 +2,10 @@
 /**
  * Storyboard for @deploy-only (see features/02-daily-work/deploy-only.feature).
  *
- * The test job of a merge request asks .config/devsecops/scripts/check-deploy-only.sh
+ * A legacy/local caller asks .config/devsecops/scripts/check-deploy-only.sh
  * whether the change only touches deployment files. Exit 0 skips the suite,
- * anything else runs it. This story runs that script, the exact line the job
- * runs, against a throwaway git repository shaped like a project: two
+ * anything else runs it. This story runs that preserved script
+ * against a throwaway git repository shaped like a project: two
  * deployment folders, some code and a test. Each card sets up one merge
  * request off camera, then types ONE line in a real terminal (ttyd, see
  * helpers/localTerminal.js): what the merge request changes, the script's
@@ -251,25 +251,26 @@ storyboardStep(Then, 'a new file next to the named file runs the test suite', as
 })
 
 // ---------------------------------------------------------------------------
-// Chapter 5: the build and deploy jobs ask the same question
+// Chapter 5: legacy callers can skip; current CI executes every created job
 // ---------------------------------------------------------------------------
 
 // The three jobs that boot the whole project, as the working tree ships them.
-const JOBS = { build: `${CHECK} 'build job'`, test: `${CHECK};`, deploy: `${CHECK} 'deploy job'` }
+const JOBS = ['build', 'test', 'deploy']
 const jobFile = job => `.config/gitlab/ci/devsecops/${job}.yml`
 
-storyboardStep(Then, 'the build and deploy jobs ask the same script and skip the same way', async () => {
+storyboardStep(Then, 'legacy callers can skip while current CI jobs execute their tasks', async () => {
   sh('git checkout -q main')
   fs.mkdirSync(path.join(FIXTURE, '.config/gitlab/ci/devsecops'), { recursive: true })
-  Object.keys(JOBS).forEach(job => fs.copyFileSync(path.join(REPO, jobFile(job)), path.join(FIXTURE, jobFile(job))))
+  JOBS.forEach(job => fs.copyFileSync(path.join(REPO, jobFile(job)), path.join(FIXTURE, jobFile(job))))
   sh('git add -A && git commit -qm "the pipeline"')
   mergeRequest(shipRelease)
 
-  const calls = `grep -h '${CHECK}' ${Object.keys(JOBS).map(jobFile).join(' ')}`
-  const seen = await card('build-and-deploy-skip-too', [calls], `${IN_MR} 'build job'`)
-  for (const [job, call] of Object.entries(JOBS)) {
-    if (!fs.readFileSync(path.join(FIXTURE, jobFile(job)), 'utf8').includes(call)) {
-      throw new Error(`Expected the ${job} job to run ${JSON.stringify(call)} before it starts`)
+  const calls = `grep -h -- '- task ' ${JOBS.map(jobFile).join(' ')}`
+  const seen = await card('build-and-deploy-skip-too', [calls], `${SETTING}=${OVERLAY} ${IN_MR} 'build job'`)
+  for (const job of JOBS) {
+    const content = fs.readFileSync(path.join(FIXTURE, jobFile(job)), 'utf8')
+    if (!content.includes(`- task ${job}`) || content.includes('check-deploy-only.sh')) {
+      throw new Error(`Expected every created ${job} job to execute its task`)
     }
   }
   expectSkipped(seen, 'the build job is skipped')

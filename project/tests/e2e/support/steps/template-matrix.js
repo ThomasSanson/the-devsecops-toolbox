@@ -250,9 +250,14 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   for (const p of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml', 'project/docker-compose.yml']) {
     if (!has(p)) throw new Error(`Expected the default render to deliver ${p}`)
   }
-  for (const p of ['.config/podman', '.config/ansible']) {
-    if (has(p)) throw new Error(`Expected the default render to leave ${p} out`)
+  const renderErrors = []
+  if (JSON.parse(matrixFile('.config/cspell/config.project.json')).words.length !== 0) {
+    renderErrors.push('The framework must ship an empty project dictionary; shared technical words belong in its base dictionary')
   }
+  for (const p of ['.config/podman', '.config/ansible', '.superpowers', 'docs/plans', '.config/devsecops/scripts/__pycache__']) {
+    if (has(p)) renderErrors.push(`Expected the default render to leave ${p} out`)
+  }
+  if (renderErrors.length) throw new Error(renderErrors.join('\n'))
   if (!matrixFile('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to declare its networks')
   const taskfile = matrixFile('Taskfile.yml')
   for (const include of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml']) {

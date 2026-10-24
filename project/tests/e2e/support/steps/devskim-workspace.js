@@ -7,9 +7,11 @@
  * file. `**\/tmp/**` was meant for the project's tmp folder, but MegaLinter
  * mounts the project under /tmp/lint on a developer's machine: the whole
  * project matched, and `task megalinter` passed where CI failed (issue #239).
+ * DevSkim also opens all files before analyzing them: 1,500 ordinary files
+ * must not exhaust the container's initial limit of 1,024 open files.
  * A generated project holds an http:// address in its source and a copy in
  * its tmp folder. The card is the real `task megalinter` with DevSkim alone;
- * the twin scans the same files where CI mounts them, under /builds.
+ * the twin runs `task megalinter:ci` where CI mounts the files, under /builds.
  */
 const assert = require('assert/strict')
 const fs = require('fs')
@@ -29,6 +31,8 @@ const CONFIG = '.config/megalinter/config.yml'
 const DEVSKIM = '.config/devskim/config.json'
 const SOURCE = 'src/fetch.js'
 const SCRATCH = 'tmp/scratch.js'
+const MODULES = 'src/modules'
+const MODULE_COUNT = 1500
 // The project's files get the bare line; the comment after it is for the
 // toolbox's own DevSkim scan of this file.
 const PROJECT_LINE = "const DATA_URL = 'http://example.org/data.json'\n" // DevSkim: ignore DS137138 -- the insecure address the story scans for
@@ -59,8 +63,8 @@ After((test) => {
 
 const git = (args) => execSync(`git ${args}`, { cwd: PROJECT, encoding: 'utf8' })
 
-// DevSkim as CI runs it: the project under /builds, the binary and the
-// settings of the project's MegaLinter image. The files are copied in, as
+// DevSkim as CI runs it: the project under /builds, the real CI task and the
+// project's MegaLinter image. The files are copied in, as
 // MegaLinter does: this test runs in a container, so a bind mount would hand
 // Docker a folder of the host. Answers the files DevSkim flags.
 function flaggedUnderBuilds () {
@@ -69,30 +73,48 @@ function flaggedUnderBuilds () {
   const mount = '/builds/group/project'
   const box = `${CONTAINER}-builds`
   const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', timeout: 1800000, stdio: ['ignore', 'pipe', 'pipe'] })
-  docker('run', '-d', '--name', box, '--entrypoint', 'sleep', image, '600')
+  docker('run', '-d', '--name', box, '--ulimit', 'nofile=1024:65536', '--entrypoint', 'sleep', image, '600')
   try {
+    assert.equal(docker('exec', box, 'sh', '-c', 'ulimit -Sn').trim(), '1024')
     docker('exec', box, 'mkdir', '-p', mount)
     docker('cp', `${PROJECT}/.`, `${box}:${mount}`)
-    let out
+    // Reuse the suite's pinned Task binary without a network installation.
+    const taskBinary = fs.realpathSync(execSync('command -v task', { encoding: 'utf8' }).trim())
+    docker('cp', taskBinary, `${box}:/usr/local/bin/task`)
+    docker('exec', box, 'chmod', '0755', '/usr/local/bin/task')
+    // The copied local report must never stand in for the CI task's report.
+    docker('exec', box, 'rm', '-rf', `${mount}/megalinter-reports`)
+    let status = 0
+    let out = ''
     try {
-      out = docker('exec', '-w', mount, box, 'devskim', 'analyze', '--source-code', '.', '--options-json', DEVSKIM, '-f', 'text')
+      out = docker('exec', '-w', mount, box, 'task', 'megalinter:ci')
     } catch (error) {
-      // DevSkim exits non-zero when it flags something: the report is the answer.
+      status = error.status
       out = `${error.stdout || ''}${error.stderr || ''}`
     }
-    return [SOURCE, SCRATCH].filter(file => out.includes(file))
+    assert.equal(status, 201, `The CI task must fail on the insecure address:\n${out}`)
+    assert.ok(!out.includes('System.Diagnostics.DiagnosticSource'), `DevSkim must finish scanning all source files:\n${out}`)
+    const report = JSON.parse(docker('exec', box, 'cat', `${mount}/${REPORT}`))
+    const findings = report.runs.flatMap(run => run.results || [])
+    assert.ok(findings.some(result => result.ruleId === 'DS137138'), `The CI report must contain the insecure-address finding:\n${out}`)
+    return findings.flatMap(result => result.locations.map(location => location.physicalLocation.artifactLocation.uri))
   } finally {
     execSync(`docker rm -f ${box} >/dev/null 2>&1 || true`)
   }
 }
 
-storyboardStep(Given, 'a generated project holds an http:// address in its source and a copy in its own tmp folder', async () => {
+storyboardStep(Given, 'a generated project holds 1500 ordinary source files, an http:// address and a copy in its own tmp folder', async () => {
   fs.rmSync(PROJECT, { recursive: true, force: true })
   renderProject({}, { dst: PROJECT })
   for (const file of [SOURCE, SCRATCH]) {
     fs.mkdirSync(path.join(PROJECT, path.dirname(file)), { recursive: true })
     fs.writeFileSync(path.join(PROJECT, file), PROJECT_LINE)
   }
+  fs.mkdirSync(path.join(PROJECT, MODULES), { recursive: true })
+  for (let index = 0; index < MODULE_COUNT; index++) {
+    fs.writeFileSync(path.join(PROJECT, MODULES, `module-${index}.js`), 'module.exports = 1\n')
+  }
+  assert.equal(fs.readdirSync(path.join(PROJECT, MODULES)).length, MODULE_COUNT)
   fs.appendFileSync(path.join(PROJECT, CONFIG), `\n${DEVSKIM_ONLY.join('\n')}\n`)
   git('init --quiet --initial-branch=main')
   git('config user.email "e2e@test.local" && git config user.name "E2E"')
@@ -103,8 +125,8 @@ storyboardStep(Given, 'a generated project holds an http:// address in its sourc
   story = { env: { ...process.env, TASK_MEGALINTER_CONTAINER_NAME: CONTAINER } }
   delete story.env.TASK_E2E_UPDATE_BASELINES
   story.closeTerminal = await openLocalTerminal(I, { cwd: PROJECT, env: story.env, port: 7715, height: 1200, width: 1440 })
-  const screen = await terminalCard(I, 'devskim-fixture', `head -n 1 ${SOURCE} ${SCRATCH} && cat ${DEVSKIM}`)
-  for (const said of [`==> ${SOURCE} <==`, `==> ${SCRATCH} <==`, PROJECT_LINE.trim(), '"Globs"']) {
+  const screen = await terminalCard(I, 'devskim-fixture', `find ${MODULES} -type f | wc -l; head -n 1 ${SOURCE} ${SCRATCH} && cat ${DEVSKIM}`)
+  for (const said of [String(MODULE_COUNT), `==> ${SOURCE} <==`, `==> ${SCRATCH} <==`, PROJECT_LINE.trim(), '"Globs"']) {
     assert.ok(screen.includes(said), `Expected "${said}" on screen:\n${screen}`)
   }
 })

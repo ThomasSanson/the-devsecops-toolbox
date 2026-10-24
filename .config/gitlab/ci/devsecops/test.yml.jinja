@@ -5,11 +5,6 @@ test:
   needs: [] # Allows parallel execution
   extends: .docker-job
   script:
-    # A merge request that only changes deployment files (the folders named in
-    # TASK_DEVSECOPS_TEST_DEPLOY_PATHS) holds nothing a test could catch: the
-    # script says so and the job ends green. Any other answer, or any doubt,
-    # runs the suite exactly as before. See check-deploy-only.sh.
-    - if bash .config/devsecops/scripts/check-deploy-only.sh; then exit 0; fi
     - task test
   artifacts:
     # `always` so a green run's test artifacts stay reachable from the MR
@@ -29,6 +24,7 @@ test:
         - project/**/_output/junit/*.xml
     expire_in: 3 days
   rules:
+    - !reference [.deployment-only, rules]
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_TEST_SCHEDULE == "1"'
@@ -61,4 +57,5 @@ no-cheat:
     # request's target branch.
     - bash .config/devsecops/scripts/check-no-cheat.sh
   rules:
+    - !reference [.deployment-only, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
