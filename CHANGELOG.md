@@ -2,6 +2,17 @@
 
 # Changelog
 
+## 25.0.0 (2026-10-24)
+
+### BREAKING CHANGE
+
+- GitLab 19.2 or newer is required for rules:changes:regexp.
+Closes #354
+
+### Feat
+
+- create deployment-only pipelines from synchronized paths
+
 ## 24.10.1 (2026-10-23)
 
 ### Fix
