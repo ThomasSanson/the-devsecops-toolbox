@@ -194,7 +194,7 @@ tasks:
       # cspell:ignore setsid
       - cmd: |
           {{if ne (env "CI") ""}}
-            {{.PROJECT_DOCKER_COMPOSE}} build ubuntu || true
+            ({{.PROJECT_DOCKER_COMPOSE}} build ubuntu) || true
             if echo "${TASK_CODECEPTJS_FEATURES:-}" | grep -qE '{{.E2E_MEGALINTER_FEATURES}}'; then
               ml_image=$(sed -n 's/^ *name: \(ghcr\.io\/oxsecurity\/megalinter[^ ]*\).*/\1/p' .config/gitlab/ci/devsecops/code.yml | head -n 1)
               setsid -f sh -c "docker pull -q '$ml_image' > /tmp/e2e-megalinter-pull.log 2>&1"
