@@ -186,19 +186,20 @@ tasks:
       # their cache (guarded on CI). The df/docker-df probe is the "before suite"
       # half of the instrumentation.
       # The shards whose stories run MegaLinter (in a generated project's
-      # pipeline, or through task megalinter) start pulling its image here,
-      # detached, so the suite never waits for it: the pipeline stories need it
-      # minutes into their scenario and used to pay 3 to 4 minutes for it there.
+      # pipeline, or through task megalinter) need its image before the workers
+      # start: the first scanner extraction is synchronous and cannot report
+      # progress while it waits for a cold image. A failed pull must stop setup.
       # Not earlier: on the CI runners' slow disks, building or pulling while
       # GitLab CE is extracted and boots made that boot 80 s longer.
-      # cspell:ignore setsid
       - cmd: |
           {{if ne (env "CI") ""}}
             ({{.PROJECT_DOCKER_COMPOSE}} build ubuntu) || true
             if echo "${TASK_CODECEPTJS_FEATURES:-}" | grep -qE '{{.E2E_MEGALINTER_FEATURES}}'; then
               ml_image=$(sed -n 's/^ *name: \(ghcr\.io\/oxsecurity\/megalinter[^ ]*\).*/\1/p' .config/gitlab/ci/devsecops/code.yml | head -n 1)
-              setsid -f sh -c "docker pull -q '$ml_image' > /tmp/e2e-megalinter-pull.log 2>&1"
-              echo "⏬ pulling $ml_image in the background for the stories that run MegaLinter"
+              if ! docker image inspect "$ml_image" >/dev/null 2>&1; then
+                docker pull -q "$ml_image" || exit "$?"
+              fi
+              echo "⏬ MegaLinter image ready: $ml_image"
             fi
             docker builder prune -af || true
             docker image prune -f || true
