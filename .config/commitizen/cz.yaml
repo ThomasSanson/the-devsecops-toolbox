@@ -3,13 +3,15 @@ commitizen:
   bump_message: "build: bump version $current_version \u2192 $new_version"
   changelog_file: ../../CHANGELOG.md
   name: cz_conventional_commits
+  pre_bump_hooks:
+    - task commitizen:format
   tag_format: $version
   update_changelog_on_bump: false
   version: 24.10.1
   version_files:
-  - .gitlab-ci.yml
-  - .config/publication/gitlab-ci.yml
-  - VERSION
+    - .gitlab-ci.yml
+    - .config/publication/gitlab-ci.yml
+    - VERSION
   version_pattern: '(image: registry\.gitlab\.com/digital-commons/devsecops/the-devsecops-toolbox:)([0-9]+\.[0-9]+\.[0-9]+.*)'
   version_provider: commitizen
   version_scheme: semver2

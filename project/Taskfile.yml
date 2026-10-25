@@ -54,6 +54,16 @@ tasks:
       - cmd: echo "✅ Project Build phase completed successfully"
         silent: true
 
+  project:test:commitizen:yaml:
+    desc: Verify version generation retains the required YAML layout without committing
+    cmds:
+      - mkdir -p tmp/commitizen-yaml-tests
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/commitizen-yaml-tests/results-yaml.xml
+        project/tests/integration/commitizen-yaml.test.js
+
   project:build:gitlab:
     desc: Build tests component (gitlab)
     cmds:
