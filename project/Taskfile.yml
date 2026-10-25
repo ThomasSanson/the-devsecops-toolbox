@@ -54,6 +54,16 @@ tasks:
       - cmd: echo "✅ Project Build phase completed successfully"
         silent: true
 
+  project:test:betterleaks:copy:
+    desc: Verify incomplete copies stop all Docker secret scans
+    cmds:
+      - mkdir -p tmp/betterleaks-copy-tests
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/betterleaks-copy-tests/results-copy.xml
+        project/tests/integration/betterleaks-copy.test.js
+
   project:test:commitizen:yaml:
     desc: Verify version generation retains the required YAML layout without committing
     cmds:
