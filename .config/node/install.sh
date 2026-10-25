@@ -23,6 +23,12 @@ if [ -z "$NODE_VERSION" ]; then
   exit 1
 fi
 
+# Parallel tasks share this user's nvm aliases, npm configuration and symlinks.
+# Keep the lock until all three executables are ready for sibling shells.
+mkdir -p "$HOME/.local/state/devsecops"
+exec 9>"$HOME/.local/state/devsecops/node-install.lock"
+flock 9
+
 retry_cmd() {
   cmd="$1"
   max_attempts="${2:-5}"

@@ -54,6 +54,16 @@ tasks:
       - cmd: echo "✅ Project Build phase completed successfully"
         silent: true
 
+  project:test:node:reinstallation:
+    desc: Verify the pinned Node installer in the real CI image
+    cmds:
+      - mkdir -p tmp/node-reinstallation
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/node-reinstallation/results-node.xml
+        project/tests/integration/node-reinstallation.test.js
+
   project:test:betterleaks:copy:
     desc: Verify incomplete copies stop all Docker secret scans
     cmds:
