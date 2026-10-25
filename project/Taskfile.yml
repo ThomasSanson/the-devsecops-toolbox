@@ -64,6 +64,16 @@ tasks:
         --test-reporter-destination=tmp/commitizen-yaml-tests/results-yaml.xml
         project/tests/integration/commitizen-yaml.test.js
 
+  project:test:devskim:descriptors:
+    desc: Verify every scanner input survives the inherited descriptor limit
+    cmds:
+      - mkdir -p tmp/devskim-descriptor-tests
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/devskim-descriptor-tests/results-descriptors.xml
+        project/tests/integration/devskim-file-descriptors.test.js
+
   project:build:gitlab:
     desc: Build tests component (gitlab)
     cmds:
