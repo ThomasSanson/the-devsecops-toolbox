@@ -40,11 +40,43 @@ log "Installing Taskfile v${TASK_VERSION}..."
 CURL_FLAGS="--location --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120"
 BIN_DIR=/usr/local/bin
 INSTALL_CMD="sh -c \"\$(curl $CURL_FLAGS https://taskfile.dev/install.sh)\" -- -d -b \"\$BIN_DIR\" \"v${TASK_VERSION}\""
+# A project whose runners cannot reach GitHub names a mirror in .env.dist. The
+# CI runs this script before task exists, so read the dotenv files here.
+GITHUB_URL="${TASK_GITHUB_URL:-$(sed -n 's/^TASK_GITHUB_URL=//p' .env .env.dev .env.dist 2>/dev/null | head -n 1 | tr -d "\"'")}"
+GITHUB_URL="${GITHUB_URL%/}"
+if [ -n "$GITHUB_URL" ]; then
+  # taskfile.dev/install.sh always downloads from github.com: take the release
+  # from the mirror instead, checked against the checksums published with it.
+  case "$(uname -s)" in Darwin) OS=darwin ;; *) OS=linux ;; esac
+  case "$(uname -m)" in aarch64 | arm64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+  ASSET="task_${OS}_${ARCH}.tar.gz"
+  RELEASE="$GITHUB_URL/go-task/task/releases/download/v${TASK_VERSION}"
+  TMP_DIR="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$TMP_DIR'" EXIT
+  log "Downloading Taskfile v${TASK_VERSION} from $GITHUB_URL..."
+  # shellcheck disable=SC2086
+  curl $CURL_FLAGS --fail --silent --show-error "$RELEASE/$ASSET" -o "$TMP_DIR/$ASSET"
+  # shellcheck disable=SC2086
+  curl $CURL_FLAGS --fail --silent --show-error "$RELEASE/task_checksums.txt" -o "$TMP_DIR/task_checksums.txt"
+  CHECK="sha256sum -c"
+  command -v sha256sum >/dev/null 2>&1 || CHECK="shasum -a 256 -c"
+  if ! (cd "$TMP_DIR" && grep " $ASSET\$" task_checksums.txt | $CHECK - >/dev/null 2>&1); then
+    log "Error: $ASSET does not match the checksums published with the release."
+    exit 1
+  fi
+  tar -xzf "$TMP_DIR/$ASSET" -C "$TMP_DIR" task
+  INSTALL_CMD="install -m 0755 '$TMP_DIR/task' \"\$BIN_DIR/task\""
+fi
 if [ -w "$BIN_DIR" ]; then
   eval "$INSTALL_CMD"
 elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  # shellcheck disable=SC2086
-  sudo -n sh -c "$(curl $CURL_FLAGS https://taskfile.dev/install.sh)" -- -d -b "$BIN_DIR" "v${TASK_VERSION}"
+  if [ -n "$GITHUB_URL" ]; then
+    sudo -n install -m 0755 "$TMP_DIR/task" "$BIN_DIR/task"
+  else
+    # shellcheck disable=SC2086
+    sudo -n sh -c "$(curl $CURL_FLAGS https://taskfile.dev/install.sh)" -- -d -b "$BIN_DIR" "v${TASK_VERSION}"
+  fi
 else
   BIN_DIR="${HOME}/.local/bin"
   log "Warning: /usr/local/bin not writable and no passwordless sudo. Installing into ${BIN_DIR} instead..."

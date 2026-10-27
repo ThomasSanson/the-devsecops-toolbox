@@ -66,3 +66,20 @@ Feature: Trusting the installer on a fresh machine
     # Note: The installer then says where task is and that this folder must be on the PATH. The run ends with exit code 0, and the shell finds task in /home/bootstrap/.local/bin. Versions show as <version>, the download progress and the temporary folder as placeholders: they change with each run or update.
     # Copy: sh .config/task/install.sh; echo "exit code: $?"; command -v task; task --version
     Then the task installer puts task in ~/.local/bin, says that folder must be on the PATH, and task runs from there
+
+  # Some networks cannot reach GitHub, such as the CI runners of a forge that
+  # relays GitHub through a Nexus. The toolbox installers that download from
+  # GitHub read two settings of the project in .env.dist, TASK_GITHUB_URL and
+  # TASK_GITHUB_RAW_URL, and go to the mirror they name (issue #364). One
+  # terminal, two cards: the installers with GitHub out of reach, then the
+  # same installers once .env.dist names a mirror.
+  @github-mirror
+  Scenario: On a network without GitHub, two lines in .env.dist bring the toolbox tools from a mirror
+    # Note: A machine that cannot reach GitHub, in a project with the six toolbox installers that download from it. curl cannot connect to github.com, and the two GitHub settings of .env.dist are empty, which means GitHub itself.
+    # Note: The developer runs the six installers one after the other. Each one fails, since GitHub is out of reach.
+    # Copy: curl -sS https://github.com; grep '^TASK_GITHUB' .env.dist; for t in task betterleaks gum glow jq node; do .config/$t/install.sh >/tmp/$t.log 2>&1 && echo "$t installed" || echo "$t failed"; done
+    Given a machine that cannot reach GitHub, where the six toolbox installers that download from it all fail
+    # Note: The developer writes the address of the network's GitHub mirror in .env.dist, one for github.com and one for raw.githubusercontent.com. Here the mirror is the test's own, standing in for the Nexus of a forge.
+    # Note: The same six installers run again, and each one says installed. Every download went through the mirror, and none reached GitHub.
+    # Copy: sed -i -e 's#^TASK_GITHUB_URL=#&http://codeceptjs:8088/github/#' -e 's#^TASK_GITHUB_RAW_URL=#&http://codeceptjs:8088/raw/#' .env.dist; grep '^TASK_GITHUB' .env.dist; for t in task betterleaks gum glow jq node; do .config/$t/install.sh >/tmp/$t.log 2>&1 && echo "$t installed" || echo "$t failed"; done
+    Then once .env.dist names a GitHub mirror, the same six installers all get their tool from it

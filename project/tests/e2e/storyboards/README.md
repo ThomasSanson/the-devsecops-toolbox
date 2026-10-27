@@ -22,6 +22,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@fresh-machine"`
 - [**task-install-without-sudo**](01-install/task-install-without-sudo.svg): On a bare machine where the developer has no sudo rights, the task installer cannot use /usr/local/bin. It installs task into ~/.local/bin instead, says that folder must be on the PATH, and the shell finds task there.
   Replay: `task project:test:e2e -- --grep "@task-install-without-sudo"`
+- [**github-mirror**](01-install/github-mirror.svg): On a network that cannot reach GitHub, the six toolbox installers that download from it all fail. Once .env.dist names a GitHub mirror, the same six install their tool from it.
+  Replay: `task project:test:e2e -- --grep "@github-mirror"`
 - [**missing-docker**](01-install/missing-docker.svg): On a machine without Docker, the installer says so before it sets up the project and names what to install, then goes on to the setup questions.
   Replay: `task project:test:e2e -- --grep "@missing-docker"`
 - [**5. first-run-help**](01-install/first-run-help.svg): Every check stops and names the fix, and init finishes cleanly once GitLab is turned off.

@@ -59,7 +59,10 @@ darwin)
   ;;
 esac
 
-DOWNLOAD_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-${JQ_OS}-${JQ_ARCH}"
+# The project's GitHub mirror, for runners that cannot reach GitHub (.env.dist).
+GITHUB_URL="${TASK_GITHUB_URL:-$(sed -n 's/^TASK_GITHUB_URL=//p' .env .env.dev .env.dist 2>/dev/null | head -n 1 | tr -d "\"'")}"
+GITHUB_URL="${GITHUB_URL:-https://github.com}"
+DOWNLOAD_URL="${GITHUB_URL%/}/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-${JQ_OS}-${JQ_ARCH}"
 
 # Ensure a download tool is available
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then

@@ -13,7 +13,10 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION="${TASK_BETTERLEAKS_VERSION:-$(cat "$SCRIPT_DIR/version" 2>/dev/null || true)}"
 BIN_DIR="${TASK_BETTERLEAKS_BIN_DIR:-$HOME/.local/bin}"
-RELEASES="https://github.com/betterleaks/betterleaks/releases/download"
+# The project's GitHub mirror, for runners that cannot reach GitHub (.env.dist).
+GITHUB_URL="${TASK_GITHUB_URL:-$(sed -n 's/^TASK_GITHUB_URL=//p' .env .env.dev .env.dist 2>/dev/null | head -n 1 | tr -d "\"'")}"
+GITHUB_URL="${GITHUB_URL:-https://github.com}"
+RELEASES="${GITHUB_URL%/}/betterleaks/betterleaks/releases/download"
 
 log() { printf "%s\n" "$*"; }
 

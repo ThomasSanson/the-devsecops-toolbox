@@ -59,6 +59,7 @@ const {
   dumpFailedTraces
 } = require('../helpers/pipelineRunner')
 const { freshGet } = require('../helpers/http')
+const { MIRROR_URL, startGithubMirror } = require('../helpers/githubMirror')
 const {
   CONTAINER_WORKDIR,
   PROJECT_DIR,
@@ -67,6 +68,8 @@ const {
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
   setupNoSudoMachineTerminal,
+  GITHUB_INSTALLERS,
+  setupNoGithubMachineTerminal,
   setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,
   preinstallToolchain,
@@ -113,6 +116,8 @@ function resetJourneyState () {
   // { runnerId, runnerToken, svc } — torn down surgically by its own token).
   global.journeyRunner = null
   global.journeyPipelineId = null
+  // The GitHub mirror of @github-mirror, closed with the journey.
+  global.journeyMirror = null
 }
 
 Before(resetJourneyState)
@@ -124,8 +129,9 @@ Before(resetJourneyState)
 async function releaseJourney () {
   // Async cleanup can overlap the next scenario. Keep its resources locally
   // and clear shared state before any await, so it cannot erase the next project.
-  const { journeyContainer, journeyProjectName, journeyLambdaTokenId, journeyRunner } = global
+  const { journeyContainer, journeyProjectName, journeyLambdaTokenId, journeyRunner, journeyMirror } = global
   resetJourneyState()
+  if (journeyMirror) journeyMirror.close()
   // Save the full installer log as a debug artifact (best-effort) so a failing
   // run can be diagnosed from the complete output, alongside the visual diffs.
   // The file is named after the per-scenario project so parallel workers (and
@@ -2121,4 +2127,38 @@ storyboardStep(Then, 'the task installer puts task in ~/.local/bin, says that fo
   }
   if (onMachine('test -e /usr/local/bin/task').exitCode === 0) throw new Error('Expected nothing written to /usr/local/bin')
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'task-in-home', { fromMarker: TASK_INSTALL.slice(0, 40), mask: TASK_INSTALL_MASKS }))
+})
+
+// ============================================
+// @github-mirror: the toolbox installers that download from GitHub, on a
+// machine that cannot reach it (#364). One terminal, two cards: the installers
+// all fail, then the same loop passes once .env.dist names a mirror. Each card
+// is twinned with the machine itself or with what the mirror served.
+// ============================================
+const INSTALL_ALL = `for t in ${GITHUB_INSTALLERS.join(' ')}; do .config/$t/install.sh >/tmp/$t.log 2>&1 && echo "$t installed" || echo "$t failed"; done`
+const NO_GITHUB = `curl -sS https://github.com; grep '^TASK_GITHUB' .env.dist; ${INSTALL_ALL}`
+const SET_MIRROR = `sed -i -e 's#^TASK_GITHUB_URL=#&${MIRROR_URL}/github/#' -e 's#^TASK_GITHUB_RAW_URL=#&${MIRROR_URL}/raw/#' .env.dist; grep '^TASK_GITHUB' .env.dist; ${INSTALL_ALL}`
+// What each installer downloads, as the mirror records its path.
+const MIRRORED = ['github/go-task/task/', 'github/betterleaks/betterleaks/', 'github/charmbracelet/gum/', 'github/charmbracelet/glow/', 'github/jqlang/jq/', 'raw/nvm-sh/nvm/']
+
+storyboardStep(Given, 'a machine that cannot reach GitHub, where the six toolbox installers that download from it all fail', async () => {
+  global.journeyContainer = setupNoGithubMachineTerminal()
+  if (onMachine('curl -sS --max-time 10 -o /dev/null https://github.com').exitCode === 0) throw new Error('Expected GitHub out of reach')
+  await openTerminal(I, global.journeyContainer, { height: 900, width: 1440 })
+  const screen = await terminalCard(I, 'no-github', NO_GITHUB, { mask: [[/after \d+ ms/g, 'after <time>']] })
+  assertLogSays(screen, ['Failed to connect to github.com', ...GITHUB_INSTALLERS.map(installer => `${installer} failed`)])
+})
+
+storyboardStep(Then, 'once .env.dist names a GitHub mirror, the same six installers all get their tool from it', async () => {
+  global.journeyMirror = await startGithubMirror()
+  const screen = await terminalCard(I, 'from-mirror', SET_MIRROR)
+  assertLogSays(screen, [
+    `TASK_GITHUB_URL=${MIRROR_URL}/github/`,
+    `TASK_GITHUB_RAW_URL=${MIRROR_URL}/raw/`,
+    ...GITHUB_INSTALLERS.map(installer => `${installer} installed`)
+  ])
+  const missed = MIRRORED.filter(release => !global.journeyMirror.served.some(served => served.startsWith(release)))
+  if (missed.length) throw new Error(`Expected the mirror to serve ${missed.join(', ')}; it served:\n${global.journeyMirror.served.join('\n')}`)
+  const tools = onMachine('export NVM_DIR="$HOME/.nvm"; command -v task betterleaks gum glow jq node && test -s "$NVM_DIR/nvm.sh"')
+  if (tools.exitCode !== 0) throw new Error(`Expected every tool on the machine:\n${tools.output}`)
 })

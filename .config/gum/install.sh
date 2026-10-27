@@ -44,7 +44,10 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
   fi
 fi
 
-DOWNLOAD_URL="https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_${GUM_ARCH}.tar.gz"
+# The project's GitHub mirror, for runners that cannot reach GitHub (.env.dist).
+GITHUB_URL="${TASK_GITHUB_URL:-$(sed -n 's/^TASK_GITHUB_URL=//p' .env .env.dev .env.dist 2>/dev/null | head -n 1 | tr -d "\"'")}"
+GITHUB_URL="${GITHUB_URL:-https://github.com}"
+DOWNLOAD_URL="${GITHUB_URL%/}/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_${GUM_ARCH}.tar.gz"
 TMP_DIR=$(mktemp -d)
 
 if command -v curl >/dev/null 2>&1; then

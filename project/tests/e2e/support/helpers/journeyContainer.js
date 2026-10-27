@@ -394,6 +394,50 @@ function setupNoSudoMachineTerminal () {
   return name
 }
 
+// The toolbox installers that download from GitHub, as .config/<name>/install.sh.
+const GITHUB_INSTALLERS = ['task', 'betterleaks', 'gum', 'glow', 'jq', 'node']
+
+/**
+ * A machine for the @github-mirror story: the compose `ubuntu` image with
+ * GitHub out of reach (its hosts pointed at nothing in /etc/hosts) and jq taken
+ * off again, the working-branch installers of GITHUB_INSTALLERS and .env.dist
+ * in PROJECT_DIR, and a live terminal in that folder. Returns the container
+ * name (caller tears it down).
+ */
+function setupNoGithubMachineTerminal () {
+  const name = containerName()
+  runCommand(
+    `cd ${CONTAINER_WORKDIR}/project && docker compose run -d --name ${shellEscape(name)} ubuntu`,
+    { timeout: SETUP_TIMEOUT }
+  )
+  for (const installer of GITHUB_INSTALLERS) {
+    runCommand(`docker cp ${shellEscape(`${CONTAINER_WORKDIR}/.config/${installer}`)} ${shellEscape(`${name}:/tmp/${installer}`)}`)
+  }
+  runCommand(`docker cp ${shellEscape(`${CONTAINER_WORKDIR}/.env.dist`)} ${shellEscape(`${name}:/tmp/.env.dist`)}`)
+  const prepared = execInContainer(name, [
+    'echo "127.0.0.1 github.com raw.githubusercontent.com objects.githubusercontent.com release-assets.githubusercontent.com codeload.github.com" >> /etc/hosts', // DevSkim: ignore DS162092 -- Points GitHub at the loopback of a test machine, so it is out of reach.
+    'apt-get purge -y -qq jq >/dev/null 2>&1',
+    `install -d -o bootstrap -g bootstrap ${PROJECT_DIR} ${PROJECT_DIR}/.config`,
+    ...GITHUB_INSTALLERS.map(installer => `cp -r /tmp/${installer} ${PROJECT_DIR}/.config/${installer}`),
+    `cp /tmp/.env.dist ${PROJECT_DIR}/.env.dist`,
+    `chown -R bootstrap:bootstrap ${PROJECT_DIR}`
+  ].join(' && '), { user: 'root' })
+  if (prepared.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to prepare the machine without GitHub:\n${prepared.output}`)
+  }
+  const ttydStart = execInContainerAsUser(name, 'bootstrap', [
+    `cd ${PROJECT_DIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
+    'sleep 1'
+  ].join('\n'))
+  if (ttydStart.exitCode !== 0) {
+    removeContainer(name)
+    throw new Error(`Failed to start ttyd on the machine without GitHub:\n${ttydStart.output}`)
+  }
+  waitForTtyd(name, TTYD_READY_TIMEOUT)
+  return name
+}
+
 function teardownJourneyTerminal (name) {
   if (!name) return
   removeContainer(name)
@@ -409,6 +453,8 @@ module.exports = {
   setupClonedProjectTerminal,
   setupBareMachineTerminal,
   setupNoSudoMachineTerminal,
+  GITHUB_INSTALLERS,
+  setupNoGithubMachineTerminal,
   setupManualUpdateTerminal,
   setupToolboxUpdateTerminal,
   prepareWorkingBranchInstaller,

@@ -78,12 +78,24 @@ fi
 
 if [ ! -s "$NVM_DIR/nvm.sh" ]; then
   log "nvm not found. Installing nvm ${NVM_VERSION}..."
-  NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh"
+  # The project's mirror of raw.githubusercontent.com, for runners that cannot
+  # reach GitHub (.env.dist).
+  RAW_URL="${TASK_GITHUB_RAW_URL:-$(sed -n 's/^TASK_GITHUB_RAW_URL=//p' .env .env.dev .env.dist 2>/dev/null | head -n 1 | tr -d "\"'")}"
+  RAW_URL="${RAW_URL%/}"
+  NVM_INSTALLER_URL="${RAW_URL:-https://raw.githubusercontent.com}/nvm-sh/nvm/${NVM_VERSION}/install.sh"
   if ! retry_cmd "curl -fsSL '${NVM_INSTALLER_URL}' -o /tmp/nvm-install.sh"; then
     log "Error: Failed to download nvm installer."
     exit 1
   fi
-  bash /tmp/nvm-install.sh >/dev/null
+  if [ -n "$RAW_URL" ]; then
+    # The nvm installer downloads nvm-exec and bash_completion from
+    # raw.githubusercontent.com and clones github.com in its default git mode:
+    # point it at the mirror and use its script mode, which only downloads files.
+    sed -i "s#https://raw.githubusercontent.com#${RAW_URL}#g" /tmp/nvm-install.sh
+    METHOD=script bash /tmp/nvm-install.sh >/dev/null
+  else
+    bash /tmp/nvm-install.sh >/dev/null
+  fi
   rm -f /tmp/nvm-install.sh
 fi
 
