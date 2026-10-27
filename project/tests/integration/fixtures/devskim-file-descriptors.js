@@ -35,7 +35,7 @@ function scanner (count) {
   assert.equal(docker('start', name).status, 0)
   assert.equal(docker('cp', `${dir}/.`, `${name}:/tmp/lint`).status, 0)
   return {
-    run: (...args) => docker('exec', '-w', '/tmp/lint', name, 'python3', '-c', 'import os, sys, yaml; config = yaml.safe_load(open(".config/megalinter/config.base.yml")); executable = config.get("REPOSITORY_DEVSKIM_CLI_EXECUTABLE", "devskim"); os.execvp(executable, [executable, *sys.argv[1:]])', ...args),
+    run: (...args) => docker('exec', '-w', '/tmp/lint', name, 'python3', '-c', 'import os, sys, yaml; config = yaml.safe_load(open(".config/megalinter/config.base.yml")); command = config.get("REPOSITORY_DEVSKIM_CLI_EXECUTABLE", "devskim"); command = command if isinstance(command, list) else [command]; os.execvp(command[0], [*command, *sys.argv[1:]])', ...args),
     close: () => {
       docker('rm', '-f', name)
       fs.rmSync(dir, { recursive: true, force: true })
