@@ -1,7 +1,7 @@
 ---
 release:
   stage: release
-  needs: [] # Allows parallel execution
+  needs: [] # Other branches and tags keep their existing parallel execution.
   # Only one release may touch the branch-protection state at a time: two
   # concurrent releases would race on opening/closing push access to the
   # default branch.
@@ -23,6 +23,14 @@ release:
     # trap inside `task release`, which fails the job if the door cannot be shut.
     - task glab:release:lock-default-branch
   rules:
+    # Also covers default-branch schedules before their existing rules match.
+    # The version commit must not make this pipeline's plan obsolete.
+    - if: "$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      needs:
+        - job: plan
+          optional: true
+          artifacts: false
+      when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_RELEASE_SCHEDULE == "1"'

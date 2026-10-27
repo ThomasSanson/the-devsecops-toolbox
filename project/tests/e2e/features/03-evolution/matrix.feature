@@ -2,7 +2,8 @@
 Feature: Template rendering matrix, every Copier answer renders the expected project
   As a DevSecOps engineer
   I want every Copier answer (runtime, compose, CI platform, Ansible,
-  automerge, project mode, Gherkin language) to render the expected files
+  automerge, release on toolbox updates, project mode, Gherkin language) to
+  render the expected files
   So that a template bug in any answer, default or not, can never ship silently
 
   # ONE story in four chapters. Chapter 1 renders the working-branch
@@ -12,7 +13,7 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
   # project again once per non-default answer, pushes each render as its own
   # branch, and shows GitLab's compare page of that branch against the main
   # branch: every changed file in the Files panel, the telling ones unfolded.
-  # The seven compare cards are shot from the same page, so the reader
+  # The eight compare cards are shot from the same page, so the reader
   # compares panels, not pages. Chapter 4 goes back to the main branch in a
   # terminal and holds the default project against the toolbox's own files:
   # a file the toolbox keeps a .jinja twin of must render like the toolbox's
@@ -72,6 +73,10 @@ Feature: Template rendering matrix, every Copier answer renders the expected pro
     # Note: In .config/renovate/config.json the toolbox rule loses its four automerge lines, "automergeStrategy": "fast-forward" among them, and nothing else changes.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data devsecops_automerge=false /workspace acme
     And turning off automerge only removes the fast-forward rule from the Renovate config
+    # Note: The same page for the branch update-no-release. The answers file turns devsecops_update_release to false.
+    # Note: In .config/renovate/config.json the commit type of the toolbox rule turns from feat to chore, and nothing else changes. A chore commit raises no version, so a toolbox update alone no longer makes a release.
+    # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data devsecops_update_release=false /workspace acme
+    And answering no to a release on toolbox updates only turns the Renovate commit type to chore
     # Note: The same page for the branch gherkin-fr. Six rules and skills under .agents change, each by one or two lines.
     # Note: tests-structure.md is unfolded: features/ and pages/ now ask for fr instead of en. The answers file at the bottom shows gherkin_language turning to fr.
     # Copy: uvx --python 3.14 --from copier==9.14.3 copier copy --defaults --skip-tasks --data gherkin_language=fr /workspace acme

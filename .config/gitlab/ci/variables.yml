@@ -1,4 +1,59 @@
 ---
+# GitLab decides from the synchronized project variable before any runner starts.
+# Fixed controls always retain the full pipeline, even under an allowed parent.
+.deployment-only:
+  rules:
+    - if: &deployment_paths_configured '$CI_PIPELINE_SOURCE == "merge_request_event" && $TASK_DEVSECOPS_DEPLOY_ONLY_REGEXP'
+      changes: &protected_deployment_paths
+        regexp: '\A(?:\.env[^/]*|copier\.ya?ml|\.gitlab-ci\.ya?ml)\z|(?:\A|/)(?:Taskfile\.ya?ml|(?:AGENTS|CLAUDE)\.md)\z|(?:\A|/)(?:\.(?:config|git|agents|claude|codex)|tests?|specs?)(?:/|\z)|(?:\A|/)(?:test_|spec_)|[._](?:test|spec)\.[^/]*\z'
+      when: always
+    - if: *deployment_paths_configured
+      changes: &outside_deployment_paths
+        regexp: $TASK_DEVSECOPS_DEPLOY_ONLY_REGEXP
+      when: always
+    - if: *deployment_paths_configured
+      when: never
+
+.deployment-only-megalinter:
+  rules:
+    - if: *deployment_paths_configured
+      changes: *protected_deployment_paths
+      when: always
+    - if: *deployment_paths_configured
+      changes: *outside_deployment_paths
+      when: always
+    - if: *deployment_paths_configured
+      when: always
+      variables:
+        VALIDATE_ALL_CODEBASE: "false"
+        DEFAULT_BRANCH: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+        # File modes need explicit selectors: repository descriptors have none.
+        # Grype/Syft reuse their first file target in this image; keep project mode.
+        REPOSITORY_CHECKOV_CLI_LINT_MODE: list_of_files
+        REPOSITORY_CHECKOV_FILE_EXTENSIONS: "*"
+        REPOSITORY_DEVSKIM_CLI_LINT_MODE: list_of_files
+        REPOSITORY_DEVSKIM_FILE_EXTENSIONS: "*"
+        REPOSITORY_BETTERLEAKS_CLI_LINT_MODE: list_of_files
+        REPOSITORY_BETTERLEAKS_FILE_EXTENSIONS: "*"
+        REPOSITORY_LS_LINT_CLI_LINT_MODE: list_of_files
+        REPOSITORY_LS_LINT_FILE_EXTENSIONS: "*"
+        REPOSITORY_OSV_SCANNER_CLI_LINT_MODE: list_of_files
+        REPOSITORY_OSV_SCANNER_FILE_EXTENSIONS: "*"
+        REPOSITORY_SECRETLINT_CLI_LINT_MODE: list_of_files
+        REPOSITORY_SECRETLINT_FILE_EXTENSIONS: "*"
+        REPOSITORY_SEMGREP_CLI_LINT_MODE: list_of_files
+        REPOSITORY_SEMGREP_FILE_EXTENSIONS: "*"
+        REPOSITORY_TRIVY_CLI_LINT_MODE: file
+        REPOSITORY_TRIVY_FILE_EXTENSIONS: "*"
+        REPOSITORY_TRIVY_SBOM_CLI_LINT_MODE: file
+        REPOSITORY_TRIVY_SBOM_FILE_EXTENSIONS: "*"
+        REPOSITORY_TRUFFLEHOG_CLI_LINT_MODE: list_of_files
+        REPOSITORY_TRUFFLEHOG_FILE_EXTENSIONS: "*"
+        REPOSITORY_KINGFISHER_CLI_LINT_MODE: list_of_files
+        REPOSITORY_KINGFISHER_FILE_EXTENSIONS: "*"
+        # Checks that require the whole project belong to the full pipeline.
+        SKIP_CLI_LINT_MODES: project
+
 variables:
   # Terminal and color settings
   TERM: xterm

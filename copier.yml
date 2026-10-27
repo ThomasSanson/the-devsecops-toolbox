@@ -193,6 +193,13 @@ devsecops_automerge:
     When enabled, minor and patch updates are merged automatically.
   default: true
 
+devsecops_update_release:
+  type: bool
+  help: |
+    Release a new version of this project when only the DevSecOps Toolbox changes?
+    Answer no for a library whose published package does not contain the toolbox.
+  default: true
+
 # Questions — Testing
 gherkin_language:
   type: str
@@ -251,13 +258,16 @@ _exclude:
   - .config/devsecops/scripts/check-shard-coverage.sh
   - .config/**/roles
   - .git
+  - .superpowers
   - .vscode
+  - __pycache__
   - CONTRIBUTING.md
   - copier.yml
   # The toolbox's map of its own source tree (copier.yml, the .jinja
   # templates, its own test suite): none of it exists in a generated
   # project. See #165.
   - docs/guidelines/Task Mapping.md
+  - docs/plans
   - megalinter-reports
   - node_modules
   # Anchored: the bare pattern matched a README.md at ANY depth, so a component

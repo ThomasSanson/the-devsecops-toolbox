@@ -250,9 +250,14 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   for (const p of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml', 'project/docker-compose.yml']) {
     if (!has(p)) throw new Error(`Expected the default render to deliver ${p}`)
   }
-  for (const p of ['.config/podman', '.config/ansible']) {
-    if (has(p)) throw new Error(`Expected the default render to leave ${p} out`)
+  const renderErrors = []
+  if (JSON.parse(matrixFile('.config/cspell/config.project.json')).words.length !== 0) {
+    renderErrors.push('The framework must ship an empty project dictionary; shared technical words belong in its base dictionary')
   }
+  for (const p of ['.config/podman', '.config/ansible', '.superpowers', 'docs/plans', '.config/devsecops/scripts/__pycache__']) {
+    if (has(p)) renderErrors.push(`Expected the default render to leave ${p} out`)
+  }
+  if (renderErrors.length) throw new Error(renderErrors.join('\n'))
   if (!matrixFile('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to declare its networks')
   const taskfile = matrixFile('Taskfile.yml')
   for (const include of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml']) {
@@ -264,8 +269,8 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   if (!matrixFile('.agents/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
   rendered = matrix.dir
   const rule = toolboxPackageRule()
-  if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward') {
-    throw new Error(`Expected the toolbox package rule to automerge by fast-forward, got: ${JSON.stringify(rule)}`)
+  if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward' || rule.semanticCommitType !== 'feat') {
+    throw new Error(`Expected the toolbox package rule to automerge by fast-forward as a feat commit, got: ${JSON.stringify(rule)}`)
   }
   // GitLab's own CI lint: the default pipeline holds together.
   const lint = await lintProjectCi(projectName, headers, 'main')
@@ -435,6 +440,16 @@ storyboardStep(Then, 'turning off automerge only removes the fast-forward rule f
   const left = ['automerge', 'automergeStrategy', 'automergeType', 'platformAutomerge'].filter(k => k in rule)
   if (left.length) throw new Error(`Expected the toolbox package rule to drop every automerge property, still has: ${left.join(', ')}`)
   await compareFrame('answers-automerge-off', 'automerge-off', compare, { expand: [MATRIX_ANSWERS, '.config/renovate/config.json'], height: 700 })
+})
+
+storyboardStep(Then, 'answering no to a release on toolbox updates only turns the Renovate commit type to chore', async () => {
+  const compare = await renderAnswerBranch('update-no-release', { devsecops_update_release: 'false' }, [
+    `M ${MATRIX_ANSWERS}`,
+    'M .config/renovate/config.json'
+  ])
+  const rule = toolboxPackageRule()
+  if (rule.semanticCommitType !== 'chore') throw new Error(`Expected the toolbox package rule to commit as chore, got: ${JSON.stringify(rule)}`)
+  await compareFrame('answers-update-no-release', 'update-no-release', compare, { expand: [MATRIX_ANSWERS, '.config/renovate/config.json'], height: 620 })
 })
 
 storyboardStep(Then, 'choosing French Gherkin switches every test-writing rule and skill to French', async () => {

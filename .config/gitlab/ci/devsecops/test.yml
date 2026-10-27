@@ -28,11 +28,6 @@ test:
     # leaving GitLab CE and Chromium their share of the runner.
     TASK_E2E_WORKERS: "2"
   script:
-    # A merge request that only changes deployment files (the folders named in
-    # TASK_DEVSECOPS_TEST_DEPLOY_PATHS) holds nothing a test could catch: the
-    # script says so and the job ends green. Any other answer, or any doubt,
-    # runs the suite exactly as before. See check-deploy-only.sh.
-    - if bash .config/devsecops/scripts/check-deploy-only.sh; then exit 0; fi
     - export TASK_CODECEPTJS_FEATURES="$(jq -re --arg i "$CI_NODE_INDEX" '.[$i]' project/tests/e2e/shards.json)"
     - echo "🔀 Shard $CI_NODE_INDEX/$CI_NODE_TOTAL → $TASK_CODECEPTJS_FEATURES"
     - task test
@@ -58,6 +53,7 @@ test:
         - project/tests/e2e/_output/junit/*.xml
     expire_in: 3 days
   rules:
+    - !reference [.deployment-only, rules]
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_TEST_SCHEDULE == "1"'
@@ -113,4 +109,5 @@ no-cheat:
     # BASE defaults to CI_MERGE_REQUEST_DIFF_BASE_SHA inside the script.
     - bash .config/devsecops/scripts/check-no-cheat.sh
   rules:
+    - !reference [.deployment-only, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

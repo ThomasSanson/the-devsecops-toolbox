@@ -56,7 +56,9 @@ code:lizard:
   needs: []
   script:
     - task lizard
-  <<: *code_rules
+  rules:
+    - !reference [.deployment-only, rules]
+    - !reference [.code-rules, rules]
 
 code:renovate-validate:
   extends: .native-job
@@ -97,9 +99,21 @@ code:megalinter:
       when: never
 
     # Scheduled pipelines with allow_failure enabled
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1") && $MEGALINTER_ALLOW_FAILURE == "true"'
+    - &megalinter_existing_failure_policy
+      if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1") && $MEGALINTER_ALLOW_FAILURE == "true"'
       when: always
       allow_failure: true
+
+    # Full MR scans reuse that existing opt-in policy before scoped rules match.
+    - <<: *megalinter_existing_failure_policy
+      if: &megalinter_full_mr '$CI_PIPELINE_SOURCE == "merge_request_event" && $TASK_DEVSECOPS_DEPLOY_ONLY_REGEXP && $MEGALINTER_ALLOW_FAILURE == "true"'
+      changes:
+        regexp: '\A(?:\.env[^/]*|copier\.ya?ml|\.gitlab-ci\.ya?ml)\z|(?:\A|/)(?:Taskfile\.ya?ml|(?:AGENTS|CLAUDE)\.md)\z|(?:\A|/)(?:\.(?:config|git|agents|claude|codex)|tests?|specs?)(?:/|\z)|(?:\A|/)(?:test_|spec_)|[._](?:test|spec)\.[^/]*\z'
+    - <<: *megalinter_existing_failure_policy
+      if: *megalinter_full_mr
+      changes:
+        regexp: $TASK_DEVSECOPS_DEPLOY_ONLY_REGEXP
+    - !reference [.deployment-only-megalinter, rules]
 
     # Scheduled pipelines without allow_failure
     - if: '$CI_PIPELINE_SOURCE == "schedule" && ($RUN_ALL_SCHEDULE == "1" || $RUN_CODE_SCHEDULE == "1")'
@@ -129,7 +143,8 @@ code:all:
     - code:commitizen-check
     - code:commitlint
     - code:betterleaks
-    - code:lizard
+    - job: code:lizard
+      optional: true
     - code:megalinter
     - code:project
     - code:renovate-validate

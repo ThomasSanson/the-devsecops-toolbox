@@ -7,7 +7,7 @@ commitizen:
     - task commitizen:format
   tag_format: $version
   update_changelog_on_bump: false
-  version: 24.10.1
+  version: 25.1.0
   version_files:
     - .gitlab-ci.yml
     - .config/publication/gitlab-ci.yml

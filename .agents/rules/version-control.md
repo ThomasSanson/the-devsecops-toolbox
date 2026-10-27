@@ -1,41 +1,42 @@
 ---
 trigger: always_on
-description: Agents only read git and never change the repository state
+description: Agents commit and push on feature branches through merge or pull requests; humans alone merge
 ---
 
 # Version Control
 
-## ⛔ ABSOLUTELY FORBIDDEN
+## Agents prepare the change
 
-- ❌ NEVER run `git add`
-- ❌ NEVER run `git commit`
-- ❌ NEVER run `git push`
-- ❌ NEVER run `git merge`
-- ❌ NEVER run `git rebase`
-- ❌ NEVER run `git stash`
-- ❌ NEVER run `git reset`
-- ❌ NEVER run `git checkout` to switch branches
-- ❌ NEVER run any git command that modifies the repository state
+For work requested by the user, agents may:
 
-## ✅ ALLOWED (read-only)
+- Inspect Git state and history.
+- Create or switch to a dedicated feature branch.
+- Stage and commit the changes within the requested scope.
+- Push that feature branch and open or update its merge request or pull request.
+- Read CI results and push corrections to the same request.
 
-- ✅ `git status` — check current state
-- ✅ `git log` — read history
-- ✅ `git diff` — see changes
-- ✅ `git branch` — list branches
-- ✅ `git show` — inspect commits
+Commits and pushes are part of preparing a reviewable change. They are allowed
+only through a merge-request or pull-request workflow. Use Conventional Commits
+and preserve any unrelated work already present in the checkout.
 
-## ✅ ALLOWED (the phase `verify` tasks, and only them)
+## A human merges
 
-`task devsecops:code:verify` and `task devsecops:test:verify` run `git add -N`
-and `git diff` on your behalf: `-N` is how a brand-new test file becomes visible
-to `git diff`, and the diff is how the guard sees whether a check was switched
-off. Running them is allowed, and running them is how you know you are done.
-They commit nothing and push nothing.
+- Never merge a merge request or pull request, including through an API or CLI.
+- Never enable automatic merge or schedule a merge on the user's behalf.
+- Never push directly to the default branch or a protected integration branch.
+- Never skip CI to publish a change.
+- Do not force-push, discard work or rewrite shared history without explicit
+  permission.
 
-The prohibition above is unchanged for everything else: you never run git
-yourself.
+A human reviews the change and performs the final merge. Permission to commit,
+push or open a request is not permission to merge it.
 
-## Rationale
+## Verify and report
 
-The user controls versioning. The agent writes code and runs tests. The user decides when and what to commit. No exceptions.
+Run `task devsecops:code:verify` and `task devsecops:test:verify` before committing.
+These tasks may use `git add -N` so their guards can inspect new files; they do
+not commit or push anything.
+
+Before reporting the request ready, verify the required CI jobs on the exact
+pushed commit. State the tested commit, the actual results and any remaining
+failure. A pending pipeline or a local pass is not a successful remote pipeline.

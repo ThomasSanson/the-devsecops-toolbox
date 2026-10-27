@@ -10,8 +10,8 @@
 #   suite still runs for many minutes while production waits.
 #
 #   A project names its deployment folders, or single files, in
-#   TASK_DEVSECOPS_TEST_DEPLOY_PATHS. The jobs that boot the whole project
-#   (build, test, deploy) ask this script first. It answers "skip" (exit 0)
+#   TASK_DEVSECOPS_TEST_DEPLOY_PATHS. Legacy/local callers can ask this script;
+#   current CI jobs use rules at pipeline creation. It answers "skip" (exit 0)
 #   only when ALL of these hold:
 #
 #     - the setting names at least one folder or file (it is empty by default);

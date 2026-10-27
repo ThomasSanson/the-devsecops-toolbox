@@ -2,10 +2,12 @@
 plan:
   stage: plan
   needs: [] # Allows parallel execution
+  resource_group: deployment-only-sync
   extends: .docker-job
   script:
     - task plan
   rules:
+    - !reference [.deployment-only, rules]
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_ALL_SCHEDULE == "1"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_PLAN_SCHEDULE == "1"'

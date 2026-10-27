@@ -9,9 +9,46 @@ vars:
   # megalinter, in a CI job such as code:megalinter, or to read its settings.
   # The CI shard that runs one of them starts pulling the image once GitLab is
   # up (project:test:e2e).
-  E2E_MEGALINTER_FEATURES: "osv-scope|megalinter-reports|quality-gate|install\\.feature|daily-contribution|hybrid-ci"
+  E2E_MEGALINTER_FEATURES: "osv-scope|megalinter-reports|quality-gate|install\\.feature|daily-contribution|hybrid-ci|deploy-only"
 
 tasks:
+  project:code:dependencies:update:
+    desc: Update selected packages in an existing npm lockfile
+    requires:
+      vars: [TASK_NPM_DIRECTORY]
+    preconditions:
+      - sh: test -f "{{.TASK_NPM_DIRECTORY}}/package-lock.json"
+        msg: Select a directory with an existing npm lockfile.
+      - sh: test -n '{{.CLI_ARGS}}'
+        msg: Name the packages to update after --.
+    cmds:
+      - npm update --prefix "{{.TASK_NPM_DIRECTORY}}" --package-lock-only --ignore-scripts {{.CLI_ARGS}}
+
+  project:test:deployment-only:scanner-image:
+    desc: Verify scanner modes in the exact CI image without running a scan
+    vars:
+      TASK_DEPLOY_ONLY_SCANNER_IMAGE:
+        sh: |
+          sed -n 's/^ *name: \(ghcr\.io\/oxsecurity\/megalinter[^ ]*\).*/\1/p' .config/gitlab/ci/devsecops/code.yml | head -n 1
+    cmds:
+      - >-
+        docker run --rm --network none --entrypoint python -w /tmp/lint
+        -v {{.ROOT_DIR}}/.config/gitlab/ci/variables.yml:/tmp/lint/.config/gitlab/ci/variables.yml:ro
+        -v {{.ROOT_DIR}}/project/tests/e2e/support/fixtures/deploy_only_scanners.py:/tmp/lint/check.py:ro
+        {{.TASK_DEPLOY_ONLY_SCANNER_IMAGE}} /tmp/lint/check.py
+
+  project:test:deployment-only:scanner-modes:
+    desc: Check supported scanner modes inside the pinned MegaLinter image
+    cmds:
+      - python project/tests/e2e/support/fixtures/deploy_only_scanners.py
+
+  project:test:deployment-only:contract:
+    desc: Verify deployment policy contracts with controlled inputs
+    env:
+      TASK_DEPLOY_ONLY_CONTRACT_CASE: '{{.TASK_DEPLOY_ONLY_CONTRACT_CASE | default "paths"}}'
+    cmds:
+      - uv run --quiet --no-project python project/tests/e2e/support/fixtures/deploy_only_contract.py
+
   project:plan:
     desc: 🚀 Run project-specific plan tasks
     summary: |

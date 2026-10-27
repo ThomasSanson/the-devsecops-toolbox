@@ -123,6 +123,10 @@ Read the acts in order and you follow one developer from an empty project all th
 - [**deploy-only**](02-daily-work/deploy-only.svg): A merge request that only changes deployment files skips the test suite, and the build and deploy jobs too, once the project names those folders or files. Anything else, and any doubt, runs them.
   Chapters: A release that only moves image tags · Anything else still runs the test suite · When in doubt, the test suite runs · A single file, not a whole folder · The build and deploy jobs ask the same question.
   Replay: `task project:test:e2e -- --grep "@deploy-only"`
+
+- [**deploy-only-pipeline**](02-daily-work/deploy-only-pipeline.svg): GitLab creates only the code checks and release for a deployment-only merge request. Mixed changes and stale settings keep the full pipeline; MegaLinter checks the changed deployment file and rejects invalid YAML.
+
+  Replay: `task project:test:e2e -- --grep "@deploy-only-pipeline"`
 - [**baseline-mode**](02-daily-work/baseline-mode.svg): Only the value 1, on a developer's machine, rewrites a reference. CI refuses it, and a merge request shows each rewritten reference for a reviewer to accept.
   Chapters: A visible difference must fail · A developer rewrites the references, a reviewer accepts them.
   Replay: `task project:test:e2e -- --grep "@baseline-mode"`

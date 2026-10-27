@@ -33,10 +33,10 @@ Feature: The whole install, from an empty project to a locked-down GitLab
     # Note: The card lists the two choices, "Complete framework" and "Choose components". The highlighted button, "Install everything", is the default answer and takes the complete framework.
     # Copy: curl -fsSL https://gitlab.com/digital-commons/devsecops/the-devsecops-toolbox/-/raw/main/.config/devsecops/install.sh -o /tmp/devsecops-install.sh && git status && bash /tmp/devsecops-install.sh
     When the developer starts the toolbox installer in the freshly cloned project
-    # Note: Saying yes to the complete framework opens the ten setup questions of Copier, the tool that builds the project from the answers. The developer presses Enter on each one and keeps its default.
-    # Note: The card is caught on the last question, the language of the test descriptions, with its default "en". Above it, the nine answers already given: No to Ansible, GitLab SaaS (gitlab.com), the runner tag saas-linux-medium-amd64, Docker, then Yes, Yes, Yes, No and Yes.
+    # Note: Saying yes to the complete framework opens the eleven setup questions of Copier, the tool that builds the project from the answers. The developer presses Enter on each one and keeps its default.
+    # Note: The card is caught on the last question, the language of the test descriptions, with its default "en". Above it, the ten answers already given: No to Ansible, GitLab SaaS (gitlab.com), the runner tag saas-linux-medium-amd64, Docker, then Yes, Yes, Yes, No, Yes and Yes.
     # Copy: y
-    And the developer answers the ten setup questions, keeping every default
+    And the developer answers the eleven setup questions, keeping every default
     # Note: On the way, the installer sets the project's merge request rules on GitLab. This part scrolled by: "Applying merge request settings...", one line per setting GitLab now holds, such as "merge_method = ff", and "GitLab merge request settings configured".
     # Note: GitLab answers that change with the whole project, its runner registration token included: a secret that lets a machine sign up to run the project's jobs. The test reads that token from GitLab and checks that the whole session never printed it.
     # Note: The test also runs the same step with a merge method GitLab refuses. The step fails on GitLab's own reason, and prints no token either.

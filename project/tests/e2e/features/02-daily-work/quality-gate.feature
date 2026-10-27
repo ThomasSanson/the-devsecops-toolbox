@@ -184,13 +184,15 @@ Feature: a freshly generated project passes its own quality gate
   # but on a developer's machine MegaLinter mounts the project under /tmp/lint:
   # the whole project matched, and task megalinter passed where CI failed
   # (issue #239). The terminal runs the real task megalinter with DevSkim alone.
+  # The 1,500 ordinary files also exceed Docker's common initial limit of
+  # 1,024 open files: DevSkim must reach its security findings without crashing.
   @devskim-workspace
-  Scenario: DevSkim flags an insecure address on a developer's machine as in CI, and still skips the project's tmp folder
-    # Note: A project generated from the toolbox holds the same line twice: src/fetch.js reads its data from an http:// address, and tmp/scratch.js, a scratch file in the project's own tmp folder, is a copy of it.
+  Scenario: DevSkim scans a large project on a developer's machine as in CI, and still skips the project's tmp folder
+    # Note: A project generated from the toolbox holds 1,500 ordinary source files, counted on the first line. src/fetch.js reads its data from an http:// address, and tmp/scratch.js, a scratch file in the project's own tmp folder, is a copy of it.
     # Note: Below them, DevSkim's settings: the folders it skips. The tmp entry, **/?*/tmp/**, wants a folder name before tmp: it matches the project's own tmp folder, never a tmp folder the project sits in.
-    # Copy: head -n 1 src/fetch.js tmp/scratch.js && cat .config/devskim/config.json
-    Given a generated project holds an http:// address in its source and a copy in its own tmp folder
+    # Copy: find src/modules -type f | wc -l; head -n 1 src/fetch.js tmp/scratch.js && cat .config/devskim/config.json
+    Given a generated project holds 1500 ordinary source files, an http:// address and a copy in its own tmp folder
     # Note: The developer runs MegaLinter with DevSkim alone, then reads the findings back from the report that run wrote. MegaLinter mounts the project under /tmp/lint, a path that starts with tmp.
-    # Note: The finding fails the run, so task ends on "exit code 201", as the same scan does in CI. The report holds one finding: DS137138, an insecure URL, in src/fetch.js, and nothing in tmp/scratch.js. The test also scans the same files where CI puts them, under /builds: DevSkim flags the same file there.
+    # Note: The finding fails the run, so task ends on "exit code 201". The report holds one finding: DS137138, an insecure URL, in src/fetch.js, and nothing in tmp/scratch.js. The test also runs task megalinter:ci under /builds with an initial limit of 1,024 open files: its new report must flag the same source file.
     # Copy: task megalinter > /dev/null 2>&1; echo "exit code $?"; jq -r '.runs[].results[] | .ruleId + " " + .locations[0].physicalLocation.artifactLocation.uri' megalinter-reports/megalinter-report.sarif
     Then on the developer's machine DevSkim flags the address in the source and skips the copy in tmp

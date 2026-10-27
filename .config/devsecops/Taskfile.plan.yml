@@ -3,8 +3,23 @@ version: "3"
 
 vars:
   TASK_DEVSECOPS_PLAN_ENABLED: '{{.TASK_DEVSECOPS_PLAN_ENABLED | default "true"}}'
+  TASK_DEVSECOPS_TEST_DEPLOY_PATHS: '{{.TASK_DEVSECOPS_TEST_DEPLOY_PATHS | default ""}}'
 
 tasks:
+  deploy-only:sync:
+    desc: Synchronize the deployment policy on the current CI default branch
+    env:
+      TASK_DEVSECOPS_TEST_DEPLOY_PATHS: "{{.TASK_DEVSECOPS_TEST_DEPLOY_PATHS}}"
+    cmds:
+      - uv run --quiet --no-project python .config/devsecops/scripts/deploy-only.py sync
+
+  deploy-only:pattern:
+    desc: Print the deployment pattern from the effective dotenv setting
+    env:
+      TASK_DEVSECOPS_TEST_DEPLOY_PATHS: "{{.TASK_DEVSECOPS_TEST_DEPLOY_PATHS}}"
+    cmds:
+      - uv run --quiet --no-project python .config/devsecops/scripts/deploy-only.py pattern
+
   default:
     desc: 📋 Run all generic plan tasks
     summary: |
@@ -15,6 +30,7 @@ tasks:
     cmds:
       - cmd: echo "🔄 Starting plan phase"
         silent: true
+      - task: deploy-only:sync
       - task: :project:plan
       - cmd: echo "🎉 Plan phase completed successfully"
         silent: true
