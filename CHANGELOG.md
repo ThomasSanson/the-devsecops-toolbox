@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 25.1.0 (2026-10-27)
+
+### Feat
+
+- **copier**: ask whether a toolbox update makes a release
+
 ## 25.0.0 (2026-10-24)
 
 ### BREAKING CHANGE
