@@ -56,7 +56,7 @@
       "matchFileNames": [".config/devsecops/.copier-answers.yml"],
       "ignoreScripts": false,
       "skipArtifactsUpdate": true,
-      "semanticCommitType": "feat",
+      "semanticCommitType": "{{ 'feat' if devsecops_update_release else 'chore' }}",
       "semanticCommitScope": "devsecops",
       "commitMessageTopic": "DevSecOps Toolbox",
       "postUpgradeTasks": {

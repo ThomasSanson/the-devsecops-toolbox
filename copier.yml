@@ -193,6 +193,13 @@ devsecops_automerge:
     When enabled, minor and patch updates are merged automatically.
   default: true
 
+devsecops_update_release:
+  type: bool
+  help: |
+    Release a new version of this project when only the DevSecOps Toolbox changes?
+    Answer no for a library whose published package does not contain the toolbox.
+  default: true
+
 # Questions — Testing
 gherkin_language:
   type: str

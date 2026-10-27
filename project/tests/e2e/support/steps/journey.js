@@ -546,7 +546,7 @@ storyboardStep(Then, 'the update branch stands next to a main branch nobody push
 // The installer WHEN bindings (type command / launch / accept-default-and-wait
 // per prompt / wait-for-completion) were removed with the storyboard migration:
 // the questionnaire is now driven by the @install-complete storyboard
-// steps below, which catch all ten Copier questions on one card. The poll for
+// steps below, which catch all eleven Copier questions on one card. The poll for
 // install.sh's completion marker lives in waitForInstallerComplete().
 
 // ============================================
@@ -576,6 +576,7 @@ const COPIER_PROMPTS = [
   'Enable the project workspace?',
   "Publish this project's source",
   'Auto-merge Renovate merge requests',
+  'Release a new version of this project when only the DevSecOps Toolbox changes?',
   'Language for Gherkin test specifications'
 ]
 
@@ -1428,7 +1429,7 @@ storyboardStep(Then, 'the main branch on GitLab holds only the starter README', 
 // baseline. GitLab opens and closes it on the SAME page at the SAME size, the
 // project's home page (empty, then carrying the framework). The terminal in
 // between is one session typed on camera: the installer's first question, then
-// the ten Copier questions, each caught live before its answer. Chapter 2
+// the eleven Copier questions, each caught live before its answer. Chapter 2
 // photographs the settings init wrote, chapter 3 the merge request's own
 // pipeline (one job log), the merge and the main branch. Every card is twinned
 // with a check of the same fact: the screen, the install log, REST on GitLab.
@@ -1452,6 +1453,7 @@ const DEFAULT_ANSWERS = [
   'project_enabled: true',
   'source_publication: false',
   'devsecops_automerge: true',
+  'devsecops_update_release: true',
   'gherkin_language: en'
 ]
 // The home page's side panel counts commits and bytes, which move with every
@@ -1601,11 +1603,11 @@ storyboardStep(When, 'the developer starts the toolbox installer in the freshly 
 // 'y' takes the complete framework, then Enter keeps each default. NO click:
 // Copier's prompt (prompt_toolkit) turns mouse tracking on, so a click on the
 // terminal is swallowed as a mouse report and the next key never reaches it.
-// The card is the last question, still open, under the nine answered ones: a
+// The card is the last question, still open, under the ten answered ones: a
 // question erases itself when answered and leaves only its answer. The twins:
-// the ten questions on the screen, the install log, and the answers file the
+// the eleven questions on the screen, the install log, and the answers file the
 // installer pushed to the framework branch.
-storyboardStep(When, 'the developer answers the ten setup questions, keeping every default', async () => {
+storyboardStep(When, 'the developer answers the eleven setup questions, keeping every default', async () => {
   await I.pressKey('y')
   for (const prompt of COPIER_PROMPTS.slice(0, -1)) {
     await waitForTerminalText(I, prompt, COMMAND_TIMEOUT_MS)
@@ -1616,7 +1618,7 @@ storyboardStep(When, 'the developer answers the ten setup questions, keeping eve
   await addStoryboardFrame(I, await captureTerminalFrame(I, 'copier-questionnaire', { fromMarker: COPIER_PROMPTS[0] }))
   const screen = await terminalScreenText(I)
   const missing = COPIER_PROMPTS.filter(prompt => !screen.includes(prompt))
-  if (missing.length) throw new Error(`Expected all ten questions on the screen, missing ${JSON.stringify(missing)}:\n${screen}`)
+  if (missing.length) throw new Error(`Expected all eleven questions on the screen, missing ${JSON.stringify(missing)}:\n${screen}`)
   await I.pressKey('Enter')
   await waitForInstallerComplete()
   assertInstallLog('Scaffolding project with Copier', 'Project scaffolded successfully.', 'Your DevSecOps project has been created successfully!')
