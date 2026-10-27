@@ -40,3 +40,29 @@ test('@stable-job-log reporter timing changes neither the capture nor its eviden
     }
   }
 })
+
+// The SARIF reporter finishes at the same moment as the other two: seen in CI
+// both before the summary table and after it.
+test('@stable-job-log-sarif the SARIF reporter line joins the other reporter lines', async (t) => {
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  const sarif = '[SARIF Reporter] Generated SARIF report: /builds/project/megalinter-reports/megalinter-report.sarif'
+  const updated = '[Updated Sources Reporter] No source file has been formatted or fixed'
+  const expected = ['[Post] result:', '+----SUMMARY---+', 'Linter verdict and counts', sarif, updated, '❌ Error(s) have been found during linting']
+  for (const rows of [
+    ['[Post] result:', sarif, updated, '+----SUMMARY---+', 'Linter verdict and counts', '❌ Error(s) have been found during linting'],
+    ['[Post] result:', '+----SUMMARY---+', 'Linter verdict and counts', updated, sarif, '❌ Error(s) have been found during linting']
+  ]) {
+    await page.evaluate((rows) => {
+      document.body.replaceChildren(...rows.map((text) => {
+        const row = document.createElement('div')
+        row.className = 'js-log-line job-log-line'
+        row.textContent = text
+        return row
+      }))
+    }, rows)
+    await page.evaluate(stableJobLog)
+    assert.deepEqual(await page.locator('.js-log-line.job-log-line').allTextContents(), expected, `Reporter order: ${rows.join(' | ')}`)
+  }
+})

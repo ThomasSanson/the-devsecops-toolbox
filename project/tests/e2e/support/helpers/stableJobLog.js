@@ -8,10 +8,10 @@
 function stableJobLog () {
   const rows = Array.from(document.querySelectorAll('.js-log-line.job-log-line'))
   const scans = rows.filter(row => /Scanned .+ file and found \d+ packages?/.test(row.textContent))
-  const reporters = rows.filter(row => /\[(Gitlab Comment|Updated Sources) Reporter\]/.test(row.textContent))
+  const reporters = rows.filter(row => /\[(Gitlab Comment|SARIF|Updated Sources) Reporter\]/.test(row.textContent))
   const verdict = rows.find(row => /Successfully linted all files without errors|Error\(s\) have been found during linting/.test(row.textContent))
   for (const group of [scans, reporters].filter(group => group.length)) {
-    const text = row => row.textContent.match(/Scanned .+ file and found \d+ packages?|\[(?:Gitlab Comment|Updated Sources) Reporter\].*/)[0]
+    const text = row => row.textContent.match(/Scanned .+ file and found \d+ packages?|\[(?:Gitlab Comment|SARIF|Updated Sources) Reporter\].*/)[0]
     const sorted = [...group].sort((left, right) => text(left).localeCompare(text(right)))
     const slot = document.createComment('log-order')
     if (group === reporters && verdict) verdict.before(slot)
