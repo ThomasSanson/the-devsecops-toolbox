@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 25.1.2 (2026-10-30)
+
+### Fix
+
+- **deps**: resolve the @hono/node-server security advisory
+
 ## 25.1.1 (2026-10-28)
 
 ### Fix
