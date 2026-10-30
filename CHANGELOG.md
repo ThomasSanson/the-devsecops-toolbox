@@ -2,6 +2,22 @@
 
 # Changelog
 
+## 25.1.1 (2026-10-28)
+
+### Fix
+
+- **node**: serialize shared toolchain installation
+- **commitizen**: keep formatter command colors out of release logs
+- **betterleaks**: reject incomplete Docker scan input
+- **devskim**: respect the available file descriptor limit
+- **commitizen**: retain valid indentation during version updates
+- **test**: await scanner image before starting workers
+- **test**: keep preload commands at repository root
+- **deps**: address multer and undici security advisories
+- **deps**: resolve fast-uri security advisories
+- **deps**: prevent crashes on trailing compressed body bytes
+- **deps**: update Zod and verify collection size bounds
+
 ## 25.1.0 (2026-10-27)
 
 ### Feat

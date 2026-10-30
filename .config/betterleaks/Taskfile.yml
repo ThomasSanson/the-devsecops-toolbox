@@ -120,7 +120,9 @@ tasks:
       - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
       - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
       - docker exec {{.CONTAINER}} mkdir -p /path
-      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
+      - cmd: |
+          set -o pipefail
+          COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
       - cmd: |
           if ! docker exec {{.SAFE_DIR_ENV}} {{.CONTAINER}} \
             betterleaks dir "/path" \
@@ -199,7 +201,9 @@ tasks:
       - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
       - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
       - docker exec {{.CONTAINER}} mkdir -p /path
-      - cmd: COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
+      - cmd: |
+          set -o pipefail
+          COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C {{.ROOT_DIR}} . | docker cp - {{.CONTAINER}}:/path
       - cmd: |
           if ! docker exec {{.SAFE_DIR_ENV}} {{.CONTAINER}} \
             betterleaks git "/path" \
@@ -297,6 +301,7 @@ tasks:
       - defer: docker rm -f {{.CONTAINER}} 2>/dev/null || true
       - docker run --rm -d --name {{.CONTAINER}} {{.TASK_BETTERLEAKS_PROXY_ARGS}} --entrypoint sleep {{.TASK_BETTERLEAKS_IMAGE}} infinity
       - cmd: |
+          set -o pipefail
           docker exec {{.CONTAINER}} mkdir -p /path
           (
             env printf '.git\0'

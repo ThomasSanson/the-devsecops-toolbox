@@ -131,6 +131,15 @@ tasks:
       - cmd: echo '🎉 Commitizen check completed.'
         silent: true
 
+  format:
+    desc: Format the generated Commitizen YAML before the version commit.
+    cmds:
+      - cmd: >-
+          uvx --python {{.TASK_COMMITIZEN_PYTHON_VERSION}}
+          --from {{.TASK_COMMITIZEN_VERSION}} python .config/commitizen/format.py
+          "{{.TASK_COMMITIZEN_CONFIG_FULL_PATH}}"
+        silent: true
+
   bump:
     desc: Increment version based on commit history.
     summary: |

@@ -400,6 +400,7 @@ storyboardStep(Then, 'MegaLinter checks only the changed deployment file', async
 storyboardStep(Then, 'MegaLinter rejects the malformed deployment YAML', async () => {
   assert.ok(state.lintTrace.includes(OVERLAY) && state.lintTrace.includes('syntax error'), 'The YAML error must name the changed file')
   await jobLogFrame(I, 'megalinter-yaml-error', state.pub.projectName, state.lintJob.id, {
+    sortScannerLines: true,
     waitText: 'Job failed',
     from: 'syntax error',
     lead: 4,

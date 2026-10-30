@@ -40,3 +40,59 @@ test('@stable-job-log reporter timing changes neither the capture nor its eviden
     }
   }
 })
+
+// The SARIF reporter finishes at the same moment as the other two: seen in CI
+// both before the summary table and after it.
+test('@stable-job-log-sarif the SARIF reporter line joins the other reporter lines', async (t) => {
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  const sarif = '[SARIF Reporter] Generated SARIF report: /builds/project/megalinter-reports/megalinter-report.sarif'
+  const updated = '[Updated Sources Reporter] No source file has been formatted or fixed'
+  const expected = ['[Post] result:', '+----SUMMARY---+', 'Linter verdict and counts', sarif, updated, '❌ Error(s) have been found during linting']
+  for (const rows of [
+    ['[Post] result:', sarif, updated, '+----SUMMARY---+', 'Linter verdict and counts', '❌ Error(s) have been found during linting'],
+    ['[Post] result:', '+----SUMMARY---+', 'Linter verdict and counts', updated, sarif, '❌ Error(s) have been found during linting']
+  ]) {
+    await page.evaluate((rows) => {
+      document.body.replaceChildren(...rows.map((text) => {
+        const row = document.createElement('div')
+        row.className = 'js-log-line job-log-line'
+        row.textContent = text
+        return row
+      }))
+    }, rows)
+    await page.evaluate(stableJobLog)
+    assert.deepEqual(await page.locator('.js-log-line.job-log-line').allTextContents(), expected, `Reporter order: ${rows.join(' | ')}`)
+  }
+})
+
+// In a merge request pipeline GitLab refuses the reporter's token: its warning
+// runs over four rows and the last two carry no tag.
+test('@stable-job-log-reporter-block a refused-token warning reaches the verdict in one piece', async (t) => {
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  const reporters = [
+    '[Gitlab Comment Reporter] Unable to post merge request comment',
+    "[Gitlab Comment Reporter] You may need to define a masked Gitlab CI/CD variable GITLAB_ACCESS_TOKEN_MEGALINTER containing a personal token with scope 'api'",
+    '(if already defined, your token is probably invalid)',
+    'If you are using local certificate, you also may need to define variables GITLAB_CUSTOM_CERTIFICATE or GITLAB_CERTIFICATE_PATH401: 401 Unauthorized',
+    '[Updated Sources Reporter] No source file has been formatted or fixed'
+  ]
+  const output = ['[Post] result:', '+----SUMMARY---+', 'Linter verdict and counts', '❌ Error(s) have been found during linting', 'Job finished']
+  const expected = [...output.slice(0, 3), ...reporters, ...output.slice(3)]
+  for (const position of [1, 3]) {
+    const rows = [...output.slice(0, position), ...reporters, ...output.slice(position)]
+    await page.evaluate((rows) => {
+      document.body.replaceChildren(...rows.map((text) => {
+        const row = document.createElement('div')
+        row.className = 'js-log-line job-log-line'
+        row.textContent = text
+        return row
+      }))
+    }, rows)
+    await page.evaluate(stableJobLog)
+    assert.deepEqual(await page.locator('.js-log-line.job-log-line').allTextContents(), expected, `Warning printed before row ${position}`)
+  }
+})

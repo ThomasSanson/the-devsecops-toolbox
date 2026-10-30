@@ -2,6 +2,8 @@
 commitizen:
   bump_message: "build: bump version $current_version \u2192 $new_version"
   name: cz_conventional_commits
+  pre_bump_hooks:
+    - task commitizen:format
   tag_format: $version
   update_changelog_on_bump: false
   changelog_file: ../../CHANGELOG.md

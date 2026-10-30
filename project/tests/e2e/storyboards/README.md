@@ -78,6 +78,13 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@grype-excludes"`
 - [**megalinter-base-render**](02-daily-work/megalinter-base-render.svg): A generated project receives the MegaLinter base settings with the same single blank line as the toolbox's own file, never two in a row for MegaLinter's formatter to remove.
   Replay: `task project:test:e2e -- --grep "@megalinter-base-render"`
+- [**zod-size-bound**](02-daily-work/zod-size-bound.svg): The installed test engine rejects oversized arrays, sets and maps
+  before visiting their elements, and still validates accepted values. The source of the regression and its real task
+  result are captured together.
+  Replay: `task project:test:e2e -- --grep "@zod-size-bound"`
+- [**body-parser-trailing**](02-daily-work/body-parser-trailing.svg): The installed parser preserves accepted compressed
+  JSON and consumes late trailing bytes without crashing its process. The real input and assertions precede the task result.
+  Replay: `task project:test:e2e -- --grep "@body-parser-trailing"`
 - [**8. protected-commits**](02-daily-work/protected-commits.svg): The commit checks accept clean work and secrets never reach the main branch, from a teammate's laptop to GitLab.
   Chapters: The hooks come with the setup, not with the clone · Every commit message is checked · A key is stopped on the laptop · Getting out of a secret block · GitLab is the gate nobody can skip.
   Replay: `task project:test:e2e -- --grep "@protected-commits"`

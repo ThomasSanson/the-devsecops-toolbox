@@ -92,7 +92,11 @@
     },
     {
       "description": "Deployment manifests: an image tag there says what is deployed, not a dependency to keep up. A fix commit that bumped the project's own image made a release, whose new image Renovate bumped again, in a loop. A version reaches an environment through a merge request someone opens.",
-      "matchFileNames": ["project/kustomize/**", "project/*/kustomize/**", "project/argocd/**"],
+      "matchFileNames": [
+        "project/kustomize/**",
+        "project/*/kustomize/**",
+        "project/argocd/**"
+      ],
       "enabled": false
     }
   ]
