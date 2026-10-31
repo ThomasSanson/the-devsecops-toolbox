@@ -447,6 +447,7 @@ storyboardStep(Then, 'fixing only the deployment YAML passes without scanning un
   assert.equal(fixed.job.status, 'success', fixed.trace.slice(-6000))
   assert.ok(!fixed.trace.includes(BROKEN_PYTHON))
   await jobLogFrame(I, 'valid-deployment-yaml', state.pub.projectName, fixed.job.id, {
+    sortScannerLines: true,
     waitText: 'Job succeeded',
     from: 'Linted [YAML] files with [yamllint]',
     focus: 'Linted [YAML] files with [yamllint]',
