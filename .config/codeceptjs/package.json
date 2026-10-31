@@ -24,6 +24,9 @@
     "serialize-javascript": "^7.0.5",
     "sprintf-js": "npm:extsprintf@1.4.1",
     "undici": "^8.0.0",
-    "@xmldom/xmldom": "^0.9.12"
+    "@xmldom/xmldom": "^0.9.12",
+    "follow-redirects": "^1.16.2",
+    "glob": "^14.0.2",
+    "minimatch": "^11.0.1"
   }
 }
