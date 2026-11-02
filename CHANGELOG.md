@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 25.2.0 (2026-11-02)
+
+### Feat
+
+- **config**: let a project download the toolbox tools from a GitHub mirror
+
+### Fix
+
+- **deps**: resolve the glob, minimatch and follow-redirects advisories
+
 ## 25.1.2 (2026-10-30)
 
 ### Fix
