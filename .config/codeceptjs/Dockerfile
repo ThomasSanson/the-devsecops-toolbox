@@ -28,8 +28,7 @@ RUN curl -LsSf --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15
 # The Playwright base image is Ubuntu, so we pull from the Ubuntu channel.
 #
 # The base image also leaves NodeSource's apt repository configured, and we
-# install nothing from it — the Node it ships is the one the image already
-# baked in. But `apt-get update` still reads it, so the day NodeSource
+# install nothing from it. But `apt-get update` still reads it, so the day NodeSource
 # answered 403 Forbidden, every pipeline in the project died on a package
 # nobody here wanted. Dropping that source list makes this build depend only
 # on the archives it actually installs from.
@@ -52,6 +51,32 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
 # the init-effects scenarios, and when two workers hit a missing apt package
 # simultaneously they race on the apt lock (exit 100, observed with unzip
 # then xz-utils). Baking them all removes every scenario-time apt call.
+
+# Run the tests on the Node that generated projects get (.config/node/version),
+# not on the one the base image bakes in: Microsoft rebuilt v1.64.1 with Node 26
+# under the same tag, Node 26 drops corepack and Renovate refuses to run on it.
+# Renovate bumps that file, so the tests move to a new Node with the projects.
+# The tarball is checked against the release's SHASUMS256.txt before use;
+# /usr/local/bin comes before the image's /usr/bin on PATH.
+COPY .config/node/version /tmp/node-version
+RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/node-version)" && \
+    case "$(dpkg --print-architecture)" in \
+      amd64) NODE_ARCH=x64 ;; \
+      arm64) NODE_ARCH=arm64 ;; \
+      *) echo "No Node build for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac && \
+    NODE_TARBALL="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" && \
+    NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}" && \
+    curl -fsSL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 300 \
+      -o "/tmp/${NODE_TARBALL}" "${NODE_URL}/${NODE_TARBALL}" && \
+    NODE_SHA256="$(curl -fsSL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 120 \
+      "${NODE_URL}/SHASUMS256.txt" | awk -v f="${NODE_TARBALL}" '$2 == f { print $1 }')" && \
+    test -n "${NODE_SHA256}" && \
+    echo "${NODE_SHA256}  /tmp/${NODE_TARBALL}" | sha256sum -c - && \
+    tar -xJf "/tmp/${NODE_TARBALL}" -C /usr/local --strip-components=1 --no-same-owner && \
+    rm -f "/tmp/${NODE_TARBALL}" /tmp/node-version && \
+    test "$(node --version)" = "v${NODE_VERSION}" && \
+    corepack --version
 
 # Copy dependency files first (cache optimization)
 COPY .config/codeceptjs/package.json .config/codeceptjs/package-lock.json /app/.config/codeceptjs/
