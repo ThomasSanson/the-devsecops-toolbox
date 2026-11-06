@@ -79,13 +79,13 @@ Rate limits respect `Retry-After` if the wait fits. API requests have a
 credentials, insufficient rights, unexpected API responses and read-back
 mismatches fail visibly; waiting does not repair those problems.
 
-| What happened | What to do |
-| --- | --- |
-| Temporary API/network outage | Retry plan if its commit is still the current default-branch commit. |
-| A newer commit reached the default branch | Start a new pipeline on that branch. The obsolete plan refuses to write. |
-| Token missing, expired or forbidden | Restore the existing token's API access and Maintainer permissions, then retry on the current commit. |
-| Invalid deployment list | Correct the paths or shorten the list. The synchronized fallback keeps the full pipeline meanwhile. |
-| GitLab asks for a wait beyond the budget | Wait for availability, then retry on the current commit. |
+| What happened                             | What to do                                                                                            |
+|-------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| Temporary API/network outage              | Retry plan if its commit is still the current default-branch commit.                                  |
+| A newer commit reached the default branch | Start a new pipeline on that branch. The obsolete plan refuses to write.                              |
+| Token missing, expired or forbidden       | Restore the existing token's API access and Maintainer permissions, then retry on the current commit. |
+| Invalid deployment list                   | Correct the paths or shorten the list. The synchronized fallback keeps the full pipeline meanwhile.   |
+| GitLab asks for a wait beyond the budget  | Wait for availability, then retry on the current commit.                                              |
 
 **An unsuccessful synchronization can leave the previous rule active.** A
 removed deployment path can therefore still get a reduced MR pipeline until
