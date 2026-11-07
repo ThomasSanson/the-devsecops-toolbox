@@ -55,6 +55,8 @@ Read the acts in order and you follow one developer from an empty project all th
   Replay: `task project:test:e2e -- --grep "@lychee-settings"`
 - [**framework-dependencies**](02-daily-work/framework-dependencies.svg): The toolbox's own OSV scan reads its shipped dependency lockfiles and reports no known vulnerabilities.
   Replay: `task project:test:e2e -- --grep "@framework-dependencies"`
+- [**test-image-node**](02-daily-work/test-image-node.svg): The image that runs the tests shows the Node version the toolbox pins for the projects it generates, then runs that same version.
+  Replay: `task project:test:e2e -- --grep "@test-image-node"`
 - [**report-permissions**](02-daily-work/report-permissions.svg): MegaLinter's reports belong to the developer who ran it, through Docker or through npx, and nobody else can read or change them. The developer can still delete them.
   Replay: `task project:test:e2e -- --grep "@report-permissions"`
 - [**lizard-cli-args**](02-daily-work/lizard-cli-args.svg): In a generated project, `task lizard` passes a function with four paths under Lizard's default limit of 15. The same task with `-- --CCN 3` hands the lower limit to Lizard, which flags the function and fails the run.
