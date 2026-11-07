@@ -29,34 +29,32 @@ project/tests/e2e/
 
 1. **Live-terminal capture** (journey scenarios): the user's real ttyd/xterm session is captured via `support/terminal/capture.js` (`terminalCard`, `captureTerminalFrame`), anchored from a marker row (`fromMarker`, which must still be on screen) or bounded (`maxRows`) to isolate deterministic blocks.
 2. **Replayed output** (`support/helpers/terminalRender.js`): a command that runs in the test runner itself, where no live terminal exists (git hooks, secret scans), has the bytes it printed replayed as a wide dark terminal card.
-3. **Storyboard** (every story): ONE SVG assembled from real per-moment PNG frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
+3. **Storyboard** (every story): ONE Markdown page built from real per-moment WebP frames — each frame its own pixel baseline — for journeys a single capture physically cannot hold; see below.
 
 ### Storyboards — the default for whole-journey proofs
 
 Use a storyboard when one artifact must tell a journey that a single capture cannot: moments that never coexist on screen (interactive gum menus erase themselves the instant you answer) or panels living on different pages (GitLab web + the live terminal).
-Reference scenario: `features/01-install/agent-mode.feature`, its committed storyboard `storyboards/01-install/agent-mode-only.svg` and its per-frame baselines under `screenshots/base/01-install/agent-mode-only/`.
-Open the SVG locally in a browser: the chrome around the frames is real selectable text (one click selects a whole command in Chromium/Safari); GitLab's blob preview shows it as a static image only.
+Reference scenario: `features/01-install/agent-mode.feature`, its committed storyboard `storyboards/01-install/agent-mode-only.md` and its per-frame baselines under `screenshots/base/01-install/agent-mode-only/`.
+GitLab shows the page as a document: every title, note and command is text you can read, search and copy, next to the frames.
 
 Prefer FEW, BIG stories over many small ones: merge overlapping scenarios into one end-to-end journey (20+ cards is fine) and show the failure AND its fix in the same story.
-Split a long story into chapters with a `# Chapter: Title` comment on its own line inside the Scenario body, between two sentences — the engine draws a full-width band, "Chapter N" and its title, before the next card.
+Split a long story into chapters with a `# Chapter: Title` comment on its own line inside the Scenario body, between two sentences — the engine starts a new section with the chapter title as its heading, listed at the top of the page.
 The whole film (3 acts, 34 stories in reading order) is indexed in [storyboards/README.md](e2e/storyboards/README.md).
 
-Layout is flat: baselines land in `screenshots/base/<act>/<story-tag>/` and the committed SVG in `storyboards/<act>/<story-tag>.svg` (e.g. `storyboards/01-install/install-complete.svg`) — one level, no per-feature subfolder.
+Layout is flat: baselines land in `screenshots/base/<act>/<story-tag>/` and the committed page in `storyboards/<act>/<story-tag>.md` (e.g. `storyboards/01-install/install-complete.md`) — one level, no per-feature subfolder.
 
 The storyboard contract: **ONE sentence = ONE card = ONE pixel baseline.** Every sentence of the scenario — the Given included — goes through `storyboardStep` and closes on a real capture; the Then sentences pair their card with a programmatic assert of the same fact. A sentence without a visual proof does not belong in a storyboard scenario.
 
-Why SVG: everything drawn AROUND the frames — feature/scenario titles, the command that re-runs exactly this scenario, the feature-file path, per-panel captions, notes and reproduce commands — is real selectable text a reader can copy, which a PNG can never offer. The frames stay untouched bitmaps.
+Why Markdown: everything AROUND the frames — feature/scenario titles, the command that re-runs exactly this scenario, the feature-file path, per-panel captions, notes and reproduce commands — is text GitLab shows, searches and lets a reader copy. The frames are the reviewed baselines themselves, lossless WebP files the page links to.
 
 Mechanism — the whole step-side API ships with the template in `.config/codeceptjs/storyboard.js` (a generated project uses it as-is).
 `capturePageFrame(I, name)` (any page) and `captureTerminalFrame` (`support/terminal/capture.js`, xterm-specific) write each real moment to `_output/storyboard-frames/` AS IT HAPPENS, and `addStoryboardFrame(I, png)` asserts each frame against its OWN baseline at `tolerance: 0` (`assertOrUpdateBaseline`) INSIDE the step — a visual regression fails on the exact sentence whose image drifted.
-The same module, registered as a CodeceptJS plugin, fills the header automatically from the Gherkin metadata (feature title, scenario title, feature file, the scenario's LAST tag as the re-run command, the baseline directory `<act>/<last-tag>`) and renders the SVG when the test ends.
-The board reads cards in reading order, two per row (fully uniform: one shared image slot as tall as the row's tallest frame, one shared text zone), with a full-width band before each `# Chapter:`.
-A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page captured 1440 px wide, a terminal window 1024 px wide) takes a full 1440 px row of its own, so it is read at its real size instead of at half of it.
-A narrower strip stays in its 708 px half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
-Each card carries its number badge, its Gherkin sentence (verbatim keyword coloured: Given green, When blue, Then purple), and — read straight from the feature's `# Note:` / `# Copy:` comments — an optional note and the one-click-copyable reproduce command/URL.
+The same module, registered as a CodeceptJS plugin, fills the header automatically from the Gherkin metadata (feature title, scenario title, feature file, the scenario's LAST tag as the re-run command, the baseline directory `<act>/<last-tag>`) and writes the Markdown page when the test ends.
+The page reads cards in reading order, two per row, with a section heading before each `# Chapter:`.
+Each card carries its number, its Gherkin sentence and — read straight from the feature's `# Note:` / `# Copy:` comments — an optional note under the frame and the reproduce command/URL in a "Command" fold-out.
 A failing run still gets its partial board in `_output/` (it shows how far the journey got); the committed copy under `storyboards/` is rebuilt only on a PASSED baseline-update run, from the reviewed baselines.
 
-The `.feature` is the single human-authored source: it carries the sentences AND the structured comments attached to the sentence right below them — `# Chapter: Title` opens a chapter band, `# Note: text` is the card's explanation, `# Copy: command` is the one-click-copyable command shown under the card.
+The `.feature` is the single human-authored source: it carries the sentences AND the structured comments attached to the sentence right below them — `# Chapter: Title` opens a chapter section, `# Note: text` is the card's explanation, `# Copy: command` is the command shown under the card, ready to copy.
 The step file only drives the app and captures the proof: register EVERY sentence through `storyboardStep(Given|When|Then, sentence, fn)`, whose pattern string is BOTH the scenario line and the card's title, so one sentence reads as one titled card and feature and storyboard cannot drift apart.
 Close each step on `addStoryboardFrame(I, png)`; cards open automatically for every sentence (the plugin listens to `bddStep.before`), so the step never does panel bookkeeping.
 JS opts (or `storyboard.annotate({ note, copy })` mid-step) stay ONLY for a note/copy computed at runtime — e.g. a URL known only once the step runs; a runtime value overrides the feature comment.
@@ -69,7 +67,7 @@ Rules — the panels ARE the proof:
 - Tell the whole story, in the order a human doing the journey by hand would screenshot it: the state BEFORE (e.g. the fresh GitLab project), the acting (the terminal session, its live menus included), the state AFTER (the remote proof — e.g. the pushed files visible on GitLab main).
 - Keep every panel deterministic: mask GitLab pages (`maskGitLabPage`, applied by every `gitlabFrame`), pre-install the toolchain off-camera (`preinstallToolchain`) so its volatile output stays out of frame, and let `TERMINAL_NOISE_PATTERNS` drop what remains. Never a secret on screen (quiet pushes, token-free remote URL backed by a credential store).
 - Pair the storyboard with programmatic asserts of the same facts (working tree, REST on the remote branch) so a regression fails loud even without eyes.
-- Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow; every regenerated frame must be inspected by a human like any other baseline, and the committed SVG is rebuilt from those reviewed baselines (never from unreviewed actuals).
+- Regeneration follows the standard `TASK_E2E_UPDATE_BASELINES=1` flow; every regenerated frame must be inspected by a human like any other baseline, and the committed page is rebuilt from those reviewed baselines (never from unreviewed actuals).
 
 ### Big cards — real GitLab pages and whole terminal runs
 
@@ -97,9 +95,9 @@ second tab.
 
 ### Your first storyboard — 4 steps
 
-1. Write the scenario with a unique tag; EVERY sentence will be one card. For a long journey, split it with `# Chapter: Title` lines inside the Scenario body (each opens a chapter band).
+1. Write the scenario with a unique tag; EVERY sentence will be one card. For a long journey, split it with `# Chapter: Title` lines inside the Scenario body (each opens a chapter section).
 2. Put the human text in the `.feature` as `# Note:` / `# Copy:` comments above each sentence, register each sentence through `storyboardStep(Given|When|Then, sentence, fn)`, and close each step with `await addStoryboardFrame(I, await capturePageFrame(I, 'frame-name'))` — full engine guide and a copy-ready example in [.config/codeceptjs/README.md](../../../.config/codeceptjs/README.md).
-3. Run `TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e -- --grep "@your-tag"` — it creates the per-frame baselines AND the committed SVG under `storyboards/`.
+3. Run `TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e -- --grep "@your-tag"` — it creates the per-frame baselines AND the committed Markdown page under `storyboards/`.
 4. Inspect every generated baseline and the storyboard like any reviewed artifact, then commit them.
 
 On failure, the partial board in `_output/` shows — in place of the drifted step, after the cards that passed — a full-width expected/diff/actual band (the changed pixels highlighted, the full file path under each image) and lists the sentences the run never reached: one downloadable artifact, zero ambiguity.

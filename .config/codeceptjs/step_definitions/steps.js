@@ -2,7 +2,7 @@ const { I } = inject();
 // Add in your custom step files
 
 // Your first storyboard — ONE Gherkin sentence = ONE card = ONE pixel
-// baseline, and the scenario renders itself as a copyable SVG under
+// baseline, and the scenario renders itself as a Markdown page under
 // storyboards/. Uncomment, adapt the sentences, run once with
 // TASK_E2E_UPDATE_BASELINES=1 to create the baselines, inspect them, done.
 // (Register the `storyboard` plugin in codecept.conf.js — see

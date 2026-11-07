@@ -13,6 +13,7 @@ const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
 const { copyFrameworkWithEngine } = require('./frameworkCopy')
+const { convertBaselinesToWebp } = require('../../../../../.config/codeceptjs/storyboard')
 
 const ROOT = '/tmp/e2e-baseline-mode'
 const GIT_CONFIG = `${ROOT}.gitconfig`
@@ -58,13 +59,13 @@ Then('the {word} helper compares the captured page with its reference', async (h
     await assertPageVisualMatch(I, name)
   } else {
     await I.takeScreenshot(name)
-    await assertOrUpdateBaseline(I, name)
+    await assertOrUpdateBaseline(I, name, '.webp')
   }
 })
 `
 
-const reference = (helper) => path.join(ROOT, E2E, 'screenshots/base/baseline-probe', helper + '.png')
-const actual = (helper) => path.join(ROOT, E2E, '_output/baseline-probe', helper + '.png')
+const reference = (helper) => path.join(ROOT, E2E, 'screenshots/base/baseline-probe', helper + '.webp')
+const actual = (helper) => path.join(ROOT, E2E, '_output/baseline-probe', helper + '.webp')
 
 // The line of every card, the same for each value so the cards compare: what
 // the task hands to the test container, the run and its exit code (only the
@@ -93,15 +94,17 @@ async function prepareBaselineFixture (I, env) {
     const blue = await page.screenshot()
     for (const helper of HELPERS) {
       fs.mkdirSync(path.dirname(reference(helper)), { recursive: true })
-      fs.writeFileSync(reference(helper), blue)
+      fs.writeFileSync(reference(helper).replace(/\.webp$/, '.png'), blue)
     }
     await page.setContent(ORANGE)
   })
+  // The visual helper reads lossless WebP references: same pixels as the capture.
+  await convertBaselinesToWebp(path.dirname(reference(HELPERS[0])))
   fs.writeFileSync(GIT_CONFIG, '[safe]\n\tdirectory = *\n[user]\n\temail = lambda@test.local\n\tname = Lambda User\n[init]\n\tdefaultBranch = main\n')
   execSync('git init -q && git add -A && git commit -qm "the toolbox with its blue references"', { cwd: ROOT, env: { ...env, GIT_CONFIG_GLOBAL: GIT_CONFIG } })
 }
 
-const committed = (helper) => execSync(`git show HEAD:${E2E}/screenshots/base/baseline-probe/${helper}.png`, { cwd: ROOT, env: { ...process.env, GIT_CONFIG_GLOBAL: GIT_CONFIG } })
+const committed = (helper) => execSync(`git show HEAD:${E2E}/screenshots/base/baseline-probe/${helper}.webp`, { cwd: ROOT, env: { ...process.env, GIT_CONFIG_GLOBAL: GIT_CONFIG } })
 
 // The twin of one card: what the task forwards, the run's verdict, and the
 // references on disk compared byte for byte with the commit and the capture.

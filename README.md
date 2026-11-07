@@ -81,11 +81,11 @@ The DevSecOps Toolbox is a comprehensive toolset designed to streamline and enfo
 └── Taskfile.yml     # Task runner configuration
 ```
 
-Each e2e journey scenario is documented by a **storyboard**: one SVG in
+Each e2e journey scenario is documented by a **storyboard**: one Markdown page in
 [`project/tests/e2e/storyboards/`](project/tests/e2e/storyboards/) telling the
 whole journey card by card — one Gherkin sentence = one card = one pixel
-baseline. Open it locally in a browser (the surrounding text, including the
-command that replays the scenario, is selectable); see
+baseline. GitLab shows it as a document: the notes and the command that
+replays the scenario are text, next to the WebP screenshots; see
 [`project/tests/README.md`](project/tests/README.md) for the full recipe.
 
 ### Pipeline Stages

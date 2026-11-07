@@ -131,6 +131,19 @@ tasks:
         --test-reporter-destination=tmp/devskim-descriptor-tests/results-descriptors.xml
         project/tests/integration/devskim-file-descriptors.test.js
 
+  project:test:storyboard:webp:
+    desc: Verify the Markdown storyboards, the WebP proof of the coverage gate and the WebP migration
+    cmds:
+      - rm -rf tmp/storyboard-webp-tests
+      - mkdir -p tmp/storyboard-webp-tests
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/storyboard-webp-tests/results-webp.xml
+        project/tests/integration/storyboard-markdown.test.js
+        project/tests/integration/storyboard-coverage-webp.test.js
+        project/tests/integration/copier-webp-migration.test.js
+
   project:build:gitlab:
     desc: Build tests component (gitlab)
     cmds:
@@ -342,14 +355,14 @@ tasks:
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/screenshots tests/e2e/ ) \
             || echo "⚠️  WARNING: baseline sync failed — container-side screenshots were NOT copied back to the host"
           ( {{.PROJECT_DOCKER_COMPOSE}} cp codeceptjs:/app/project/tests/e2e/storyboards tests/e2e/ ) \
-            || echo "⚠️  WARNING: storyboard sync failed — regenerated storyboard SVGs were NOT copied back to the host"
+            || echo "⚠️  WARNING: storyboard sync failed — regenerated storyboards were NOT copied back to the host"
           # Failure storyboards carry a "Visual regression" band (green boards
           # never do): point the developer at them, LAST thing in the log.
-          FAILED_BOARDS=$(grep -rl "Visual regression" project/tests/e2e/_output --include='*.svg' 2>/dev/null || true)
+          FAILED_BOARDS=$(grep -rl "Visual regression" project/tests/e2e/_output --include='*.md' --include='*.svg' 2>/dev/null || true)
           if [ -n "$FAILED_BOARDS" ]; then
             echo ""
             echo "════════════════════════════════════════════════════════════════"
-            echo "🎬 ✖ Visual regression — open the failure storyboard in a browser:"
+            echo "🎬 ✖ Visual regression — open the failure storyboard:"
             for f in $FAILED_BOARDS; do echo "     $f"; done
             echo "   It sums everything up: expected / diff (changed pixels) / actual,"
             echo "   the exact sentence that broke, and the file paths to inspect."

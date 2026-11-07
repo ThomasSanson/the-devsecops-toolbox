@@ -93,7 +93,12 @@ REPOSITORY_KINGFISHER_ARGUMENTS:
 REPOSITORY_TRIVY_CONFIG_FILE: .config/trivy/config.yml
 SPELL_CSPELL_CONFIG_FILE: .config/cspell/config.json
 SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
-SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(^|/)package-lock\.json$'
+# The storyboard engine writes each page under project/tests/e2e/storyboards/<act>/,
+# and a test checks that it tells its whole scenario. markdownlint's fixes
+# would rewrite the generated text (an address wrapped in <>) and lychee would
+# follow the made-up addresses the scenarios show, so both leave those pages.
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(^|/)project/tests/e2e/storyboards/[^/]+/'
+SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(^|/)package-lock\.json$|(^|/)project/tests/e2e/storyboards/[^/]+/'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 REPOSITORY_DUSTILOCK_ARGUMENTS:
   - "-p"

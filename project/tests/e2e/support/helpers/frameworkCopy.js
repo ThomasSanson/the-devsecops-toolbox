@@ -41,7 +41,7 @@ function toolboxRepository (dir) {
  * A fresh copy at `dir` that can run the test engine itself: the engine's
  * dependencies are baked into the image, never carried in the tree, so the copy
  * borrows the image's, exactly what the runner uses. The committed storyboards
- * (tens of MB of SVG) are left out: no nested run reads them. The files belong
+ * are left out: no nested run reads them. The files belong
  * to whoever extracts them, so git trusts the copy without a safe.directory.
  */
 function copyFrameworkWithEngine (dir) {

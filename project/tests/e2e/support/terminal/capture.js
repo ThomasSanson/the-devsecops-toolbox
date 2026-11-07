@@ -524,8 +524,8 @@ async function removeCompactTerminalCapture (I, captureId) {
 // coexist on screen), and the GitLab panels live on a DIFFERENT page than the
 // terminal (navigating destroys any in-page overlay). So each real moment is
 // captured to a PNG file as it happens. Each frame is then asserted against
-// its OWN baseline (tolerance:0), and the storyboard SVG — selectable titles,
-// commands and captions drawn around the untouched frames — is assembled by
+// its OWN baseline (tolerance:0), and the storyboard page — titles, commands
+// and captions as text around the reviewed frames — is written by
 // .config/codeceptjs/storyboard.js as the human-readable artifact.
 // ---------------------------------------------------------------------------
 // Snapshot the current terminal moment (compact capture, marker-anchored) into

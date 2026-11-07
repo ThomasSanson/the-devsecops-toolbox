@@ -3,7 +3,7 @@
  *
  * Normal mode: capture + assertVisualMatch (tolerance: 0).
  * TASK_E2E_UPDATE_BASELINES=1: assert first, and ONLY when the assert fails
- * write the freshly captured actual over screenshots/base/<name>.png — green
+ * write the freshly captured actual over screenshots/base/<name>.webp — green
  * baselines are left byte-identical so a regeneration run produces no churn.
  * Every baseline written this way MUST be inspected by a human, which is why
  * the mode is refused in CI.
@@ -21,7 +21,7 @@ const { tryTo } = require('../../../../../.config/codeceptjs/storyboard')
 const E2E_DIR = path.resolve(__dirname, '..', '..')
 
 async function assertPageVisualMatch (I, baselineName) {
-  // Force a fresh actual so the helper never compares a stale _output PNG.
+  // Force a fresh actual so the helper never compares a stale _output image.
   await I.takeScreenshot(baselineName)
 
   if (process.env.TASK_E2E_UPDATE_BASELINES !== '1') {
@@ -35,8 +35,9 @@ async function assertPageVisualMatch (I, baselineName) {
 
   const matches = await tryTo(() => I.assertVisualMatch(baselineName))
   if (!matches) {
-    const actualPath = path.join(E2E_DIR, '_output', baselineName + '.png')
-    const baselinePath = path.join(E2E_DIR, 'screenshots', 'base', baselineName + '.png')
+    // The visual helper stores lossless WebP (its default imageFormat).
+    const actualPath = path.join(E2E_DIR, '_output', baselineName + '.webp')
+    const baselinePath = path.join(E2E_DIR, 'screenshots', 'base', baselineName + '.webp')
     fs.mkdirSync(path.dirname(baselinePath), { recursive: true })
     fs.copyFileSync(actualPath, baselinePath)
   }

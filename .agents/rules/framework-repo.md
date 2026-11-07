@@ -48,7 +48,7 @@ Detailed code style for this repository: [`.agents/rules/code-style.md`](code-st
             ├── features/          # 01-install, 02-daily-work, 03-evolution (three acts)
             ├── pages/             # GitLab Page Objects (masking for visual determinism)
             ├── support/           # helpers/, steps/, terminal/ (xterm capture engine)
-            ├── storyboards/       # Committed SVG storyboards (one per journey)
+            ├── storyboards/       # Committed Markdown storyboards (one per journey)
             └── screenshots/base/  # Visual baselines (tolerance: 0)
 ```
 

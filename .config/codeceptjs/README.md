@@ -1,18 +1,19 @@
 <!-- cspell:ignore storyboardStep addStoryboardFrame capturePageFrame captureElementFrame codeceptjs gherkin ttyd xterm metacharacters -->
 # Storyboard engine (`.config/codeceptjs/storyboard.js`)
 
-A CodeceptJS plugin that turns one Gherkin scenario into one human-readable SVG storyboard, straight from the real screenshots the test captures.
+A CodeceptJS plugin that turns one Gherkin scenario into one human-readable Markdown storyboard, straight from the real screenshots the test captures.
 The engine ships as the npm package [`@digital-commons-official/codeceptjs-storyboard`](https://gitlab.com/digital-commons/software/libraries/npm/codeceptjs-storyboard): `storyboard.js` is a one-line bridge to it, so step files outside this folder can require it by path.
 
 ## What it does
 
 ONE Gherkin sentence = ONE card = ONE pixel baseline, asserted inside its step at `tolerance: 0` — a visual regression fails on the exact sentence whose image drifted.
 The plugin opens a card automatically for every sentence (it listens to `bddStep.before`), so the step only drives the app and captures the proof.
-When the scenario ends it assembles the whole story into one SVG: the frames stay bitmap, but every caption, note and reproduce-command around them is real selectable text you can copy from the SVG (Chromium/Safari).
-Cards sit two per row, 708 px each. A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page, a terminal window 1024 px wide) takes a full 1440 px row so it is shown at its real size. A narrower strip stays in its half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
-A `# Chapter:` comment draws a full-width band between cards, so a 20-card story still reads with a beginning, a middle and an end.
-Nothing configures paths: everything is derived from the feature file location — baselines land in `screenshots/base/<feature-dir>/<scenario>/`, the committed SVG in `storyboards/<feature-dir>/<scenario>.svg`.
-A scenario that never calls `addStoryboardFrame` renders no SVG, so plain Gherkin tests are left untouched.
+When the scenario ends it writes the whole story as one Markdown page: GitLab shows every caption, note and command as text you can read, search and copy, next to the frames, which are the reviewed lossless WebP baselines.
+With `format: 'svg'` the engine draws one SVG board instead: cards sit two per row, 708 px each.
+A frame still 1000 px wide or more once fitted to the 1100 px height limit (a GitLab page, a terminal window 1024 px wide) takes a full 1440 px row so it is shown at its real size. A narrower strip stays in its half of a row, shrunk to fit, and so does a frame so tall that it is shrunk below 1000 px anyway. A card alone on its row is centred in it.
+A `# Chapter:` comment starts a new section of the page, listed at its top, so a 20-card story still reads with a beginning, a middle and an end.
+Nothing configures paths: everything is derived from the feature file location — baselines land in `screenshots/base/<feature-dir>/<scenario>/`, the committed page in `storyboards/<feature-dir>/<scenario>.md`.
+A scenario that never calls `addStoryboardFrame` renders no storyboard, so plain Gherkin tests are left untouched.
 
 ## Wiring it in a project
 
@@ -30,13 +31,18 @@ plugins: {
   storyboard: {
     require: '../../../.config/codeceptjs/storyboard.js',
     enabled: true,
-    format: 'svg',
     replayCommand: 'task test -- --grep "{tag}"'
   }
 }
 ```
 
-`format: 'svg'` keeps one SVG board per scenario: the package writes Markdown when it is left out.
+The package writes one Markdown page per scenario; `format: 'svg'` draws one SVG board instead.
+The visual helper stores lossless WebP baselines. A project whose baselines are still PNG converts them once, with the same pixels, before its next run; until then the engine refuses to compare its frames:
+
+```bash
+npx -y -p @digital-commons-official/codeceptjs-storyboard codeceptjs-storyboard-webp project/tests/e2e/screenshots/base
+```
+
 `replayCommand` is the command each storyboard prints to replay its scenario.
 When a run ends, `_output/index.html` lists the storyboards it rendered.
 
@@ -81,9 +87,9 @@ storyboard.storyboardStep(Given, 'a fresh project with only a README on its main
 
 `storyboardStep(register, sentence, fn)` registers the step and escapes cucumber-expression metacharacters so `CI/CD` or `(y/N)` in a sentence never breaks the match; its `opts` argument is optional and kept only for runtime overrides.
 
-## Regenerating the baselines and the SVG
+## Regenerating the baselines and the storyboards
 
-Run the suite in baseline-update mode from the repository root — it asserts first and only rewrites a baseline when its assert fails, so a green run produces no churn, then rebuilds every committed SVG from the reviewed baselines:
+Run the suite in baseline-update mode from the repository root — it asserts first and only rewrites a baseline when its assert fails, so a green run produces no churn, then rebuilds every committed storyboard from the reviewed baselines:
 
 ```bash
 TASK_E2E_UPDATE_BASELINES=1 task project:test:e2e

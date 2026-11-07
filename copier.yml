@@ -51,6 +51,11 @@ _migrations:
       - "git add -- .config/cspell/config.json"
     after:
       - "python3 .config/cspell/migrate-words.py dedup"
+  - version: "26.0.0"
+    after:
+      # The visual helper 3 reads lossless WebP baselines: convert the PNG ones
+      # once, with the same pixels, before a run records new ones unchecked.
+      - "sh '{{ _copier_conf.src_path }}/.config/copier/convert-baselines-webp.sh'"
   # Run on every update: old project overrides survive Copier's three-way merge.
   - command: >-
       uv run --quiet --no-project --with-requirements .config/copier/requirements.txt

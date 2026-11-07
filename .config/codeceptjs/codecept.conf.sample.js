@@ -54,12 +54,11 @@ exports.config = {
     screenshot: { enabled: true },
     retryFailedStep: { enabled: true },
     // ONE Gherkin sentence = ONE storyboard card = ONE pixel baseline: fills
-    // the storyboard header from each scenario's metadata and renders the SVG
-    // when the test ends — see .config/codeceptjs/storyboard.js.
+    // the storyboard header from each scenario's metadata and renders the
+    // Markdown storyboard when the test ends — see .config/codeceptjs/storyboard.js.
     storyboard: {
       require: '../../../.config/codeceptjs/storyboard.js',
       enabled: true,
-      format: 'svg',
       replayCommand: 'task test -- --grep "{tag}"'
     },
     pageInfo: {

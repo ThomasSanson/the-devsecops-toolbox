@@ -554,7 +554,7 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
 
   // The twin: the merge request changes exactly the two references, the
   // branch holds the captured pixels and the main branch still the blue ones.
-  const paths = baselineMode.HELPERS.map(helper => `${baselineMode.E2E}/screenshots/base/baseline-probe/${helper}.png`).sort()
+  const paths = baselineMode.HELPERS.map(helper => `${baselineMode.E2E}/screenshots/base/baseline-probe/${helper}.webp`).sort()
   let changed = []
   for (let i = 0; i < 30 && changed.length < paths.length; i++) {
     changed = (await listMergeRequestDiffs(pub.projectName, iid, pub.headers)).map(diff => diff.new_path).sort()
@@ -563,7 +563,7 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
   assert.deepEqual(changed, paths, 'The merge request must change the two references and nothing else')
   const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
   for (const helper of baselineMode.HELPERS) {
-    const file = `${baselineMode.E2E}/screenshots/base/baseline-probe/${helper}.png`
+    const file = `${baselineMode.E2E}/screenshots/base/baseline-probe/${helper}.webp`
     const onBranch = await getRepositoryFileMeta(pub.projectName, file, baselineMode.BRANCH, pub.headers)
     const onMain = await getRepositoryFileMeta(pub.projectName, file, 'main', pub.headers)
     assert.equal(onBranch.content_sha256, sha(baselineMode.reference(helper)), `${file}: the branch must hold the captured pixels`)
@@ -572,7 +572,7 @@ storyboardStep(Then, 'the merge request shows each old reference next to its new
 
   await gitlabFrame(I, 'baseline-mode-merge-request', gitlabUrl.mr(pub.projectName, iid, 'diffs'), {
     height: 1100,
-    waitText: 'storyboard.png',
+    waitText: 'storyboard.webp',
     // GitLab loads each image on its own: wait until both pairs are drawn.
     // Each file name sits in a sticky header that Chromium sometimes paints on
     // a layer of its own, half a pixel off: the headers stay in the page flow.

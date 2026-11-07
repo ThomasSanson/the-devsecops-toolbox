@@ -13,7 +13,7 @@
 #   captured or updated with them.
 #
 #   Product = .config/**, copier.yml, Taskfile.yml{,.jinja}
-#   Proof   = project/tests/e2e/screenshots/base/**.png
+#   Proof   = project/tests/e2e/screenshots/base/**.{png,webp}
 #
 #   The proof is the CAPTURED artifact, not a text file next to it: a baseline
 #   image exists only because a test really ran and photographed something. A
@@ -51,7 +51,7 @@ NC='\033[0m'
 PRODUCT_RE='^(\.config/|copier\.yml$|Taskfile\.yml(\.jinja)?$)'
 # What satisfies the gate: a baseline image, changed or added. Only a real
 # capture run produces one.
-PROOF_RE='^project/tests/e2e/screenshots/base/.+\.png$'
+PROOF_RE='^project/tests/e2e/screenshots/base/.+\.(png|webp)$'
 # Storyboard TEXT touched without capturing anything — a comment typed into a
 # card. Named separately in the refusal so the author sees the gate read it and
 # refused it anyway, instead of wondering whether it was even looked at.

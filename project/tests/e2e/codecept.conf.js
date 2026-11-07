@@ -124,7 +124,6 @@ exports.config = {
     storyboard: {
       require: '../../../.config/codeceptjs/storyboard.js',
       enabled: true,
-      format: 'svg',
       replayCommand: 'task test -- --grep "{tag}"'
     },
     // Writes a JUnit XML per worker under _output/junit/ so GitLab renders the
