@@ -1,0 +1,606 @@
+# Publishing the source of a private project, without the parts that must stay private
+
+**Scenario:** Publication keeps its safety promises from source selection to repeated releases
+
+<a name="storyboard-result"></a>
+
+> [!tip] PASSED
+> 19 steps · 19 frames
+
+**On this page**
+
+[Result](#storyboard-result) · [Exactly the committed files, or nothing](#storyboard-chapter-1) · [Publication runs only when asked, and only after a real scan](#storyboard-chapter-2) · [Approval names the exact list](#storyboard-chapter-3) · [Approval is found on every merge request and every page](#storyboard-chapter-4) · [Tokens and setup failures stay safe](#storyboard-chapter-5) · [Releases on a real public project on GitLab](#storyboard-chapter-6) · [Replay and source](#storyboard-replay)
+
+<a name="storyboard-chapter-1"></a>
+
+## Exactly the committed files, or nothing
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**1. Given a throwaway source repository whose files are approved for publication**
+
+</th>
+<th width="50%">
+
+**2. Then export copies the committed bytes, past a local smudge filter and into a folder whose name starts with a dash**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Given a throwaway source repository whose files are approved for publication](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-fixture.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-fixture.webp)
+
+A real Git repository built for this story, in a real terminal. Git tracks src/message.txt, the file to publish, even though the ignore file, .gitignore, matches it: the last chapter comes back to that.
+The allowlist lets src/ and .gitignore leave, the manifest says both were approved, and publication-owner is the one person who may approve. The .env file holds the settings: source-public.git, an empty public repository next door, two throwaway tokens, and fixture-forge, the stand-in for GitLab's API. Every other repository in this story is a copy of this one with one thing changed, and its own public repository.
+
+<details>
+<summary>Command</summary>
+
+```shell
+tail -n +1 .gitignore .config/publication/allowlist .config/publication/manifest .config/publication/owners .env
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![Then export copies the committed bytes, past a local smudge filter and into a folder whose name starts with a dash](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-export-bytes.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-export-bytes.webp)
+
+This copy adds -public/message.txt, in a folder whose name starts with a dash, which a careless shell command would read as an option. It also sets a smudge filter, a local Git setting that rewrites a file when Git writes it to disk: the working copy of src/message.txt says UNCOMMITTED CONTENT.
+The export writes what would be published into ../snapshot and prints 3, the number of files. Both files there hold the committed text: the filter changed nothing, and the dash folder arrived whole. The task is this repository's own name for the line below, which any project with the publication can run.
+
+<details>
+<summary>Command</summary>
+
+```shell
+sh .config/publication/publish.sh export ../snapshot && tail -n +1 ../snapshot/*/message.txt
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**3. And the dry run names and refuses a symbolic link, an LFS pointer and a missing framework denylist**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![And the dry run names and refuses a symbolic link, an LFS pointer and a missing framework denylist](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-unsupported-entries.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-unsupported-entries.webp)
+
+Three copies, three commits the publication cannot copy faithfully. src/host is a symbolic link (Git mode 120000). src/large.txt is a Git LFS pointer, a small text file standing in for a large one. The third commit deletes denylist.base, the framework's own list of files that never leave.
+task publication:check, the dry run, refuses all three and names the file each time, instead of listing it as publishable.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:check
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-2"></a>
+
+## Publication runs only when asked, and only after a real scan
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**4. Then publication does nothing when it is switched off, or when CI starts it outside its manual or tag job**
+
+</th>
+<th width="50%">
+
+**5. And the dry run never contacts the forge: it passes offline and refuses an absent ref instead of fetching it**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then publication does nothing when it is switched off, or when CI starts it outside its manual or tag job](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-not-requested.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-not-requested.webp)
+
+Three runs of task publication:publish, each told not to publish: switched off with TASK\_PUBLICATION\_ENABLED\=false, then two runs that look like a CI job (CI\=true) set to publish only from a manual job, or only from a tag pipeline. Each says why in one line and stops.
+The last two commands check both sides: the public repository has 0 commits, and the stand-in forge received 0 requests.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_PUBLICATION_ENABLED=false task publication:publish
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And the dry run never contacts the forge: it passes offline and refuses an absent ref instead of fetching it](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-offline-check.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-offline-check.webp)
+
+In this copy, origin, the address Git fetches from, points at the stand-in forge: a fetch would show up in its request log. The dry run lists the 2 files it would publish, and says the owner's signature is only checked when publishing.
+Asked for a branch that does not exist, it answers No such ref instead of fetching it. The request log is still empty.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_PUBLICATION_SOURCE_REF=absent task publication:check
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**6. And publication refuses to skip the secret scan, and stops before the push when Git cannot read a file**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![And publication refuses to skip the secret scan, and stops before the push when Git cannot read a file](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-scan-required.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-scan-required.webp)
+
+TASK\_PUBLICATION\_SCAN\=done is not a mode: nobody can tell the publication that the secret scan already happened. It refuses.
+The next two copies put a stand-in git, printed on the card, and a stand-in scanner, which writes one line to scan.log when it runs, ahead of the real tools. In export-fails, every read of a file's contents fails: the publication stops before the scan, which never ran (0 lines in scan.log). In index-fails, the reads fail only after the scan passed (1 line): the publication still stops, and says Nothing was pushed. Both public repositories have 0 commits.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_PUBLICATION_SCAN=done task publication:publish
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-3"></a>
+
+## Approval names the exact list
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**7. Then only an owner's answer that names the current manifest and was not edited afterwards approves publication, and approval asks the owner again**
+
+</th>
+<th width="50%">
+
+**8. And approval fails loudly when the forge refuses every request, or only the sign-off thread**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then only an owner's answer that names the current manifest and was not edited afterwards approves publication, and approval asks the owner again](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-identity.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-identity.webp)
+
+For this copy, the stand-in forge answers with the three threads of discussions.json, all resolved by publication-owner. One is about spelling. One names a manifest of zeros, an older list. One names this manifest, the hash on the first line, but its question was edited after it was resolved: updated\_at comes after resolved\_at.
+None of them counts, so task publication:publish refuses: the approved list carries no owner signature. task publication:approve then asks again on merge request !1, and the request log ends with the POST that asks the new question.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:approve
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And approval fails loudly when the forge refuses every request, or only the sign-off thread](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-failures.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-failures.webp)
+
+This copy adds src/new.txt, a file nobody approved, so task publication:approve has to open a merge request. The stand-in forge is told to refuse every API request, then only the POST of the sign-off thread.
+Both runs fail and say so: The forge refused the approval request. Nothing was approved. The request log marks each refusal 403, the code a forge answers when it refuses. The first run is refused from its first request and gives up at the fourth, when it tries to commit the new list. The second run gets as far as the very last request, the POST of the sign-off thread.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:approve
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-4"></a>
+
+## Approval is found on every merge request and every page
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**9. When on GitLab, the commit that approves a new path belongs to two merged merge requests**
+
+</th>
+<th width="50%">
+
+**10. And the owner's answer is on merge request !1, after 100 review comments**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![When on GitLab, the commit that approves a new path belongs to two merged merge requests](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-commit.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-commit.webp)
+
+A project on the test GitLab, built from a copy that adds src/notice.txt. Merge request !1 brought in the commit that approves it, and merge request !2 later brought the main branch into a branch called stable, that same commit included.
+GitLab's page for that commit says "2 merge requests" and names both. Its API, which the publication reads, lists !2 first, and nobody answered anything on !2.
+
+<details>
+<summary>Command</summary>
+
+```shell
+http://gitlab/<lambda-user>/<project>/-/commit/<source-commit-3>
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And the owner's answer is on merge request !1, after 100 review comments](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-page.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-page.webp)
+
+Merge request !1, scrolled to its last thread: the question task publication:approve asks, "Resolved by Publication Owner". Above it are "Review comment 100" and the 99 before it, so the tab reads "Overview 101".
+GitLab's API hands out at most 100 discussions per page, so the owner's answer is on the second page.
+
+<details>
+<summary>Command</summary>
+
+```shell
+http://gitlab/<lambda-user>/<project>/-/merge_requests/1
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**11. Then publication finds that answer and publishes, and stops when GitLab does not answer**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then publication finds that answer and publishes, and stops when GitLab does not answer](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-pages.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-approval-pages.webp)
+
+The copy's origin points at that project. The first run is given a token GitLab refuses, "returned error: 401". The publication cannot read the approval, says "GitLab did not answer, so nobody can say who approved this list", and stops.
+The second run has the developer's real token. It reads both merge requests and every page of their discussions, and says "Approved by "publication-owner" in merge request !1". The public repository now holds the 3 approved files.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:publish
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-5"></a>
+
+## Tokens and setup failures stay safe
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**12. Then neither token shows up, in process arguments or in the refusal of a target URL that carries one**
+
+</th>
+<th width="50%">
+
+**13. And setup keeps the working token and CI variables when the forge refuses their replacement**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then neither token shows up, in process arguments or in the refusal of a target URL that carries one](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-credentials.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-credentials.webp)
+
+Here git, curl, sed and jq are stand-ins that write every argument they receive to argv.log, then run the real tool. The publication succeeds. The log holds the clone and the push, and neither throwaway token from .env: grep counts 0.
+The last command puts a token inside the public repository's URL. The dry run refuses that URL, and its answer does not repeat the token.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_PUBLICATION_TARGET_URL=https://fixture-url-token@example.invalid/public.git task publication:check
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And setup keeps the working token and CI variables when the forge refuses their replacement](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-setup-failures.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-setup-failures.webp)
+
+task publication:init is the one-time setup. It asks two questions, answered with Enter, then replaces the project's token and stores the new one in two CI/CD variables. The stand-in forge refuses the new token, then, on the second run, the update of the variables.
+Both runs fail. The first says why. The second only shows the refused request. The request log has no DELETE: the token CI still uses was not revoked, and no variable was deleted. .env.dist records the destination, but publication is not switched on.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:init
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**14. And setup started from an onboarding branch turns on the discussion gate and schedules the main branch**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![And setup started from an onboarding branch turns on the discussion gate and schedules the main branch](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-setup-onboarding.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-setup-onboarding.webp)
+
+This copy sits on a branch called onboarding. Setup succeeds, and its own lines say what it changed: GitLab now requires all discussions to be resolved before merging, and a nightly schedule runs on main, not on onboarding.
+The request log tells the same story, and one more thing: the old token is deleted only after its replacement is stored.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:init
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-6"></a>
+
+## Releases on a real public project on GitLab
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**15. When the first release is published to an empty public project on GitLab**
+
+</th>
+<th width="50%">
+
+**16. Then the public project holds every approved file, even one its ignore file matches**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![When the first release is published to an empty public project on GitLab](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-first-release.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-first-release.webp)
+
+The last copy publishes to a real public project on the test GitLab, empty until now. Its ignore file still matches src/\*.txt.
+The publication is approved, pushes 2 files, and names the release after the source commit, since no tag exists yet.
+
+<details>
+<summary>Command</summary>
+
+```shell
+task publication:publish
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![Then the public project holds every approved file, even one its ignore file matches](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-public-first.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-public-first.webp)
+
+GitLab's page for src/message.txt in the public project. The Files panel lists .gitignore and src/message.txt, the two approved files, and the file holds the committed text. Its one commit, publish &lt;source-commit-1&gt;, was made by DevSecOps Toolbox.
+The ignore file did not hold it back: the publication copies what Git tracks, whatever a working copy would ignore.
+
+<details>
+<summary>Command</summary>
+
+```shell
+http://gitlab/<lambda-user>/<project>/-/blob/main/src/message.txt
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**17. When a tag is added to that release later, then a new release with the same files is published twice**
+
+</th>
+<th width="50%">
+
+**18. Then the late tag sits on the commit already published, and the new release has its own commit and tag**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![When a tag is added to that release later, then a new release with the same files is published twice](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-later-releases.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-later-releases.webp)
+
+The developer tags the commit already published as 1.0.0: the public repository is already up to date, so only the tag is added. Then an empty commit tagged 1.0.1, with the same files: it gets its own public commit. Publishing 1.0.1 again changes nothing.
+
+<details>
+<summary>Command</summary>
+
+```shell
+git tag 1.0.0 && task publication:publish
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![Then the late tag sits on the commit already published, and the new release has its own commit and tag](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-public-tags.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-public-tags.webp)
+
+GitLab's Tags page of the public project, sorted by name. 1.0.0 sits on the first commit, still named after the source commit it published. 1.0.1 sits on its own commit, publish 1.0.1.
+Two tags on two commits: the late tag made no commit, and the retry added nothing.
+
+<details>
+<summary>Command</summary>
+
+```shell
+http://gitlab/<lambda-user>/<project>/-/tags?sort=name_asc
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**19. And a public tag that already names another commit stops the next release, and the main branch stays where it was**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![And a public tag that already names another commit stops the next release, and the main branch stays where it was](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-tag-conflict.webp)](../../screenshots/base/02-daily-work/publication-contracts/publication-contract-tag-conflict.webp)
+
+Somebody has tagged the public project 1.0.2 by hand on GitLab, on its current commit: the first command lists it. The developer then changes the source and tags it 1.0.2 as well.
+The publication refuses: the public tag 1.0.2 already identifies another commit. It pushes nothing, so the main branch of the public project is on &lt;public-commit-2&gt; before and after.
+
+<details>
+<summary>Command</summary>
+
+```shell
+git ls-remote http://gitlab/<lambda-user>/<project>.git main 1.0.2
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-replay"></a>
+
+<details>
+<summary>Replay this scenario · source and checks</summary>
+
+```shell
+task test -- --grep "@publication-contracts"
+```
+
+**Source**
+
+```text
+project/tests/e2e/features/02-daily-work/publication-contracts.feature
+```
+
+Every frame is its own pixel baseline (tolerance: 0).
+
+</details>

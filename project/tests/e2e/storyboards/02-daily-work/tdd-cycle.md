@@ -1,0 +1,380 @@
+# The toolbox checks the test really failed first, instead of taking anyone's word for it
+
+**Scenario:** The toolbox tells a real failure apart from a run that died on its way to the test
+
+<a name="storyboard-result"></a>
+
+> [!tip] PASSED
+> 11 steps · 11 frames
+
+**On this page**
+
+[Result](#storyboard-result) · [A failure that proves nothing](#storyboard-chapter-1) · [A failure that proves something](#storyboard-chapter-2) · [Yesterday's proof does not count](#storyboard-chapter-3) · [The phase refuses to certify itself](#storyboard-chapter-4) · [A check that disappears](#storyboard-chapter-5) · [A test that moves, and a test that goes for a reason](#storyboard-chapter-6) · [Replay and source](#storyboard-replay)
+
+<a name="storyboard-chapter-1"></a>
+
+## A failure that proves nothing
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**1. Given a developer writes the test for a greeting the toolbox cannot give yet**
+
+</th>
+<th width="50%">
+
+**2. Then the run dies on its way to the test, exits like a failed test, and the toolbox refuses to call that a proof**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Given a developer writes the test for a greeting the toolbox cannot give yet](../../screenshots/base/02-daily-work/tdd-cycle/the-test-comes-first.webp)](../../screenshots/base/02-daily-work/tdd-cycle/the-test-comes-first.webp)
+
+A developer starts a new feature the honest way: the test first. The terminal shows, as git sees them, the two new files and the one line that registers the step file with the test suite.
+The test asks for a greeting the toolbox cannot give yet, so it is meant to fail. But look at the second line of the step file: it also asks for a helper file, ../helpers/greeting, that nobody has written yet.
+
+<details>
+<summary>Command</summary>
+
+```shell
+git add -N . && git diff
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![Then the run dies on its way to the test, exits like a failed test, and the toolbox refuses to call that a proof](../../screenshots/base/02-daily-work/tdd-cycle/crash-is-no-proof.webp)](../../screenshots/base/02-daily-work/tdd-cycle/crash-is-no-proof.webp)
+
+One typed line does the whole check: what git sees, the test run, its exit code, the report folder, then the toolbox's check. The run is the line task project:test:e2e runs inside its test container.
+The run never reaches the test. Node stops on "Cannot find module '../helpers/greeting'", the toolbox's wrapper reports "Worker completion: FAIL", and the exit code is 1, the code a failed test returns. At a glance, this looks like the proof the method asks for.
+The report folder does not even exist, because nothing ran. The check reads that folder and refuses: "The run left no report at all: it stopped before a single scenario ran."
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greeting; task devsecops:test:check:red-is-real -- @greeting
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-2"></a>
+
+## A failure that proves something
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**3. When the developer writes the missing helper, the test fails on its own check, and the toolbox accepts that failure as proof**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![When the developer writes the missing helper, the test fails on its own check, and the toolbox accepts that failure as proof](../../screenshots/base/02-daily-work/tdd-cycle/real-failure-is-proof.webp)](../../screenshots/base/02-daily-work/tdd-cycle/real-failure-is-proof.webp)
+
+The developer writes the missing helper, and nothing else: git now lists helpers/greeting.js next to the test, which is untouched. The greeting the test asks for still does not exist.
+Same line as the card before. This time the suite reaches the test and fails on its own check: "expected 'Hello, Lambda', got ''". The engine prints that failure twice, once for its worker and once for the whole run, and the report folder now holds results-1.xml, the record of that one scenario.
+The verdict has turned: "The failure is real: the scenario ran and failed on its own check", and it quotes that check. Nobody had to be believed: the proof was on disk, and the toolbox read it.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greeting; task devsecops:test:check:red-is-real -- @greeting
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-3"></a>
+
+## Yesterday's proof does not count
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**4. Then a run that selects no scenario wipes that report, and the toolbox refuses the old failure**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then a run that selects no scenario wipes that report, and the toolbox refuses the old failure](../../screenshots/base/02-daily-work/tdd-cycle/stale-proof-refused.webp)](../../screenshots/base/02-daily-work/tdd-cycle/stale-proof-refused.webp)
+
+The report of the card before is still on disk: the first ls lists results-1.xml. The developer runs the suite again with a typo in the tag, and @greting selects no scenario at all.
+The run stops at once: "No Gherkin scenario matches this selection", exit code 1. The toolbox emptied the report folder before anything else, so the second ls finds nothing.
+Asked about @greeting again, the same check now refuses. The failure it accepted a minute ago went away with its report: only the latest run counts as proof.
+
+<details>
+<summary>Command</summary>
+
+```shell
+TASK_E2E_WORKERS=1 TASK_CODECEPTJS_FEATURES=./features/02-daily-work/greeting.feature task project:test:e2e -- --grep @greting; task devsecops:test:check:red-is-real -- @greeting
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-4"></a>
+
+## The phase refuses to certify itself
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**5. Then the test phase refuses to certify itself, the moment a check is switched off**
+
+</th>
+<th width="50%">
+
+**6. And the guard refuses a picture check loosened to 0.1 just the same**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then the test phase refuses to certify itself, the moment a check is switched off](../../screenshots/base/02-daily-work/tdd-cycle/verify-refuses-a-switched-off-check.webp)](../../screenshots/base/02-daily-work/tdd-cycle/verify-refuses-a-switched-off-check.webp)
+
+Asked to make the suite green, the assistant takes the cheapest road: one word, @skip, above the scenario it could not satisfy. The file on screen is the test as it now stands.
+task devsecops:test:verify is the one command that certifies the test phase: the tests passed, and nothing was switched off to get there. Its guard runs first, so it stops in a second instead of after the whole test suite.
+It names the file, the line and what that line does, then offers the only way past it: a No-cheat-exempt trailer in the commit, so a reviewer reads the reason instead of guessing it.
+
+<details>
+<summary>Command</summary>
+
+```shell
+cat project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:verify
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And the guard refuses a picture check loosened to 0.1 just the same](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-loosened-picture-check.webp)](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-loosened-picture-check.webp)
+
+The assistant puts the scenario back and tries a quieter road. In the suite's configuration, the picture check now accepts a difference: its tolerance goes from 0 to 0.1. The diff at the top shows that line, next to the step file the developer registered at the start.
+The guard behind the test phase reads the working tree, and it stops on that line too. It names the file and the line, and says what the line does: "a picture check that accepts a difference: it stops proving anything".
+
+<details>
+<summary>Command</summary>
+
+```shell
+git diff -- project/tests/e2e/codecept.conf.js && task devsecops:test:check:no-cheat BASE=HEAD
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**7. And the guard refuses a node:test unit test switched off with \{ skip: true \}**
+
+</th>
+<th width="50%">
+
+
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![And the guard refuses a node:test unit test switched off with \{ skip: true \}](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-skipped-node-test.webp)](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-skipped-node-test.webp)
+
+The tolerance goes back to 0. Many projects write their unit tests for node:test, the test runner built into Node. The assistant writes the greeting check that way, in greeting.test.js, and switches it off with one option on line 4: \{ skip: true \}. node:test then reports the test as skipped and never runs it.
+The guard stops on that line as well. It names project/tests/unit/greeting.test.js:4 and says what the line does: "a skipped or todo test: its failure no longer fails the suite". Off camera, it also refuses \{ todo: true \}, test.todo(, and t.skip( or t.todo( whether on a line of their own or on the test( line, and lets a skip through when its value is a condition a reviewer can read.
+
+<details>
+<summary>Command</summary>
+
+```shell
+cat project/tests/unit/greeting.test.js && task devsecops:test:check:no-cheat BASE=HEAD
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-5"></a>
+
+## A check that disappears
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**8. Then the guard refuses a scenario that lost its only check**
+
+</th>
+<th width="50%">
+
+**9. And the guard refuses a test file deleted whole**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then the guard refuses a scenario that lost its only check](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-removed-check.webp)](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-removed-check.webp)
+
+The developer commits the test as it stands. The assistant then takes the quietest road of all: it adds nothing and deletes the scenario's only check, the Then line. The diff at the top shows that single red line.
+A scenario with no step left has nothing that can fail. The guard reads the lines a change removes too, and stops on this one: it names the file and the line, quotes it, and says "a check removed, and none added in its place".
+
+<details>
+<summary>Command</summary>
+
+```shell
+git diff -- project/tests/e2e/features/02-daily-work/greeting.feature && task devsecops:test:check:no-cheat BASE=HEAD
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And the guard refuses a test file deleted whole](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-deleted-test.webp)](../../screenshots/base/02-daily-work/tdd-cycle/guard-refuses-a-deleted-test.webp)
+
+The Then line goes back, and the whole test file goes instead. git status lists it with a D, for deleted.
+The guard reads what the deleted file held, and names the check that will never run again, line 5 of greeting.feature: "a test file deleted".
+
+<details>
+<summary>Command</summary>
+
+```shell
+git status --short && task devsecops:test:check:no-cheat BASE=HEAD
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-chapter-6"></a>
+
+## A test that moves, and a test that goes for a reason
+
+<table width="100%">
+<tr>
+<th width="50%">
+
+**10. Then the guard lets a renamed test through, its check moved with it**
+
+</th>
+<th width="50%">
+
+**11. And a deleted test goes through only with its reason written in the commit**
+
+</th>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Then the guard lets a renamed test through, its check moved with it](../../screenshots/base/02-daily-work/tdd-cycle/guard-lets-a-renamed-test-through.webp)](../../screenshots/base/02-daily-work/tdd-cycle/guard-lets-a-renamed-test-through.webp)
+
+Not every change to a test is a cheat. The test file comes back, and the developer gives it a better name: git status shows R, for renamed, from greeting.feature to hello.feature.
+The check on line 5 did not go anywhere: it moved with its file. The guard pairs what a change removes with what it adds, and lets this one through: "Nothing in this change switches a check off or removes one."
+
+<details>
+<summary>Command</summary>
+
+```shell
+git status --short && task devsecops:test:check:no-cheat BASE=HEAD
+```
+
+</details>
+
+</td>
+<td width="50%" valign="top">
+
+[![And a deleted test goes through only with its reason written in the commit](../../screenshots/base/02-daily-work/tdd-cycle/deleted-test-goes-with-its-reason.webp)](../../screenshots/base/02-daily-work/tdd-cycle/deleted-test-goes-with-its-reason.webp)
+
+Sometimes a test really has to go. The greeting left the plans, so the developer deletes its test in a commit that says why, on a line starting with "No-cheat-exempt:". The top of the screen shows that commit: its message, then the file it deletes.
+Asked about that commit, the guard lets it through in yellow, "a 'No-cheat-exempt:' trailer waives the gate", and still names the check that goes, greeting.feature:5. Without that line, the same commit is refused. The reason now sits in the history, for a reviewer to read.
+
+<details>
+<summary>Command</summary>
+
+```shell
+git show --stat --format=%B HEAD && task devsecops:test:check:no-cheat BASE=HEAD~1
+```
+
+</details>
+
+</td>
+</tr>
+</table>
+
+<a name="storyboard-replay"></a>
+
+<details>
+<summary>Replay this scenario · source and checks</summary>
+
+```shell
+task test -- --grep "@tdd-cycle"
+```
+
+**Source**
+
+```text
+project/tests/e2e/features/02-daily-work/tdd-cycle.feature
+```
+
+Every frame is its own pixel baseline (tolerance: 0).
+
+</details>
