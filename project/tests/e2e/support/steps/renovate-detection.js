@@ -37,7 +37,7 @@ const { openLocalTerminal } = require('../helpers/localTerminal')
 const { terminalCard } = require('../terminal/capture')
 const { storyboardStep } = require('../../../../../.config/codeceptjs/storyboard')
 
-const { I } = inject()
+const { I, GitLabUserPage } = inject()
 
 const ANSWERS = '.config/devsecops/.copier-answers.yml'
 const INSTALL_SH = '.config/devsecops/install.sh'
@@ -685,6 +685,10 @@ storyboardStep(Given, 'a project on GitLab with a nightly pipeline schedule', as
     { description: 'Renovate', ref: 'main', cron: '0 1 * * *', cron_timezone: 'Europe/Paris' }, pub.headers)
   if (created.status >= 400) throw new Error(`Creating the nightly schedule returned ${created.status}: ${JSON.stringify(created.data)}`)
   story.nightly = { pub, scheduleId: created.data.id }
+  await GitLabUserPage.loginAs(process.env.TASK_GITLAB_LAMBDA_USER, process.env.TASK_GITLAB_LAMBDA_PASSWORD)
+  await gitlabFrame(I, 'renovate-nightly-schedule', `${gitlabUrl.project(pub.projectName)}/-/pipeline_schedules`, {
+    projectNames: [pub.projectName], waitText: '0 1 * * *', height: 480
+  })
 })
 
 storyboardStep(Then, 'a push pipeline leaves Renovate to the schedule, and only the scheduled pipeline runs it', async () => {

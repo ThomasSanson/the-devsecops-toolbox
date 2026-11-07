@@ -76,7 +76,7 @@ Feature: Dependency updates flow through the framework, not around it
   @renovate-nightly
   Scenario: On the main branch, a push pipeline leaves Renovate to the project's nightly schedule
     # Note: Every Renovate run on the main branch rebases every open Renovate merge request, and every rebase starts a full pipeline. With fast-forward merges, each merge on main used to restart them all.
-    # Note: Off camera, a project on GitLab with a nightly pipeline schedule, like the toolbox's own "Renovate" schedule at 1 am.
+    # Note: On screen, the project's pipeline schedules on GitLab. One schedule, "Renovate", runs the main branch every night at 1 am, Paris time, like the toolbox's own.
     Given a project on GitLab with a nightly pipeline schedule
     # Note: The terminal plays the feedback job of a push pipeline on that project's main branch. The job finds the schedule and leaves Renovate to it, without starting Renovate.
     # Note: Off camera, the same job in the scheduled pipeline runs Renovate. Once the schedule is deleted, a push pipeline runs Renovate again, so a project without a schedule keeps getting its updates.
