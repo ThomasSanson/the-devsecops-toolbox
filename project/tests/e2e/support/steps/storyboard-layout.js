@@ -45,6 +45,42 @@ const HALF = 708
 const ROW = 2 * HALF + 24
 const CENTRED = LEFT + (ROW - HALF) / 2
 
+// The twin: the geometry the engine wrote, card by card, in reading order.
+function boardLayout (svg) {
+  const cards = [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="12" fill="#181a24"/g)]
+    .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4] }))
+  const images = [...svg.matchAll(/<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)].map(m => +m[3])
+  return { cards, images, layout: JSON.stringify({ cards, images }) }
+}
+
+// The whole GitLab page: a row of its own, at its real size.
+function assertFullRow ({ cards, images, layout }) {
+  const [shortTerm, gitlabPage, strip] = cards
+  if (cards.length !== 5) throw new Error(`Expected 5 cards, the engine drew ${cards.length}: ${layout}`)
+  if (gitlabPage.w !== ROW || gitlabPage.x !== LEFT || images[1] !== 1440) {
+    throw new Error(`Expected the GitLab page to fill a 1440 px row at its real size: ${layout}`)
+  }
+  if (!(shortTerm.y < gitlabPage.y && gitlabPage.y < strip.y)) {
+    throw new Error(`Expected the GitLab page on a row of its own, between the short capture and the strip: ${layout}`)
+  }
+}
+
+// The shorter captures: half cards, two per row, or centred when alone.
+function assertHalfCards ({ cards, images, layout }) {
+  const [shortTerm, , strip, secondTerm, tallPage] = cards
+  if (shortTerm.w !== HALF || shortTerm.x !== CENTRED) {
+    throw new Error(`Expected the short capture, alone on its row, centred in it: ${layout}`)
+  }
+  if ([strip, secondTerm].some(c => c.w !== HALF) || strip.y !== secondTerm.y || strip.x !== LEFT || secondTerm.x !== LEFT + HALF + 24) {
+    throw new Error(`Expected the strip and the second capture to share a row of two 708 px cards: ${layout}`)
+  }
+  // Shown at 1100/2000 of its size, the tall page is narrower than a half row:
+  // a full row would only add empty space around it.
+  if (tallPage.w !== HALF || tallPage.x !== CENTRED || images[4] >= HALF) {
+    throw new Error(`Expected the tall page, shrunk below a half row, centred in a half card: ${layout}`)
+  }
+}
+
 storyboardStep(Then, 'a storyboard gives a whole GitLab page a full row at its real size and keeps shorter captures two per row', async () => {
   fs.rmSync(LAYOUT_DIR, { recursive: true, force: true })
   fs.mkdirSync(LAYOUT_DIR, { recursive: true })
@@ -64,30 +100,10 @@ storyboardStep(Then, 'a storyboard gives a whole GitLab page a full row at its r
   if (drawn.status !== 0) throw new Error(`The engine could not draw the fixture board:\n${drawn.stdout}${drawn.stderr}`)
   const svg = fs.readFileSync(svgFile, 'utf8')
 
-  // The twin: the geometry the engine wrote, card by card, in reading order.
-  const cards = [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="12" fill="#181a24"/g)]
-    .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4] }))
-  const images = [...svg.matchAll(/<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)].map(m => +m[3])
-  const [shortTerm, gitlabPage, strip, secondTerm, tallPage] = cards
-  const layout = JSON.stringify({ cards, images })
-  if (cards.length !== 5) throw new Error(`Expected 5 cards, the engine drew ${cards.length}: ${layout}`)
-  if (gitlabPage.w !== ROW || gitlabPage.x !== LEFT || images[1] !== 1440) {
-    throw new Error(`Expected the GitLab page to fill a 1440 px row at its real size: ${layout}`)
-  }
-  if (!(shortTerm.y < gitlabPage.y && gitlabPage.y < strip.y)) {
-    throw new Error(`Expected the GitLab page on a row of its own, between the short capture and the strip: ${layout}`)
-  }
-  if (shortTerm.w !== HALF || shortTerm.x !== CENTRED) {
-    throw new Error(`Expected the short capture, alone on its row, centred in it: ${layout}`)
-  }
-  if ([strip, secondTerm].some(c => c.w !== HALF) || strip.y !== secondTerm.y || strip.x !== LEFT || secondTerm.x !== LEFT + HALF + 24) {
-    throw new Error(`Expected the strip and the second capture to share a row of two 708 px cards: ${layout}`)
-  }
-  // Shown at 1100/2000 of its size, the tall page is narrower than a half row:
-  // a full row would only add empty space around it.
-  if (tallPage.w !== HALF || tallPage.x !== CENTRED || images[4] >= HALF) {
-    throw new Error(`Expected the tall page, shrunk below a half row, centred in a half card: ${layout}`)
-  }
+  const board = boardLayout(svg)
+  assertFullRow(board)
+  assertHalfCards(board)
+  const gitlabPage = board.cards[1]
   const noteLines = [...svg.matchAll(/<text x="50" y="([\d.]+)"[^>]*font-size="12.8"[^>]*>([^<]*)<\/text>/g)]
     .filter(m => +m[1] > gitlabPage.y && +m[1] < gitlabPage.y + gitlabPage.h).map(m => m[2])
   if (noteLines.length < 3 || noteLines.some(line => line.length > 120)) {

@@ -322,10 +322,9 @@ storyboardStep(When, "the developer writes a one-line README on the issue's bran
   if (readme !== README_LINE) throw new Error(`Expected README.md on ${BRANCH} to be the one line, got:\n${readme}`)
 })
 
-// The Changes tab once GitLab has taken the push in: the merge request holds the
-// one commit and its pipeline exists, so the tab counters are final.
-storyboardStep(Then, 'the merge request shows that one-line change', async () => {
-  const mrPath = `/merge_requests/${global.dailyMrIid}`
+// The merge request's commits, pipelines and diffs, read again until GitLab has
+// taken the push in: one commit, and at least one pipeline and one diff.
+async function readMergeRequestChange (mrPath) {
   let commits = []
   let pipelines = []
   let diffs = []
@@ -336,6 +335,13 @@ storyboardStep(Then, 'the merge request shows that one-line change', async () =>
     diffs = (await freshGet(projectApi(`${mrPath}/diffs`), lambdaHeaders())).data || []
     if (commits.length === 1 && pipelines.length && diffs.length) break
   }
+  return { commits, pipelines, diffs }
+}
+
+// The Changes tab once GitLab has taken the push in: the merge request holds the
+// one commit and its pipeline exists, so the tab counters are final.
+storyboardStep(Then, 'the merge request shows that one-line change', async () => {
+  const { commits, pipelines, diffs } = await readMergeRequestChange(`/merge_requests/${global.dailyMrIid}`)
   // Twin: one commit, one pipeline, one new file whose diff is the one line.
   if (commits.length !== 1 || commits[0].title !== COMMIT_SUBJECT) {
     throw new Error(`Expected the merge request to hold the one feat commit, got: ${commits.map(c => c.title).join(', ') || 'none'}`)

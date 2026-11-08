@@ -264,20 +264,25 @@ async function gitlabFrame (I, frameName, url, {
   const before = await I.usePlaywrightTo('read the window size', async ({ page }) => page.viewportSize())
   await I.resizeWindow(CARD_WIDTH, height)
   try {
-    await I.amOnPage(url)
-    if (waitText) await I.waitForText(waitText, 60)
-    await settlePage(I)
-    if (prepare) {
-      await prepare()
-      await settlePage(I)
-    }
-    await maskGitLabPage(I, { projectNames, keepContext, textMasks, hide })
-    await scrollPage(I, scrollTo || (url.includes('#') ? 'keep' : null))
-    // In the story's own folder, as captureTerminalFrame does.
-    await addStoryboardFrame(I, await capturePageFrame(I, `${baseDir()}/${frameName}`))
+    await captureGitLabPage(I, frameName, url, { waitText, projectNames, keepContext, textMasks, hide, prepare, scrollTo })
   } finally {
     if (before) await I.resizeWindow(before.width, before.height)
   }
+}
+
+// gitlabFrame's capture, in the window it sized: load, wait, prepare, mask, scroll, frame.
+async function captureGitLabPage (I, frameName, url, { waitText, projectNames, keepContext, textMasks, hide, prepare, scrollTo }) {
+  await I.amOnPage(url)
+  if (waitText) await I.waitForText(waitText, 60)
+  await settlePage(I)
+  if (prepare) {
+    await prepare()
+    await settlePage(I)
+  }
+  await maskGitLabPage(I, { projectNames, keepContext, textMasks, hide })
+  await scrollPage(I, scrollTo || (url.includes('#') ? 'keep' : null))
+  // In the story's own folder, as captureTerminalFrame does.
+  await addStoryboardFrame(I, await capturePageFrame(I, `${baseDir()}/${frameName}`))
 }
 
 // Volatile values a job log prints, whatever the job: commit SHAs, the runner's

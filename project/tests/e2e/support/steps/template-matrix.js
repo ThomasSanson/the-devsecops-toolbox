@@ -224,6 +224,46 @@ async function compareFrame (frameName, branch, compare, { expand, height }) {
   })
 }
 
+// Twins of the default layout, each one the minus side of a compare below.
+function checkDefaultFiles () {
+  const has = (p) => fs.existsSync(path.join(matrix.dir, p))
+  for (const p of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml', 'project/docker-compose.yml']) {
+    if (!has(p)) throw new Error(`Expected the default render to deliver ${p}`)
+  }
+  const renderErrors = []
+  if (JSON.parse(matrixFile('.config/cspell/config.project.json')).words.length !== 0) {
+    renderErrors.push('The framework must ship an empty project dictionary; shared technical words belong in its base dictionary')
+  }
+  for (const p of ['.config/podman', '.config/ansible', '.superpowers', 'docs/plans', '.config/devsecops/scripts/__pycache__']) {
+    if (has(p)) renderErrors.push(`Expected the default render to leave ${p} out`)
+  }
+  if (renderErrors.length) throw new Error(renderErrors.join('\n'))
+}
+
+function checkDefaultContents () {
+  if (!matrixFile('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to declare its networks')
+  const taskfile = matrixFile('Taskfile.yml')
+  for (const include of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml']) {
+    if (!taskfile.includes(include)) throw new Error(`Expected the root Taskfile to include ${include}`)
+  }
+  if (taskfile.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the default root Taskfile to leave the podman include out')
+  if (!matrixFile('.config/gitlab/ci/variables.yml').includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected the CI variables to target tcp://docker:2376')
+  if (!matrixFile('.config/gitlab/ci/devsecops/release.yml').includes('after_script:')) throw new Error('Expected the release job to keep its after_script')
+  if (!matrixFile('.agents/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
+}
+
+// The skipped pipeline is recorded a moment after the push: wait for it, so
+// its status icon is on every card or on none.
+async function waitSkippedPipeline (projectName, headers) {
+  let skipped = false
+  for (let i = 0; i < 30 && !skipped; i++) {
+    const pipelines = await listProjectPipelines(projectName, headers, '?ref=main')
+    skipped = Array.isArray(pipelines.data) && pipelines.data.length > 0
+    if (!skipped) await new Promise(resolve => setTimeout(resolve, 2000))
+  }
+  if (!skipped) throw new Error('GitLab recorded no skipped pipeline on the main branch after 60 s')
+}
+
 storyboardStep(Given, 'GitLab holds a project rendered with every default Copier answer on its main branch', async () => {
   const root = fs.mkdtempSync('/tmp/e2e-render-matrix-')
   cleanupDirs.push(root)
@@ -245,28 +285,8 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   })
   const { projectName, headers } = matrix.pub
 
-  // Twins of the default layout, each one the minus side of a compare below.
-  const has = (p) => fs.existsSync(path.join(matrix.dir, p))
-  for (const p of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml', 'project/docker-compose.yml']) {
-    if (!has(p)) throw new Error(`Expected the default render to deliver ${p}`)
-  }
-  const renderErrors = []
-  if (JSON.parse(matrixFile('.config/cspell/config.project.json')).words.length !== 0) {
-    renderErrors.push('The framework must ship an empty project dictionary; shared technical words belong in its base dictionary')
-  }
-  for (const p of ['.config/podman', '.config/ansible', '.superpowers', 'docs/plans', '.config/devsecops/scripts/__pycache__']) {
-    if (has(p)) renderErrors.push(`Expected the default render to leave ${p} out`)
-  }
-  if (renderErrors.length) throw new Error(renderErrors.join('\n'))
-  if (!matrixFile('project/docker-compose.yml').includes('networks:')) throw new Error('Expected project/docker-compose.yml to declare its networks')
-  const taskfile = matrixFile('Taskfile.yml')
-  for (const include of ['.config/docker-ce/Taskfile.yml', 'project/Taskfile.yml']) {
-    if (!taskfile.includes(include)) throw new Error(`Expected the root Taskfile to include ${include}`)
-  }
-  if (taskfile.includes('.config/podman/Taskfile.yml')) throw new Error('Expected the default root Taskfile to leave the podman include out')
-  if (!matrixFile('.config/gitlab/ci/variables.yml').includes('DOCKER_HOST: tcp://docker:2376')) throw new Error('Expected the CI variables to target tcp://docker:2376')
-  if (!matrixFile('.config/gitlab/ci/devsecops/release.yml').includes('after_script:')) throw new Error('Expected the release job to keep its after_script')
-  if (!matrixFile('.agents/rules/tests-structure.md').includes('Gherkin in **en**')) throw new Error('Expected the tests-structure rule to ask for Gherkin in **en**')
+  checkDefaultFiles()
+  checkDefaultContents()
   rendered = matrix.dir
   const rule = toolboxPackageRule()
   if (rule.automerge !== true || rule.automergeStrategy !== 'fast-forward' || rule.semanticCommitType !== 'feat') {
@@ -275,15 +295,7 @@ storyboardStep(Given, 'GitLab holds a project rendered with every default Copier
   // GitLab's own CI lint: the default pipeline holds together.
   const lint = await lintProjectCi(projectName, headers, 'main')
   if (!lint.data || lint.data.valid !== true) throw new Error(`Expected GitLab to find the main branch CI valid: ${JSON.stringify(lint.data)}`)
-  // The skipped pipeline is recorded a moment after the push: wait for it, so
-  // its status icon is on every card or on none.
-  let skipped = false
-  for (let i = 0; i < 30 && !skipped; i++) {
-    const pipelines = await listProjectPipelines(projectName, headers, '?ref=main')
-    skipped = Array.isArray(pipelines.data) && pipelines.data.length > 0
-    if (!skipped) await new Promise(resolve => setTimeout(resolve, 2000))
-  }
-  if (!skipped) throw new Error('GitLab recorded no skipped pipeline on the main branch after 60 s')
+  await waitSkippedPipeline(projectName, headers)
 
   await gitlabFrame(I, 'defaults-answers', gitlabUrl.file(projectName, 'main', MATRIX_ANSWERS), {
     waitText: 'container_runtime: docker',

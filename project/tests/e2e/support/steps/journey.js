@@ -1779,6 +1779,19 @@ storyboardStep(Then, "the framework's first pipeline passes, its MegaLinter job 
   })
 })
 
+// GitLab deletes the merged source branch on its own, a moment later.
+async function waitFrameworkBranchDeleted (project, rootHeaders) {
+  let branches = []
+  for (let i = 0; i < 30; i++) {
+    const listed = await listProjectBranches(project, rootHeaders)
+    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
+    branches = (listed.data || []).map(branch => branch.name)
+    if (!branches.includes(FRAMEWORK_BRANCH)) break
+    await I.wait(2)
+  }
+  if (branches.includes(FRAMEWORK_BRANCH)) throw new Error(`Expected the source branch ${FRAMEWORK_BRANCH} to be deleted by the merge`)
+}
+
 // A green pipeline meets the "Pipelines must succeed" rule, so the merge goes
 // through. GitLab deletes the source branch on its own, a moment later. The
 // merge starts the main branch's own pipeline (plan, release, feedback), waited
@@ -1795,15 +1808,7 @@ storyboardStep(Then, 'the merge request merges into the main branch', async () =
     state = ((await getMergeRequest(project, global.journeyMergeRequestIid, rootHeaders)).data || {}).state
   }
   if (state !== 'merged') throw new Error(`Expected the framework MR to be merged, got state=${state}`)
-  let branches = []
-  for (let i = 0; i < 30; i++) {
-    const listed = await listProjectBranches(project, rootHeaders)
-    if (listed.status !== 200) throw new Error(`Could not read the branches after merging: ${listed.status}`)
-    branches = (listed.data || []).map(branch => branch.name)
-    if (!branches.includes(FRAMEWORK_BRANCH)) break
-    await I.wait(2)
-  }
-  if (branches.includes(FRAMEWORK_BRANCH)) throw new Error(`Expected the source branch ${FRAMEWORK_BRANCH} to be deleted by the merge`)
+  await waitFrameworkBranchDeleted(project, rootHeaders)
   const { pid, status } = await waitRefPipeline(I, project, 'main', rootHeaders)
   const jobs = pid ? ((await listPipelineJobs(project, pid, rootHeaders)).data || []) : []
   if (status !== 'success') {

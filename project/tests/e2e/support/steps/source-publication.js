@@ -504,12 +504,10 @@ function pushSource (token) {
 }
 
 /**
- * The named job of the newest pipeline on main, whatever its verdict. `after` is
- * the pipeline this story already read: every chapter here starts one, so the
- * wait has to be for a NEW pipeline rather than for a terminal state the
- * previous one already has.
+ * The first pipeline on main newer than `after`, polled until it ends or the
+ * timeout passes: { pid, status }, pid null when none ever ran.
  */
-async function publicationJob (headers, after = 0, jobName = 'publish-source') {
+async function waitNewMainPipeline (headers, after) {
   const encoded = encodedProjectPath(global.pubPrivate)
   const deadline = Date.now() + PIPELINE_TIMEOUT_MS
   let pid = null
@@ -539,6 +537,17 @@ async function publicationJob (headers, after = 0, jobName = 'publish-source') {
     }
     await I.wait(5)
   }
+  return { pid, status }
+}
+
+/**
+ * The named job of the newest pipeline on main, whatever its verdict. `after` is
+ * the pipeline this story already read: every chapter here starts one, so the
+ * wait has to be for a NEW pipeline rather than for a terminal state the
+ * previous one already has.
+ */
+async function publicationJob (headers, after = 0, jobName = 'publish-source') {
+  const { pid, status } = await waitNewMainPipeline(headers, after)
   if (!pid) throw new Error(`No pipeline newer than ${after} ever ran on main`)
   const jobs = await listPipelineJobs(global.pubPrivate, pid, headers)
   const job = (jobs.data || []).find(j => j.name === jobName)
@@ -792,6 +801,22 @@ storyboardStep(Then, 'that merge request shows the exact list of paths that woul
 // Chapter 3 — The right person has to be the one who says yes
 // ===========================================================================
 
+// GitLab deletes a merged source branch in a background worker: poll until the
+// branch answers 404, and refuse any other answer as unverifiable.
+async function waitBranchDeleted (sourceBranch) {
+  const branchUrl = `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}` +
+    `/repository/branches/${encodeURIComponent(sourceBranch)}`
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const branch = await freshGet(branchUrl, lambdaHeaders())
+    if (branch.status === 404) return
+    if (branch.status !== 200 || !branch.data || branch.data.name !== sourceBranch) {
+      throw new Error(`Cannot verify deletion of "${sourceBranch}": HTTP ${branch.status} ${JSON.stringify(branch.data)}`)
+    }
+    if (attempt < 29) await I.wait(2)
+  }
+  throw new Error(`Source branch "${sourceBranch}" was not deleted after 30 checks`)
+}
+
 storyboardStep(When, 'the developer answers the question themselves and merges it', async () => {
   const blocked = await mergeMergeRequest(global.pubPrivate, global.pubMrIid, lambdaHeaders())
   if (blocked.status < 400) {
@@ -817,21 +842,7 @@ storyboardStep(When, 'the developer answers the question themselves and merges i
   if (typeof sourceBranch !== 'string' || !sourceBranch) {
     throw new Error('The merged response must identify the source branch to verify its deletion')
   }
-  const branchUrl = `${BASE_URL}/api/v4/projects/${encodedProjectPath(global.pubPrivate)}` +
-    `/repository/branches/${encodeURIComponent(sourceBranch)}`
-  let deleted = false
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const branch = await freshGet(branchUrl, lambdaHeaders())
-    if (branch.status === 404) {
-      deleted = true
-      break
-    }
-    if (branch.status !== 200 || !branch.data || branch.data.name !== sourceBranch) {
-      throw new Error(`Cannot verify deletion of "${sourceBranch}": HTTP ${branch.status} ${JSON.stringify(branch.data)}`)
-    }
-    if (attempt < 29) await I.wait(2)
-  }
-  if (!deleted) throw new Error(`Source branch "${sourceBranch}" was not deleted after 30 checks`)
+  await waitBranchDeleted(sourceBranch)
   await waitSystemNotes(global.pubMrIid, lambdaHeaders(), 'mentioned in commit')
 
   await storyFrame('publication-mr-merged', gitlabUrl.mr(global.pubPrivate, global.pubMrIid), {

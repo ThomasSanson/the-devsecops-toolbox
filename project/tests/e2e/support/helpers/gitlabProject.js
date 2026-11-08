@@ -77,23 +77,7 @@ async function publishToGitLab (dir, {
   }
 
   try {
-    // A directory INSIDE another repository is not a repository of its own:
-    // pushing its HEAD would publish the parent.
-    let isRepo = false
-    try {
-      const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-      isRepo = fs.realpathSync(top) === fs.realpathSync(dir) &&
-        Boolean(execFileSync('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim())
-    } catch (_) {}
-    if (!isRepo) {
-      git(dir, ['init', '--quiet', `--initial-branch=${branch}`], 'init')
-      git(dir, ['config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'], 'config')
-      git(dir, ['config', 'user.name', 'Lambda User'], 'config')
-      // A fixture commit: the hooks a rendered project installs are another story's subject.
-      git(dir, ['config', 'core.hooksPath', '/dev/null'], 'config')
-      git(dir, ['add', '-A'], 'add')
-      git(dir, ['commit', '--quiet', '-m', message], 'commit')
-    }
+    ensureOwnRepository(dir, branch, message)
 
     const user = process.env.TASK_GITLAB_LAMBDA_USER
     const remote = new URL(`http://gitlab/${created.data.path_with_namespace}.git`) // DevSkim: ignore DS137138 -- Isolated test GitLab; never a deployed application endpoint.
@@ -112,6 +96,25 @@ async function publishToGitLab (dir, {
     await teardown()
     throw err
   }
+}
+
+// A directory INSIDE another repository is not a repository of its own:
+// pushing its HEAD would publish the parent, so it gets its own, with one commit.
+function ensureOwnRepository (dir, branch, message) {
+  let isRepo = false
+  try {
+    const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    isRepo = fs.realpathSync(top) === fs.realpathSync(dir) &&
+      Boolean(execFileSync('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim())
+  } catch (_) {}
+  if (isRepo) return
+  git(dir, ['init', '--quiet', `--initial-branch=${branch}`], 'init')
+  git(dir, ['config', 'user.email', process.env.TASK_GITLAB_LAMBDA_EMAIL || 'lambda@test.local'], 'config')
+  git(dir, ['config', 'user.name', 'Lambda User'], 'config')
+  // A fixture commit: the hooks a rendered project installs are another story's subject.
+  git(dir, ['config', 'core.hooksPath', '/dev/null'], 'config')
+  git(dir, ['add', '-A'], 'add')
+  git(dir, ['commit', '--quiet', '-m', message], 'commit')
 }
 
 module.exports = { publishToGitLab }
