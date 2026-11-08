@@ -2,6 +2,22 @@
 
 # Changelog
 
+## 26.0.0 (2026-11-08)
+
+### BREAKING CHANGE
+
+- a generated project's PNG baselines become WebP. The
+26.0.0 Copier migration converts them once, with the same pixels, so no
+reference is recorded anew without being compared.
+
+### Feat
+
+- **storyboard**: write the storyboards as Markdown pages with WebP frames
+
+### Refactor
+
+- **codeceptjs**: use the codeceptjs-storyboard package
+
 ## 25.2.1 (2026-11-08)
 
 ### Fix
