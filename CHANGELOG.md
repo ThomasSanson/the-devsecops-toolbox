@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 26.0.2 (2026-11-08)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-runner docker tag to v19.5.3
+
 ## 26.0.1 (2026-11-08)
 
 ### Fix
