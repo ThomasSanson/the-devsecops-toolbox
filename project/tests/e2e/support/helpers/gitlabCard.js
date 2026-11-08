@@ -281,8 +281,10 @@ async function gitlabFrame (I, frameName, url, {
 }
 
 // Volatile values a job log prints, whatever the job: commit SHAs, the runner's
-// name and system id, uuids and request ids, the per-run runner container.
+// name and system id, uuids and request ids, the per-run runner container, and
+// the runner's minor and patch version, which Renovate bumps every few weeks.
 const JOB_LOG_MASKS = [
+  [/(gitlab-runner \d+)\.\d+\.\d+/g, '$1.x.x'],
   [/\b[0-9a-f]{8,}\b/g, '<sha>'],
   [/(\bon )[^,\n]+(, system ID: )\S+/g, '$1<runner>$2<system>'],
   [/UUID: [\w<>-]+/g, 'UUID: <uuid>'],
@@ -305,7 +307,8 @@ const JOB_LOG_MASKS = [
  *     order (OSV's "Scanned … packages" lines, MegaLinter's reporter lines);
  *   - focus: a log text to bring into view instead of the top of the page.
  * The gutter (line numbers, timestamps, section durations), the runner's
- * cleanup line ("…runner-<token>… disconnected from network") and git's
+ * cleanup line ("…runner-<token>… disconnected from network"), its "Running on
+ * CPU:" line (the host's processor, since runner 19.5) and git's
  * "warning: redirecting to" (CI runners print it, local ones do not) always go, and
  * projectNames (default: the project's path segment) are replaced inside the
  * log before the SHA mask runs. The masks are applied across spans once, then
@@ -358,7 +361,7 @@ async function jobLogFrame (I, frameName, project, jobId, {
           if (start === -1) throw new Error(`jobLogFrame: no log line matches ${args.from.source || args.from.text}`)
           lines.slice(0, Math.max(0, start - args.lead)).forEach(l => l.setAttribute('data-e2e-mask', ''))
         }
-        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container|warning: redirecting to /i
+        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container|warning: redirecting to |Running on CPU: /i
         lines.forEach(l => { if (CLEANUP.test(l.textContent)) l.setAttribute('data-e2e-mask', '') })
         // Line numbers are blanked, not removed: a section's chevron sits in
         // their column and would cover the section's first letter.

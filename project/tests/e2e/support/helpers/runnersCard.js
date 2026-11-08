@@ -10,7 +10,8 @@
  * runners of the OTHER test projects ("Other available project runners"):
  * that list depends on whichever story runs next door, so it never reaches a
  * card. The runner ids and token prefixes, contact times and IP addresses are
- * new on every registration and go too.
+ * new on every registration and go too. The runner's version keeps its major
+ * only ("Version 19.x.x"): Renovate bumps the minor every few weeks.
  */
 const { gitlabFrame, gitlabUrl, settlePage } = require('./gitlabCard')
 
@@ -18,7 +19,8 @@ const SECTION = '#js-runners-settings'
 const RUNNER_MASKS = [
   [/#\d+ \([A-Za-z0-9_-]+\)/g, ''],
   [/^\s*\([A-Za-z0-9_-]{6,}\)\s*$/g, ''],
-  [/\b\d{1,3}(\.\d{1,3}){3}\b/g, '']
+  [/\b\d{1,3}(\.\d{1,3}){3}\b/g, ''],
+  [/(Version \d+)\.\d+\.\d+/g, '$1.x.x']
 ]
 
 async function runnersFrame (I, frameName, project, { waitText, height = 900, projectNames = null, textMasks = [] } = {}) {
