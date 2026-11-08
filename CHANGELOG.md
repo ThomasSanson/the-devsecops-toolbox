@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 25.2.1 (2026-11-08)
+
+### Fix
+
+- **codeceptjs**: run the tests on the toolbox's own Node version
+
 ## 25.2.0 (2026-11-02)
 
 ### Feat
