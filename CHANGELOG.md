@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 26.0.3 (2026-11-09)
+
+### Fix
+
+- **no-cheat**: decide once per file what depends only on the file
+- **deps**: update gitlab/gitlab-ce docker tag to v19.5.3
+
 ## 26.0.2 (2026-11-08)
 
 ### Fix
