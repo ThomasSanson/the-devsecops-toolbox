@@ -1085,6 +1085,73 @@ storyboardStep(Then, 'the build check finds the web service, refuses it without 
 })
 
 // ===========================================================================
+// @no-cheat-whole-import: the no-cheat guard reads a merge request that
+// imports a whole application, and answers in bounded time (issue #373).
+// ===========================================================================
+
+// Fixed path: the prompt of both cards prints it.
+const IMPORT_ROOT = '/tmp/e2e-no-cheat-import'
+const IMPORT_FILES = 500
+const IMPORT_LINES = 200
+const IMPORT_FEATURE = 'project/tests/e2e/features/02-daily-work/greeting.feature'
+// 2 million added lines ran the guard past a job's 1 h timeout; 100,000 took
+// 57 s before the guard decided once per file what depends only on the file,
+// about 2 s after.
+const IMPORT_BOUND_S = 15
+const IMPORT_GUARD = `timeout ${IMPORT_BOUND_S} ${GUARD_LAST_COMMIT}`
+let closeImportTerminal = null
+
+After((test) => {
+  if (!owns(test, '@no-cheat-whole-import')) return
+  if (closeImportTerminal) closeImportTerminal()
+  closeImportTerminal = null
+  fs.rmSync(IMPORT_ROOT, { recursive: true, force: true })
+})
+
+const importCommit = (message) => {
+  execFileSync('git', ['-C', IMPORT_ROOT, 'add', '-A'], { stdio: 'pipe' })
+  execFileSync('git', ['-C', IMPORT_ROOT, 'commit', '--quiet', '-m', message], { stdio: 'pipe' })
+}
+
+storyboardStep(Given, 'a merge request imports 500 files of 200 lines, and switches one test off among them', async () => {
+  fs.rmSync(IMPORT_ROOT, { recursive: true, force: true })
+  fs.mkdirSync(IMPORT_ROOT)
+  toolboxRepository(IMPORT_ROOT)
+  const feature = path.join(IMPORT_ROOT, IMPORT_FEATURE)
+  fs.writeFileSync(feature, FEATURE_BODY)
+  importCommit('chore: start from the toolbox')
+
+  fs.writeFileSync(feature, FEATURE_BODY.replace('  @greeting\n', '  @greeting\n  @skip\n'))
+  const line = (j) => `const value${j} = ${j} // imported line\n`
+  for (let i = 0; i < IMPORT_FILES; i++) {
+    const file = path.join(IMPORT_ROOT, `project/app/src/module${i % 50}/file${i}.js`)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, Array.from({ length: IMPORT_LINES }, (_, j) => line(j)).join(''))
+  }
+  importCommit('feat: import the application')
+
+  closeImportTerminal = await openLocalTerminal(I, { cwd: IMPORT_ROOT, env: nestedEnv(), port: 7719 })
+  const screen = await card('no-cheat-whole-import-setup', 'git log -1 --format=%s && git diff --shortstat HEAD~1 && git diff HEAD~1 -- project/tests', DIFF_MASKS)
+  for (const said of ['feat: import the application', `${IMPORT_FILES + 1} files changed, ${IMPORT_FILES * IMPORT_LINES + 1} insertions(+)`, '+  @skip']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the setup card:\n${screen}`)
+  }
+})
+
+storyboardStep(Then, 'the guard reads all 100,001 lines within 15 seconds and names the line that switches the test off', async () => {
+  // The twin first, off camera: the same guard, read as plain text.
+  const run = spawnSync('sh', ['-c', `${IMPORT_GUARD} 2>&1`], { cwd: IMPORT_ROOT, env: nestedEnv(), encoding: 'utf8' })
+  const output = stripAnsiEscapeSequences(String(run.stdout))
+  assert.notEqual(run.status, 124, `The guard was still reading after ${IMPORT_BOUND_S} s on ${IMPORT_FILES * IMPORT_LINES + 1} added lines:\n${output}`)
+  assert.ok(output.includes(`${IMPORT_FEATURE}:4`), `The guard must name the @skip it reads:\n${output}`)
+  assert.notEqual(run.status, 0, `The guard must refuse the change:\n${output}`)
+
+  const screen = await card('no-cheat-whole-import-verdict', `${IMPORT_GUARD}; echo "exit code $?"`)
+  for (const said of ['greeting.feature:4', '@skip', 'exit code 201']) {
+    assert.ok(screen.includes(said), `Expected "${said}" on the verdict card:\n${screen}`)
+  }
+})
+
+// ===========================================================================
 // @red-evidence: the RED gate counts a failure only when the test reached its
 // own check, the tag names one scenario, and the report is whole.
 // ===========================================================================

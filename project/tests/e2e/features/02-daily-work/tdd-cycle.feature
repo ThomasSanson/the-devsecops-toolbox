@@ -175,6 +175,17 @@ Feature: The toolbox checks the test really failed first, instead of taking anyo
     # Copy: task devsecops:test:check:build-coverage; echo "exit code $?"
     Then the build check finds the web service, refuses it without its build task, and leaves the scratch copy out
 
+  @no-cheat-whole-import
+  Scenario: The guard reads a merge request that imports a whole application, and still names the one test it switches off
+    # Note: A copy of the toolbox under /tmp, and one commit on top of it that imports an application: git diff --shortstat counts 501 files changed and 100,001 lines added. On a real project, one merge request imported 2,602 files and 2 million lines at once.
+    # Note: Among all those lines, one switches a test off: @skip, added above the scenario of greeting.feature. The diff of the tests folder shows that single line.
+    # Copy: git log -1 --format=%s && git diff --shortstat HEAD~1 && git diff HEAD~1 -- project/tests
+    Given a merge request imports 500 files of 200 lines, and switches one test off among them
+    # Note: The guard reads every line the commit adds, all 100,001 of them. timeout 15 stops it if it is still reading after 15 seconds, with the exit code 124. On that real project, the guard was still reading after an hour, and GitLab killed the job before it said anything.
+    # Note: Here it finishes well inside the 15 seconds. It names greeting.feature:4, quotes @skip, and refuses the change with the exit code 201, the code Task gives a failed command. An import that size no longer hides a test switched off.
+    # Copy: timeout 15 task devsecops:test:check:no-cheat BASE=HEAD~1; echo "exit code $?"
+    Then the guard reads all 100,001 lines within 15 seconds and names the line that switches the test off
+
   @red-evidence
   Scenario: The RED gate counts only a failure that reached the test's own check
     # Chapter: A refused connection is not a failing test
