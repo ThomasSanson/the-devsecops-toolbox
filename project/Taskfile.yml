@@ -144,6 +144,17 @@ tasks:
         project/tests/integration/storyboard-coverage-webp.test.js
         project/tests/integration/copier-webp-migration.test.js
 
+  project:test:no-cheat:large-import:
+    desc: Verify the no-cheat gate reads a large import in bounded time with the same findings
+    cmds:
+      - rm -rf tmp/no-cheat-tests
+      - mkdir -p tmp/no-cheat-tests
+      - >-
+        node --test --test-reporter=spec --test-reporter=junit
+        --test-reporter-destination=stdout
+        --test-reporter-destination=tmp/no-cheat-tests/results-large-import.xml
+        project/tests/unit/no-cheat-large-import.test.js
+
   project:build:gitlab:
     desc: Build tests component (gitlab)
     cmds:

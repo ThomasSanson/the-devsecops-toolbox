@@ -211,6 +211,12 @@ deleted=false
 in_header=false
 lineno=0
 old_lineno=0
+# What depends only on the file is decided once, when its header ends: is it a
+# test, which rules read it. Asked again on every line, it ran an import of
+# 2 million lines past the job's 1 h timeout; once per file, it takes seconds.
+old_is_test=false
+new_is_test=false
+rules_here=()
 while IFS= read -r line; do
   # A file's header runs from `diff --git` to its first hunk: only there is a
   # `--- a/` or `+++ b/` line a path rather than a removed or added line.
@@ -221,6 +227,21 @@ while IFS= read -r line; do
     ;;
   '@@'*)
     # @@ -old,count +new,count @@ — this hunk's lines start at `old` and `new`.
+    if [ "${in_header}" = true ]; then
+      old_is_test=false new_is_test=false rules_here=()
+      # The framework's own engine under .config/ is not a test of this project:
+      # a framework upgrade rewrites it, and must not read as checks removed.
+      if [ "${read_removed}" = true ] && [[ "${old_file}" =~ ${TEST_PATHS} ]] && [[ "${old_file}" != .config/* ]]; then
+        old_is_test=true
+      fi
+      if [ -n "${file}" ]; then
+        if [[ "${file}" =~ ${TEST_PATHS} ]]; then new_is_test=true; fi
+        for i in "${!RULE_RE[@]}"; do
+          if [ "${RULE_SCOPE[$i]}" = "modified_only" ] && [[ " ${added_files} " == *" ${file} "* ]]; then continue; fi
+          if [[ "${file}" =~ ${RULE_PATHS[$i]} ]]; then rules_here+=("${i}"); fi
+        done
+      fi
+    fi
     in_header=false
     hunk="${line#@@ -}"
     old_lineno="${hunk%%[ ,]*}"
@@ -241,10 +262,7 @@ while IFS= read -r line; do
   case "${line}" in
   '-'*)
     content="${line#-}"
-    # The framework's own engine under .config/ is not a test of this project:
-    # a framework upgrade rewrites it, and must not read as checks removed.
-    if [ "${read_removed}" = true ] && [[ "${old_file}" =~ ${TEST_PATHS} ]] && [[ "${old_file}" != .config/* ]] &&
-      [[ "${content}" =~ ${CHECK_RE} ]]; then
+    if [ "${old_is_test}" = true ] && [[ "${content}" =~ ${CHECK_RE} ]]; then
       if [ "${deleted}" = true ]; then
         says='a test file deleted: the check it held never runs again'
       else
@@ -260,14 +278,13 @@ while IFS= read -r line; do
   esac
   [ -n "${file}" ] || continue
   content="${line#+}"
-  if [[ "${file}" =~ ${TEST_PATHS} ]] && [[ "${content}" =~ ${CHECK_RE} ]]; then
+  if [ "${new_is_test}" = true ] && [[ "${content}" =~ ${CHECK_RE} ]]; then
     key="${content#"${content%%[![:space:]]*}"}"
     added["${key}"]=$((${added["${key}"]:-0} + 1))
     added_count=$((added_count + 1))
   fi
-  for i in "${!RULE_RE[@]}"; do
-    if [ "${RULE_SCOPE[$i]}" = "modified_only" ] && [[ " ${added_files} " == *" ${file} "* ]]; then continue; fi
-    if [[ "${file}" =~ ${RULE_PATHS[$i]} ]] && [[ "${content}" =~ ${RULE_RE[$i]} ]]; then
+  for i in "${rules_here[@]}"; do
+    if [[ "${content}" =~ ${RULE_RE[$i]} ]]; then
       findings+=("${file}:${lineno}|${content}|${RULE_SAYS[$i]}")
     fi
   done
