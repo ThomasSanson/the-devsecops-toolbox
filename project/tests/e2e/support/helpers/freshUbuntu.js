@@ -88,9 +88,12 @@ function setupFreshUbuntuTerminal ({ gitRemote }) {
     throw new Error(`Failed to set up git remote:\n${gitResult.output}`)
   }
 
-  // Same launch line as the journey containers (journeyContainer.js).
+  // Same launch line as the journey containers (journeyContainer.js), with
+  // glab's daily update check off (GLAB_CHECK_UPDATE): when gitlab.com
+  // answers 429, glab sleeps out Retry-After and `glab --version` in the
+  // installer hung the story past its timeout.
   const ttydStart = execInContainerAsUser(name, CONTAINER_USER, [
-    `cd ${CONTAINER_WORKDIR} && nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
+    `cd ${CONTAINER_WORKDIR} && GLAB_CHECK_UPDATE=false nohup ttyd -p 7681 -W -t scrollback=5000 -t rendererType=dom bash >/tmp/ttyd.log 2>&1 &`,
     'sleep 1'
   ].join('\n'))
   if (ttydStart.exitCode !== 0) {
@@ -112,6 +115,7 @@ function runInFreshUbuntu (name, command, { timeout = SETUP_TIMEOUT } = {}) {
   const wrapped = [
     'set +e',
     'export PATH="$HOME/.local/bin:$PATH"',
+    'export GLAB_CHECK_UPDATE=false',
     `cd ${CONTAINER_WORKDIR}`,
     command
   ].join('\n')
