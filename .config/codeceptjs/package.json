@@ -10,7 +10,7 @@
     "@codeceptjs/configure": "^1.0.6",
     "@types/node": "^24.10.1",
     "@digital-commons-official/codeceptjs-storyboard": "3.1.0",
-    "@digital-commons-official/codeceptjs-visual-helper": "3.0.1",
+    "@digital-commons-official/codeceptjs-visual-helper": "3.0.2",
     "codeceptjs": "4.2.2",
     "js-yaml": "^4.3.2",
     "playwright": "1.63.0",
