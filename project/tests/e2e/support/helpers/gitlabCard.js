@@ -161,6 +161,10 @@ async function maskGitLabPage (I, { projectNames = [], keepContext = true, textM
       // copy button (an empty box once its SHA is blanked).
       '.gl-nav-item-slot:has(.gl-avatar), .js-commit-sha-group, .js-commit-sha-group * { visibility: hidden !important }',
       '.project-last-commit .user-avatar-link { display: none !important }',
+      // GitLab 19.5 counts a merge request's reports only once its pipeline
+      // has finished ("-" before, "0" after): the badge depends on the moment
+      // of the capture, so the Reports tab keeps its name and loses its badge.
+      '.gl-badge:has(.js-reports-tab-count) { display: none !important }',
       '.gl-spinner, [class*="spinner"] { visibility: hidden !important }',
       // Popovers by their own classes only: "js-user-popover" is the author's
       // name on a commit, the trigger of a popover, not one.
