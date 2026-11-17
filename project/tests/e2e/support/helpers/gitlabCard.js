@@ -318,7 +318,9 @@ const JOB_LOG_MASKS = [
  * The gutter (line numbers, timestamps, section durations), the runner's
  * cleanup line ("…runner-<token>… disconnected from network"), its "Running on
  * CPU:" line (the host's processor, since runner 19.5) and git's
- * "warning: redirecting to" (CI runners print it, local ones do not) always go, and
+ * "warning: redirecting to" (CI runners print it, local ones do not) and Compose's
+ * warning that the Docker engine's jobs extension is not ready (seen with
+ * docker:29-dind since 2026-11-17, on `compose down`) always go, and
  * projectNames (default: the project's path segment) are replaced inside the
  * log before the SHA mask runs. The masks are applied across spans once, then
  * kept by maskGitLabPage's observer, text node by text node, should GitLab
@@ -370,7 +372,7 @@ async function jobLogFrame (I, frameName, project, jobId, {
           if (start === -1) throw new Error(`jobLogFrame: no log line matches ${args.from.source || args.from.text}`)
           lines.slice(0, Math.max(0, start - args.lead)).forEach(l => l.setAttribute('data-e2e-mask', ''))
         }
-        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container|warning: redirecting to |Running on CPU: /i
+        const CLEANUP = /runner-\S+.*disconnected from network|Possibly zombie container|warning: redirecting to |Running on CPU: |jobs extension is enabled but not ready/i
         lines.forEach(l => { if (CLEANUP.test(l.textContent)) l.setAttribute('data-e2e-mask', '') })
         // Line numbers are blanked, not removed: a section's chevron sits in
         // their column and would cover the section's first letter.
