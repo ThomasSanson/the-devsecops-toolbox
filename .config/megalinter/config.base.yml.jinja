@@ -102,7 +102,7 @@ SPELL_LYCHEE_CONFIG_FILE: .config/lychee/config.toml
 # and a test checks that it tells its whole scenario. markdownlint's fixes
 # would rewrite the generated text (an address wrapped in <>) and lychee would
 # follow the made-up addresses the scenarios show, so both leave those pages.
-MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: '(^|/)project/tests/e2e/storyboards/[^/]+/'
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: "(^|/)project/tests/e2e/storyboards/[^/]+/"
 SPELL_LYCHEE_FILTER_REGEX_EXCLUDE: '(^|/)package-lock\.json$|(^|/)project/tests/e2e/storyboards/[^/]+/'
 YAML_YAMLLINT_CONFIG_FILE: .config/yamllint/config.yml
 {%- endraw %}
