@@ -17,7 +17,7 @@ const { I } = inject()
 const TOOLBOX = '/workspace'
 const PROJECT = '/tmp/fresh-project'
 const BASE_CONFIG = '.config/megalinter/config.base.yml'
-const SHOW_LINES = `sed -n '/^REPOSITORY_DUSTILOCK_ARGUMENTS:/,/^SHOW_ELAPSED_TIME:/p' ${BASE_CONFIG} | cat -n`
+const SHOW_LINES = `sed -n '/^MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE:/,/^SHOW_ELAPSED_TIME:/p' ${BASE_CONFIG} | cat -n`
 const LAST_LINE = 'SHOW_ELAPSED_TIME: true'
 
 let story = null
@@ -29,12 +29,12 @@ After(test => {
   story = null
 })
 
-// The whole file, and the lines the card shows: from the Dustilock arguments
+// The whole file, and the lines the card shows: from the Markdown exclude
 // down to SHOW_ELAPSED_TIME.
 function readBaseConfig (dir) {
   const text = fs.readFileSync(path.join(dir, BASE_CONFIG), 'utf8')
-  const shown = text.match(/^REPOSITORY_DUSTILOCK_ARGUMENTS:\n[\s\S]*?^SHOW_ELAPSED_TIME:.*\n/m)
-  assert.ok(shown, `${dir}/${BASE_CONFIG} has no lines from REPOSITORY_DUSTILOCK_ARGUMENTS down to SHOW_ELAPSED_TIME`)
+  const shown = text.match(/^MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE:.*\n[\s\S]*?^SHOW_ELAPSED_TIME:.*\n/m)
+  assert.ok(shown, `${dir}/${BASE_CONFIG} has no lines from MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE down to SHOW_ELAPSED_TIME`)
   return { text, shown: shown[0] }
 }
 
