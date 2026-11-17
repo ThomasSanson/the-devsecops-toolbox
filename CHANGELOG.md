@@ -2,6 +2,19 @@
 
 # Changelog
 
+## 26.0.5 (2026-11-17)
+
+### Fix
+
+- **deps**: resolve the hono security advisories
+- **deps**: resolve the @hono/node-server security advisories
+- **e2e**: hide the Reports badge GitLab sets by pipeline timing
+- **deps**: update dependency lizard to v1.26.0
+
+### Refactor
+
+- **e2e**: split the eight helpers lizard 1.25.1 flags above CCN 15
+
 ## 26.0.4 (2026-11-10)
 
 ### Fix
