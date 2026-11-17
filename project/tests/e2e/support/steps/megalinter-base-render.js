@@ -1,5 +1,5 @@
 /* global inject Given Then After */
-// @megalinter-base-render (#152): the MegaLinter base settings a project
+// @megalinter-base-render (#152, #340): the MegaLinter base settings a project
 // receives are already in the shape Prettier, MegaLinter's YAML formatter,
 // keeps them, so `task code` never rewrites that "DO NOT EDIT" file. The same
 // command runs on camera in the toolbox, then in a freshly generated project;
@@ -43,9 +43,17 @@ function assertNoDoubleBlankLine ({ text }, what) {
   assert.equal(at, -1, `${what} has two blank lines in a row at line ${text.slice(0, at).split('\n').length + 1}`)
 }
 
+// Prettier writes a YAML string in double quotes unless it holds a backslash
+// or a double quote: any other value in single quotes gets rewritten (#340).
+function assertNoQuotesPrettierRewrites ({ text }, what) {
+  const rewritten = text.match(/(?::|^[ \t]*-)[ \t]+'[^'"\\\n]*'[ \t]*$/gm)
+  assert.equal(rewritten, null, `${what} has values in single quotes that Prettier turns into double quotes:\n${rewritten && rewritten.join('\n')}`)
+}
+
 storyboardStep(Given, "the toolbox's own MegaLinter base settings keep one blank line before SHOW_ELAPSED_TIME", async () => {
   const toolbox = readBaseConfig(TOOLBOX)
   assertNoDoubleBlankLine(toolbox, `The toolbox's ${BASE_CONFIG}`)
+  assertNoQuotesPrettierRewrites(toolbox, `The toolbox's ${BASE_CONFIG}`)
   assert.ok(toolbox.shown.endsWith(`\n\n${LAST_LINE}\n`), `Expected one blank line before ${LAST_LINE}:\n${toolbox.shown}`)
   story = { toolbox }
   story.closeTerminal = await openLocalTerminal(I, { cwd: TOOLBOX, env: process.env, port: 7714, height: 600 })
@@ -59,6 +67,7 @@ storyboardStep(Then, 'a freshly generated project gets the same lines, with the 
   const project = readBaseConfig(PROJECT)
   assert.equal(project.shown, story.toolbox.shown, `The generated ${BASE_CONFIG} must carry these lines exactly as the toolbox does`)
   assertNoDoubleBlankLine(project, `The generated ${BASE_CONFIG}`)
+  assertNoQuotesPrettierRewrites(project, `The generated ${BASE_CONFIG}`)
   await typeCommandAndWait(I, `cd ${PROJECT}`)
   const screen = await terminalCard(I, 'generated-lines', SHOW_LINES)
   assert.ok(screen.includes(LAST_LINE), `Expected the terminal to show ${LAST_LINE}:\n${screen}`)

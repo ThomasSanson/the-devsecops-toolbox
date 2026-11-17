@@ -174,7 +174,7 @@ Feature: a freshly generated project passes its own quality gate
     Given the toolbox's own MegaLinter base settings keep one blank line before SHOW_ELAPSED_TIME
     # Note: The same command in a project the test has just generated from the toolbox, with every default answer. The same five lines, with the one blank line at line 4.
     # Note: Prettier, the YAML formatter MegaLinter runs, never leaves two blank lines in a row, and these settings ask MegaLinter to apply its fixes. A second blank line here made `task code` rewrite a file that says "DO NOT EDIT".
-    # Note: The test also checks that these lines are the toolbox's byte for byte, and that the whole file never has two blank lines in a row.
+    # Note: The test also checks that these lines are the toolbox's byte for byte, that the whole file never has two blank lines in a row, and that no value sits in single quotes Prettier would turn into double ones.
     # Copy: sed -n '/^REPOSITORY_DUSTILOCK_ARGUMENTS:/,/^SHOW_ELAPSED_TIME:/p' .config/megalinter/config.base.yml | cat -n
     Then a freshly generated project gets the same lines, with the same single blank line
 
