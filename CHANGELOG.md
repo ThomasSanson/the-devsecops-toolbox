@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 26.0.7 (2026-11-18)
+
+### Fix
+
+- **devsecops**: align the troubleshooting table of the deployment-only guide
+
 ## 26.0.6 (2026-11-18)
 
 ### Fix
