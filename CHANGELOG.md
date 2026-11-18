@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 26.0.6 (2026-11-18)
+
+### Fix
+
+- **megalinter**: quote the Markdown exclude the way Prettier writes it
+
 ## 26.0.5 (2026-11-17)
 
 ### Fix
