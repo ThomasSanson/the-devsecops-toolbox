@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 26.0.8 (2026-11-19)
+
+### Fix
+
+- **deps**: update gitlab/gitlab-ce docker tag to v19.5.6
+
 ## 26.0.7 (2026-11-18)
 
 ### Fix
